@@ -11,7 +11,7 @@ import { buildSrdContext } from '@/ai/master/srd-context';
 import { buildMasterSystemPrompt } from '@/ai/master/system-prompt';
 import { detectLanguage } from '@/ai/master/language';
 import { runToolLoop } from '@/ai/master/tool-loop';
-import { getAnthropicClient, MASTER_MODEL } from '@/ai/master/anthropic-client';
+import { getMasterProvider } from '@/ai/provider';
 import { recordUsage } from '@/ai/master/usage';
 import { checkQuotas } from '@/ai/master/quotas';
 
@@ -76,25 +76,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           .map((m) => ({ role: m.role === 'master' ? 'assistant' : 'user', content: m.content }));
 
         // 5. Run the tool loop — events flush as they happen via onEvent
+        const provider = getMasterProvider();
+        const masterModel =
+          provider.name === 'anthropic'
+            ? (process.env.ANTHROPIC_MASTER_MODEL ?? 'claude-sonnet-4-5')
+            : (process.env.OPENAI_MASTER_MODEL ?? 'gpt-5');
         const result = await runToolLoop({
-          client: getAnthropicClient(),
-          model: MASTER_MODEL,
+          provider,
           systemBlocks: sys.system,
           history,
           state: snap.state,
+          sessionId,
           applyMutations: (muts, rolls) => applyMutations(sessionId, muts, rolls),
           recordUsage: async (usage) => {
             await recordUsage({
               userId,
               sessionId,
               endpoint: 'master',
-              model: MASTER_MODEL,
-              usage: {
-                inputTokens: usage.input_tokens,
-                outputTokens: usage.output_tokens,
-                cacheReadTokens: (usage as { cache_read_input_tokens?: number }).cache_read_input_tokens ?? 0,
-                cacheCreationTokens: (usage as { cache_creation_input_tokens?: number }).cache_creation_input_tokens ?? 0,
-              },
+              model: masterModel,
+              usage,
             });
           },
           onEvent: (ev) => send(ev.type, ev),
