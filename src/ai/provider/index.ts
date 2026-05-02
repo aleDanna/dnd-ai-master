@@ -2,32 +2,37 @@ import { AnthropicProvider } from './anthropic';
 import { OpenAIProvider } from './openai';
 import type { MasterProvider, ProviderName } from './types';
 
-let _provider: MasterProvider | null = null;
-let _selected: ProviderName | null = null;
+let _anthropic: AnthropicProvider | null = null;
+let _openai: OpenAIProvider | null = null;
 
-/** Returns a cached MasterProvider instance based on MASTER_PROVIDER env. Lazy. */
-export function getMasterProvider(): MasterProvider {
-  if (_provider) return _provider;
-  const raw = (process.env.MASTER_PROVIDER ?? 'anthropic').trim().toLowerCase();
-  if (raw === 'anthropic') {
-    _provider = new AnthropicProvider();
-  } else if (raw === 'openai') {
-    _provider = new OpenAIProvider();
-  } else {
-    throw new Error(`unknown MASTER_PROVIDER: ${raw}`);
+/** Returns a cached MasterProvider instance for the named provider. Lazy. */
+export function getProviderByName(name: ProviderName): MasterProvider {
+  if (name === 'anthropic') {
+    if (!_anthropic) _anthropic = new AnthropicProvider();
+    return _anthropic;
   }
-  _selected = _provider.name;
-  return _provider;
+  if (name === 'openai') {
+    if (!_openai) _openai = new OpenAIProvider();
+    return _openai;
+  }
+  throw new Error(`unknown provider: ${String(name)}`);
 }
 
-/** Test/dev-only helper: clear the cached singleton (used to re-read env across tests). */
+/**
+ * Backward-compatible env-based dispatcher. Used by tests and any callsite that
+ * doesn't have a per-user preference (e.g. internal scripts). Per-user routes should
+ * call getProviderByName(prefs.aiProvider) directly.
+ */
+export function getMasterProvider(): MasterProvider {
+  const raw = (process.env.MASTER_PROVIDER ?? 'anthropic').trim().toLowerCase();
+  if (raw === 'anthropic' || raw === 'openai') return getProviderByName(raw);
+  throw new Error(`unknown MASTER_PROVIDER: ${raw}`);
+}
+
+/** Test/dev-only helper: clear the cached singletons. */
 export function _resetMasterProviderForTests(): void {
-  _provider = null;
-  _selected = null;
-}
-
-export function getCurrentProviderName(): ProviderName | null {
-  return _selected;
+  _anthropic = null;
+  _openai = null;
 }
 
 export type { MasterProvider, ProviderName } from './types';

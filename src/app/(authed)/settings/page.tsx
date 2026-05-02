@@ -11,14 +11,7 @@ export default async function SettingsPage() {
   await ensureUser(userId);
 
   const prefs = await getResolvedPreferences(userId);
-  const masterProvider = (process.env.MASTER_PROVIDER ?? 'anthropic').trim().toLowerCase();
   const ttsModel = process.env.OPENAI_TTS_MODEL ?? 'gpt-4o-mini-tts';
 
-  return (
-    <SettingsClient
-      initialPreferences={prefs}
-      masterProvider={masterProvider === 'openai' ? 'openai' : 'anthropic'}
-      ttsModel={ttsModel}
-    />
-  );
+  return <SettingsClient initialPreferences={prefs} ttsModel={ttsModel} />;
 }

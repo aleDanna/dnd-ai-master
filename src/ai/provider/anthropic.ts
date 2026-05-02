@@ -91,8 +91,9 @@ export class AnthropicProvider implements MasterProvider {
 
   async proposeWizard(input: ProposeWizardInput): Promise<ProposeWizardOutput> {
     const client = getAnthropicClient();
+    const model = input.model ?? MASTER_MODEL;
     const resp = await client.messages.create({
-      model: MASTER_MODEL,
+      model,
       max_tokens: 1024,
       system: input.systemPrompt,
       tools: [input.toolDefinition],
@@ -104,7 +105,7 @@ export class AnthropicProvider implements MasterProvider {
         userId: input.userId,
         sessionId: input.sessionId ?? null,
         endpoint: 'wizard',
-        model: MASTER_MODEL,
+        model,
         usage: normalizeAnthropicUsage(resp.usage),
       });
     }

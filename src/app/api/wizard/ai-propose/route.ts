@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { proposeOne, type ProposeInput } from '@/ai/wizard/loop';
 import { loadOptions } from '@/characters/options';
 import { validateProposal } from '@/ai/wizard/validate-proposal';
+import { getResolvedPreferences } from '@/lib/preferences';
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -15,6 +16,7 @@ export async function POST(req: NextRequest) {
 
   const options = await loadOptions();
   const srdContext = buildSrdContext(body.step, options);
+  const userPrefs = await getResolvedPreferences(userId);
 
   try {
     const proposal = await proposeOne({
@@ -22,6 +24,9 @@ export async function POST(req: NextRequest) {
       userPrompt: body.userPrompt,
       srdContext,
       currentChoices: body.currentChoices ?? {},
+      userId,
+      provider: userPrefs.aiProvider,
+      model: userPrefs.aiMasterModel,
     });
     const validation = validateProposal(proposal, {
       raceSlugs: options.races.map((r) => r.slug),

@@ -56,6 +56,8 @@ export interface ProposeWizardInput {
   userMessage: string;
   userId?: string;
   sessionId?: string;
+  /** Optional model override; provider falls back to its env-configured default. */
+  model?: string;
 }
 
 export interface ProposeWizardOutput {

@@ -3,22 +3,25 @@ import * as React from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Chip } from '@/components/ui/chip';
 import { Eyebrow } from '@/components/ui/eyebrow';
 import { Icon } from '@/components/ui/icon';
 import { TTS_VOICES } from '@/lib/tts-voices';
+import {
+  modelsForProvider,
+  defaultModelForProvider,
+  type ProviderName,
+} from '@/lib/ai-models';
 import type { UserPreferences } from '@/db/schema/users';
 
 export interface SettingsClientProps {
   initialPreferences: Required<UserPreferences>;
-  masterProvider: 'anthropic' | 'openai';
   ttsModel: string;
 }
 
-export function SettingsClient({ initialPreferences, masterProvider, ttsModel }: SettingsClientProps) {
+export function SettingsClient({ initialPreferences, ttsModel }: SettingsClientProps) {
   const [prefs, setPrefs] = React.useState<Required<UserPreferences>>(initialPreferences);
   const [busy, setBusy] = React.useState(false);
-  const [savedAt, setSavedAt] = React.useState<number | null>(null);
+  const [savedOnce, setSavedOnce] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const save = async (patch: Partial<UserPreferences>): Promise<void> => {
@@ -36,7 +39,7 @@ export function SettingsClient({ initialPreferences, masterProvider, ttsModel }:
       }
       const { preferences } = (await res.json()) as { preferences: UserPreferences };
       setPrefs((p) => ({ ...p, ...preferences }));
-      setSavedAt(Date.now());
+      setSavedOnce(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'failed');
     } finally {
@@ -62,6 +65,21 @@ export function SettingsClient({ initialPreferences, masterProvider, ttsModel }:
     void save({ manualRolls: next });
   };
 
+  const onProviderChange = (next: ProviderName): void => {
+    if (next === prefs.aiProvider) return;
+    const nextModel = defaultModelForProvider(next);
+    setPrefs((p) => ({ ...p, aiProvider: next, aiMasterModel: nextModel }));
+    void save({ aiProvider: next, aiMasterModel: nextModel });
+  };
+
+  const onModelChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
+    const slug = e.target.value;
+    setPrefs((p) => ({ ...p, aiMasterModel: slug }));
+    void save({ aiMasterModel: slug });
+  };
+
+  const availableModels = modelsForProvider(prefs.aiProvider);
+
   return (
     <div style={{ maxWidth: 760, margin: '0 auto', padding: '40px 32px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 24 }}>
@@ -79,16 +97,73 @@ export function SettingsClient({ initialPreferences, masterProvider, ttsModel }:
       <Card>
         <div>
           <Eyebrow>AI master</Eyebrow>
-          <h2 style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>Provider</h2>
+          <h2 style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>Provider &amp; model</h2>
+          <p style={{ marginTop: 4, fontSize: 13, color: 'var(--fg-muted)' }}>
+            Drives the master narration and AI character-builder proposals. Each user picks their own.
+          </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Chip tone={masterProvider === 'openai' ? 'gold' : 'accent'} dot>
-            {masterProvider === 'openai' ? 'OpenAI' : 'Anthropic'}
-          </Chip>
-          <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
-            Server-side env (<code style={{ fontFamily: 'var(--font-mono)' }}>MASTER_PROVIDER</code>) — change requires a redeploy.
-          </span>
+
+        {/* Provider radio segments */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <label htmlFor="provider" style={{ fontSize: 13, color: 'var(--fg-muted)', minWidth: 60 }}>
+            Provider
+          </label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {(['anthropic', 'openai'] as ProviderName[]).map((p) => (
+              <button
+                key={p}
+                onClick={() => onProviderChange(p)}
+                disabled={busy}
+                aria-pressed={prefs.aiProvider === p}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 999,
+                  background: prefs.aiProvider === p ? 'var(--arcane)' : 'var(--bg-card)',
+                  color: prefs.aiProvider === p ? 'var(--bone)' : 'var(--fg)',
+                  border: '1px solid ' + (prefs.aiProvider === p ? 'var(--arcane)' : 'var(--border)'),
+                  cursor: busy ? 'wait' : 'pointer',
+                  fontFamily: 'inherit',
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                {p === 'anthropic' ? 'Anthropic' : 'OpenAI'}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {/* Model dropdown filtered by current provider */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <label htmlFor="masterModel" style={{ fontSize: 13, color: 'var(--fg-muted)', minWidth: 60 }}>
+            Model
+          </label>
+          <select
+            id="masterModel"
+            value={prefs.aiMasterModel}
+            onChange={onModelChange}
+            disabled={busy}
+            style={{
+              flex: 1,
+              padding: '8px 12px',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-strong)',
+              borderRadius: 8,
+              color: 'var(--fg)',
+              fontFamily: 'var(--font-ui)',
+              fontSize: 14,
+            }}
+          >
+            {availableModels.map((m) => (
+              <option key={m.slug} value={m.slug}>
+                {m.label}{m.recommended ? ' (recommended)' : ''} — {m.blurb}
+              </option>
+            ))}
+          </select>
+        </div>
+        <p style={{ fontSize: 11, color: 'var(--fg-subtle)' }}>
+          The selected provider must have a valid API key configured server-side. Picking a model your account doesn&apos;t have access to will surface as an error at the next turn.
+        </p>
       </Card>
 
       <div style={{ height: 16 }} />
@@ -205,7 +280,7 @@ export function SettingsClient({ initialPreferences, masterProvider, ttsModel }:
           <span style={{ color: 'var(--ember)' }}>Save failed: {error}</span>
         ) : busy ? (
           <span>Saving…</span>
-        ) : savedAt ? (
+        ) : savedOnce ? (
           <span>Saved.</span>
         ) : null}
       </div>

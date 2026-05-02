@@ -12,6 +12,10 @@ export interface UserPreferences {
    * Default false (auto-rolls server-side, current behaviour).
    */
   manualRolls?: boolean;
+  /** Provider for the AI master. When unset, falls back to MASTER_PROVIDER env. */
+  aiProvider?: 'anthropic' | 'openai';
+  /** Specific model used for master narration + wizard proposals. When unset, falls back to env defaults. */
+  aiMasterModel?: string;
 }
 
 export const users = pgTable('users', {

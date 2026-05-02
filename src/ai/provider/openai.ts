@@ -107,8 +107,9 @@ export class OpenAIProvider implements MasterProvider {
   async proposeWizard(input: ProposeWizardInput): Promise<ProposeWizardOutput> {
     const client = getClient();
     const tool = anthropicToolToOpenAI(input.toolDefinition);
+    const model = input.model ?? MASTER_MODEL;
     const resp = await client.chat.completions.create({
-      model: MASTER_MODEL,
+      model,
       max_completion_tokens: 1024,
       messages: [
         { role: 'system', content: input.systemPrompt },
@@ -123,7 +124,7 @@ export class OpenAIProvider implements MasterProvider {
         userId: input.userId,
         sessionId: input.sessionId ?? null,
         endpoint: 'wizard',
-        model: MASTER_MODEL,
+        model,
         usage,
       });
     }

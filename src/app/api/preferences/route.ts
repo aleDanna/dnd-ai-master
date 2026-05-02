@@ -7,6 +7,7 @@ import {
   isValidTtsVoice,
   type UserPreferences,
 } from '@/lib/preferences';
+import { isKnownProvider, isKnownMasterModel } from '@/lib/ai-models';
 
 export async function GET() {
   const { userId } = await auth();
@@ -48,6 +49,18 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'invalid-manualRolls' }, { status: 400 });
     }
     patch.manualRolls = body.manualRolls;
+  }
+  if ('aiProvider' in body) {
+    if (!isKnownProvider(body.aiProvider)) {
+      return NextResponse.json({ error: 'invalid-aiProvider' }, { status: 400 });
+    }
+    patch.aiProvider = body.aiProvider;
+  }
+  if ('aiMasterModel' in body) {
+    if (body.aiMasterModel !== undefined && !isKnownMasterModel(body.aiMasterModel)) {
+      return NextResponse.json({ error: 'invalid-aiMasterModel' }, { status: 400 });
+    }
+    patch.aiMasterModel = body.aiMasterModel as string | undefined;
   }
 
   const updated = await updateUserPreferences(userId, patch);

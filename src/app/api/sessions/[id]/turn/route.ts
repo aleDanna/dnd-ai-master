@@ -11,7 +11,7 @@ import { buildSrdContext } from '@/ai/master/srd-context';
 import { buildMasterSystemPrompt } from '@/ai/master/system-prompt';
 import { detectLanguage } from '@/ai/master/language';
 import { runToolLoop } from '@/ai/master/tool-loop';
-import { getMasterProvider } from '@/ai/provider';
+import { getProviderByName } from '@/ai/provider';
 import { recordUsage } from '@/ai/master/usage';
 import { checkQuotas } from '@/ai/master/quotas';
 import { getResolvedPreferences } from '@/lib/preferences';
@@ -43,13 +43,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       };
       const t0 = Date.now();
       try {
+        // 0. Resolve per-user prefs once — drive provider/model + behavior flags from here.
+        const userPrefs = await getResolvedPreferences(userId);
+
         // 1. Persist player message
         const [pm] = await db.insert(sessionMessages).values({ sessionId, role: 'player', content: body.message! }).returning();
         send('player_message_persisted', { type: 'player_message_persisted', messageId: pm!.id });
 
-        // 2. Language detection if not pinned (reuse session loaded for ownership check)
+        // 2. Language detection if not pinned (uses the user's chosen provider)
         if (!session.language) {
-          const code = await detectLanguage({ text: body.message!, userId, sessionId });
+          const code = await detectLanguage({ text: body.message!, userId, sessionId, provider: userPrefs.aiProvider });
           if (code) await db.update(sessions).set({ language: code }).where(eq(sessions.id, sessionId));
         }
 
@@ -58,7 +61,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
         // 4. Build system prompt + history
         const srd = await buildSrdContext();
-        const userPrefs = await getResolvedPreferences(userId);
         const sys = buildMasterSystemPrompt({
           srdContext: srd,
           characterMonoSpace: snap.characterMonoSpace,
@@ -79,13 +81,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           .map((m) => ({ role: m.role === 'master' ? 'assistant' : 'user', content: m.content }));
 
         // 5. Run the tool loop — events flush as they happen via onEvent
-        const provider = getMasterProvider();
-        const masterModel =
-          provider.name === 'anthropic'
-            ? (process.env.ANTHROPIC_MASTER_MODEL ?? 'claude-sonnet-4-5')
-            : (process.env.OPENAI_MASTER_MODEL ?? 'gpt-5');
+        // Provider + model are resolved from user prefs (with env fallback) so each
+        // user can pick their own AI without redeploying.
+        const provider = getProviderByName(userPrefs.aiProvider);
+        const masterModel = userPrefs.aiMasterModel;
         const result = await runToolLoop({
           provider,
+          model: masterModel,
           systemBlocks: sys.system,
           history,
           state: snap.state,
