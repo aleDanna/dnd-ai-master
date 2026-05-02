@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card';
 import { Chip } from '@/components/ui/chip';
 import { Eyebrow } from '@/components/ui/eyebrow';
 import { Icon } from '@/components/ui/icon';
+import { DeleteCardButton } from '@/components/ui/delete-card-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,7 +42,11 @@ export default async function SessionsListPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
         {rows.map(({ session: s, character: c }) => (
           <Link key={s.id} href={`/sessions/${s.id}`} style={{ color: 'inherit' }}>
-            <Card accent={s.status === 'active'}>
+            <Card accent={s.status === 'active'} style={{ position: 'relative' }}>
+              <DeleteCardButton
+                endpoint={`/api/sessions/${s.id}`}
+                confirmText={`Delete this session with ${c?.name ?? 'this hero'}? This cannot be undone.`}
+              />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 600, lineHeight: 1.15 }}>

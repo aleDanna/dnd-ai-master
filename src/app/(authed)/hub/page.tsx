@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
 import { Icon } from '@/components/ui/icon';
+import { DeleteCardButton } from '@/components/ui/delete-card-button';
 import { MiniStat } from '@/components/layout/mini-stat';
 
 export const dynamic = 'force-dynamic';
@@ -60,7 +61,11 @@ export default async function HubPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
         {myChars.map((ch) => (
           <Link key={ch.id} href={`/characters/${ch.id}`} style={{ color: 'inherit' }}>
-            <Card>
+            <Card style={{ position: 'relative' }}>
+              <DeleteCardButton
+                endpoint={`/api/characters/${ch.id}`}
+                confirmText={`Delete ${ch.name}? This cannot be undone.`}
+              />
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                 <div
                   style={{
@@ -134,7 +139,11 @@ export default async function HubPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
           {recentSessions.map(({ session: s, character: c }) => (
             <Link key={s.id} href={`/sessions/${s.id}`} style={{ color: 'inherit' }}>
-              <Card accent={s.status === 'active'}>
+              <Card accent={s.status === 'active'} style={{ position: 'relative' }}>
+                <DeleteCardButton
+                  endpoint={`/api/sessions/${s.id}`}
+                  confirmText={`Delete this session with ${c?.name ?? 'this hero'}? This cannot be undone.`}
+                />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, lineHeight: 1.15 }}>
