@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, and, isNull, desc } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import type Anthropic from '@anthropic-ai/sdk';
 import { db } from '@/db/client';
 import { sessions, sessionMessages } from '@/db/schema';
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const recent = await db
           .select()
           .from(sessionMessages)
-          .where(and(eq(sessionMessages.sessionId, sessionId), isNull(sessionMessages.cacheBreakpoint)))
+          .where(and(eq(sessionMessages.sessionId, sessionId), eq(sessionMessages.cacheBreakpoint, false)))
           .orderBy(desc(sessionMessages.createdAt))
           .limit(20);
         const history: Anthropic.Messages.MessageParam[] = recent
