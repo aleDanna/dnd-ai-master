@@ -7,7 +7,7 @@ import { applyDamage } from '../combat/damage';
 import { endTurn } from '../combat/turn';
 import { castSpell } from '../spells';
 import { applyCondition, removeCondition } from '../conditions';
-import { useResource } from '../resources';
+import { useResource as consumeResource } from '../resources';
 import { shortRest, longRest } from '../rests';
 import { equip, unequip, recomputeAC } from '../equipment';
 import { levelUp } from '../levelup';
@@ -152,7 +152,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
     const char = state.characters.find((c) => c.id === charId);
     const runtime = state.runtime[charId];
     if (!char || !runtime) return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
-    return useResource({
+    return consumeResource({
       char,
       runtime,
       featureSlug: String(input.featureSlug),
