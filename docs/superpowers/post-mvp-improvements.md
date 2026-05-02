@@ -159,3 +159,20 @@ Each entry: **severity** (Critical / Important / Minor), **area**, **effort** (S
 2. Group related items into small follow-up PRs (e.g. one "engine refactor" PR for B-I1, B-I2, B-M2).
 3. Tackle Important items first, then Minor items as polish before kickoff of post-MVP plans (#5 campaigns, #6 multiplayer).
 4. As Plan D's review surfaces new follow-ups, append them to a "Plan D" section here.
+
+## Plan D2 follow-ups
+
+### D2-I1 — useTurnStream: stabilize `send` identity
+The `send` callback's deps include `busy`, so it's re-created every state transition. If consumers store `send` in `useEffect` deps or in `React.memo` wrappers, they thrash. Fix by storing `busy` in a ref (`busyRef`) and gating on the ref inside `send`. Same change neutralizes the rapid-double-`send` race (synchronous fire-and-forget calls would otherwise both observe `busy === false`).
+File: `src/sessions/use-turn-stream.ts`
+
+### D2-I2 — useTurnStream.reset: abort in-flight stream
+Calling `reset()` while a turn is mid-flight clears the events array but the stream keeps writing into a fresh array (or the stream's writes are silently lost). Either: (a) abort the controller and set `busy=false`, or (b) document that `reset` is for after the stream completes only.
+File: `src/sessions/use-turn-stream.ts`
+
+### D2-I3 — useSessionState: clear error on reconnect
+EventSource error fires on every transient blip. After the first blip, `error === 'connection_lost'` even after auto-reconnect succeeds. Clear `error` whenever a fresh `snapshot` arrives.
+File: `src/sessions/use-session-state.ts`
+
+### D2-I4 — Extract parseSseChunk to a shared module
+The SSE chunk parser is duplicated between `use-turn-stream.ts` (the hook's reader loop) and `tests/sessions/use-turn-stream.test.ts` (the parser test). Extract to `src/sessions/sse-parse.ts` and import from both — eliminates drift risk while preserving testability.
