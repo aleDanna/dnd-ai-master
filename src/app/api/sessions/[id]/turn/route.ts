@@ -44,7 +44,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       try {
         // 1. Persist player message
         const [pm] = await db.insert(sessionMessages).values({ sessionId, role: 'player', content: body.message! }).returning();
-        send('player_message_persisted', { messageId: pm!.id });
+        send('player_message_persisted', { type: 'player_message_persisted', messageId: pm!.id });
 
         // 2. Language detection if not pinned (reuse session loaded for ownership check)
         if (!session.language) {
@@ -102,9 +102,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
         // 6. Persist master message
         const [mm] = await db.insert(sessionMessages).values({ sessionId, role: 'master', content: result.finalText }).returning();
-        send('turn_complete', { messageId: mm!.id, durationMs: Date.now() - t0, toolCallCount: result.toolCallCount, truncated: result.truncated, timedOut: result.timedOut });
+        send('turn_complete', { type: 'turn_complete', messageId: mm!.id, durationMs: Date.now() - t0, toolCallCount: result.toolCallCount, truncated: result.truncated, timedOut: result.timedOut });
       } catch (e) {
-        send('turn_error', { reason: e instanceof Error ? e.message : 'unknown', recoverable: false });
+        send('turn_error', { type: 'turn_error', reason: e instanceof Error ? e.message : 'unknown', recoverable: false });
       } finally {
         await releaseTurnLock(sessionId, lock.holder);
         controller.close();

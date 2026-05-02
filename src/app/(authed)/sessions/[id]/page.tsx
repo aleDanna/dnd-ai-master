@@ -1,6 +1,6 @@
 import { auth } from '@clerk/nextjs/server';
 import { notFound } from 'next/navigation';
-import { eq, and, isNull, asc } from 'drizzle-orm';
+import { eq, and, isNull, asc, desc } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions, sessionState, sessionMessages, diceLog, combatActors, characters } from '@/db/schema';
 import { GameClient } from './game-client';
@@ -27,7 +27,7 @@ export default async function GameSessionPage({ params }: { params: Promise<{ id
 
   const [history, rolls, actors] = await Promise.all([
     db.select().from(sessionMessages).where(eq(sessionMessages.sessionId, sessionId)).orderBy(asc(sessionMessages.createdAt)).limit(100),
-    db.select().from(diceLog).where(eq(diceLog.sessionId, sessionId)).orderBy(asc(diceLog.createdAt)).limit(50),
+    db.select().from(diceLog).where(eq(diceLog.sessionId, sessionId)).orderBy(desc(diceLog.createdAt)).limit(50),
     db.select().from(combatActors).where(eq(combatActors.sessionId, sessionId)),
   ]);
 

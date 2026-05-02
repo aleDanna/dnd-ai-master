@@ -26,24 +26,36 @@ export interface GameClientProps {
 
 export function GameClient({ sessionId, session, character, initialState, initialMessages, initialRolls, initialActors }: GameClientProps) {
   const [messages, setMessages] = React.useState<MessageRow[]>(initialMessages);
+  const [rolls, setRolls] = React.useState<DiceRollRow[]>(initialRolls);
   const [spellOpen, setSpellOpen] = React.useState(false);
+  const lastCompleteIdRef = React.useRef<string | null>(null);
   const turn = useTurnStream(sessionId);
   const stateSub = useSessionState(sessionId);
 
   const liveState: SessionStateRow | null = stateSub.snapshot?.state ?? initialState;
   const liveActors: CombatActorRow[] = stateSub.snapshot?.actors ?? initialActors;
 
-  // When a turn completes, optimistically append the player + master messages so they appear immediately.
+  // Derive server-side error from any turn_error event in the stream.
+  const serverError = React.useMemo(() => {
+    const ev = turn.events.find((e) => e.type === 'turn_error');
+    return ev && ev.type === 'turn_error' ? ev.reason : null;
+  }, [turn.events]);
+
+  // When a turn completes, refresh messages + dice log. Guard with a ref so the
+  // effect only fires once per turn_complete (avoids races if events array mutates).
   React.useEffect(() => {
     const last = turn.events.at(-1);
-    if (last?.type === 'turn_complete' && !turn.busy) {
-      // The state SSE will catch up; force a refresh of the local message list by re-fetching.
-      void fetch(`/api/sessions/${sessionId}/messages`).then(async (r) => {
-        if (r.ok) {
-          const body = (await r.json()) as { messages: MessageRow[] };
-          setMessages(body.messages);
-          turn.reset();
-        }
+    if (last?.type === 'turn_complete' && !turn.busy && lastCompleteIdRef.current !== last.messageId) {
+      lastCompleteIdRef.current = last.messageId;
+      void Promise.all([
+        fetch(`/api/sessions/${sessionId}/messages`).then((r) => (r.ok ? r.json() : null)),
+        fetch(`/api/sessions/${sessionId}/dice-log`).then((r) => (r.ok ? r.json() : null)),
+      ]).then((results) => {
+        const msgs = results[0] as { messages: MessageRow[] } | null;
+        const rs = results[1] as { rolls: DiceRollRow[] } | null;
+        if (msgs) setMessages(msgs.messages);
+        if (rs) setRolls(rs.rolls);
+        turn.reset();
       });
     }
   }, [turn, sessionId]);
@@ -101,9 +113,9 @@ export function GameClient({ sessionId, session, character, initialState, initia
             onSend={send}
             onCastSpell={character.spellcasting && slots.length > 0 ? () => setSpellOpen(true) : undefined}
           />
-          {turn.error && (
+          {(turn.error || serverError) && (
             <div style={{ padding: '8px 16px', background: 'var(--bg-card)', color: 'var(--ember)', borderTop: '1px solid var(--ember)', fontSize: 12 }}>
-              <Icon name="x" size={12} /> {turn.error}
+              <Icon name="x" size={12} /> {turn.error ?? serverError}
             </div>
           )}
           {spellOpen && character.spellcasting && (
@@ -121,7 +133,7 @@ export function GameClient({ sessionId, session, character, initialState, initia
         <MechanicsPane
           state={liveState}
           actors={liveActors}
-          diceLog={initialRolls}
+          diceLog={rolls}
           pcCharacterId={character.id}
           pcName={character.name}
           pcHpMax={character.hpMax}

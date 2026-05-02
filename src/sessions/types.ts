@@ -7,6 +7,7 @@ export interface TurnRequest {
 }
 
 export type TurnEvent =
+  | { type: 'player_message_persisted'; messageId: string }
   | { type: 'narrative_delta'; text: string }
   | { type: 'tool_use_start'; toolUseId: string; name: string; input: Record<string, unknown> }
   | { type: 'tool_use_end'; toolUseId: string; ok: boolean; error?: string; rolls: ActionResult['rolls']; mutationCount: number }
