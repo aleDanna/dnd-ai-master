@@ -2,8 +2,10 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import type { Options } from '@/characters/options';
+import type { WizardState } from '@/characters/types';
 import { useWizardState } from '@/components/wizard/wizard-state';
-import { WizardShell } from '@/components/wizard/wizard-shell';
+import { WizardShell, WIZARD_STEPS } from '@/components/wizard/wizard-shell';
+import { AiBuilderPane } from '@/components/wizard/ai-builder-pane';
 import { RaceStep } from '@/components/wizard/steps/race-step';
 import { ClassStep } from '@/components/wizard/steps/class-step';
 import { BackgroundStep } from '@/components/wizard/steps/background-step';
@@ -26,6 +28,48 @@ export function WizardClient({ options }: { options: Options }) {
     classSlugs: options.classes.map((c) => c.slug),
     backgroundSlugs: options.backgrounds.map((b) => b.slug),
   });
+
+  const currentStepName = WIZARD_STEPS[step]!;
+
+  function handleAccept(proposal: { step: string; value: unknown; reasoning: string }) {
+    switch (proposal.step) {
+      case 'race':
+        if (typeof proposal.value === 'string') dispatch({ type: 'set-race', slug: proposal.value });
+        break;
+      case 'class':
+        if (typeof proposal.value === 'string') dispatch({ type: 'set-class', slug: proposal.value });
+        break;
+      case 'background':
+        if (typeof proposal.value === 'string') dispatch({ type: 'set-background', slug: proposal.value });
+        break;
+      case 'abilities':
+        if (proposal.value && typeof proposal.value === 'object') {
+          dispatch({ type: 'set-abilities', abilities: proposal.value as WizardState['abilities'] });
+        }
+        break;
+      case 'skills':
+        if (Array.isArray(proposal.value)) {
+          const newSkills = proposal.value as WizardState['skills'];
+          dispatch({ type: 'replace', state: { ...state, skills: newSkills } });
+        }
+        break;
+      case 'equipment':
+        if (proposal.value === 'kit' || proposal.value === 'gold') {
+          dispatch({ type: 'set-equipment-choice', choice: proposal.value });
+        }
+        break;
+      case 'identity':
+        if (proposal.value && typeof proposal.value === 'object') {
+          const v = proposal.value as Partial<WizardState['identity']>;
+          for (const [k, val] of Object.entries(v)) {
+            if (typeof val === 'string') {
+              dispatch({ type: 'set-identity-field', field: k as keyof WizardState['identity'], value: val });
+            }
+          }
+        }
+        break;
+    }
+  }
 
   async function handleSave() {
     if (!validation.ok) {
@@ -62,6 +106,7 @@ export function WizardClient({ options }: { options: Options }) {
       showAi={showAi}
       onToggleAi={() => setShowAi((v) => !v)}
       saveDisabled={busy || !validation.ok}
+      aiPane={<AiBuilderPane step={currentStepName} wizard={state} onAccept={handleAccept} />}
     >
       {step === 0 && (
         <RaceStep
