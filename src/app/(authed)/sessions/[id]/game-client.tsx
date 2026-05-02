@@ -1,0 +1,132 @@
+'use client';
+import * as React from 'react';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { Chip } from '@/components/ui/chip';
+import { Icon } from '@/components/ui/icon';
+import { Wordmark } from '@/components/ui/wordmark';
+import { CharacterPane } from '@/components/game/character-pane';
+import { NarrativePane } from '@/components/game/narrative-pane';
+import { MechanicsPane } from '@/components/game/mechanics-pane';
+import { SpellModal } from '@/components/game/spell-modal';
+import { useTurnStream } from '@/sessions/use-turn-stream';
+import { useSessionState } from '@/sessions/use-session-state';
+import type { Character } from '@/engine/types';
+import type { CombatActorRow, DiceRollRow, MessageRow, SessionRow, SessionStateRow } from '@/sessions/client-types';
+
+export interface GameClientProps {
+  sessionId: string;
+  session: SessionRow;
+  character: Character;
+  initialState: SessionStateRow | null;
+  initialMessages: MessageRow[];
+  initialRolls: DiceRollRow[];
+  initialActors: CombatActorRow[];
+}
+
+export function GameClient({ sessionId, session, character, initialState, initialMessages, initialRolls, initialActors }: GameClientProps) {
+  const [messages, setMessages] = React.useState<MessageRow[]>(initialMessages);
+  const [spellOpen, setSpellOpen] = React.useState(false);
+  const turn = useTurnStream(sessionId);
+  const stateSub = useSessionState(sessionId);
+
+  const liveState: SessionStateRow | null = stateSub.snapshot?.state ?? initialState;
+  const liveActors: CombatActorRow[] = stateSub.snapshot?.actors ?? initialActors;
+
+  // When a turn completes, optimistically append the player + master messages so they appear immediately.
+  React.useEffect(() => {
+    const last = turn.events.at(-1);
+    if (last?.type === 'turn_complete' && !turn.busy) {
+      // The state SSE will catch up; force a refresh of the local message list by re-fetching.
+      void fetch(`/api/sessions/${sessionId}/messages`).then(async (r) => {
+        if (r.ok) {
+          const body = (await r.json()) as { messages: MessageRow[] };
+          setMessages(body.messages);
+          turn.reset();
+        }
+      });
+    }
+  }, [turn, sessionId]);
+
+  const send = (text: string): void => {
+    setMessages((prev) => [...prev, { id: `temp-${Date.now()}`, sessionId, role: 'player', content: text, createdAt: new Date().toISOString() }]);
+    void turn.send(text);
+  };
+
+  if (!liveState) {
+    return (
+      <main style={{ padding: 40, color: 'var(--fg-muted)' }}>Loading session…</main>
+    );
+  }
+
+  const slots = character.spellcasting
+    ? Object.entries(character.spellcasting.slotsMax).map(([level, max]) => ({
+        level: Number(level),
+        max,
+        used: liveState.spellSlotsUsed[level] ?? 0,
+      }))
+    : [];
+
+  return (
+    <div style={{ display: 'flex', height: '100vh', background: 'var(--bg)', flexDirection: 'column' }}>
+      <header
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '10px 24px',
+          borderBottom: '1px solid var(--border)',
+          background: 'var(--bg-elev)',
+          flexShrink: 0,
+        }}
+      >
+        <Link href="/sessions"><Button variant="ghost" size="sm" icon="arrow-left">Sessions</Button></Link>
+        <div style={{ flex: 1, textAlign: 'center' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 17 }}>{character.name}'s session</div>
+          <div style={{ fontSize: 10, color: 'var(--fg-subtle)', fontFamily: 'var(--font-mono)', marginTop: 1 }}>
+            {liveState.inCombat ? 'COMBAT' : 'EXPLORATION'} · LANG {session.language?.toUpperCase() ?? '–'}
+          </div>
+        </div>
+        <Chip tone="accent" dot>SSE live</Chip>
+        <Wordmark size={14} style={{ opacity: 0.7 }} />
+      </header>
+
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        <CharacterPane character={character} state={liveState} />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, position: 'relative' }}>
+          <NarrativePane
+            history={messages}
+            liveEvents={turn.events}
+            busy={turn.busy}
+            onSend={send}
+            onCastSpell={character.spellcasting && slots.length > 0 ? () => setSpellOpen(true) : undefined}
+          />
+          {turn.error && (
+            <div style={{ padding: '8px 16px', background: 'var(--bg-card)', color: 'var(--ember)', borderTop: '1px solid var(--ember)', fontSize: 12 }}>
+              <Icon name="x" size={12} /> {turn.error}
+            </div>
+          )}
+          {spellOpen && character.spellcasting && (
+            <SpellModal
+              spellsKnown={character.spellcasting.spellsKnown}
+              slots={slots}
+              onCast={(spellSlug, slotLevel) => {
+                send(`I cast ${spellSlug} at level ${slotLevel}.`);
+                setSpellOpen(false);
+              }}
+              onClose={() => setSpellOpen(false)}
+            />
+          )}
+        </div>
+        <MechanicsPane
+          state={liveState}
+          actors={liveActors}
+          diceLog={initialRolls}
+          pcCharacterId={character.id}
+          pcName={character.name}
+          pcHpMax={character.hpMax}
+        />
+      </div>
+    </div>
+  );
+}
