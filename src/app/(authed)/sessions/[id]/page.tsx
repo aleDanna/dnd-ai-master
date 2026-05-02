@@ -4,6 +4,7 @@ import { eq, and, isNull, asc, desc } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions, sessionState, sessionMessages, diceLog, combatActors, characters } from '@/db/schema';
 import { GameClient } from './game-client';
+import { getResolvedPreferences } from '@/lib/preferences';
 import type { Character, FeatureInstance, SpellcastingState } from '@/engine/types';
 
 export const dynamic = 'force-dynamic';
@@ -52,9 +53,12 @@ export default async function GameSessionPage({ params }: { params: Promise<{ id
     hitDieSize: character.hitDieSize,
   };
 
+  const preferences = await getResolvedPreferences(userId);
+
   return (
     <GameClient
       sessionId={sessionId}
+      initialAutoplay={preferences.ttsAutoplay}
       session={{
         id: session.id,
         userId: session.userId,

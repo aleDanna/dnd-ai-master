@@ -4,6 +4,7 @@ import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions, sessionMessages } from '@/db/schema';
 import { synthesizeSpeech } from '@/ai/tts';
+import { getResolvedPreferences } from '@/lib/preferences';
 
 export async function GET(
   _req: NextRequest,
@@ -32,10 +33,13 @@ export async function GET(
     return NextResponse.json({ error: 'tts-master-only' }, { status: 400 });
   }
 
+  // Resolve user-preferred voice
+  const prefs = await getResolvedPreferences(userId);
+
   // Synthesize
   let audioBytes: ArrayBuffer;
   try {
-    audioBytes = await synthesizeSpeech({ text: message.content });
+    audioBytes = await synthesizeSpeech({ text: message.content, voice: prefs.ttsVoice });
   } catch (e) {
     const err = e as { status?: number; message?: string };
     const status = typeof err.status === 'number' ? err.status : 500;

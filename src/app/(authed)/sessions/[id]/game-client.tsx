@@ -11,6 +11,7 @@ import { MechanicsPane } from '@/components/game/mechanics-pane';
 import { SpellModal } from '@/components/game/spell-modal';
 import { useTurnStream } from '@/sessions/use-turn-stream';
 import { useSessionState } from '@/sessions/use-session-state';
+import { AutoplayToggle } from '@/components/game/autoplay-toggle';
 import type { Character } from '@/engine/types';
 import type { CombatActorRow, DiceRollRow, MessageRow, SessionRow, SessionStateRow } from '@/sessions/client-types';
 
@@ -22,9 +23,10 @@ export interface GameClientProps {
   initialMessages: MessageRow[];
   initialRolls: DiceRollRow[];
   initialActors: CombatActorRow[];
+  initialAutoplay: boolean;
 }
 
-export function GameClient({ sessionId, session, character, initialState, initialMessages, initialRolls, initialActors }: GameClientProps) {
+export function GameClient({ sessionId, session, character, initialState, initialMessages, initialRolls, initialActors, initialAutoplay }: GameClientProps) {
   const [messages, setMessages] = React.useState<MessageRow[]>(initialMessages);
   const [rolls, setRolls] = React.useState<DiceRollRow[]>(initialRolls);
   const [spellOpen, setSpellOpen] = React.useState(false);
@@ -102,6 +104,7 @@ export function GameClient({ sessionId, session, character, initialState, initia
             {liveState.inCombat ? 'COMBAT' : 'EXPLORATION'} · LANG {session.language?.toUpperCase() ?? '–'}
           </div>
         </div>
+        <AutoplayToggle initial={initialAutoplay} />
         <Chip tone="accent" dot>SSE live</Chip>
         <Wordmark size={14} style={{ opacity: 0.7 }} />
       </header>

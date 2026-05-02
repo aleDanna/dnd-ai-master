@@ -43,6 +43,7 @@ export default async function HubPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <Link href="/settings"><Button variant="ghost" size="md" icon="settings">Settings</Button></Link>
           <Link href="/characters/new"><Button variant="secondary" size="md" icon="plus">New character</Button></Link>
           {hasCharacters && (
             <Link href="/sessions/new"><Button variant="primary" size="md" iconRight="arrow-right">Open the table</Button></Link>
