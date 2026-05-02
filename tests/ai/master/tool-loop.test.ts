@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { runToolLoop } from '@/ai/master/tool-loop';
 import type { EngineState } from '@/engine/types';
-import type Anthropic from '@anthropic-ai/sdk';
+import type { CompleteMessageOutput, MasterProvider } from '@/ai/provider/types';
 
 const baseState: EngineState = {
   characters: [
@@ -20,27 +20,28 @@ const baseState: EngineState = {
   scene: 'forest clearing',
 };
 
-function fakeMessage(content: Anthropic.Messages.ContentBlock[], stop: Anthropic.Messages.Message['stop_reason'] = 'end_turn'): Anthropic.Messages.Message {
+function fakeOutput(blocks: CompleteMessageOutput['contentBlocks'], stopReason: CompleteMessageOutput['stopReason'] = 'end_turn'): CompleteMessageOutput {
   return {
-    id: 'msg_x',
-    type: 'message',
-    role: 'assistant',
-    model: 'test',
-    content,
-    stop_reason: stop,
-    stop_sequence: null,
-    container: null,
-    stop_details: null,
-    usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } as never,
+    contentBlocks: blocks,
+    stopReason,
+    usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheCreationTokens: 0 },
+  };
+}
+
+function fakeProvider(impl: ReturnType<typeof vi.fn>): MasterProvider {
+  return {
+    name: 'anthropic',
+    completeMessage: impl,
+    detectLanguage: vi.fn().mockResolvedValue(null),
+    proposeWizard: vi.fn().mockRejectedValue(new Error('not used')),
   };
 }
 
 describe('runToolLoop', () => {
   it('emits a narrative delta and stops when no tool_use', async () => {
-    const create = vi.fn().mockResolvedValueOnce(fakeMessage([{ type: 'text', text: 'You see a dragon.', citations: null }]));
+    const complete = vi.fn().mockResolvedValueOnce(fakeOutput([{ type: 'text', text: 'You see a dragon.' }]));
     const result = await runToolLoop({
-      client: { messages: { create } as never },
-      model: 'test',
+      provider: fakeProvider(complete),
       systemBlocks: [{ type: 'text', text: 'sys' }],
       history: [{ role: 'user', content: 'look around' }],
       state: baseState,
@@ -48,27 +49,26 @@ describe('runToolLoop', () => {
     expect(result.finalText).toBe('You see a dragon.');
     expect(result.events.find((e) => e.type === 'narrative_delta')).toBeDefined();
     expect(result.toolCallCount).toBe(0);
-    expect(create).toHaveBeenCalledOnce();
+    expect(complete).toHaveBeenCalledOnce();
   });
 
   it('runs a tool, feeds tool_result back, then completes', async () => {
-    const create = vi.fn()
-      .mockResolvedValueOnce(fakeMessage(
+    const complete = vi.fn()
+      .mockResolvedValueOnce(fakeOutput(
         [
-          { type: 'text', text: 'Rolling…', citations: null },
-          { type: 'tool_use', id: 'tu1', name: 'roll_d20', input: { modifier: 3 } } as never,
+          { type: 'text', text: 'Rolling…' },
+          { type: 'tool_use', id: 'tu1', name: 'roll_d20', input: { modifier: 3 } },
         ],
         'tool_use',
       ))
-      .mockResolvedValueOnce(fakeMessage([{ type: 'text', text: 'You hit!', citations: null }]));
+      .mockResolvedValueOnce(fakeOutput([{ type: 'text', text: 'You hit!' }]));
     const result = await runToolLoop({
-      client: { messages: { create } as never },
-      model: 'test',
+      provider: fakeProvider(complete),
       systemBlocks: [{ type: 'text', text: 'sys' }],
       history: [{ role: 'user', content: 'attack' }],
       state: baseState,
     });
-    expect(create).toHaveBeenCalledTimes(2);
+    expect(complete).toHaveBeenCalledTimes(2);
     expect(result.toolCallCount).toBe(1);
     expect(result.finalText).toContain('You hit!');
     expect(result.events.find((e) => e.type === 'tool_use_start')).toBeDefined();
@@ -76,14 +76,10 @@ describe('runToolLoop', () => {
   });
 
   it('stops with truncated=true when cap is exceeded', async () => {
-    const looping = fakeMessage(
-      [{ type: 'tool_use', id: 'tu', name: 'roll_d20', input: {} } as never],
-      'tool_use',
-    );
-    const create = vi.fn().mockResolvedValue(looping);
+    const looping = fakeOutput([{ type: 'tool_use', id: 'tu', name: 'roll_d20', input: {} }], 'tool_use');
+    const complete = vi.fn().mockResolvedValue(looping);
     const result = await runToolLoop({
-      client: { messages: { create } as never },
-      model: 'test',
+      provider: fakeProvider(complete),
       systemBlocks: [{ type: 'text', text: 'sys' }],
       history: [{ role: 'user', content: 'spam' }],
       state: baseState,
@@ -93,15 +89,11 @@ describe('runToolLoop', () => {
   });
 
   it('captures unknown_tool cleanly without throwing', async () => {
-    const create = vi.fn()
-      .mockResolvedValueOnce(fakeMessage(
-        [{ type: 'tool_use', id: 'tu1', name: 'fly_to_moon', input: {} } as never],
-        'tool_use',
-      ))
-      .mockResolvedValueOnce(fakeMessage([{ type: 'text', text: 'Adapting…', citations: null }]));
+    const complete = vi.fn()
+      .mockResolvedValueOnce(fakeOutput([{ type: 'tool_use', id: 'tu1', name: 'fly_to_moon', input: {} }], 'tool_use'))
+      .mockResolvedValueOnce(fakeOutput([{ type: 'text', text: 'Adapting…' }]));
     const result = await runToolLoop({
-      client: { messages: { create } as never },
-      model: 'test',
+      provider: fakeProvider(complete),
       systemBlocks: [{ type: 'text', text: 'sys' }],
       history: [{ role: 'user', content: 'go' }],
       state: baseState,
@@ -115,19 +107,18 @@ describe('runToolLoop', () => {
   });
 
   it('calls onEvent in order as each event is emitted', async () => {
-    const create = vi.fn()
-      .mockResolvedValueOnce(fakeMessage(
+    const complete = vi.fn()
+      .mockResolvedValueOnce(fakeOutput(
         [
-          { type: 'text', text: 'Rolling…', citations: null },
-          { type: 'tool_use', id: 'tu1', name: 'roll_d20', input: { modifier: 3 } } as never,
+          { type: 'text', text: 'Rolling…' },
+          { type: 'tool_use', id: 'tu1', name: 'roll_d20', input: { modifier: 3 } },
         ],
         'tool_use',
       ))
-      .mockResolvedValueOnce(fakeMessage([{ type: 'text', text: 'Done.', citations: null }]));
+      .mockResolvedValueOnce(fakeOutput([{ type: 'text', text: 'Done.' }]));
     const seen: string[] = [];
     const result = await runToolLoop({
-      client: { messages: { create } as never },
-      model: 'test',
+      provider: fakeProvider(complete),
       systemBlocks: [{ type: 'text', text: 'sys' }],
       history: [{ role: 'user', content: 'go' }],
       state: baseState,

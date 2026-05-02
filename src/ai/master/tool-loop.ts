@@ -1,20 +1,28 @@
-import type Anthropic from '@anthropic-ai/sdk';
 import type { ActionResult, EngineState, Mutation, DiceRoll } from '@/engine/types';
 import { TOOL_HANDLERS, TOOL_DEFINITIONS } from '@/engine';
 import { TURN_TOOL_CALL_CAP, TURN_TIMEOUT_MS, type TurnEvent } from '@/sessions/types';
+import type {
+  MasterProvider,
+  Message,
+  NormalizedUsage,
+  SystemBlock,
+} from '@/ai/provider/types';
 
 export interface ToolLoopInput {
-  client: Pick<Anthropic, 'messages'>;
-  model: string;
-  systemBlocks: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }[];
-  history: Anthropic.Messages.MessageParam[];
+  provider: MasterProvider;
+  /** Optional override; provider falls back to its env-configured master model. */
+  model?: string;
+  systemBlocks: SystemBlock[];
+  history: Message[];
   state: EngineState;
   /** Optional applicator: called after each tool result with the mutations. */
   applyMutations?: (mutations: Mutation[], rolls: DiceRoll[]) => Promise<void>;
-  /** Optional usage sink (single call at end of loop). */
-  recordUsage?: (usage: Anthropic.Messages.Usage) => Promise<void>;
+  /** Optional usage sink (called once per round-trip). */
+  recordUsage?: (usage: NormalizedUsage) => Promise<void>;
   /** Called once per emitted event, in order. Use to flush events to an SSE stream as they happen. */
   onEvent?: (event: TurnEvent) => void;
+  /** Used as OpenAI prompt_cache_key for cache affinity (Anthropic ignores). */
+  sessionId?: string;
 }
 
 export interface ToolLoopResult {
@@ -26,14 +34,24 @@ export interface ToolLoopResult {
 }
 
 export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult> {
-  const { client, model, systemBlocks, history, state, applyMutations, recordUsage, onEvent } = input;
+  const {
+    provider,
+    model,
+    systemBlocks,
+    history,
+    state,
+    applyMutations,
+    recordUsage,
+    onEvent,
+    sessionId,
+  } = input;
   const events: TurnEvent[] = [];
   let finalText = '';
   let toolCallCount = 0;
   let truncated = false;
   let timedOut = false;
   const start = Date.now();
-  const messages: Anthropic.Messages.MessageParam[] = [...history];
+  const messages: Message[] = [...history];
 
   const emit = (ev: TurnEvent): void => {
     events.push(ev);
@@ -47,29 +65,27 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
       break;
     }
 
-    const response: Anthropic.Messages.Message = await client.messages.create({
+    const response = await provider.completeMessage({
       model,
-      max_tokens: 4096,
-      system: systemBlocks,
-      tools: TOOL_DEFINITIONS,
+      systemBlocks,
       messages,
+      tools: TOOL_DEFINITIONS,
+      sessionId,
     });
 
     if (recordUsage) await recordUsage(response.usage);
 
-    const toolUses: Anthropic.Messages.ToolUseBlock[] = [];
-    for (const block of response.content) {
+    const toolUses: { id: string; name: string; input: Record<string, unknown> }[] = [];
+    for (const block of response.contentBlocks) {
       if (block.type === 'text') {
         finalText += block.text;
         emit({ type: 'narrative_delta', text: block.text });
       } else if (block.type === 'tool_use') {
-        toolUses.push(block);
+        toolUses.push({ id: block.id, name: block.name, input: block.input });
       }
     }
 
-    if (toolUses.length === 0 || response.stop_reason === 'end_turn') {
-      break;
-    }
+    if (toolUses.length === 0 || response.stopReason === 'end_turn') break;
 
     if (toolCallCount + toolUses.length > TURN_TOOL_CALL_CAP) {
       truncated = true;
@@ -77,12 +93,20 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
       break;
     }
 
-    messages.push({ role: 'assistant', content: response.content });
+    // Push the assistant turn back into history (Anthropic-shape).
+    messages.push({
+      role: 'assistant',
+      content: response.contentBlocks.map((b) =>
+        b.type === 'text'
+          ? ({ type: 'text', text: b.text } as never)
+          : ({ type: 'tool_use', id: b.id, name: b.name, input: b.input } as never),
+      ),
+    });
 
-    const toolResults: Anthropic.Messages.ToolResultBlockParam[] = [];
+    const toolResults: { type: 'tool_result'; tool_use_id: string; content: string; is_error: boolean }[] = [];
     for (const tu of toolUses) {
       toolCallCount += 1;
-      emit({ type: 'tool_use_start', toolUseId: tu.id, name: tu.name, input: tu.input as Record<string, unknown> });
+      emit({ type: 'tool_use_start', toolUseId: tu.id, name: tu.name, input: tu.input });
 
       const handler = TOOL_HANDLERS[tu.name];
       let result: ActionResult;
@@ -90,7 +114,7 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
         result = { ok: false, error: `unknown_tool:${tu.name}`, rolls: [], mutations: [] };
       } else {
         try {
-          result = handler(state, tu.input as Record<string, unknown>);
+          result = handler(state, tu.input);
         } catch (e) {
           result = { ok: false, error: e instanceof Error ? e.message : String(e), rolls: [], mutations: [] };
         }
@@ -118,7 +142,7 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
       });
     }
 
-    messages.push({ role: 'user', content: toolResults });
+    messages.push({ role: 'user', content: toolResults as never });
   }
 
   return { events, finalText, toolCallCount, truncated, timedOut };
