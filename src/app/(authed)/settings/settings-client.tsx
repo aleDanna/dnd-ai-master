@@ -56,6 +56,12 @@ export function SettingsClient({ initialPreferences, masterProvider, ttsModel }:
     void save({ ttsAutoplay: next });
   };
 
+  const onManualRollsToggle = (): void => {
+    const next = !prefs.manualRolls;
+    setPrefs((p) => ({ ...p, manualRolls: next }));
+    void save({ manualRolls: next });
+  };
+
   return (
     <div style={{ maxWidth: 760, margin: '0 auto', padding: '40px 32px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 24 }}>
@@ -156,6 +162,41 @@ export function SettingsClient({ initialPreferences, masterProvider, ttsModel }:
         >
           <Icon name="volume" size={14} />
           {prefs.ttsAutoplay ? 'Auto-play ON' : 'Auto-play OFF'}
+        </button>
+      </Card>
+
+      <div style={{ height: 16 }} />
+
+      <Card>
+        <div>
+          <Eyebrow>Behavior</Eyebrow>
+          <h2 style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>Dice rolls</h2>
+          <p style={{ marginTop: 4, fontSize: 13, color: 'var(--fg-muted)' }}>
+            Auto-roll: the AI uses its tools to compute attacks, saves and damage server-side. Manual: the master asks you to roll your physical dice and report the total — your number is authoritative.
+          </p>
+        </div>
+        <button
+          onClick={onManualRollsToggle}
+          disabled={busy}
+          aria-pressed={prefs.manualRolls}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 10,
+            height: 36,
+            padding: '0 14px',
+            background: prefs.manualRolls ? 'var(--arcane)' : 'transparent',
+            border: '1px solid ' + (prefs.manualRolls ? 'var(--arcane)' : 'var(--border-strong)'),
+            borderRadius: 999,
+            color: prefs.manualRolls ? 'var(--bone)' : 'var(--fg-muted)',
+            fontFamily: 'var(--font-ui)',
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: busy ? 'wait' : 'pointer',
+          }}
+        >
+          <Icon name="dice" size={14} />
+          {prefs.manualRolls ? 'Manual rolls' : 'Auto-rolls'}
         </button>
       </Card>
 

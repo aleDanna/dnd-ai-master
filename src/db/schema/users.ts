@@ -6,6 +6,12 @@ export interface UserPreferences {
   ttsVoice?: string;
   /** When true, the master's response is auto-played after each turn. Default false. */
   ttsAutoplay?: boolean;
+  /**
+   * When true, the master asks the player to roll physical dice and report the result
+   * instead of calling the rolling tools server-side. State-change tools still run.
+   * Default false (auto-rolls server-side, current behaviour).
+   */
+  manualRolls?: boolean;
 }
 
 export const users = pgTable('users', {

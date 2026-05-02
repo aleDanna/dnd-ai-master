@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
 import { Icon } from '@/components/ui/icon';
 import { DeleteCardButton } from '@/components/ui/delete-card-button';
+import { SettingsLink } from '@/components/ui/settings-link';
 import { MiniStat } from '@/components/layout/mini-stat';
 
 export const dynamic = 'force-dynamic';
@@ -44,7 +45,7 @@ export default async function HubPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Link href="/settings"><Button variant="ghost" size="md" icon="settings">Settings</Button></Link>
+          <SettingsLink variant="ghost" size="md" />
           <Link href="/characters/new"><Button variant="secondary" size="md" icon="plus">New character</Button></Link>
           {hasCharacters && (
             <Link href="/sessions/new"><Button variant="primary" size="md" iconRight="arrow-right">Open the table</Button></Link>

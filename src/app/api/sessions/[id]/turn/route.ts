@@ -14,6 +14,7 @@ import { runToolLoop } from '@/ai/master/tool-loop';
 import { getMasterProvider } from '@/ai/provider';
 import { recordUsage } from '@/ai/master/usage';
 import { checkQuotas } from '@/ai/master/quotas';
+import { getResolvedPreferences } from '@/lib/preferences';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
@@ -57,11 +58,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
         // 4. Build system prompt + history
         const srd = await buildSrdContext();
+        const userPrefs = await getResolvedPreferences(userId);
         const sys = buildMasterSystemPrompt({
           srdContext: srd,
           characterMonoSpace: snap.characterMonoSpace,
           scene: snap.scene,
           language: snap.language,
+          manualRolls: userPrefs.manualRolls,
         });
 
         const recent = await db

@@ -24,7 +24,11 @@ export function CharacterPane({ character, state }: CharacterPaneProps) {
         flexDirection: 'column',
         gap: 14,
         flexShrink: 0,
-        alignSelf: 'stretch',
+        alignSelf: 'flex-start',
+        position: 'sticky',
+        top: 56,
+        maxHeight: 'calc(100vh - 56px)',
+        overflowY: 'auto',
       }}
     >
       <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>

@@ -8,6 +8,7 @@ export { TTS_VOICES, type TtsVoice, isValidTtsVoice } from './tts-voices';
 export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   ttsVoice: 'onyx',
   ttsAutoplay: false,
+  manualRolls: false,
 };
 
 export async function getUserPreferences(userId: string): Promise<UserPreferences> {

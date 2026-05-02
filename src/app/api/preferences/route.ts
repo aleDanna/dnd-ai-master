@@ -43,6 +43,12 @@ export async function PUT(req: NextRequest) {
     }
     patch.ttsAutoplay = body.ttsAutoplay;
   }
+  if ('manualRolls' in body) {
+    if (typeof body.manualRolls !== 'boolean') {
+      return NextResponse.json({ error: 'invalid-manualRolls' }, { status: 400 });
+    }
+    patch.manualRolls = body.manualRolls;
+  }
 
   const updated = await updateUserPreferences(userId, patch);
   return NextResponse.json({ preferences: updated });

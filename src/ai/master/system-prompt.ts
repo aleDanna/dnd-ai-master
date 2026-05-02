@@ -53,20 +53,35 @@ export interface MasterPromptInput {
   characterMonoSpace: string;
   scene: string;
   language: string | null;
+  /** When true, the master asks the player to roll dice instead of calling rolling tools. */
+  manualRolls?: boolean;
 }
+
+export const MASTER_MANUAL_ROLLS_RULE = `## Manual rolls (player rolls physical dice this session)
+When mechanics call for an attack, ability check, saving throw, or damage roll, DO NOT call the rolling tools (\`make_attack\`, \`roll_d20\`, \`saving_throw\`, \`ability_check\`, \`roll_dice\`). Instead, ask the player to roll and report the total. Be specific about what to roll and against what:
+- "Roll 1d20 + 5 for your attack against the goblin (AC 13)."
+- "Roll a DC 14 Dexterity save."
+- "Roll 1d8 + 3 for damage."
+Wait for the player's reply with the number, then narrate the outcome and call the deterministic state tools (\`apply_damage\`, \`use_resource\`, \`apply_condition\`, etc.) using their stated total. The player's number is authoritative — do not second-guess it.`;
 
 export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }[] } {
   const langHint = input.language ? `\n\nNarrative language for this session: ${input.language}. Mirror it.` : '';
   const dynamicTail = `## Current snapshot\n\n### Character\n\`\`\`json\n${input.characterMonoSpace}\n\`\`\`\n\n### Scene\n${input.scene || '(no scene set yet)'}${langHint}`;
 
-  return {
-    system: [
-      // Static, cached: role + tool contract + SRD KB
-      { type: 'text', text: MASTER_SYSTEM_PROMPT_BASE, cache_control: { type: 'ephemeral' } },
-      { type: 'text', text: MASTER_TOOL_CONTRACT, cache_control: { type: 'ephemeral' } },
-      { type: 'text', text: input.srdContext, cache_control: { type: 'ephemeral' } },
-      // Dynamic, NOT cached
-      { type: 'text', text: dynamicTail },
-    ],
-  };
+  const blocks: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }[] = [
+    // Static, cached: role + tool contract + SRD KB
+    { type: 'text', text: MASTER_SYSTEM_PROMPT_BASE, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: MASTER_TOOL_CONTRACT, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: input.srdContext, cache_control: { type: 'ephemeral' } },
+  ];
+
+  // Per-user behaviour rules go AFTER static blocks so the cache hits the static prefix.
+  if (input.manualRolls) {
+    blocks.push({ type: 'text', text: MASTER_MANUAL_ROLLS_RULE });
+  }
+
+  // Dynamic, NOT cached
+  blocks.push({ type: 'text', text: dynamicTail });
+
+  return { system: blocks };
 }

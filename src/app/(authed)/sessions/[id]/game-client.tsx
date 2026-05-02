@@ -12,6 +12,7 @@ import { SpellModal } from '@/components/game/spell-modal';
 import { useTurnStream } from '@/sessions/use-turn-stream';
 import { useSessionState } from '@/sessions/use-session-state';
 import { AutoplayToggle } from '@/components/game/autoplay-toggle';
+import { SettingsLink } from '@/components/ui/settings-link';
 import { setActiveAudio, getActiveAudio } from '@/lib/tts-playback';
 import type { Character } from '@/engine/types';
 import type { CombatActorRow, DiceRollRow, MessageRow, SessionRow, SessionStateRow } from '@/sessions/client-types';
@@ -140,6 +141,7 @@ export function GameClient({ sessionId, session, character, initialState, initia
           </div>
         </div>
         <AutoplayToggle value={autoplay} onChange={setAutoplay} />
+        <SettingsLink variant="ghost" size="sm" iconOnly />
         <Chip tone="accent" dot>SSE live</Chip>
         <Wordmark size={14} style={{ opacity: 0.7 }} />
       </header>
