@@ -181,4 +181,37 @@ describe('tool-adapter', () => {
       cacheCreationTokens: 0,
     });
   });
+
+  it('OpenAI tool_call with malformed JSON arguments → _raw fallback', () => {
+    const msg = {
+      role: 'assistant',
+      content: null,
+      refusal: null,
+      tool_calls: [
+        {
+          id: 'c',
+          type: 'function',
+          function: { name: 'r', arguments: '{ not json' },
+        },
+      ],
+    } as OpenAI.Chat.Completions.ChatCompletionMessage;
+    const out = openAIResponseToContentBlocks(msg);
+    expect(out).toEqual([
+      { type: 'tool_use', id: 'c', name: 'r', input: { _raw: '{ not json' } },
+    ]);
+  });
+
+  it('drops text alongside tool_result blocks in the same user message (OpenAI constraint)', () => {
+    const msgs: Message[] = [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'lost narration' } as never,
+          { type: 'tool_result', tool_use_id: 'tu', content: 'r', is_error: false } as never,
+        ],
+      },
+    ];
+    const out = anthropicMessagesToOpenAI(msgs);
+    expect(out).toEqual([{ role: 'tool', content: 'r', tool_call_id: 'tu' }]);
+  });
 });

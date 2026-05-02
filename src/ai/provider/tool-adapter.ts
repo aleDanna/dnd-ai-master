@@ -36,12 +36,16 @@ export function anthropicMessagesToOpenAI(messages: Message[]): OpenAIMessage[] 
 
     if (msg.role === 'assistant') {
       const text = msg.content
-        .filter((b): b is Anthropic.Messages.TextBlock => b.type === 'text')
+        .filter((b): b is Anthropic.Messages.TextBlockParam => b.type === 'text')
         .map((b) => b.text)
         .join('');
       const toolUses = msg.content.filter(
-        (b): b is Anthropic.Messages.ToolUseBlock => b.type === 'tool_use',
+        (b): b is Anthropic.Messages.ToolUseBlockParam => b.type === 'tool_use',
       );
+      if (!text && toolUses.length === 0) {
+        // Skip empty assistant turns — OpenAI rejects {content: null, tool_calls: undefined}.
+        continue;
+      }
       const tool_calls = toolUses.length
         ? toolUses.map((tu) => ({
             id: tu.id,
@@ -86,7 +90,7 @@ export function openAIResponseToContentBlocks(
   message: OpenAI.Chat.Completions.ChatCompletionMessage,
 ): ContentBlock[] {
   const blocks: ContentBlock[] = [];
-  if (message.content) {
+  if (message.content !== null && message.content !== undefined) {
     blocks.push({ type: 'text', text: message.content });
   }
   if (message.tool_calls) {
