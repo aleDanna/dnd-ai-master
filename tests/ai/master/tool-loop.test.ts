@@ -113,4 +113,31 @@ describe('runToolLoop', () => {
       expect(end.error).toMatch(/unknown_tool/);
     }
   });
+
+  it('calls onEvent in order as each event is emitted', async () => {
+    const create = vi.fn()
+      .mockResolvedValueOnce(fakeMessage(
+        [
+          { type: 'text', text: 'Rolling…', citations: null },
+          { type: 'tool_use', id: 'tu1', name: 'roll_d20', input: { modifier: 3 } } as never,
+        ],
+        'tool_use',
+      ))
+      .mockResolvedValueOnce(fakeMessage([{ type: 'text', text: 'Done.', citations: null }]));
+    const seen: string[] = [];
+    const result = await runToolLoop({
+      client: { messages: { create } as never },
+      model: 'test',
+      systemBlocks: [{ type: 'text', text: 'sys' }],
+      history: [{ role: 'user', content: 'go' }],
+      state: baseState,
+      onEvent: (e) => seen.push(e.type),
+    });
+    expect(seen.length).toBe(result.events.length);
+    expect(seen).toEqual(result.events.map((e) => e.type));
+    expect(seen[0]).toBe('narrative_delta');
+    expect(seen.includes('tool_use_start')).toBe(true);
+    expect(seen.includes('tool_use_end')).toBe(true);
+    expect(seen.at(-1)).toBe('narrative_delta');
+  });
 });

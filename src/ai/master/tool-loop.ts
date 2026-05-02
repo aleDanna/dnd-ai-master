@@ -9,10 +9,10 @@ export interface ToolLoopInput {
   systemBlocks: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }[];
   history: Anthropic.Messages.MessageParam[];
   state: EngineState;
-  /** Optional applicator: called after each tool result with the mutations. */
   applyMutations?: (mutations: Mutation[], rolls: DiceRoll[]) => Promise<void>;
-  /** Optional usage sink (single call at end of loop). */
   recordUsage?: (usage: Anthropic.Messages.Usage) => Promise<void>;
+  /** Called once per emitted event, in order. Use to flush events to an SSE stream as they happen. */
+  onEvent?: (event: TurnEvent) => void;
 }
 
 export interface ToolLoopResult {
@@ -24,7 +24,7 @@ export interface ToolLoopResult {
 }
 
 export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult> {
-  const { client, model, systemBlocks, history, state, applyMutations, recordUsage } = input;
+  const { client, model, systemBlocks, history, state, applyMutations, recordUsage, onEvent } = input;
   const events: TurnEvent[] = [];
   let finalText = '';
   let toolCallCount = 0;
@@ -33,10 +33,15 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
   const start = Date.now();
   const messages: Anthropic.Messages.MessageParam[] = [...history];
 
+  const emit = (ev: TurnEvent): void => {
+    events.push(ev);
+    onEvent?.(ev);
+  };
+
   for (let iter = 0; iter < TURN_TOOL_CALL_CAP + 1; iter++) {
     if (Date.now() - start > TURN_TIMEOUT_MS) {
       timedOut = true;
-      events.push({ type: 'turn_error', reason: 'timeout', recoverable: true });
+      emit({ type: 'turn_error', reason: 'timeout', recoverable: true });
       break;
     }
 
@@ -54,7 +59,7 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
     for (const block of response.content) {
       if (block.type === 'text') {
         finalText += block.text;
-        events.push({ type: 'narrative_delta', text: block.text });
+        emit({ type: 'narrative_delta', text: block.text });
       } else if (block.type === 'tool_use') {
         toolUses.push(block);
       }
@@ -66,7 +71,7 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
 
     if (toolCallCount + toolUses.length > TURN_TOOL_CALL_CAP) {
       truncated = true;
-      events.push({ type: 'turn_error', reason: 'tool_call_cap', recoverable: true });
+      emit({ type: 'turn_error', reason: 'tool_call_cap', recoverable: true });
       break;
     }
 
@@ -75,7 +80,7 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
     const toolResults: Anthropic.Messages.ToolResultBlockParam[] = [];
     for (const tu of toolUses) {
       toolCallCount += 1;
-      events.push({ type: 'tool_use_start', toolUseId: tu.id, name: tu.name, input: tu.input as Record<string, unknown> });
+      emit({ type: 'tool_use_start', toolUseId: tu.id, name: tu.name, input: tu.input as Record<string, unknown> });
 
       const handler = TOOL_HANDLERS[tu.name];
       let result: ActionResult;
@@ -89,7 +94,7 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
         }
       }
 
-      events.push({
+      emit({
         type: 'tool_use_end',
         toolUseId: tu.id,
         ok: result.ok,
@@ -100,7 +105,7 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
 
       if (result.mutations.length > 0 || result.rolls.length > 0) {
         if (applyMutations) await applyMutations(result.mutations, result.rolls);
-        events.push({ type: 'state_changed', mutations: result.mutations });
+        emit({ type: 'state_changed', mutations: result.mutations });
       }
 
       toolResults.push({
