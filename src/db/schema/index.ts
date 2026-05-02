@@ -9,3 +9,5 @@ export * from './srd-armor';
 export * from './srd-weapon';
 export * from './srd-gear';
 export * from './srd-rule-doc';
+export * from './users';
+export * from './characters';
