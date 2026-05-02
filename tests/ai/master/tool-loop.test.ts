@@ -28,12 +28,12 @@ function fakeOutput(blocks: CompleteMessageOutput['contentBlocks'], stopReason: 
   };
 }
 
-function fakeProvider(impl: ReturnType<typeof vi.fn>): MasterProvider {
+function fakeProvider(impl: MasterProvider['completeMessage']): MasterProvider {
   return {
     name: 'anthropic',
     completeMessage: impl,
-    detectLanguage: vi.fn().mockResolvedValue(null),
-    proposeWizard: vi.fn().mockRejectedValue(new Error('not used')),
+    detectLanguage: vi.fn().mockResolvedValue(null) as unknown as MasterProvider['detectLanguage'],
+    proposeWizard: vi.fn().mockRejectedValue(new Error('not used')) as unknown as MasterProvider['proposeWizard'],
   };
 }
 
