@@ -1,4 +1,10 @@
 import type { WizardState } from './types';
+import {
+  isCompletePointBuy,
+  isCompleteStandardArray,
+  pointBuySpent,
+} from './abilities-rules';
+import { POINT_BUY_BUDGET, POINT_BUY_MAX, POINT_BUY_MIN } from './types';
 
 export interface OptionSlugs {
   raceSlugs: string[];
@@ -20,11 +26,31 @@ export function validateWizardState(w: WizardState, opts: OptionSlugs): Validati
   if (!w.backgroundSlug) errors.push('background-required');
   else if (!opts.backgroundSlugs.includes(w.backgroundSlug)) errors.push('background-unknown');
   if (!w.identity.name.trim()) errors.push('name-required');
+
+  // Range guard for any method.
   for (const v of Object.values(w.abilities)) {
     if (v < 3 || v > 18) {
       errors.push('ability-out-of-range');
       break;
     }
   }
+
+  // Method-specific constraints.
+  if (w.abilityMethod === 'array') {
+    if (!isCompleteStandardArray(w.abilities)) errors.push('ability-array-mismatch');
+  } else if (w.abilityMethod === 'pointbuy') {
+    for (const v of Object.values(w.abilities)) {
+      if (v < POINT_BUY_MIN || v > POINT_BUY_MAX) {
+        errors.push('ability-pointbuy-range');
+        break;
+      }
+    }
+    const spent = pointBuySpent(w.abilities);
+    if (spent > POINT_BUY_BUDGET) errors.push('ability-pointbuy-overspent');
+    else if (!isCompletePointBuy(w.abilities)) errors.push('ability-pointbuy-incomplete');
+  }
+  // 'roll' mode is validated client-side against the locally-generated pool;
+  // server-side we only enforce the 3..18 range above.
+
   return { ok: errors.length === 0, errors };
 }

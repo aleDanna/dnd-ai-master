@@ -32,6 +32,22 @@ export interface WizardState {
 
 export const STANDARD_ARRAY: number[] = [15, 14, 13, 12, 10, 8];
 
+/** D&D 5e point-buy budget. Min/max are pre-racial-bonus. */
+export const POINT_BUY_BUDGET = 27;
+export const POINT_BUY_MIN = 8;
+export const POINT_BUY_MAX = 15;
+/** Cost in points for each score from 8 to 15. Per the D&D 5e PHB. */
+export const POINT_BUY_COST: Record<number, number> = {
+  8: 0,
+  9: 1,
+  10: 2,
+  11: 3,
+  12: 4,
+  13: 5,
+  14: 7,
+  15: 9,
+};
+
 export const ABILITIES: Ability[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
 
 export const ALIGNMENTS: string[] = [
