@@ -27,6 +27,12 @@ export async function POST(req: NextRequest) {
     raceSlugs: options.races.map((r) => r.slug),
     classSlugs: options.classes.map((c) => c.slug),
     backgroundSlugs: options.backgrounds.map((b) => b.slug),
+    classSkillRules: Object.fromEntries(
+      options.classes.map((c) => [c.slug, { skillsChoose: c.proficiencies.skillsChoose, skillsFrom: c.proficiencies.skillsFrom }]),
+    ),
+    backgroundSkills: Object.fromEntries(
+      options.backgrounds.map((b) => [b.slug, b.skillProficiencies]),
+    ),
   });
   if (!v.ok) {
     return NextResponse.json({ error: 'validation-failed', details: v.errors }, { status: 422 });

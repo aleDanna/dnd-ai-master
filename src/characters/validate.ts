@@ -10,6 +10,10 @@ export interface OptionSlugs {
   raceSlugs: string[];
   classSlugs: string[];
   backgroundSlugs: string[];
+  /** Optional: per-class skill rules. When provided, skill picks are validated against them. */
+  classSkillRules?: Record<string, { skillsChoose: number; skillsFrom: string[] }>;
+  /** Optional: per-background skill grants. When provided, ensures grants don't double-count. */
+  backgroundSkills?: Record<string, string[]>;
 }
 
 export interface ValidationResult {
@@ -51,6 +55,19 @@ export function validateWizardState(w: WizardState, opts: OptionSlugs): Validati
   }
   // 'roll' mode is validated client-side against the locally-generated pool;
   // server-side we only enforce the 3..18 range above.
+
+  // Skill picks: enforce class budget when rules are available.
+  if (w.classSlug && opts.classSkillRules) {
+    const rule = opts.classSkillRules[w.classSlug];
+    if (rule) {
+      const bgSkills = (w.backgroundSlug && opts.backgroundSkills?.[w.backgroundSlug]) ?? [];
+      const classPicks = w.skills.filter((s) => rule.skillsFrom.includes(s) && !bgSkills.includes(s));
+      const offList = w.skills.filter((s) => !rule.skillsFrom.includes(s) && !bgSkills.includes(s));
+      if (offList.length > 0) errors.push('skills-off-list');
+      if (classPicks.length > rule.skillsChoose) errors.push('skills-too-many');
+      else if (classPicks.length < rule.skillsChoose) errors.push('skills-too-few');
+    }
+  }
 
   return { ok: errors.length === 0, errors };
 }

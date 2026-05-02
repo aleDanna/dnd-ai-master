@@ -3,6 +3,7 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import type { Options } from '@/characters/options';
 import type { WizardState } from '@/characters/types';
+import type { Skill } from '@/engine/types';
 import { useWizardState } from '@/components/wizard/wizard-state';
 import { WizardShell, WIZARD_STEPS } from '@/components/wizard/wizard-shell';
 import { AiBuilderPane } from '@/components/wizard/ai-builder-pane';
@@ -27,6 +28,12 @@ export function WizardClient({ options }: { options: Options }) {
     raceSlugs: options.races.map((r) => r.slug),
     classSlugs: options.classes.map((c) => c.slug),
     backgroundSlugs: options.backgrounds.map((b) => b.slug),
+    classSkillRules: Object.fromEntries(
+      options.classes.map((c) => [c.slug, { skillsChoose: c.proficiencies.skillsChoose, skillsFrom: c.proficiencies.skillsFrom }]),
+    ),
+    backgroundSkills: Object.fromEntries(
+      options.backgrounds.map((b) => [b.slug, b.skillProficiencies]),
+    ),
   });
 
   const currentStepName = WIZARD_STEPS[step]!;
@@ -137,13 +144,35 @@ export function WizardClient({ options }: { options: Options }) {
           onAbilitiesChange={(abilities) => dispatch({ type: 'set-abilities', abilities })}
         />
       )}
-      {step === 4 && (
-        <SkillsStep
-          classSlug={state.classSlug}
-          selected={state.skills}
-          onToggle={(skill) => dispatch({ type: 'toggle-skill', skill })}
-        />
-      )}
+      {step === 4 && (() => {
+        const klass = options.classes.find((c) => c.slug === state.classSlug);
+        const bg = options.backgrounds.find((b) => b.slug === state.backgroundSlug);
+        const classSkillsChoose = klass?.proficiencies.skillsChoose ?? 0;
+        const classSkillsFrom = (klass?.proficiencies.skillsFrom ?? []) as Skill[];
+        const backgroundSkills = (bg?.skillProficiencies ?? []) as Skill[];
+        return (
+          <SkillsStep
+            classSlug={state.classSlug}
+            className={klass?.name}
+            classSkillsChoose={classSkillsChoose}
+            classSkillsFrom={classSkillsFrom}
+            backgroundSkills={backgroundSkills}
+            selected={state.skills}
+            onToggle={(skill) => {
+              // Hard cap at limit: ignore toggles that would exceed the class budget.
+              const isOn = state.skills.includes(skill);
+              const inClassList = classSkillsFrom.includes(skill);
+              const fromBg = backgroundSkills.includes(skill);
+              if (fromBg) return; // background skills can't be toggled
+              if (!isOn && inClassList) {
+                const currentClassPicks = state.skills.filter((s) => classSkillsFrom.includes(s) && !backgroundSkills.includes(s)).length;
+                if (currentClassPicks >= classSkillsChoose) return;
+              }
+              dispatch({ type: 'toggle-skill', skill });
+            }}
+          />
+        );
+      })()}
       {step === 5 && (
         <EquipmentStep
           classSlug={state.classSlug}

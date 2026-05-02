@@ -114,4 +114,76 @@ describe('validateWizardState', () => {
     expect(r.ok).toBe(true);
     expect(r.errors).toEqual([]);
   });
+
+  // ─── Skills ──────────────────────────────────────────────────────────────────
+
+  const optionsWithSkillRules = {
+    ...completeOptions,
+    classSkillRules: {
+      fighter: { skillsChoose: 2, skillsFrom: ['Acrobatics', 'Athletics', 'Intimidation', 'Perception'] },
+      wizard: { skillsChoose: 2, skillsFrom: ['Arcana', 'History', 'Insight', 'Investigation'] },
+    },
+    backgroundSkills: {
+      soldier: ['Athletics', 'Intimidation'],
+      sage: ['Arcana', 'History'],
+    },
+  };
+
+  function baseValidWizard() {
+    const w = emptyWizardState();
+    w.raceSlug = 'half-elf';
+    w.classSlug = 'fighter';
+    w.backgroundSlug = 'soldier';
+    w.identity.name = 'Tharion';
+    return w;
+  }
+
+  it('rejects a fighter with too many class skill picks', () => {
+    const w = baseValidWizard();
+    // Athletics + Intimidation are background — free. Acrobatics + Perception = 2 picks (OK).
+    // Add a third class pick to trigger the cap.
+    w.skills = ['Acrobatics', 'Perception', 'Athletics']; // Athletics is bg, doesn't count
+    // Actually that's 2 class picks — let me make it 3.
+    w.skills = ['Acrobatics', 'Perception', 'Intimidation']; // Intimidation is bg, doesn't count
+    // Still 2. Let's push past:
+    w.skills = ['Acrobatics', 'Perception', 'Insight']; // Insight not on fighter list
+    // That'll trigger off-list. Test that separately. Let me do a real overflow:
+    // fighter list = [Acrobatics, Athletics, Intimidation, Perception]. Background grants Athletics + Intimidation.
+    // So picks NOT from background = Acrobatics, Perception. To exceed 2, I need a third class-list non-bg skill.
+    // But there are only 4 class skills total, 2 of which are bg. So only 2 non-bg class skills exist.
+    // To test "too many", I need a class with more options not granted by bg. Use wizard.
+    const ww = emptyWizardState();
+    ww.raceSlug = 'half-elf';
+    ww.classSlug = 'wizard';
+    ww.backgroundSlug = 'soldier'; // soldier grants Athletics + Intimidation, neither on wizard list
+    ww.identity.name = 'Mord';
+    ww.skills = ['Arcana', 'History', 'Insight']; // 3 picks, all on wizard list, no bg overlap
+    const r = validateWizardState(ww, optionsWithSkillRules);
+    expect(r.ok).toBe(false);
+    expect(r.errors).toContain('skills-too-many');
+  });
+
+  it('rejects a fighter with skills off the class list', () => {
+    const w = baseValidWizard();
+    w.skills = ['Arcana', 'Acrobatics']; // Arcana is not on fighter list and not granted by Soldier
+    const r = validateWizardState(w, optionsWithSkillRules);
+    expect(r.ok).toBe(false);
+    expect(r.errors).toContain('skills-off-list');
+  });
+
+  it('rejects a fighter with too few class skills', () => {
+    const w = baseValidWizard();
+    w.skills = ['Acrobatics']; // only 1 class pick, fighter wants 2
+    const r = validateWizardState(w, optionsWithSkillRules);
+    expect(r.ok).toBe(false);
+    expect(r.errors).toContain('skills-too-few');
+  });
+
+  it('accepts exactly 2 class picks (background grants do not count toward the budget)', () => {
+    const w = baseValidWizard();
+    // Soldier grants Athletics + Intimidation. Player picks 2 more from fighter list.
+    w.skills = ['Acrobatics', 'Perception'];
+    const r = validateWizardState(w, optionsWithSkillRules);
+    expect(r.ok).toBe(true);
+  });
 });
