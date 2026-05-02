@@ -20,3 +20,20 @@ Monetary values in CSVs use mixed units (`gp`, `sp`, `cp`, `pp`). The seeder nor
 ## Re-seeding
 
 Running `pnpm db:seed` re-applies the data idempotently. To wipe and rebuild from scratch, use `pnpm db:reseed`.
+
+## Seeder policy
+
+The seeder uses `onConflictDoNothing(slug)`. Re-running `pnpm db:seed` is
+safe and idempotent, but **does not propagate edits to existing rows** —
+once a slug is in the DB, the seeder will not change its other columns.
+
+To apply corrections to the CSVs after a row already exists, run:
+
+```
+pnpm db:reseed
+```
+
+This TRUNCATEs every `srd_*` table and re-inserts everything from scratch.
+**Warning:** once Plan B adds app-state tables (characters, sessions, …)
+that reference `srd_*.slug` via foreign keys, a TRUNCATE-CASCADE will
+destroy referencing rows. Revisit the policy then.

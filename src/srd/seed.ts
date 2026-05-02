@@ -55,6 +55,14 @@ async function seed() {
 
   console.log(`[seed] inserting: ${classes.length} classes, ${races.length} races, ${backgrounds.length} backgrounds, ${feats.length} feats, ${conditions.length} conditions, ${spells.length} spells, ${monsters.length} monsters, ${armor.length} armors, ${weapons.length} weapons, ${gear.length} gear items, ${rules.length} rule sections`);
 
+  // SEEDER POLICY (MVP): we use onConflictDoNothing on the slug. This means
+  // re-running `pnpm db:seed` will NOT propagate edits to existing rows in the
+  // CSVs — only new rows are inserted. To apply CSV corrections, run
+  // `pnpm db:reseed` (which TRUNCATEs every SRD table first via --reset).
+  // When Plan B adds app-state tables that FK to srd_*.slug, a TRUNCATE
+  // CASCADE will destroy referencing rows; revisit this policy before then,
+  // either by switching to onConflictDoUpdate or by adding a separate
+  // diff-and-update path.
   await db.transaction(async (tx) => {
     if (classes.length)     await tx.insert(srdClass).values(classes).onConflictDoNothing({ target: srdClass.slug });
     if (races.length)       await tx.insert(srdRace).values(races).onConflictDoNothing({ target: srdRace.slug });

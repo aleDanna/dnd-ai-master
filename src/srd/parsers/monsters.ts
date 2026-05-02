@@ -64,15 +64,20 @@ function parseTagList(s: string): string[] {
 
 function parseNamedBlocks(raw: string): { name: string; description: string }[] {
   if (!raw.trim()) return [];
-  // Format example: "Multiattack: ... . Fist: +5 to hit, ..."
-  const segments = raw.split(/\.(?=\s*[A-Z][^.]+:)/);
-  return segments
-    .map((seg) => {
-      const m = /^([^:]+):\s*(.+)\.?\s*$/s.exec(seg.trim());
-      if (m) return { name: m[1]!.trim(), description: m[2]!.trim() };
-      return { name: '', description: seg.trim() };
-    })
-    .filter((b) => b.description.length > 0);
+  // Format A: "Multiattack: ... . Fist: +5 to hit, ..." (colon-separated)
+  // Format B: "Nimble Escape (Disengage or Hide as bonus action)." (parenthetical)
+  const segments = raw.split(/\.(?=\s*[A-Z][^.]+(?::|\s*\())/);
+  return segments.map((seg) => {
+    const trimmed = seg.trim();
+    // Try colon form first.
+    const colon = /^([^:]+):\s*(.+?)\.?\s*$/s.exec(trimmed);
+    if (colon) return { name: colon[1]!.trim(), description: colon[2]!.trim() };
+    // Then parenthetical form: "Name (description)."
+    const paren = /^([^()]+?)\s*\(([^()]+)\)\s*\.?\s*$/s.exec(trimmed);
+    if (paren) return { name: paren[1]!.trim(), description: paren[2]!.trim() };
+    // Fallback: keep raw text as description.
+    return { name: '', description: trimmed };
+  }).filter((b) => b.name.length > 0 || b.description.length > 0);
 }
 
 export function parseMonsters(csv: string): SrdMonsterInsert[] {

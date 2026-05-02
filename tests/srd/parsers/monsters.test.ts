@@ -34,4 +34,12 @@ describe('parseMonsters', () => {
     expect(Array.isArray(ape!.actions)).toBe(true);
     expect(ape!.actions!.length).toBeGreaterThan(0);
   });
+
+  it('extracts trait name from "Name (description)." format', () => {
+    const goblin = monsters.find((m) => m.name === 'Goblin');
+    expect(goblin).toBeDefined();
+    const nimble = goblin!.traits!.find((t) => t.name === 'Nimble Escape');
+    expect(nimble).toBeDefined();
+    expect(nimble!.description.toLowerCase()).toContain('disengage');
+  });
 });
