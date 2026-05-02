@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { lookupSpell } from '@/srd/lookup';
 
@@ -12,7 +13,7 @@ export default async function SpellPage({ params }: Props) {
 
   return (
     <main style={{ padding: '2rem', maxWidth: 720, fontFamily: 'system-ui, sans-serif' }}>
-      <a href="/">← back</a>
+      <Link href="/">← back</Link>
       <h1>{spell.name}</h1>
       <p>
         <em>

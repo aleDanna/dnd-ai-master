@@ -14,7 +14,6 @@ if (!connectionString) {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var __dnd_pg_pool: Pool | undefined;
 }
 
