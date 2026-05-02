@@ -1,11 +1,7 @@
-import type { ActionResult, ActorRuntimeState, Character, Mutation, FeatureInstance } from './types';
+import type { ActionResult, ActorRuntimeState, Character, Mutation } from './types';
 import { rollDice } from './dice';
 import { abilityModifier } from './modifiers';
 import { defaultRng, type Rng } from './rand';
-
-// Keep verbatim import from plan; reference type to satisfy noUnusedLocals.
-type _FeatureInstanceUnused = FeatureInstance;
-void 0 as unknown as _FeatureInstanceUnused;
 
 // Features that recharge on a short rest. Conservative list; more are added in Plan D.
 const SHORT_REST_RECHARGES = new Set([
