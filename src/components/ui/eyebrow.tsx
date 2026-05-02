@@ -1,6 +1,6 @@
 import * as React from 'react';
 
-export interface EyebrowProps extends React.HTMLAttributes<HTMLDivElement> {}
+export type EyebrowProps = React.HTMLAttributes<HTMLDivElement>;
 
 export function Eyebrow({ children, style, ...rest }: EyebrowProps) {
   return (

@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated coverage output (git-ignored).
+    "coverage/**",
+    // Static design prototype (vanilla JSX, not part of the app build).
+    "design/prototype/**",
   ]),
 ]);
 
