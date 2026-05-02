@@ -50,3 +50,6 @@ next-env.d.ts
 /blob-report/
 /playwright/.cache/
 .env*.local
+
+# IntelliJ
+/.idea/
