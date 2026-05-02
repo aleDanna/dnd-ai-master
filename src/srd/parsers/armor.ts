@@ -16,6 +16,14 @@ type Row = {
   source: string;
 };
 
+function parseStrengthRequired(raw: string): number | null {
+  const t = raw?.trim() ?? '';
+  if (t === '' || t === '—' || t === '-') return null;
+  // Accept formats like "STR 13", "Str 15", or a bare integer.
+  const m = /(\d+)/.exec(t);
+  return m ? parseInt(m[1]!, 10) : null;
+}
+
 export function parseArmor(csv: string): SrdArmorInsert[] {
   const rows = parse(csv, { columns: true, skip_empty_lines: true, trim: true }) as Row[];
   return rows.map((r): SrdArmorInsert => ({
@@ -23,7 +31,7 @@ export function parseArmor(csv: string): SrdArmorInsert[] {
     name: r.name,
     category: r.category,
     acFormula: r.armor_class,
-    strengthRequired: r.strength_required && r.strength_required !== '—' ? parseInt(r.strength_required, 10) : null,
+    strengthRequired: parseStrengthRequired(r.strength_required),
     stealthDisadvantage: /disadvantage/i.test(r.stealth),
     costCp: parseCostToCp(r.cost),
     weightLb: parseInt(r.weight_lb, 10) || 0,

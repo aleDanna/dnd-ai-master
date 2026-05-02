@@ -40,6 +40,7 @@ function parseAcAndHp(ac: string, hp: string): { ac: number; hp: number; hpFormu
 
 function parseCr(s: string): string {
   const t = s.trim();
+  if (t === '') return '0';
   if (t === '1/8') return '0.125';
   if (t === '1/4') return '0.25';
   if (t === '1/2') return '0.5';
