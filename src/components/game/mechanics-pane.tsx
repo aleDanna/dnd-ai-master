@@ -24,8 +24,8 @@ export function MechanicsPane({ state, actors, diceLog, pcCharacterId, pcName, p
         display: 'flex',
         flexDirection: 'column',
         gap: 18,
-        overflowY: 'auto',
         flexShrink: 0,
+        alignSelf: 'stretch',
       }}
     >
       <CombatTracker

@@ -27,11 +27,12 @@ export interface NarrativePaneProps {
 
 export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, onCastSpell }: NarrativePaneProps) {
   const [draft, setDraft] = React.useState('');
-  const scrollRef = React.useRef<HTMLDivElement>(null);
   const merged = mergeMessages(history, liveEvents);
 
+  // Auto-scroll the page (not an internal pane) to the bottom when new content arrives.
   React.useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (typeof window === 'undefined') return;
+    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
   }, [merged.length, busy, liveEvents.length]);
 
   const submit = (): void => {
@@ -43,7 +44,7 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
 
   return (
     <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
-      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '32px 40px 16px' }}>
+      <div style={{ flex: 1, padding: '32px 40px 16px' }}>
         <div style={{ maxWidth: 680, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 22 }}>
           {merged.map((m, i) => <MessageView key={m.id ?? `live-${i}`} m={m} sessionId={sessionId} />)}
           {busy && (
@@ -54,19 +55,20 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
         </div>
       </div>
 
-      <div style={{ padding: '10px 40px 0', borderTop: '1px solid var(--border)', background: 'var(--bg-elev)' }}>
-        <div style={{ maxWidth: 680, margin: '0 auto', display: 'flex', gap: 6, paddingTop: 8, paddingBottom: 4, flexWrap: 'wrap' }}>
-          <Quick icon="dice" label="Skill check" onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'I make a Perception check.')} />
-          <Quick icon="sword" label="Attack" onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'I attack with my equipped weapon.')} />
-          {onCastSpell && <Quick icon="spell" label="Cast spell" onClick={onCastSpell} />}
-          <Quick icon="shield" label="Dodge" onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'I take the Dodge action.')} />
-          <Quick icon="heart" label="Short rest" onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'We take a short rest.')} />
-          <div style={{ flex: 1 }} />
-          <Quick icon="book" label="Look up rule" onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'Master, look up the rule for ')} />
+      <div style={{ position: 'sticky', bottom: 0, background: 'var(--bg-elev)', borderTop: '1px solid var(--border)', zIndex: 5 }}>
+        <div style={{ padding: '10px 40px 0' }}>
+          <div style={{ maxWidth: 680, margin: '0 auto', display: 'flex', gap: 6, paddingTop: 8, paddingBottom: 4, flexWrap: 'wrap' }}>
+            <Quick icon="dice" label="Skill check" onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'I make a Perception check.')} />
+            <Quick icon="sword" label="Attack" onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'I attack with my equipped weapon.')} />
+            {onCastSpell && <Quick icon="spell" label="Cast spell" onClick={onCastSpell} />}
+            <Quick icon="shield" label="Dodge" onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'I take the Dodge action.')} />
+            <Quick icon="heart" label="Short rest" onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'We take a short rest.')} />
+            <div style={{ flex: 1 }} />
+            <Quick icon="book" label="Look up rule" onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'Master, look up the rule for ')} />
+          </div>
         </div>
-      </div>
 
-      <div style={{ padding: '8px 40px 20px', background: 'var(--bg-elev)' }}>
+        <div style={{ padding: '8px 40px 20px' }}>
         <div
           style={{
             maxWidth: 680,
@@ -108,6 +110,7 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
         </div>
         <div style={{ maxWidth: 680, margin: '6px auto 0', fontSize: 11, color: 'var(--fg-subtle)', textAlign: 'center' }}>
           Enter to send · Shift+Enter for new line · Type in any language — the Master mirrors yours
+        </div>
         </div>
       </div>
     </main>

@@ -80,7 +80,7 @@ export function GameClient({ sessionId, session, character, initialState, initia
     : [];
 
   return (
-    <div style={{ display: 'flex', height: '100vh', background: 'var(--bg)', flexDirection: 'column' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)', flexDirection: 'column' }}>
       <header
         style={{
           display: 'flex',
@@ -90,6 +90,9 @@ export function GameClient({ sessionId, session, character, initialState, initia
           borderBottom: '1px solid var(--border)',
           background: 'var(--bg-elev)',
           flexShrink: 0,
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
         }}
       >
         <Link href="/sessions"><Button variant="ghost" size="sm" icon="arrow-left">Sessions</Button></Link>
@@ -103,7 +106,7 @@ export function GameClient({ sessionId, session, character, initialState, initia
         <Wordmark size={14} style={{ opacity: 0.7 }} />
       </header>
 
-      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+      <div style={{ display: 'flex', flex: 1, alignItems: 'stretch' }}>
         <CharacterPane character={character} state={liveState} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, position: 'relative' }}>
           <NarrativePane

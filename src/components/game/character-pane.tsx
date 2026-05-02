@@ -23,8 +23,8 @@ export function CharacterPane({ character, state }: CharacterPaneProps) {
         display: 'flex',
         flexDirection: 'column',
         gap: 14,
-        overflowY: 'auto',
         flexShrink: 0,
+        alignSelf: 'stretch',
       }}
     >
       <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
