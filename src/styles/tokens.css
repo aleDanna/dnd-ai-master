@@ -1,0 +1,120 @@
+/* Design tokens — ported from design/prototype/colors_and_type.css */
+/* Colors, typography scale, spacing, radii, shadows. Dark-first. */
+
+:root {
+  /* Brand palette */
+  --obsidian:     #0E0B14;
+  --pitch:        #1B1620;
+  --ink:          #2A1F2C;
+  --bone:         #E6D8B6;
+  --moonpaper:    #F3E6CE;
+  --parchment:    #2A1F2C;
+
+  --dragonfire:   #D7331C;
+  --dragonfire-2: #F0533A;
+  --ember:        #E68A2C;
+  --ember-2:      #F5A347;
+  --arcane:       #7A4FB8;
+  --arcane-2:     #9C73D6;
+  --verdigris:    #2D8F6F;
+  --gold:         #E0B84A;
+  --bone-glow:    #F3E6CE;
+
+  /* Semantic, dark-first */
+  --bg:         var(--obsidian);
+  --bg-elev:    #18131F;
+  --bg-card:    #221A2A;
+  --bg-sunken:  var(--pitch);
+
+  --fg:         var(--moonpaper);
+  --fg-muted:   #B5A48A;
+  --fg-subtle:  #7A6B59;
+  --fg-on-accent: #FFFFFF;
+
+  --border:        rgba(243, 230, 206, 0.10);
+  --border-strong: rgba(243, 230, 206, 0.22);
+  --scrim:         rgba(0, 0, 0, 0.72);
+
+  --accent:        var(--dragonfire);
+  --accent-hover:  var(--dragonfire-2);
+  --danger:        var(--dragonfire);
+  --success:       var(--verdigris);
+  --reward:        var(--gold);
+
+  /* Type families (loaded via next/font in layout.tsx) */
+  --font-display: var(--font-cormorant), 'EB Garamond', Georgia, serif;
+  --font-ui:      var(--font-inter), system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:    var(--font-jetbrains), 'SF Mono', Consolas, monospace;
+
+  /* Type scale (px) */
+  --fs-display:   56px;
+  --fs-h1:        40px;
+  --fs-h2:        28px;
+  --fs-h3:        20px;
+  --fs-narrative: 18px;
+  --fs-body:      14px;
+  --fs-dense:     13px;
+  --fs-meta:      12px;
+  --fs-eyebrow:   11px;
+
+  /* Line heights */
+  --lh-tight:      1.15;
+  --lh-snug:       1.3;
+  --lh-body:       1.5;
+  --lh-narrative:  1.55;
+
+  /* Spacing scale (4px base) */
+  --sp-1:  2px;
+  --sp-2:  4px;
+  --sp-3:  8px;
+  --sp-4:  12px;
+  --sp-5:  16px;
+  --sp-6:  24px;
+  --sp-7:  32px;
+  --sp-8:  48px;
+  --sp-9:  64px;
+  --sp-10: 96px;
+  --sp-11: 128px;
+
+  /* Radii */
+  --r-input:    6px;
+  --r-button:   6px;
+  --r-card:     8px;
+  --r-composer: 12px;
+  --r-pill:     999px;
+
+  /* Shadows */
+  --shadow-1: 0 1px 2px rgba(26, 23, 20, 0.06);
+  --shadow-2: 0 4px 12px rgba(26, 23, 20, 0.08);
+  --shadow-3: 0 16px 40px rgba(26, 23, 20, 0.16);
+
+  /* Motion */
+  --ease-out:  cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-acknowledge: ease-out;
+  --dur-reveal:      220ms;
+  --dur-acknowledge: 120ms;
+  --dur-roll:        600ms;
+
+  /* Layout */
+  --max-app:       1280px;
+  --max-narrative: 720px;
+  --max-form:      560px;
+  --pane-left:     280px;
+  --pane-right:    320px;
+}
+
+/* Light/scribe mode — kept for future use; not enabled in MVP */
+html.scribe {
+  --bg:         var(--moonpaper);
+  --bg-elev:    #FAF1DA;
+  --bg-card:    #FFFFFF;
+  --bg-sunken:  var(--bone);
+
+  --fg:         var(--ink);
+  --fg-muted:   #5A4263;
+  --fg-subtle:  #8A7A8E;
+
+  --border:        rgba(42, 31, 44, 0.12);
+  --border-strong: rgba(42, 31, 44, 0.22);
+  --scrim:         rgba(42, 31, 44, 0.60);
+}
