@@ -46,4 +46,50 @@ describe('character persistence (real DB)', () => {
     const after = await getMyCharacter(TEST_USER, target!.id);
     expect(after).toBeNull();
   });
+
+  it('returns null on cross-tenant getMyCharacter', async () => {
+    const TEST_USER_B = 'user_test_other_' + Date.now();
+    await ensureUser(TEST_USER_B, 'Other User');
+
+    const w = emptyWizardState();
+    w.raceSlug = 'half-elf';
+    w.classSlug = 'fighter';
+    w.backgroundSlug = 'soldier';
+    w.identity.name = 'Mallorea';
+    const { id } = await saveCharacter({ userId: TEST_USER, wizard: w });
+
+    // User B tries to read user A's character
+    const got = await getMyCharacter(TEST_USER_B, id);
+    expect(got).toBeNull();
+
+    // Verify owner can still read
+    const ownerGot = await getMyCharacter(TEST_USER, id);
+    expect(ownerGot?.name).toBe('Mallorea');
+
+    // Cleanup
+    await db.execute(sql`delete from users where id = ${TEST_USER_B}`);
+  });
+
+  it('returns false on cross-tenant softDeleteCharacter', async () => {
+    const TEST_USER_C = 'user_test_attacker_' + Date.now();
+    await ensureUser(TEST_USER_C, 'Attacker');
+
+    const w = emptyWizardState();
+    w.raceSlug = 'human';
+    w.classSlug = 'wizard';
+    w.backgroundSlug = 'sage';
+    w.identity.name = 'Polgara';
+    const { id } = await saveCharacter({ userId: TEST_USER, wizard: w });
+
+    // User C tries to delete user A's character
+    const ok = await softDeleteCharacter(TEST_USER_C, id);
+    expect(ok).toBe(false);
+
+    // Verify still selectable as owner
+    const stillThere = await getMyCharacter(TEST_USER, id);
+    expect(stillThere?.name).toBe('Polgara');
+
+    // Cleanup
+    await db.execute(sql`delete from users where id = ${TEST_USER_C}`);
+  });
 });

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { deriveCharacter } from '@/characters/derive';
 import type { WizardState } from '@/characters/types';
+import type { SrdBackground } from '@/db/schema';
 
 const baseWizard: WizardState = {
   raceSlug: 'half-elf',
@@ -16,6 +17,18 @@ const baseWizard: WizardState = {
     trait: '', bond: '', flaw: '', backstory: '',
     portraitColor: '#E0B84A',
   },
+};
+
+const soldierBg: SrdBackground = {
+  slug: 'soldier',
+  name: 'Soldier',
+  skillProficiencies: ['Athletics', 'Intimidation'],
+  toolProficiencies: [],
+  languages: '',
+  startingEquipment: '',
+  feature: '',
+  suggestedTraits: null,
+  source: 'PHB',
 };
 
 describe('deriveCharacter', () => {
@@ -51,5 +64,25 @@ describe('deriveCharacter', () => {
     // The wizard hasn't actually placed armor yet — derive returns AC based on DEX only.
     // Equipment kit decision is recorded but resolved at character creation time.
     expect(d.ac).toBe(10 + 2);
+  });
+});
+
+describe('deriveCharacter with background context', () => {
+  it('merges background skill proficiencies into proficiencies.skills', () => {
+    const w: WizardState = { ...baseWizard, skills: ['Perception'] };
+    const d = deriveCharacter(w, { background: soldierBg });
+    expect(d.proficiencies.skills).toEqual(expect.arrayContaining(['Perception', 'Athletics', 'Intimidation']));
+  });
+
+  it('does not duplicate when wizard and background overlap', () => {
+    const w: WizardState = { ...baseWizard, skills: ['Athletics'] };
+    const d = deriveCharacter(w, { background: soldierBg });
+    const athleticsCount = d.proficiencies.skills.filter((s) => s === 'Athletics').length;
+    expect(athleticsCount).toBe(1);
+  });
+
+  it('still works without context (background optional)', () => {
+    const d = deriveCharacter(baseWizard);
+    expect(d.proficiencies.skills).toEqual(['Athletics', 'Perception']);
   });
 });

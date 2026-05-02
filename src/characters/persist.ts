@@ -1,6 +1,7 @@
 import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { characters as charactersTable } from '@/db/schema';
+import { characters as charactersTable, srdBackground as backgroundsTable } from '@/db/schema';
+import type { SrdBackground } from '@/db/schema';
 import { deriveCharacter } from './derive';
 import type { WizardState } from './types';
 
@@ -10,8 +11,17 @@ export interface SaveCharacterInput {
 }
 
 export async function saveCharacter({ userId, wizard }: SaveCharacterInput): Promise<{ id: string }> {
-  const derived = deriveCharacter(wizard);
-  const [row] = await db
+  let background: SrdBackground | undefined = undefined;
+  if (wizard.backgroundSlug) {
+    const [bgRow] = await db
+      .select()
+      .from(backgroundsTable)
+      .where(eq(backgroundsTable.slug, wizard.backgroundSlug))
+      .limit(1);
+    background = bgRow;
+  }
+  const derived = deriveCharacter(wizard, { background });
+  const [inserted] = await db
     .insert(charactersTable)
     .values({
       userId,
@@ -42,7 +52,7 @@ export async function saveCharacter({ userId, wizard }: SaveCharacterInput): Pro
       hitDieSize: derived.hitDieSize,
     })
     .returning({ id: charactersTable.id });
-  return { id: row!.id };
+  return { id: inserted!.id };
 }
 
 export async function listMyCharacters(userId: string) {

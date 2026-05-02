@@ -1,4 +1,5 @@
-import type { Ability, Character } from '@/engine/types';
+import type { Ability, Character, Skill } from '@/engine/types';
+import type { SrdBackground } from '@/db/schema';
 import { abilityModifier, proficiencyBonusForLevel } from '@/engine/modifiers';
 import type { WizardState } from './types';
 
@@ -24,8 +25,12 @@ const SAVES_FOR_CLASS: Record<string, Ability[]> = {
   wizard: ['INT', 'WIS'],
 };
 
+export interface DeriveContext {
+  background?: SrdBackground;
+}
+
 /** Pure derivation. NO DB writes; the persistence layer (Task 22) does that. */
-export function deriveCharacter(wizard: WizardState): Omit<Character, 'id'> {
+export function deriveCharacter(wizard: WizardState, context: DeriveContext = {}): Omit<Character, 'id'> {
   if (!wizard.raceSlug || !wizard.classSlug || !wizard.backgroundSlug) {
     throw new Error('deriveCharacter: incomplete wizard state');
   }
@@ -36,6 +41,11 @@ export function deriveCharacter(wizard: WizardState): Omit<Character, 'id'> {
   const hpMax = hitDieSize + conMod;
   const proficiencyBonus = proficiencyBonusForLevel(level);
   const saves = SAVES_FOR_CLASS[wizard.classSlug] ?? [];
+
+  // Merge wizard-picked skills with background-granted skills (de-duplicated, preserves order).
+  // The SRD CSVs use the canonical D&D 5e skill names, so casting to Skill[] is safe.
+  const backgroundSkills = (context.background?.skillProficiencies ?? []) as Skill[];
+  const skills = Array.from(new Set([...wizard.skills, ...backgroundSkills]));
 
   return {
     name: wizard.identity.name || 'Unnamed',
@@ -50,7 +60,7 @@ export function deriveCharacter(wizard: WizardState): Omit<Character, 'id'> {
     speed: 30,                           // race-specific override could apply later
     proficiencies: {
       saves,
-      skills: wizard.skills,
+      skills,
       expertise: [],
       weapons: [],
       armor: [],
