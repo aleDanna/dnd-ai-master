@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { ToolPill } from './tool-pill';
 import { SpinningDie } from './spinning-die';
+import { TtsButton } from './tts-button';
 import type { TurnEvent } from '@/sessions/types';
 import type { MessageRow } from '@/sessions/client-types';
 
@@ -16,6 +17,7 @@ export interface NarrativeMessage {
 }
 
 export interface NarrativePaneProps {
+  sessionId: string;
   history: MessageRow[];
   liveEvents: TurnEvent[];
   busy: boolean;
@@ -23,7 +25,7 @@ export interface NarrativePaneProps {
   onCastSpell?: () => void;
 }
 
-export function NarrativePane({ history, liveEvents, busy, onSend, onCastSpell }: NarrativePaneProps) {
+export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, onCastSpell }: NarrativePaneProps) {
   const [draft, setDraft] = React.useState('');
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const merged = mergeMessages(history, liveEvents);
@@ -43,7 +45,7 @@ export function NarrativePane({ history, liveEvents, busy, onSend, onCastSpell }
     <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
       <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '32px 40px 16px' }}>
         <div style={{ maxWidth: 680, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 22 }}>
-          {merged.map((m, i) => <MessageView key={m.id ?? `live-${i}`} m={m} />)}
+          {merged.map((m, i) => <MessageView key={m.id ?? `live-${i}`} m={m} sessionId={sessionId} />)}
           {busy && (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', color: 'var(--fg-muted)', fontFamily: 'var(--font-display)', fontSize: 16, fontStyle: 'italic' }}>
               <SpinningDie /> The Master is responding…
@@ -136,15 +138,16 @@ function Quick({ icon, label, onClick }: { icon: IconName; label: string; onClic
   );
 }
 
-function MessageView({ m }: { m: NarrativeMessage }) {
+function MessageView({ m, sessionId }: { m: NarrativeMessage; sessionId: string }) {
   if (m.role === 'master') {
     return (
       <div>
         <Eyebrow style={{ marginBottom: 6 }}>The Master</Eyebrow>
         <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, lineHeight: 1.55, color: 'var(--fg)' }}>{m.content}</div>
-        {m.tools && m.tools.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
-            {m.tools.map((t, i) => (
+        {(m.id || (m.tools && m.tools.length > 0)) && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10, alignItems: 'center' }}>
+            {m.id && <TtsButton sessionId={sessionId} messageId={m.id} />}
+            {m.tools?.map((t, i) => (
               <ToolPill
                 key={i}
                 toolName={t.name}

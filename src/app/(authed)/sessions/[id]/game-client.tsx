@@ -107,6 +107,7 @@ export function GameClient({ sessionId, session, character, initialState, initia
         <CharacterPane character={character} state={liveState} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, position: 'relative' }}>
           <NarrativePane
+            sessionId={sessionId}
             history={messages}
             liveEvents={turn.events}
             busy={turn.busy}
