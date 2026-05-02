@@ -9,7 +9,9 @@ export interface ToolLoopInput {
   systemBlocks: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }[];
   history: Anthropic.Messages.MessageParam[];
   state: EngineState;
+  /** Optional applicator: called after each tool result with the mutations. */
   applyMutations?: (mutations: Mutation[], rolls: DiceRoll[]) => Promise<void>;
+  /** Optional usage sink (single call at end of loop). */
   recordUsage?: (usage: Anthropic.Messages.Usage) => Promise<void>;
   /** Called once per emitted event, in order. Use to flush events to an SSE stream as they happen. */
   onEvent?: (event: TurnEvent) => void;
