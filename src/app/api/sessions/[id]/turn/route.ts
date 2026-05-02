@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, isNull } from 'drizzle-orm';
 import type Anthropic from '@anthropic-ai/sdk';
 import { db } from '@/db/client';
 import { sessions, sessionMessages } from '@/db/schema';
@@ -22,6 +22,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const body = (await req.json().catch(() => null)) as { message?: string } | null;
   if (!body?.message?.trim()) return jsonResponse({ error: 'missing-message' }, 400);
 
+  const [session] = await db
+    .select()
+    .from(sessions)
+    .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId), isNull(sessions.deletedAt)))
+    .limit(1);
+  if (!session) return jsonResponse({ error: 'not-found' }, 404);
+
   const quota = await checkQuotas({ userId });
   if (!quota.ok) return jsonResponse({ error: quota.reason }, 429);
 
@@ -39,9 +46,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const [pm] = await db.insert(sessionMessages).values({ sessionId, role: 'player', content: body.message! }).returning();
         send('player_message_persisted', { messageId: pm!.id });
 
-        // 2. Language detection if not pinned
-        const [session] = await db.select().from(sessions).where(eq(sessions.id, sessionId)).limit(1);
-        if (session && !session.language) {
+        // 2. Language detection if not pinned (reuse session loaded for ownership check)
+        if (!session.language) {
           const code = await detectLanguage({ text: body.message!, userId, sessionId });
           if (code) await db.update(sessions).set({ language: code }).where(eq(sessions.id, sessionId));
         }

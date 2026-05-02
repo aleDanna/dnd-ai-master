@@ -4,18 +4,35 @@ import {
   sessionState as sessionStateTable,
   combatActors as combatActorsTable,
   diceLog as diceLogTable,
+  sessions as sessionsTable,
+  characters as charactersTable,
   type DiceLogInsert,
 } from '@/db/schema';
-import type { DiceRoll, Mutation, ConditionInstance } from '@/engine/types';
+import type { ConditionInstance, DiceRoll, Mutation } from '@/engine/types';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 const VALID_KINDS = new Set(['attack', 'damage', 'save', 'check', 'init', 'generic']);
 
+interface SessionContext {
+  characterId: string;
+  hpMax: number;
+}
+
+async function loadContext(tx: Tx, sessionId: string): Promise<SessionContext | null> {
+  const [s] = await tx.select({ characterId: sessionsTable.characterId }).from(sessionsTable).where(eq(sessionsTable.id, sessionId)).limit(1);
+  if (!s) return null;
+  const [c] = await tx.select({ hpMax: charactersTable.hpMax }).from(charactersTable).where(eq(charactersTable.id, s.characterId)).limit(1);
+  if (!c) return null;
+  return { characterId: s.characterId, hpMax: c.hpMax };
+}
+
 export async function applyMutations(sessionId: string, mutations: Mutation[], rolls: DiceRoll[]): Promise<void> {
   await db.transaction(async (tx) => {
+    const ctx = await loadContext(tx, sessionId);
+    if (!ctx) return;
     for (const m of mutations) {
-      await applyOne(tx, sessionId, m);
+      await applyOne(tx, sessionId, ctx, m);
     }
     if (rolls.length) {
       const inserts: DiceLogInsert[] = rolls.map((r) => ({
@@ -37,22 +54,26 @@ function pickKind(r: DiceRoll): DiceLogInsert['kind'] {
   return (VALID_KINDS.has(k) ? k : 'generic') as DiceLogInsert['kind'];
 }
 
-async function applyOne(tx: Tx, sessionId: string, m: Mutation): Promise<void> {
+async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutation): Promise<void> {
   switch (m.op) {
     case 'set_hp':
     case 'apply_damage':
     case 'heal': {
-      const isPc = await isPlayerCharacter(tx, sessionId, m.actorId);
+      const isPc = m.actorId === ctx.characterId;
       if (isPc) {
         const cur = await getPcHp(tx, sessionId);
-        const next = m.op === 'set_hp' ? m.hpCurrent : m.op === 'apply_damage' ? Math.max(0, cur - m.amount) : Math.min(getPcHpMax(tx, sessionId, cur), cur + m.amount);
+        const next = m.op === 'set_hp' ? m.hpCurrent
+                   : m.op === 'apply_damage' ? Math.max(0, cur - m.amount)
+                   : Math.min(ctx.hpMax, cur + m.amount);
         await tx.update(sessionStateTable).set({ hpCurrent: next }).where(eq(sessionStateTable.sessionId, sessionId));
       } else {
         const [actor] = await tx.select().from(combatActorsTable).where(and(eq(combatActorsTable.sessionId, sessionId), eq(combatActorsTable.id, m.actorId))).limit(1);
         if (!actor) return;
         const cur = actor.hpCurrent;
-        const next = m.op === 'set_hp' ? m.hpCurrent : m.op === 'apply_damage' ? Math.max(0, cur - m.amount) : Math.min(actor.hpMax, cur + m.amount);
-        await tx.update(combatActorsTable).set({ hpCurrent: next, isAlive: next > 0 }).where(eq(combatActorsTable.id, m.actorId));
+        const next = m.op === 'set_hp' ? m.hpCurrent
+                   : m.op === 'apply_damage' ? Math.max(0, cur - m.amount)
+                   : Math.min(actor.hpMax, cur + m.amount);
+        await tx.update(combatActorsTable).set({ hpCurrent: next, isAlive: next > 0 }).where(and(eq(combatActorsTable.sessionId, sessionId), eq(combatActorsTable.id, m.actorId)));
       }
       break;
     }
@@ -62,7 +83,7 @@ async function applyOne(tx: Tx, sessionId: string, m: Mutation): Promise<void> {
     }
     case 'add_condition':
     case 'remove_condition': {
-      const isPc = await isPlayerCharacter(tx, sessionId, m.actorId);
+      const isPc = m.actorId === ctx.characterId;
       if (isPc) {
         const [s] = await tx.select().from(sessionStateTable).where(eq(sessionStateTable.sessionId, sessionId)).limit(1);
         if (!s) return;
@@ -70,11 +91,12 @@ async function applyOne(tx: Tx, sessionId: string, m: Mutation): Promise<void> {
         if (m.op === 'add_condition') conds.push(m.condition);
         await tx.update(sessionStateTable).set({ conditions: conds }).where(eq(sessionStateTable.sessionId, sessionId));
       } else {
-        const [a] = await tx.select().from(combatActorsTable).where(eq(combatActorsTable.id, m.actorId)).limit(1);
+        // FIX I1: scope by session_id too
+        const [a] = await tx.select().from(combatActorsTable).where(and(eq(combatActorsTable.sessionId, sessionId), eq(combatActorsTable.id, m.actorId))).limit(1);
         if (!a) return;
         const conds = (a.conditions as ConditionInstance[]).filter((c) => c.slug !== (m.op === 'add_condition' ? m.condition.slug : m.conditionSlug));
         if (m.op === 'add_condition') conds.push(m.condition);
-        await tx.update(combatActorsTable).set({ conditions: conds }).where(eq(combatActorsTable.id, m.actorId));
+        await tx.update(combatActorsTable).set({ conditions: conds }).where(and(eq(combatActorsTable.sessionId, sessionId), eq(combatActorsTable.id, m.actorId)));
       }
       break;
     }
@@ -133,18 +155,7 @@ async function applyOne(tx: Tx, sessionId: string, m: Mutation): Promise<void> {
   }
 }
 
-async function isPlayerCharacter(tx: Tx, sessionId: string, actorId: string): Promise<boolean> {
-  const [a] = await tx.select({ id: combatActorsTable.id }).from(combatActorsTable).where(and(eq(combatActorsTable.sessionId, sessionId), eq(combatActorsTable.id, actorId))).limit(1);
-  return !a;
-}
-
 async function getPcHp(tx: Tx, sessionId: string): Promise<number> {
   const [s] = await tx.select().from(sessionStateTable).where(eq(sessionStateTable.sessionId, sessionId)).limit(1);
   return s?.hpCurrent ?? 0;
-}
-
-function getPcHpMax(_tx: Tx, _sessionId: string, current: number): number {
-  // Plan D1 does not re-fetch the character row on every heal; cap at current+999.
-  // The engine's heal mutation is bounded by Plan B's hpMax in actions, so this is safe.
-  return current + 999;
 }

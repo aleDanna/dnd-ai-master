@@ -11,7 +11,7 @@ export type TurnEvent =
   | { type: 'tool_use_start'; toolUseId: string; name: string; input: Record<string, unknown> }
   | { type: 'tool_use_end'; toolUseId: string; ok: boolean; error?: string; rolls: ActionResult['rolls']; mutationCount: number }
   | { type: 'state_changed'; mutations: Mutation[] }
-  | { type: 'turn_complete'; messageId: string; durationMs: number; toolCallCount: number }
+  | { type: 'turn_complete'; messageId: string; durationMs: number; toolCallCount: number; truncated: boolean; timedOut: boolean }
   | { type: 'turn_error'; reason: string; recoverable: boolean };
 
 export interface SnapshotForModel {
