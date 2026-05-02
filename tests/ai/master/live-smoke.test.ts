@@ -1,6 +1,7 @@
 import { config as loadEnv } from 'dotenv';
-loadEnv({ path: '.env.local' });
-loadEnv();
+// Override pre-set shell envs (e.g. ANTHROPIC_API_KEY="" in some sandbox shells).
+loadEnv({ path: '.env.local', override: true });
+loadEnv({ override: true });
 
 import { describe, it, expect } from 'vitest';
 import { detectLanguage } from '@/ai/master/language';

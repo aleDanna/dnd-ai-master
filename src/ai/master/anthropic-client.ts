@@ -10,5 +10,7 @@ export function getAnthropicClient(): Anthropic {
   return _client;
 }
 
-export const MASTER_MODEL = process.env.ANTHROPIC_MASTER_MODEL ?? 'claude-sonnet-4-5-20250929';
-export const LANGUAGE_MODEL = process.env.ANTHROPIC_LANGUAGE_MODEL ?? 'claude-haiku-4-5-20251015';
+// Model aliases — automatically point at the latest minor version.
+// Override via env to pin a specific dated snapshot (e.g. for reproducibility).
+export const MASTER_MODEL = process.env.ANTHROPIC_MASTER_MODEL ?? 'claude-sonnet-4-5';
+export const LANGUAGE_MODEL = process.env.ANTHROPIC_LANGUAGE_MODEL ?? 'claude-haiku-4-5';
