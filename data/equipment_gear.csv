@@ -1,0 +1,137 @@
+name,category,cost,weight_lb,description,source
+Abacus,Adventuring Gear,2 gp,2,Calculation tool.,Basic
+Acid (vial),Adventuring Gear,25 gp,1,Action: throw as improvised weapon (range 5/20). DEX save DC 10 or 2d6 acid.,Basic
+Alchemist's Fire (flask),Adventuring Gear,50 gp,1,Action: throw at point or creature (range 5/20). DEX save DC 13 or 1d4 fire each turn until extinguished (action DEX DC 10).,Basic
+Arrows (20),Ammunition,1 gp,1,For longbow/shortbow.,Basic
+Blowgun Needles (50),Ammunition,1 gp,1,For blowgun.,Basic
+Crossbow Bolts (20),Ammunition,1 gp,1.5,For crossbows.,Basic
+Sling Bullets (20),Ammunition,4 cp,1.5,For sling.,Basic
+Antitoxin (vial),Adventuring Gear,50 gp,0,Drinker has advantage on saving throws against poison for 1 hour.,Basic
+Backpack,Adventuring Gear,2 gp,5,Holds 30 lb.,Basic
+Ball Bearings (1000),Adventuring Gear,1 gp,2,Action: spread in 10ft sq. Creature entering: DEX save DC 10 or fall prone.,Basic
+Barrel,Adventuring Gear,2 gp,70,Holds liquids/40 gallons.,Basic
+Basket,Adventuring Gear,4 sp,2,,Basic
+Bedroll,Adventuring Gear,1 gp,7,,Basic
+Bell,Adventuring Gear,1 gp,0,,Basic
+Blanket,Adventuring Gear,5 sp,3,,Basic
+Block and Tackle,Adventuring Gear,1 gp,5,,Basic
+Book,Adventuring Gear,25 gp,5,,Basic
+Bottle (glass),Adventuring Gear,2 gp,2,,Basic
+Bucket,Adventuring Gear,5 cp,2,3 gallons.,Basic
+Caltrops (20),Adventuring Gear,1 gp,2,Action: spread in 5ft sq. DEX save DC 15 or 1 piercing + speed 0 until removal.,Basic
+Candle,Adventuring Gear,1 cp,0,Bright 5ft + dim 5ft for 1h.,Basic
+Case (crossbow bolts),Adventuring Gear,1 gp,1,Holds 20 bolts.,Basic
+Case (map or scroll),Adventuring Gear,1 gp,1,Holds 10 rolled scrolls.,Basic
+Chain (10ft),Adventuring Gear,5 gp,10,AC 20; 10 HP; STR DC 20 to break.,Basic
+Chalk (1 piece),Adventuring Gear,1 cp,0,,Basic
+Chest,Adventuring Gear,5 gp,25,Holds 12 cu. ft / 300 lb.,Basic
+Climber's Kit,Adventuring Gear,25 gp,12,Pitons; boot tips; gloves; harness. Anchor self.,Basic
+Clothes (common),Adventuring Gear,5 sp,3,,Basic
+Clothes (costume),Adventuring Gear,5 gp,4,,Basic
+Clothes (fine),Adventuring Gear,15 gp,6,,Basic
+Clothes (traveler's),Adventuring Gear,2 gp,4,,Basic
+Component Pouch,Adventuring Gear,25 gp,2,Compartments for spell components.,Basic
+Crowbar,Adventuring Gear,2 gp,5,Advantage on STR checks for prying.,Basic
+Crystal (focus),Arcane Focus,10 gp,1,,Basic
+Dungeoneer's Pack,Adventuring Gear,12 gp,61.5,"Backpack, crowbar, hammer, 10 pitons, 10 torches, tinderbox, 10 rations, waterskin, 50ft hempen rope.",Basic
+Emblem (holy symbol),Holy Symbol,5 gp,0,,Basic
+Entertainer's Pack,Adventuring Gear,40 gp,38,"Backpack, bedroll, 2 costumes, 5 candles, 5 rations, waterskin, disguise kit.",Basic
+Explorer's Pack,Adventuring Gear,10 gp,59,"Backpack, bedroll, mess kit, tinderbox, 10 torches, 10 rations, waterskin, 50ft hempen rope.",Basic
+Fishing Tackle,Adventuring Gear,1 gp,4,"Rod, line, hooks, lures, bobbers.",Basic
+Flask or Tankard,Adventuring Gear,2 cp,1,Holds 1 pint.,Basic
+Grappling Hook,Adventuring Gear,2 gp,4,,Basic
+Hammer,Adventuring Gear,1 gp,3,,Basic
+Hammer (sledge),Adventuring Gear,2 gp,10,,Basic
+Healer's Kit,Adventuring Gear,5 gp,3,10 uses. Action: stabilize creature at 0 HP without WIS check.,Basic
+Holy Water (flask),Adventuring Gear,25 gp,1,Action: throw as splash 5ft (range 5/20). Fiend or undead DEX save DC 13 or 2d6 radiant.,Basic
+Hourglass,Adventuring Gear,25 gp,1,,Basic
+Hunting Trap,Adventuring Gear,5 gp,25,Action to set. Creature entering DEX save DC 13 or 1d4 piercing + restrained. STR DC 13 to escape (deals 1d4).,Basic
+Ink (1 oz bottle),Adventuring Gear,10 gp,0,,Basic
+Ink Pen,Adventuring Gear,2 cp,0,,Basic
+Jug or Pitcher,Adventuring Gear,2 cp,4,1 gallon.,Basic
+Ladder (10ft),Adventuring Gear,1 sp,25,,Basic
+Lamp,Adventuring Gear,5 sp,1,Bright 15ft + dim 30ft. 6 hours per pint of oil.,Basic
+Lantern (bullseye),Adventuring Gear,10 gp,2,60ft cone bright + 60ft dim. 6h per pint.,Basic
+Lantern (hooded),Adventuring Gear,5 gp,2,30ft bright + 30ft dim; can be lowered. 6h per pint.,Basic
+Lock,Adventuring Gear,10 gp,1,DC 15 thieves' tools.,Basic
+Magnifying Glass,Adventuring Gear,100 gp,0,Substitute for flint and steel; INT (Investigation) advantage on examining tiny details.,Basic
+Manacles,Adventuring Gear,2 gp,6,Restrain Small/Medium creature. DC 20 to break or DC 25 sleight to slip.,Basic
+Mess Kit,Adventuring Gear,2 sp,1,,Basic
+Mirror (steel),Adventuring Gear,5 gp,0.5,,Basic
+Oil (flask),Adventuring Gear,1 sp,1,Lamp fuel 6h. Throw 5ft splash.,Basic
+Paper (1 sheet),Adventuring Gear,2 sp,0,,Basic
+Parchment (1 sheet),Adventuring Gear,1 sp,0,,Basic
+Perfume (vial),Adventuring Gear,5 gp,0,,Basic
+Pick (miner's),Adventuring Gear,2 gp,10,,Basic
+Piton,Adventuring Gear,5 cp,0.25,,Basic
+Poison (basic vial),Adventuring Gear,100 gp,0,Apply to weapon (1 minute). Next hit: target CON DC 10 or 1d4 poison.,Basic
+Pole (10ft),Adventuring Gear,5 cp,7,,Basic
+Pot (iron),Adventuring Gear,2 gp,10,,Basic
+Potion of Healing,Magic Item,50 gp,0.5,Drink (action) or administer (action) regain 2d4+2 HP.,Basic
+Pouch,Adventuring Gear,5 sp,1,Holds 6 lb.,Basic
+Priest's Pack,Adventuring Gear,19 gp,24,"Backpack, blanket, 10 candles, tinderbox, alms box, 2 blocks of incense, censer, vestments, 2 days rations, waterskin.",Basic
+Quiver,Adventuring Gear,1 gp,1,Holds 20 arrows.,Basic
+Ram (portable),Adventuring Gear,4 gp,35,Bonus to door breaking checks (+4); two operators can.,Basic
+Rations (1 day),Adventuring Gear,5 sp,2,,Basic
+Robes,Adventuring Gear,1 gp,4,,Basic
+Rod (focus),Arcane Focus,10 gp,2,,Basic
+"Rope (hempen, 50ft)",Adventuring Gear,1 gp,10,"AC 11; 2 HP; DC 17 STR to burst.",Basic
+"Rope (silk, 50ft)",Adventuring Gear,10 gp,5,"AC 11; 2 HP; DC 17 STR to burst.",Basic
+Sack,Adventuring Gear,1 cp,0.5,Holds 30 lb.,Basic
+Scale (merchant's),Adventuring Gear,5 gp,3,,Basic
+Scholar's Pack,Adventuring Gear,40 gp,10,"Backpack, book of lore, ink, ink pen, 10 sheets parchment, little bag of sand, small knife.",Basic
+Sealing Wax,Adventuring Gear,5 sp,0,,Basic
+Shovel,Adventuring Gear,2 gp,5,,Basic
+Signal Whistle,Adventuring Gear,5 cp,0,,Basic
+Signet Ring,Adventuring Gear,5 gp,0,,Basic
+Soap,Adventuring Gear,2 cp,0,,Basic
+Spellbook,Adventuring Gear,50 gp,3,100 pages; wizard's repertoire.,Basic
+"Spike (iron, 10)",Adventuring Gear,1 gp,5,,Basic
+Sprig of Mistletoe,Druidic Focus,1 gp,0,,Basic
+Spyglass,Adventuring Gear,1000 gp,1,Magnifies x2.,Basic
+Staff (focus),Arcane Focus,5 gp,4,,Basic
+Tent (two-person),Adventuring Gear,2 gp,20,,Basic
+Tinderbox,Adventuring Gear,5 sp,1,"Light fire 1 action, light arrow/torch 1 bonus action.",Basic
+Torch,Adventuring Gear,1 cp,1,Bright 20ft + dim 20ft for 1 hour. Burns. Improvised weapon: 1 fire damage.,Basic
+Totem,Druidic Focus,1 gp,0,,Basic
+Vial,Adventuring Gear,1 gp,0,,Basic
+Wand (focus),Arcane Focus,10 gp,1,,Basic
+Waterskin,Adventuring Gear,2 sp,5 (full),Holds 4 pints.,Basic
+Whetstone,Adventuring Gear,1 cp,1,,Basic
+Wooden Staff,Druidic Focus,5 gp,4,,Basic
+Yew Wand,Druidic Focus,10 gp,1,,Basic
+Burglar's Pack,Adventuring Gear,16 gp,44.5,"Backpack, bag of 1000 ball bearings, 10ft string, bell, 5 candles, crowbar, hammer, 10 pitons, hooded lantern, 2 flasks of oil, 5 days rations, tinderbox, waterskin, 50ft hempen rope.",PHB
+Diplomat's Pack,Adventuring Gear,39 gp,39,"Chest, 2 cases (map/scroll), fine clothes, ink, ink pen, lamp, 2 flasks of oil, 5 sheets paper, perfume, sealing wax, soap.",PHB
+Smith's Tools,Tools,20 gp,8,Crafting metal items.,PHB
+Brewer's Supplies,Tools,20 gp,9,,PHB
+Mason's Tools,Tools,10 gp,8,,PHB
+Carpenter's Tools,Tools,8 gp,6,,PHB
+Cartographer's Tools,Tools,15 gp,6,,PHB
+Cobbler's Tools,Tools,5 gp,5,,PHB
+Cook's Utensils,Tools,1 gp,8,,PHB
+Glassblower's Tools,Tools,30 gp,5,,PHB
+Jeweler's Tools,Tools,25 gp,2,,PHB
+Leatherworker's Tools,Tools,5 gp,5,,PHB
+Painter's Supplies,Tools,10 gp,5,,PHB
+Potter's Tools,Tools,10 gp,3,,PHB
+Tinker's Tools,Tools,50 gp,10,,PHB
+Weaver's Tools,Tools,1 gp,5,,PHB
+Woodcarver's Tools,Tools,1 gp,5,,PHB
+Disguise Kit,Tools,25 gp,3,,PHB
+Forgery Kit,Tools,15 gp,5,,PHB
+Herbalism Kit,Tools,5 gp,3,,PHB
+Navigator's Tools,Tools,25 gp,2,,PHB
+Poisoner's Kit,Tools,50 gp,2,,PHB
+Thieves' Tools,Tools,25 gp,1,,PHB
+Dice Set,Gaming Set,1 sp,0,,PHB
+Playing Card Set,Gaming Set,5 sp,0,,PHB
+Bagpipes,Musical Instrument,30 gp,6,,PHB
+Drum,Musical Instrument,6 gp,3,,PHB
+Dulcimer,Musical Instrument,25 gp,10,,PHB
+Flute,Musical Instrument,2 gp,1,,PHB
+Lute,Musical Instrument,35 gp,2,,PHB
+Lyre,Musical Instrument,30 gp,2,,PHB
+Horn,Musical Instrument,3 gp,2,,PHB
+Pan Flute,Musical Instrument,12 gp,2,,PHB
+Shawm,Musical Instrument,2 gp,1,,PHB
+Viol,Musical Instrument,30 gp,1,,PHB

@@ -1,0 +1,43 @@
+name,prerequisites,benefits,source
+Alert,None,"+5 to initiative; cannot be surprised while conscious; other creatures don't gain advantage on attacks against you from being unseen.",PHB
+Athlete,Increase STR or DEX by 1 (max 20),"Standing from prone uses only 5 feet of movement. Climbing doesn't cost extra movement. Make running long/high jump after 5ft running start.",PHB
+Actor,Increase CHA by 1 (max 20),"Advantage on Deception/Persuasion when impersonating; mimic speech of person/sounds of creature heard for at least 1 minute (WIS Insight DC 8 + CHA mod + PB to detect).",PHB
+Charger,None,"Use Action: Dash; bonus action for melee attack or shove; if moved 10ft straight before attack, +5 damage or push 10ft.",PHB
+Crossbow Expert,None,"Ignore loading on crossbows you are proficient with; no disadvantage on ranged attacks from being within 5ft of hostile; when Attack action with one-handed weapon, bonus action attack with hand crossbow.",PHB
+Defensive Duelist,DEX 13+,"When wielding finesse weapon you're proficient with and another creature hits you with a melee attack, use reaction to add proficiency bonus to AC for that attack.",PHB
+Dual Wielder,None,"+1 AC while wielding melee weapon in each hand; can use two-weapon fighting with non-light melee weapons; can draw/stow two one-handed weapons.",PHB
+Dungeon Delver,None,"Advantage on Perception/Investigation to find secret doors; advantage on saves vs traps; resistance to trap damage; travel at normal pace while searching for traps.",PHB
+Durable,Increase CON by 1 (max 20),"Hit Die roll for HP regain has minimum equal to twice CON modifier (min 2).",PHB
+Elemental Adept,Ability to cast at least 1 spell,"Spells you cast ignore resistance to chosen damage type (acid/cold/fire/lightning/thunder); when rolling damage of that type treat 1s as 2s. Can take multiple times.",PHB
+Grappler,STR 13+,"Advantage on attacks against creature you're grappling; can use action to attempt to pin creature you're grappling (target Athletics/Acrobatics vs your Athletics).",PHB
+Great Weapon Master,None,"On crit/reduce to 0 with melee weapon: bonus action one melee weapon attack; before attack with heavy weapon you have proficiency in: -5 attack +10 damage.",PHB
+Healer,None,"Use healer's kit to restore 1 HP +1/level (next short/long rest must elapse before you can heal again with this); stabilize at 0 HP.",PHB
+Heavily Armored,Proficiency with medium armor,"+1 STR (max 20); proficiency with heavy armor.",PHB
+Heavy Armor Master,Proficiency with heavy armor,"+1 STR (max 20); reduce bludgeoning/piercing/slashing damage from nonmagical sources by 3 while wearing heavy armor.",PHB
+Inspiring Leader,CHA 13+,"Spend 10 minutes to inspire up to 6 friendly creatures within 30ft (must understand you): each gains temp HP = your level + CHA modifier.",PHB
+Keen Mind,Increase INT by 1 (max 20),"Always know which way is north; always know hours to next sunrise/sunset; recall anything seen/heard within past month.",PHB
+Lightly Armored,None,"+1 STR or DEX (max 20); proficiency with light armor.",PHB
+Linguist,Increase INT by 1 (max 20),"Learn 3 languages of choice; can write ciphers (INT check DC = INT score + PB to decode).",PHB
+Lucky,None,"3 luck points per long rest. After roll d20 (attack/check/save) before result revealed: spend 1 to roll an additional d20 and choose. Or when attacked: roll 1d20 and choose for attacker.",PHB
+Mage Slayer,None,"When creature within 5ft of you casts a spell: use reaction to make melee attack against caster; advantage on saves vs spells cast within 5ft; spellcasters take +1 disadvantage on concentration save when you damage them.",PHB
+Magic Initiate,None,"Choose a class (bard/cleric/druid/sorcerer/warlock/wizard); learn 2 cantrips; learn 1 first-level spell of that class (cast 1/long rest at 1st level).",PHB
+Martial Adept,None,"Learn 2 maneuvers from Battle Master fighter list; gain 1 superiority die (d6) per short/long rest.",PHB
+Medium Armor Master,Proficiency with medium armor,"Wearing medium armor doesn't impose disadvantage on Stealth; can add 3 (instead of 2) of DEX modifier to AC.",PHB
+Mobile,None,"+10ft speed; Dash through difficult terrain costs no extra movement; melee attack against creature does not provoke opportunity attack from that creature for the rest of the turn (whether attack hits or not).",PHB
+Moderately Armored,Proficiency with light armor,"+1 STR or DEX (max 20); proficiency with medium armor and shields.",PHB
+Mounted Combatant,None,"Advantage on melee attack rolls against unmounted creature smaller than mount; force attack targeting mount to target you instead; if mount subjected to DEX save for half: takes none on success and half on failure.",PHB
+Observant,Increase INT or WIS by 1 (max 20),"Lip read if you can see mouth; +5 to passive Perception and Investigation.",PHB
+Polearm Master,None,"When you take Attack action with glaive/halberd/quarterstaff/spear/pike: bonus action attack with opposite end (1d4 bludgeoning); creatures provoke opportunity attack when entering reach (instead of leaving).",PHB
+Resilient,None,"+1 to chosen ability (max 20); gain proficiency in saving throws using chosen ability.",PHB
+Ritual Caster,INT or WIS 13+,"Choose class with ritual spells; gain ritual book containing 2 1st-level rituals from that class. Can copy more.",PHB
+Savage Attacker,None,"Once per turn when you roll damage for melee weapon attack you can reroll the weapon's damage dice and use either total.",PHB
+Sentinel,None,"Creatures provoke opportunity attacks even if Disengage; when you hit creature with opportunity attack, its speed becomes 0 for rest of turn; when creature within 5ft attacks ally (not you): use reaction to attack the attacker.",PHB
+Sharpshooter,None,"Long-range attacks have no disadvantage; ignore half/three-quarters cover; before attack with ranged weapon you have proficiency in: -5 attack +10 damage.",PHB
+Shield Master,None,"Bonus action shove with shield (target STR or DEX save vs Athletics); add shield bonus to AC of DEX saves vs effects targeting only you; when subjected to half-damage DEX save: take no damage on success.",PHB
+Skilled,None,"Gain proficiency in any combination of three skills or tools.",PHB
+Skulker,DEX 13+,"Hide when only lightly obscured from creature you're hiding from; missed ranged attacks don't reveal position; dim light doesn't impose disadvantage on Wisdom (Perception) checks relying on sight.",PHB
+Spell Sniper,Ability to cast at least 1 spell,"Doubled spell attack range; ranged spell attacks ignore half/three-quarters cover; learn one cantrip that requires attack roll (chosen class).",PHB
+Tavern Brawler,Increase STR or CON by 1 (max 20),"Proficient with improvised weapons; unarmed strike does 1d4 damage; when you hit with unarmed strike or improvised weapon as an action: bonus action grapple attempt.",PHB
+Tough,None,"HP max increases by 2 × character level; this increases applies retroactively and per level thereafter.",PHB
+War Caster,Ability to cast at least 1 spell,"Advantage on concentration saves; can cast somatic spells with hands full of weapons/shield; can use reaction (instead of opportunity attack) to cast a spell at provoking creature (target only that creature; 1 action casting time).",PHB
+Weapon Master,None,"+1 STR or DEX (max 20); gain proficiency with 4 weapons of choice.",PHB

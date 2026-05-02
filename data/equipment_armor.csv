@@ -1,0 +1,14 @@
+name,category,armor_class,strength_required,stealth,cost,weight_lb,don_time,doff_time,source
+Padded,Light,11 + DEX mod,—,Disadvantage,5 gp,8,1 minute,1 minute,Basic
+Leather,Light,11 + DEX mod,—,—,10 gp,10,1 minute,1 minute,Basic
+Studded Leather,Light,12 + DEX mod,—,—,45 gp,13,1 minute,1 minute,Basic
+Hide,Medium,12 + DEX mod (max 2),—,—,10 gp,12,1 minute,1 minute,Basic
+Chain Shirt,Medium,13 + DEX mod (max 2),—,—,50 gp,20,1 minute,1 minute,Basic
+Scale Mail,Medium,14 + DEX mod (max 2),—,Disadvantage,50 gp,45,1 minute,1 minute,Basic
+Breastplate,Medium,14 + DEX mod (max 2),—,—,400 gp,20,1 minute,1 minute,Basic
+Half Plate,Medium,15 + DEX mod (max 2),—,Disadvantage,750 gp,40,5 minutes,1 minute,Basic
+Ring Mail,Heavy,14,—,Disadvantage,30 gp,40,5 minutes,1 minute,Basic
+Chain Mail,Heavy,16,STR 13,Disadvantage,75 gp,55,10 minutes,5 minutes,Basic
+Splint,Heavy,17,STR 15,Disadvantage,200 gp,60,10 minutes,5 minutes,Basic
+Plate,Heavy,18,STR 15,Disadvantage,1500 gp,65,10 minutes,5 minutes,Basic
+Shield,Shield,+2,—,—,10 gp,6,1 action,1 action,Basic

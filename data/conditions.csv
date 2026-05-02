@@ -1,0 +1,16 @@
+name,description,effects,source
+Blinded,"Cannot see; auto-fails any check requiring sight.","Attack rolls against the creature have advantage; the creature's attack rolls have disadvantage.",Basic
+Charmed,"Cannot attack the charmer or target the charmer with harmful abilities or magical effects.","The charmer has advantage on social interaction Charisma checks against the charmed creature.",Basic
+Deafened,"Cannot hear; auto-fails any check requiring hearing.",,Basic
+Exhaustion,"Six levels of exhaustion. Effects accumulate.","Lvl 1: Disadvantage on ability checks. Lvl 2: Speed halved. Lvl 3: Disadvantage on attacks and saves. Lvl 4: HP max halved. Lvl 5: Speed = 0. Lvl 6: Death. Long rest reduces by 1 (food + water consumed).",Basic
+Frightened,"Disadvantage on ability checks and attack rolls while source of fear is in line of sight; cannot willingly move closer to the source.",,Basic
+Grappled,"Speed = 0; cannot benefit from speed bonuses. Ends if grappler incapacitated or moved out of reach.",,Basic
+Incapacitated,"Cannot take actions or reactions.",,Basic
+Invisible,"Heavily obscured for purposes of being seen; not auto-hidden (still detectable by sound and tracks).","Attacks against creature have disadvantage; creature's attacks have advantage.",Basic
+Paralyzed,"Incapacitated; cannot move or speak; auto-fails STR and DEX saves; attacks against the creature have advantage; any attack that hits the creature is a critical hit if the attacker is within 5 ft.",,Basic
+Petrified,"Transformed (with non-magical possessions) into solid inanimate substance. Weight x10; ages stop. Incapacitated; cannot move/speak; unaware of surroundings; attacks against have advantage; auto-fails STR and DEX saves; resistance to all damage; immune to poison and disease (current poison/disease suspended).",,Basic
+Poisoned,"Disadvantage on attack rolls and ability checks.",,Basic
+Prone,"Only movement option is crawl unless standing up. Standing costs half speed. Disadvantage on attack rolls. Attack rolls against the creature have advantage if attacker within 5 ft, disadvantage if attacker is more than 5 ft away.",,Basic
+Restrained,"Speed = 0. Disadvantage on attack rolls and DEX saves. Attacks against creature have advantage.",,Basic
+Stunned,"Incapacitated; cannot move; speak only falteringly. Auto-fails STR and DEX saves. Attacks against have advantage.",,Basic
+Unconscious,"Incapacitated; cannot move or speak; unaware. Drops what it holds; falls prone. Auto-fails STR and DEX saves. Attacks against have advantage. Critical hit if attacker within 5 ft.",,Basic

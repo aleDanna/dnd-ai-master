@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Reference material kept locally only — do not commit; use git-lfs if needed
+*.pdf

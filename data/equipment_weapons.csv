@@ -1,0 +1,38 @@
+name,category,proficiency_group,damage,damage_type,properties,cost,weight_lb,range,source
+Club,Simple Melee,Simple,1d4,bludgeoning,"Light",1 sp,2,,Basic
+Dagger,Simple Melee,Simple,1d4,piercing,"Finesse, Light, Thrown",2 gp,1,20/60,Basic
+Greatclub,Simple Melee,Simple,1d8,bludgeoning,"Two-handed",2 sp,10,,Basic
+Handaxe,Simple Melee,Simple,1d6,slashing,"Light, Thrown",5 gp,2,20/60,Basic
+Javelin,Simple Melee,Simple,1d6,piercing,"Thrown",5 sp,2,30/120,Basic
+Light Hammer,Simple Melee,Simple,1d4,bludgeoning,"Light, Thrown",2 gp,2,20/60,Basic
+Mace,Simple Melee,Simple,1d6,bludgeoning,,5 gp,4,,Basic
+Quarterstaff,Simple Melee,Simple,1d6,bludgeoning,"Versatile (1d8)",2 sp,4,,Basic
+Sickle,Simple Melee,Simple,1d4,slashing,"Light",1 gp,2,,Basic
+Spear,Simple Melee,Simple,1d6,piercing,"Thrown, Versatile (1d8)",1 gp,3,20/60,Basic
+Light Crossbow,Simple Ranged,Simple,1d8,piercing,"Ammunition, Loading, Two-handed",25 gp,5,80/320,Basic
+Dart,Simple Ranged,Simple,1d4,piercing,"Finesse, Thrown",5 cp,0.25,20/60,Basic
+Shortbow,Simple Ranged,Simple,1d6,piercing,"Ammunition, Two-handed",25 gp,2,80/320,Basic
+Sling,Simple Ranged,Simple,1d4,bludgeoning,"Ammunition",1 sp,0,30/120,Basic
+Battleaxe,Martial Melee,Martial,1d8,slashing,"Versatile (1d10)",10 gp,4,,Basic
+Flail,Martial Melee,Martial,1d8,bludgeoning,,10 gp,2,,Basic
+Glaive,Martial Melee,Martial,1d10,slashing,"Heavy, Reach, Two-handed",20 gp,6,,Basic
+Greataxe,Martial Melee,Martial,1d12,slashing,"Heavy, Two-handed",30 gp,7,,Basic
+Greatsword,Martial Melee,Martial,2d6,slashing,"Heavy, Two-handed",50 gp,6,,Basic
+Halberd,Martial Melee,Martial,1d10,slashing,"Heavy, Reach, Two-handed",20 gp,6,,Basic
+Lance,Martial Melee,Martial,1d12,piercing,"Reach, Special (disadvantage if 5ft creature attacked; two-handed when not mounted)",10 gp,6,,Basic
+Longsword,Martial Melee,Martial,1d8,slashing,"Versatile (1d10)",15 gp,3,,Basic
+Maul,Martial Melee,Martial,2d6,bludgeoning,"Heavy, Two-handed",10 gp,10,,Basic
+Morningstar,Martial Melee,Martial,1d8,piercing,,15 gp,4,,Basic
+Pike,Martial Melee,Martial,1d10,piercing,"Heavy, Reach, Two-handed",5 gp,18,,Basic
+Rapier,Martial Melee,Martial,1d8,piercing,"Finesse",25 gp,2,,Basic
+Scimitar,Martial Melee,Martial,1d6,slashing,"Finesse, Light",25 gp,3,,Basic
+Shortsword,Martial Melee,Martial,1d6,piercing,"Finesse, Light",10 gp,2,,Basic
+Trident,Martial Melee,Martial,1d6,piercing,"Thrown, Versatile (1d8)",5 gp,4,20/60,Basic
+War Pick,Martial Melee,Martial,1d8,piercing,,5 gp,2,,Basic
+Warhammer,Martial Melee,Martial,1d8,bludgeoning,"Versatile (1d10)",15 gp,2,,Basic
+Whip,Martial Melee,Martial,1d4,slashing,"Finesse, Reach",2 gp,3,,Basic
+Blowgun,Martial Ranged,Martial,1,piercing,"Ammunition, Loading",10 gp,1,25/100,Basic
+Hand Crossbow,Martial Ranged,Martial,1d6,piercing,"Ammunition, Light, Loading",75 gp,3,30/120,Basic
+Heavy Crossbow,Martial Ranged,Martial,1d10,piercing,"Ammunition, Heavy, Loading, Two-handed",50 gp,18,100/400,Basic
+Longbow,Martial Ranged,Martial,1d8,piercing,"Ammunition, Heavy, Two-handed",50 gp,2,150/600,Basic
+Net,Martial Ranged,Martial,—,—,"Special (Large or smaller creature hit is restrained until freed; AC 10 net; STR action DC 10; 5 slashing damage destroys); Thrown",1 gp,3,5/15,Basic
