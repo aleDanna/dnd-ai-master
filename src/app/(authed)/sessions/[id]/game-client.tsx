@@ -12,6 +12,7 @@ import { SpellModal } from '@/components/game/spell-modal';
 import { useTurnStream } from '@/sessions/use-turn-stream';
 import { useSessionState } from '@/sessions/use-session-state';
 import { AutoplayToggle } from '@/components/game/autoplay-toggle';
+import { setActiveAudio, getActiveAudio } from '@/lib/tts-playback';
 import type { Character } from '@/engine/types';
 import type { CombatActorRow, DiceRollRow, MessageRow, SessionRow, SessionStateRow } from '@/sessions/client-types';
 
@@ -30,7 +31,12 @@ export function GameClient({ sessionId, session, character, initialState, initia
   const [messages, setMessages] = React.useState<MessageRow[]>(initialMessages);
   const [rolls, setRolls] = React.useState<DiceRollRow[]>(initialRolls);
   const [spellOpen, setSpellOpen] = React.useState(false);
+  const [autoplay, setAutoplay] = React.useState(initialAutoplay);
   const lastCompleteIdRef = React.useRef<string | null>(null);
+  // Seed with the most recent persisted master message so we don't autoplay it on page mount.
+  const lastAutoplayedRef = React.useRef<string | null>(
+    [...initialMessages].reverse().find((m) => m.role === 'master')?.id ?? null,
+  );
   const turn = useTurnStream(sessionId);
   const stateSub = useSessionState(sessionId);
 
@@ -66,6 +72,35 @@ export function GameClient({ sessionId, session, character, initialState, initia
     setMessages((prev) => [...prev, { id: `temp-${Date.now()}`, sessionId, role: 'player', content: text, createdAt: new Date().toISOString() }]);
     void turn.send(text);
   };
+
+  // Auto-play the latest persisted master message when the toggle is on.
+  React.useEffect(() => {
+    if (!autoplay) return;
+    const newest = [...messages]
+      .reverse()
+      .find((m) => m.role === 'master' && !m.id.startsWith('temp-'));
+    if (!newest) return;
+    if (lastAutoplayedRef.current === newest.id) return;
+    lastAutoplayedRef.current = newest.id;
+
+    void (async () => {
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}/messages/${newest.id}/tts`);
+        if (!res.ok) return; // silent — UI can still play manually via the Listen button
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.onended = () => {
+          if (getActiveAudio() === audio) setActiveAudio(null);
+          URL.revokeObjectURL(url);
+        };
+        setActiveAudio(audio);
+        await audio.play();
+      } catch {
+        // Network / decode error — keep the manual Listen button as a fallback.
+      }
+    })();
+  }, [messages, autoplay, sessionId]);
 
   if (!liveState) {
     return (
@@ -104,7 +139,7 @@ export function GameClient({ sessionId, session, character, initialState, initia
             {liveState.inCombat ? 'COMBAT' : 'EXPLORATION'} · LANG {session.language?.toUpperCase() ?? '–'}
           </div>
         </div>
-        <AutoplayToggle initial={initialAutoplay} />
+        <AutoplayToggle value={autoplay} onChange={setAutoplay} />
         <Chip tone="accent" dot>SSE live</Chip>
         <Wordmark size={14} style={{ opacity: 0.7 }} />
       </header>

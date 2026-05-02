@@ -2,6 +2,7 @@
 import * as React from 'react';
 import { Icon } from '@/components/ui/icon';
 import { SpinningDie } from './spinning-die';
+import { setActiveAudio, subscribePlayback } from '@/lib/tts-playback';
 
 export interface TtsButtonProps {
   sessionId: string;
@@ -29,6 +30,15 @@ export function TtsButton({ sessionId, messageId }: TtsButtonProps) {
     [],
   );
 
+  // If another player (manual or autoplay) takes over, drop our visual "playing" state.
+  React.useEffect(() => {
+    return subscribePlayback((active) => {
+      if (audioRef.current && active !== audioRef.current) {
+        setState((s) => (s === 'playing' ? 'idle' : s));
+      }
+    });
+  }, []);
+
   const playFromUrl = (url: string): void => {
     const audio = new Audio(url);
     audioRef.current = audio;
@@ -38,6 +48,7 @@ export function TtsButton({ sessionId, messageId }: TtsButtonProps) {
       setError('playback-failed');
     };
     setState('playing');
+    setActiveAudio(audio);
     void audio.play().catch(() => {
       setState('error');
       setError('playback-blocked');
@@ -47,6 +58,7 @@ export function TtsButton({ sessionId, messageId }: TtsButtonProps) {
   const onClick = async (): Promise<void> => {
     if (state === 'playing') {
       audioRef.current?.pause();
+      setActiveAudio(null);
       audioRef.current = null;
       setState('idle');
       return;

@@ -3,20 +3,20 @@ import * as React from 'react';
 import { Icon } from '@/components/ui/icon';
 
 export interface AutoplayToggleProps {
-  initial: boolean;
-  /** Called when the user toggles. The component still owns local state for instant UI feedback. */
-  onChange?: (value: boolean) => void;
+  /** Controlled value owned by the parent (game-client) so the autoplay effect can read it. */
+  value: boolean;
+  onChange: (value: boolean) => void;
 }
 
 /** Compact pill button — fits in the game-screen header. Posts to /api/preferences on click. */
-export function AutoplayToggle({ initial, onChange }: AutoplayToggleProps) {
-  const [enabled, setEnabled] = React.useState(initial);
+export function AutoplayToggle({ value, onChange }: AutoplayToggleProps) {
+  const enabled = value;
   const [busy, setBusy] = React.useState(false);
 
   const onClick = async (): Promise<void> => {
     if (busy) return;
     const next = !enabled;
-    setEnabled(next); // optimistic
+    onChange(next); // optimistic update at the parent
     setBusy(true);
     try {
       const res = await fetch('/api/preferences', {
@@ -24,14 +24,9 @@ export function AutoplayToggle({ initial, onChange }: AutoplayToggleProps) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ ttsAutoplay: next }),
       });
-      if (!res.ok) {
-        // Revert on failure
-        setEnabled(!next);
-      } else {
-        onChange?.(next);
-      }
+      if (!res.ok) onChange(!next); // revert on failure
     } catch {
-      setEnabled(!next);
+      onChange(!next);
     } finally {
       setBusy(false);
     }
