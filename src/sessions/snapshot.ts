@@ -1,0 +1,131 @@
+import { eq, and, isNull } from 'drizzle-orm';
+import { db } from '@/db/client';
+import {
+  sessions as sessionsTable,
+  sessionState as sessionStateTable,
+  combatActors as combatActorsTable,
+  characters as charactersTable,
+  type SessionState,
+  type CombatActor as CombatActorRow,
+} from '@/db/schema';
+import type { Character, CombatActor, EngineState, ActorRuntimeState } from '@/engine/types';
+import type { SnapshotForModel } from './types';
+
+export async function buildSnapshot(sessionId: string, userId: string): Promise<SnapshotForModel> {
+  const [session] = await db
+    .select()
+    .from(sessionsTable)
+    .where(and(eq(sessionsTable.id, sessionId), eq(sessionsTable.userId, userId), isNull(sessionsTable.deletedAt)))
+    .limit(1);
+  if (!session) throw new Error(`buildSnapshot: session ${sessionId} not found for user ${userId}`);
+
+  const [character] = await db.select().from(charactersTable).where(eq(charactersTable.id, session.characterId)).limit(1);
+  if (!character) throw new Error(`buildSnapshot: character ${session.characterId} not found`);
+
+  const [stateRow] = await db.select().from(sessionStateTable).where(eq(sessionStateTable.sessionId, sessionId)).limit(1);
+  if (!stateRow) throw new Error(`buildSnapshot: session_state for ${sessionId} not found`);
+
+  const actorRows = await db.select().from(combatActorsTable).where(eq(combatActorsTable.sessionId, sessionId));
+
+  const characters: Character[] = [
+    {
+      id: character.id,
+      name: character.name,
+      level: character.level,
+      classSlug: character.classSlug,
+      raceSlug: character.raceSlug,
+      backgroundSlug: character.backgroundSlug,
+      abilities: character.abilities,
+      proficiencyBonus: character.proficiencyBonus,
+      hpMax: character.hpMax,
+      ac: character.ac,
+      speed: character.speed,
+      proficiencies: character.proficiencies as Character['proficiencies'],
+      spellcasting: character.spellcasting as Character['spellcasting'],
+      features: character.features as Character['features'],
+      inventory: character.inventory,
+      hitDiceMax: character.hitDiceMax,
+      hitDieSize: character.hitDieSize,
+    },
+  ];
+
+  const combatActors: CombatActor[] = actorRows.map(toEngineCombatActor);
+
+  const runtime: Record<string, ActorRuntimeState> = {};
+  runtime[character.id] = {
+    actorId: character.id,
+    hpCurrent: stateRow.hpCurrent,
+    tempHp: stateRow.tempHp,
+    deathSaves: { successes: 0, failures: 0 },
+    conditions: stateRow.conditions as ActorRuntimeState['conditions'],
+    hitDiceRemaining: stateRow.hitDiceRemaining,
+    spellSlotsUsed: parseSlotsUsed(stateRow.spellSlotsUsed),
+    resourcesUsed: stateRow.resourcesUsed,
+  };
+  for (const a of actorRows) {
+    runtime[a.id] = {
+      actorId: a.id,
+      hpCurrent: a.hpCurrent,
+      tempHp: 0,
+      deathSaves: { successes: 0, failures: 0 },
+      conditions: a.conditions as ActorRuntimeState['conditions'],
+    };
+  }
+
+  const state: EngineState = {
+    characters,
+    combatActors,
+    runtime,
+    combat: stateRow.combat ?? null,
+    scene: stateRow.scene,
+  };
+
+  const characterMonoSpace = JSON.stringify({
+    name: character.name,
+    level: character.level,
+    class: character.classSlug,
+    race: character.raceSlug,
+    hp: `${stateRow.hpCurrent}/${character.hpMax}`,
+    ac: character.ac,
+    abilities: character.abilities,
+    saves: character.proficiencies.saves,
+    skills: character.proficiencies.skills,
+    conditions: stateRow.conditions,
+    inCombat: stateRow.inCombat,
+  });
+
+  return { state, characterMonoSpace, scene: stateRow.scene, language: session.language };
+}
+
+function toEngineCombatActor(row: CombatActorRow): CombatActor {
+  const c = (row.custom ?? {}) as Partial<CombatActor>;
+  return {
+    id: row.id,
+    kind: row.monsterSlug ? 'monster' : 'npc',
+    name: row.name,
+    monsterSlug: row.monsterSlug ?? undefined,
+    hpMax: row.hpMax,
+    ac: c.ac ?? 10,
+    abilities: c.abilities ?? { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 },
+    proficiencyBonus: c.proficiencyBonus ?? 2,
+    initiativeBonus: c.initiativeBonus ?? 0,
+    resistances: c.resistances ?? [],
+    immunities: c.immunities ?? [],
+    vulnerabilities: c.vulnerabilities ?? [],
+    conditionImmunities: c.conditionImmunities ?? [],
+  };
+}
+
+function parseSlotsUsed(raw: Record<string, number>): ActorRuntimeState['spellSlotsUsed'] {
+  const out: ActorRuntimeState['spellSlotsUsed'] = {};
+  for (const [k, v] of Object.entries(raw)) {
+    const lvl = Number(k);
+    if (lvl >= 1 && lvl <= 9 && Number.isFinite(v)) {
+      (out as Record<number, number>)[lvl] = v;
+    }
+  }
+  return out;
+}
+
+function noop(_: SessionState): void { /* keep import for type-only usage */ }
+void noop;
