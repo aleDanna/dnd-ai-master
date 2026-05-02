@@ -1,0 +1,222 @@
+/* AI&Games Design System — Foundations
+   Colors, typography, spacing, radii, shadows.
+   Light mode by default; .dark applied to <html> swaps surfaces.
+*/
+
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: local('Cormorant Garamond'), url('https://fonts.gstatic.com/s/cormorantgaramond/v16/co3bmX5slCNuHLi8bLeY9MK7whWMhyjornFLsS6V7w.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 400 600;
+  font-display: swap;
+  src: local('Cormorant Garamond Italic'), url('https://fonts.gstatic.com/s/cormorantgaramond/v16/co3WmX5slCNuHLi8bLeY9MK7whWMhyjQAFjpAi-MGw.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: local('Inter'), url('https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50ojIa1ZL7.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: local('JetBrains Mono'), url('https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKxjPVmUsaaDhw.woff2') format('woff2');
+}
+
+:root {
+  /* ── Brand palette ───────────────────────────────────────── */
+  /* Vivid fantasy: obsidian dark base, dragonfire reds, arcane violets */
+  --obsidian:   #0E0B14;   /* the void · necromancer black */
+  --pitch:      #1B1620;   /* sunken surface, deeper than ink */
+  --ink:        #2A1F2C;   /* warm purple-black, default text on light */
+  --bone:       #E6D8B6;   /* aged bone, warmer than parchment */
+  --moonpaper:  #F3E6CE;   /* moonlit page, off-white with gold cast */
+  --parchment:  #2A1F2C;   /* legacy alias → ink, palette is now dark-first */
+
+  --dragonfire: #D7331C;   /* primary accent — fire, blood, action */
+  --dragonfire-2: #F0533A;
+  --ember:      #E68A2C;   /* secondary heat — warning, low HP */
+  --ember-2:    #F5A347;
+  --arcane:     #7A4FB8;   /* spellcraft violet — magic, focus, links */
+  --arcane-2:   #9C73D6;
+  --verdigris:  #2D8F6F;   /* poison-green / healing patina */
+  --gold:       #E0B84A;   /* treasure, XP, nat 20 */
+  --bone-glow:  #F3E6CE;   /* alias to moonpaper for type-on-dark */
+
+  /* ── Semantic, dark-first (the brand defaults to night) ── */
+  --bg:         var(--obsidian);
+  --bg-elev:    #18131F;
+  --bg-card:    #221A2A;
+  --bg-sunken:  var(--pitch);
+
+  --fg:         var(--moonpaper);
+  --fg-muted:   #B5A48A;
+  --fg-subtle:  #7A6B59;
+  --fg-on-accent: #FFFFFF;
+
+  --border:     rgba(243, 230, 206, 0.10);
+  --border-strong: rgba(243, 230, 206, 0.22);
+  --scrim:      rgba(0, 0, 0, 0.72);
+
+  --accent:     var(--dragonfire);
+  --accent-hover: var(--dragonfire-2);
+  --danger:     var(--dragonfire);
+  --success:    var(--verdigris);
+  --reward:     var(--gold);
+
+  /* ── Type families ──────────────────────────────────────── */
+  --font-display: 'Cormorant Garamond', 'EB Garamond', Georgia, serif;
+  --font-ui:      'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:    'JetBrains Mono', 'SF Mono', Consolas, monospace;
+
+  /* ── Type scale (px) ────────────────────────────────────── */
+  --fs-display: 56px;   /* hero wordmark */
+  --fs-h1:      40px;
+  --fs-h2:      28px;
+  --fs-h3:      20px;
+  --fs-narrative: 18px; /* chat narrative */
+  --fs-body:    14px;
+  --fs-dense:   13px;
+  --fs-meta:    12px;
+  --fs-eyebrow: 11px;   /* all-caps STR DEX etc */
+
+  /* ── Line heights ───────────────────────────────────────── */
+  --lh-tight:   1.15;
+  --lh-snug:    1.3;
+  --lh-body:    1.5;
+  --lh-narrative: 1.55;
+
+  /* ── Spacing scale (4px base, no 6/20) ──────────────────── */
+  --sp-1:  2px;
+  --sp-2:  4px;
+  --sp-3:  8px;
+  --sp-4:  12px;
+  --sp-5:  16px;
+  --sp-6:  24px;
+  --sp-7:  32px;
+  --sp-8:  48px;
+  --sp-9:  64px;
+  --sp-10: 96px;
+  --sp-11: 128px;
+
+  /* ── Radii ──────────────────────────────────────────────── */
+  --r-input:    6px;
+  --r-button:   6px;
+  --r-card:     8px;
+  --r-composer: 12px;
+  --r-pill:     999px;
+
+  /* ── Shadows ────────────────────────────────────────────── */
+  --shadow-1: 0 1px 2px rgba(26, 23, 20, 0.06);
+  --shadow-2: 0 4px 12px rgba(26, 23, 20, 0.08);
+  --shadow-3: 0 16px 40px rgba(26, 23, 20, 0.16);
+
+  /* ── Motion ─────────────────────────────────────────────── */
+  --ease-out:  cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-acknowledge: ease-out;
+  --dur-reveal:      220ms;
+  --dur-acknowledge: 120ms;
+  --dur-roll:        600ms;
+
+  /* ── Layout ─────────────────────────────────────────────── */
+  --max-app:       1280px;
+  --max-narrative: 720px;
+  --max-form:      560px;
+  --pane-left:     280px;
+  --pane-right:    320px;
+}
+
+/* Light/scribe mode: aged-bone surface for daylight reading (e.g. SRD pages) */
+html.scribe {
+  --bg:         var(--moonpaper);
+  --bg-elev:    #FAF1DA;
+  --bg-card:    #FFFFFF;
+  --bg-sunken:  var(--bone);
+
+  --fg:         var(--ink);
+  --fg-muted:   #5A4263;
+  --fg-subtle:  #8A7A8E;
+
+  --border:     rgba(42, 31, 44, 0.12);
+  --border-strong: rgba(42, 31, 44, 0.22);
+  --scrim:      rgba(42, 31, 44, 0.60);
+}
+
+/* ── Element defaults ─────────────────────────────────────── */
+html { box-sizing: border-box; }
+*, *::before, *::after { box-sizing: inherit; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: var(--lh-tight);
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: var(--fg);
+}
+h1 { font-size: var(--fs-h1); }
+h2 { font-size: var(--fs-h2); }
+h3 { font-size: var(--fs-h3); }
+
+p { margin: 0; }
+
+.eyebrow,
+.stat-label {
+  font-family: var(--font-ui);
+  font-size: var(--fs-eyebrow);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.narrative {
+  font-family: var(--font-display);
+  font-size: var(--fs-narrative);
+  line-height: var(--lh-narrative);
+  color: var(--fg);
+  max-width: 64ch;
+}
+
+.mono,
+code, kbd, samp {
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+  font-feature-settings: 'liga' off;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--dur-acknowledge) var(--ease-acknowledge);
+}
+a:hover { border-bottom-color: currentColor; }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection { background: var(--gold); color: var(--ink); }

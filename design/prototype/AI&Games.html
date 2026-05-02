@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>AI&Games — D&D 5e AI Dungeon Master</title>
+<link rel="stylesheet" href="colors_and_type.css"/>
+<style>
+  html, body, #app { height: 100%; }
+  body { overscroll-behavior: none; }
+  * { -webkit-tap-highlight-color: transparent; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  button:focus-visible { outline: 2px solid var(--arcane-2); outline-offset: 2px; }
+  textarea, input { font-family: var(--font-ui); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="ui.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="app/components-base.jsx"></script>
+<script type="text/babel" src="app/screens-marketing.jsx"></script>
+<script type="text/babel" src="app/screens-hub.jsx"></script>
+<script type="text/babel" src="app/screens-campaign-wizard.jsx"></script>
+<script type="text/babel" src="app/screens-character-wizard.jsx"></script>
+<script type="text/babel" src="app/screens-lobby.jsx"></script>
+<script type="text/babel" src="app/pane-character.jsx"></script>
+<script type="text/babel" src="app/pane-narrative.jsx"></script>
+<script type="text/babel" src="app/pane-mechanics.jsx"></script>
+<script type="text/babel" src="app/screens-game.jsx"></script>
+<script type="text/babel" src="app/app.jsx"></script>
+</body>
+</html>
