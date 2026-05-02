@@ -191,7 +191,7 @@ function mergeMessages(history: MessageRow[], live: TurnEvent[]): NarrativeMessa
   // Append live events: build the in-progress master message from narrative_delta + tool_use_end events.
   let liveText = '';
   const liveTools: NonNullable<NarrativeMessage['tools']> = [];
-  let pendingNames: Record<string, string> = {};
+  const pendingNames: Record<string, string> = {};
   for (const ev of live) {
     if (ev.type === 'narrative_delta') liveText += ev.text;
     else if (ev.type === 'tool_use_start') pendingNames[ev.toolUseId] = ev.name;

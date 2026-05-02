@@ -1,5 +1,6 @@
 'use client';
 import * as React from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -57,7 +58,7 @@ export function NewSessionClient({ characters }: { characters: CharSummary[] }) 
         <Eyebrow style={{ marginBottom: 8 }}>Character</Eyebrow>
         {characters.length === 0 ? (
           <Card>
-            <div>You have no characters yet. <a href="/characters/new" style={{ color: 'var(--arcane)' }}>Roll one</a> first.</div>
+            <div>You have no characters yet. <Link href="/characters/new" style={{ color: 'var(--arcane)' }}>Roll one</Link> first.</div>
           </Card>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>

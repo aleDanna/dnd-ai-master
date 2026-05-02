@@ -57,7 +57,7 @@ export default async function SessionsListPage() {
                 <Icon name="more" size={16} style={{ color: 'var(--fg-subtle)' }} />
               </div>
               <div style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 14, color: 'var(--fg-muted)', lineHeight: 1.5 }}>
-                "{s.premise}"
+                &ldquo;{s.premise}&rdquo;
               </div>
               <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'var(--fg-subtle)', fontFamily: 'var(--font-mono)', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
                 <span>updated {new Date(s.updatedAt).toLocaleString()}</span>
