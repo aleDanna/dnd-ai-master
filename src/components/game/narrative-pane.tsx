@@ -6,6 +6,8 @@ import { Icon, type IconName } from '@/components/ui/icon';
 import { ToolPill } from './tool-pill';
 import { SpinningDie } from './spinning-die';
 import { TtsButton } from './tts-button';
+import { RollRequestButton } from './roll-request-button';
+import { parseRollRequests } from '@/lib/roll-parser';
 import type { TurnEvent } from '@/sessions/types';
 import type { MessageRow } from '@/sessions/client-types';
 
@@ -23,9 +25,11 @@ export interface NarrativePaneProps {
   busy: boolean;
   onSend: (text: string) => void;
   onCastSpell?: () => void;
+  /** When true, master messages get inline roll buttons parsed from their text. */
+  manualRolls: boolean;
 }
 
-export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, onCastSpell }: NarrativePaneProps) {
+export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, onCastSpell, manualRolls }: NarrativePaneProps) {
   const [draft, setDraft] = React.useState('');
   const merged = mergeMessages(history, liveEvents);
 
@@ -46,7 +50,15 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
     <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
       <div style={{ flex: 1, padding: '32px 40px 16px' }}>
         <div style={{ maxWidth: 680, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 22 }}>
-          {merged.map((m, i) => <MessageView key={m.id ?? `live-${i}`} m={m} sessionId={sessionId} />)}
+          {merged.map((m, i) => (
+            <MessageView
+              key={m.id ?? `live-${i}`}
+              m={m}
+              sessionId={sessionId}
+              manualRolls={manualRolls}
+              onRollResult={onSend}
+            />
+          ))}
           {busy && (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', color: 'var(--fg-muted)', fontFamily: 'var(--font-display)', fontSize: 16, fontStyle: 'italic' }}>
               <SpinningDie /> The Master is responding…
@@ -141,15 +153,34 @@ function Quick({ icon, label, onClick }: { icon: IconName; label: string; onClic
   );
 }
 
-function MessageView({ m, sessionId }: { m: NarrativeMessage; sessionId: string }) {
+function MessageView({
+  m,
+  sessionId,
+  manualRolls,
+  onRollResult,
+}: {
+  m: NarrativeMessage;
+  sessionId: string;
+  manualRolls: boolean;
+  onRollResult: (text: string) => void;
+}) {
   if (m.role === 'master') {
+    const rollRequests = manualRolls ? parseRollRequests(m.content) : [];
+    const hasFooter = m.id || (m.tools && m.tools.length > 0) || rollRequests.length > 0;
     return (
       <div>
         <Eyebrow style={{ marginBottom: 6 }}>The Master</Eyebrow>
         <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, lineHeight: 1.55, color: 'var(--fg)' }}>{m.content}</div>
-        {(m.id || (m.tools && m.tools.length > 0)) && (
+        {hasFooter && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10, alignItems: 'center' }}>
             {m.id && <TtsButton sessionId={sessionId} messageId={m.id} />}
+            {rollRequests.map((req) => (
+              <RollRequestButton
+                key={`${m.id ?? 'live'}-roll-${req.index}`}
+                request={req}
+                onResult={(text) => onRollResult(text)}
+              />
+            ))}
             {m.tools?.map((t, i) => (
               <ToolPill
                 key={i}

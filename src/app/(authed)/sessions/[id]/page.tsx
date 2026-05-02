@@ -59,6 +59,7 @@ export default async function GameSessionPage({ params }: { params: Promise<{ id
     <GameClient
       sessionId={sessionId}
       initialAutoplay={preferences.ttsAutoplay}
+      initialManualRolls={preferences.manualRolls}
       session={{
         id: session.id,
         userId: session.userId,

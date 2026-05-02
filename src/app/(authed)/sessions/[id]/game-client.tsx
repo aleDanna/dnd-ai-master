@@ -26,9 +26,10 @@ export interface GameClientProps {
   initialRolls: DiceRollRow[];
   initialActors: CombatActorRow[];
   initialAutoplay: boolean;
+  initialManualRolls: boolean;
 }
 
-export function GameClient({ sessionId, session, character, initialState, initialMessages, initialRolls, initialActors, initialAutoplay }: GameClientProps) {
+export function GameClient({ sessionId, session, character, initialState, initialMessages, initialRolls, initialActors, initialAutoplay, initialManualRolls }: GameClientProps) {
   const [messages, setMessages] = React.useState<MessageRow[]>(initialMessages);
   const [rolls, setRolls] = React.useState<DiceRollRow[]>(initialRolls);
   const [spellOpen, setSpellOpen] = React.useState(false);
@@ -156,6 +157,7 @@ export function GameClient({ sessionId, session, character, initialState, initia
             busy={turn.busy}
             onSend={send}
             onCastSpell={character.spellcasting && slots.length > 0 ? () => setSpellOpen(true) : undefined}
+            manualRolls={initialManualRolls}
           />
           {(turn.error || serverError) && (
             <div style={{ padding: '8px 16px', background: 'var(--bg-card)', color: 'var(--ember)', borderTop: '1px solid var(--ember)', fontSize: 12 }}>
