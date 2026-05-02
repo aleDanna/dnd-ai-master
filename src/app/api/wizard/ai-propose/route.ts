@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { proposeOne, type ProposeInput } from '@/ai/wizard/loop';
 import { loadOptions } from '@/characters/options';
+import { validateProposal } from '@/ai/wizard/validate-proposal';
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -22,6 +23,17 @@ export async function POST(req: NextRequest) {
       srdContext,
       currentChoices: body.currentChoices ?? {},
     });
+    const validation = validateProposal(proposal, {
+      raceSlugs: options.races.map((r) => r.slug),
+      classSlugs: options.classes.map((c) => c.slug),
+      backgroundSlugs: options.backgrounds.map((b) => b.slug),
+    });
+    if (!validation.ok) {
+      return new Response(JSON.stringify({ error: 'invalid_proposal', detail: validation.error, proposal }), {
+        status: 422,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
     return new Response(JSON.stringify({ proposal }), {
       headers: { 'content-type': 'application/json' },
     });
