@@ -15,6 +15,13 @@
       "when": 1777727579049,
       "tag": "0001_old_blur",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777732494308,
+      "tag": "0002_outstanding_tempest",
+      "breakpoints": true
     }
   ]
 }
