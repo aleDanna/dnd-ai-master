@@ -75,7 +75,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           .filter((m) => m.role !== 'system')
           .map((m) => ({ role: m.role === 'master' ? 'assistant' : 'user', content: m.content }));
 
-        // 5. Run the tool loop
+        // 5. Run the tool loop — events flush as they happen via onEvent
         const result = await runToolLoop({
           client: getAnthropicClient(),
           model: MASTER_MODEL,
@@ -97,14 +97,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               },
             });
           },
+          onEvent: (ev) => send(ev.type, ev),
         });
 
-        // 6. Stream all events to the client
-        for (const ev of result.events) {
-          send(ev.type, ev);
-        }
-
-        // 7. Persist master message
+        // 6. Persist master message
         const [mm] = await db.insert(sessionMessages).values({ sessionId, role: 'master', content: result.finalText }).returning();
         send('turn_complete', { messageId: mm!.id, durationMs: Date.now() - t0, toolCallCount: result.toolCallCount, truncated: result.truncated, timedOut: result.timedOut });
       } catch (e) {
