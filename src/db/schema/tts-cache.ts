@@ -1,12 +1,6 @@
-import { pgTable, uuid, text, timestamp, primaryKey, customType } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, primaryKey } from 'drizzle-orm/pg-core';
+import { bytea } from '../types';
 import { sessionMessages } from './session-messages';
-
-/** Postgres bytea ↔ Node Buffer. */
-const bytea = customType<{ data: Buffer; driverData: Buffer }>({
-  dataType() {
-    return 'bytea';
-  },
-});
 
 /**
  * Server-side cache of synthesized TTS audio. Keyed by (messageId, voice) — a single
