@@ -23,4 +23,9 @@ export interface SnapshotForModel {
 }
 
 export const TURN_TOOL_CALL_CAP = 12;
-export const TURN_TIMEOUT_MS = 60_000;
+// Wall-clock budget for the full tool loop (one turn = N model round-trips).
+// gpt-5 with reasoning routinely takes 20-40s per round-trip, and a turn that
+// calls multiple tools (e.g. add_item + generate_scene_image) needs 2-3
+// round-trips to also produce narration. 60s was too tight; default is now
+// 120s, env-overridable for testing or slow networks.
+export const TURN_TIMEOUT_MS = Number(process.env.TURN_TIMEOUT_MS ?? '120000');
