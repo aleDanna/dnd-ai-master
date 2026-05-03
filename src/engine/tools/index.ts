@@ -237,15 +237,4 @@ export const TOOL_DEFINITIONS: AnthropicTool[] = [
       },
     } as never,
   },
-  {
-    name: 'generate_scene_image',
-    description: 'Queue a scene image generation with a visual prompt. The prompt is queued asynchronously and will be processed by the image generation service.',
-    input_schema: {
-      type: 'object',
-      required: ['visualPrompt'],
-      properties: {
-        visualPrompt: { type: 'string', description: 'A detailed visual description of the scene to generate.' },
-      },
-    } as never,
-  },
 ];
