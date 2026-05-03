@@ -5,7 +5,7 @@ import { ensureUser } from '@/db/users';
 import { sessions, aiUsage } from '@/db/schema';
 import { saveCharacter } from '@/characters/persist';
 import { emptyWizardState } from '@/characters/types';
-import { checkQuotas } from '@/ai/master/quotas';
+import { checkQuotas, DAILY_TURN_CAP } from '@/ai/master/quotas';
 
 const TEST_USER = 'user_quota_' + Date.now();
 
@@ -26,7 +26,10 @@ describe('checkQuotas', () => {
 
   it('rejects when daily turn cap is reached', async () => {
     await ensureUser(TEST_USER);
-    const inserts = Array.from({ length: 201 }, () => ({
+    // Insert one row past the configured cap (env-overridable since
+    // 2026-05-03 — the test must respect DAILY_TURN_CAP rather than a
+    // hardcoded 200).
+    const inserts = Array.from({ length: DAILY_TURN_CAP + 1 }, () => ({
       userId: TEST_USER,
       endpoint: 'master' as const,
       model: 'claude-sonnet-4-5-20250929',
