@@ -17,6 +17,23 @@ export interface UserPreferences {
   aiProvider?: 'anthropic' | 'openai';
   /** Specific model used for master narration + wizard proposals. When unset, falls back to env defaults. */
   aiMasterModel?: string;
+  /**
+   * Controls how proactively the master suggests possible actions to the player.
+   * - 'free': narrate the scene and end with an open question. No bullet lists,
+   *   no enumerated options. Player drives every choice.
+   * - 'balanced': may hint at possibilities in flowing prose ("vedi due varchi
+   *   davanti a te, una porta e un'arco di pietra") but does not enumerate
+   *   options as a list.
+   * - 'structured': full "Vuoi:" / "Choose:" lists with numbered/bulleted
+   *   options and explicit roll requests per option. Default for new users.
+   */
+  masterGuidanceLevel?: 'free' | 'balanced' | 'structured';
+}
+
+export type MasterGuidanceLevel = NonNullable<UserPreferences['masterGuidanceLevel']>;
+export const MASTER_GUIDANCE_LEVELS: MasterGuidanceLevel[] = ['free', 'balanced', 'structured'];
+export function isMasterGuidanceLevel(v: unknown): v is MasterGuidanceLevel {
+  return typeof v === 'string' && (MASTER_GUIDANCE_LEVELS as string[]).includes(v);
 }
 
 export const users = pgTable('users', {

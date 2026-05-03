@@ -28,6 +28,10 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   // at request time, not at module-load time.
   aiProvider: 'anthropic',
   aiMasterModel: 'claude-sonnet-4-5',
+  // Default master guidance: balanced — hint at options without enumerating
+  // them as a bullet list. Existing players who set their preference keep
+  // their pick; new players start here.
+  masterGuidanceLevel: 'balanced',
 };
 
 export async function getUserPreferences(userId: string): Promise<UserPreferences> {
@@ -49,6 +53,7 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
     manualRolls: prefs.manualRolls ?? DEFAULT_PREFERENCES.manualRolls,
     aiProvider: provider,
     aiMasterModel: masterModel,
+    masterGuidanceLevel: prefs.masterGuidanceLevel ?? DEFAULT_PREFERENCES.masterGuidanceLevel,
   };
 }
 

@@ -8,6 +8,7 @@ import {
   type UserPreferences,
 } from '@/lib/preferences';
 import { isKnownProvider, isKnownMasterModel } from '@/lib/ai-models';
+import { isMasterGuidanceLevel } from '@/db/schema/users';
 
 export async function GET() {
   const { userId } = await auth();
@@ -61,6 +62,12 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'invalid-aiMasterModel' }, { status: 400 });
     }
     patch.aiMasterModel = body.aiMasterModel as string | undefined;
+  }
+  if ('masterGuidanceLevel' in body) {
+    if (!isMasterGuidanceLevel(body.masterGuidanceLevel)) {
+      return NextResponse.json({ error: 'invalid-masterGuidanceLevel' }, { status: 400 });
+    }
+    patch.masterGuidanceLevel = body.masterGuidanceLevel;
   }
 
   const updated = await updateUserPreferences(userId, patch);

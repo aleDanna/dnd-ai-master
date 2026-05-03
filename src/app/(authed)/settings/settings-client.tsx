@@ -65,6 +65,12 @@ export function SettingsClient({ initialPreferences, ttsModel }: SettingsClientP
     void save({ manualRolls: next });
   };
 
+  const onGuidanceLevelChange = (next: 'free' | 'balanced' | 'structured'): void => {
+    if (next === prefs.masterGuidanceLevel) return;
+    setPrefs((p) => ({ ...p, masterGuidanceLevel: next }));
+    void save({ masterGuidanceLevel: next });
+  };
+
   const onProviderChange = (next: ProviderName): void => {
     if (next === prefs.aiProvider) return;
     const nextModel = defaultModelForProvider(next);
@@ -273,6 +279,56 @@ export function SettingsClient({ initialPreferences, ttsModel }: SettingsClientP
           <Icon name="dice" size={14} />
           {prefs.manualRolls ? 'Manual rolls' : 'Auto-rolls'}
         </button>
+      </Card>
+
+      <div style={{ height: 16 }} />
+
+      <Card>
+        <div>
+          <Eyebrow>Behavior</Eyebrow>
+          <h2 style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>Master guidance</h2>
+          <p style={{ marginTop: 4, fontSize: 13, color: 'var(--fg-muted)' }}>
+            How proactively the master suggests possible actions. Lower = more freedom, higher = more on-rails options.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {([
+            { slug: 'free' as const, label: 'Free', blurb: 'Pure narration, open prompt' },
+            { slug: 'balanced' as const, label: 'Balanced', blurb: 'Hints in prose, no list' },
+            { slug: 'structured' as const, label: 'Structured', blurb: 'Numbered choice list' },
+          ]).map((opt) => {
+            const active = prefs.masterGuidanceLevel === opt.slug;
+            return (
+              <button
+                key={opt.slug}
+                onClick={() => onGuidanceLevelChange(opt.slug)}
+                disabled={busy}
+                aria-pressed={active}
+                title={opt.blurb}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 999,
+                  background: active ? 'var(--arcane)' : 'var(--bg-card)',
+                  color: active ? 'var(--bone)' : 'var(--fg)',
+                  border: '1px solid ' + (active ? 'var(--arcane)' : 'var(--border)'),
+                  cursor: busy ? 'wait' : 'pointer',
+                  fontFamily: 'inherit',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  gap: 2,
+                  minWidth: 140,
+                }}
+              >
+                <span>{opt.label}</span>
+                <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.8 }}>{opt.blurb}</span>
+              </button>
+            );
+          })}
+        </div>
       </Card>
 
       <div style={{ marginTop: 16, fontSize: 12, color: 'var(--fg-subtle)', textAlign: 'right', minHeight: 18 }}>

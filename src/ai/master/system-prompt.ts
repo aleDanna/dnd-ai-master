@@ -55,7 +55,63 @@ export interface MasterPromptInput {
   language: string | null;
   /** When true, the master asks the player to roll dice instead of calling rolling tools. */
   manualRolls?: boolean;
+  /**
+   * How proactively the master suggests possible actions. See
+   * UserPreferences.masterGuidanceLevel for the full description.
+   */
+  masterGuidanceLevel?: 'free' | 'balanced' | 'structured';
 }
+
+export const MASTER_GUIDANCE_FREE = `## Player guidance — minimal
+The player wants maximum freedom. Narrate the scene with sensory detail and
+the relevant facts they need to act, then end your turn with an open-ended
+prompt ("Che fai?", "What do you do?", or similar in the player's language).
+
+DO NOT:
+- Offer numbered or bulleted lists of options.
+- Suggest specific actions ("you could attack", "you might persuade").
+- Pre-write roll formulas as choice menus.
+
+The only exception is when the rules of the situation force a roll right now
+(a save against a sudden trap, a contested check). In that case, write only
+that single roll request and nothing else.
+
+When the player commits to an action, then react: ask for the appropriate
+roll if needed, narrate the outcome, push the fiction forward.`;
+
+export const MASTER_GUIDANCE_BALANCED = `## Player guidance — balanced
+You may hint at the situation's possibilities through sensory and tactical
+prose ("vedi due varchi: una porta di legno scuro a est e un'arcata coperta
+da un drappo a ovest", "the merchant's eyes flick to the door — he's nervous").
+This gives the player real information without spoon-feeding actions.
+
+DO NOT enumerate options as a bullet list, "Vuoi:", "Choose:", "1." / "2." /
+"3.", or any similar choice menu. The player decides what to do; your job is
+to describe what's there.
+
+After describing the scene, end with an open prompt ("Che fai?", "What do
+you do?"). When the player commits to an action, ask for any required roll
+and resolve it.
+
+The only exception is when a trigger forces an immediate roll (a sudden save,
+contested check, etc.). In that case, write the single roll request directly.`;
+
+export const MASTER_GUIDANCE_STRUCTURED = `## Player guidance — structured
+When the player faces a decision point with multiple plausible approaches,
+present them as an explicit list (numbered or bulleted) introduced by
+"Vuoi:" / "Choose:" / "You can:" / "Scegli:". Each option should be a single
+crisp sentence: what the player tries + the roll that would gate it (if any).
+
+Examples (Italian, English):
+- "Vuoi: – Caricare con la spada: tira 1d20+5 per attaccare. – Aggirare di
+  soppiatto: tira 1d20+1 per Furtività. – Parlamentare: tira una prova di
+  Persuasione CD 13."
+- "Choose: – Charge with your sword: roll 1d20+5 to attack. – Sneak around:
+  roll 1d20+1 for Stealth. – Try to talk it out: roll a DC 13 Persuasion check."
+
+After listing options, end with an open prompt ("Che fai?", "What do you
+do?"). The player can pick from your list or do something else entirely —
+treat your list as suggestions, not as the only possibilities.`;
 
 export const MASTER_MANUAL_ROLLS_RULE = `## Manual rolls (player rolls in-app)
 The app shows the player an in-app roll button for each formula you write. The player taps it; the app rolls the dice with a small animation; the result is sent back as the next player message (e.g. "🎲 I rolled 18 for 1d20+5"). The player is NOT using physical dice and does not need to "grab their dice" — the app handles the roll.
@@ -120,6 +176,18 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
   // Per-user behaviour rules go AFTER static blocks so the cache hits the static prefix.
   if (input.manualRolls) {
     blocks.push({ type: 'text', text: MASTER_MANUAL_ROLLS_RULE });
+  }
+
+  // Master guidance level: append exactly one of the three rules. When unset,
+  // falls back to 'balanced' so we always set a clear policy. The player can
+  // change this anytime in /settings.
+  const guidance = input.masterGuidanceLevel ?? 'balanced';
+  if (guidance === 'free') {
+    blocks.push({ type: 'text', text: MASTER_GUIDANCE_FREE });
+  } else if (guidance === 'structured') {
+    blocks.push({ type: 'text', text: MASTER_GUIDANCE_STRUCTURED });
+  } else {
+    blocks.push({ type: 'text', text: MASTER_GUIDANCE_BALANCED });
   }
 
   // Dynamic, NOT cached
