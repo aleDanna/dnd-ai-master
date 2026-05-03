@@ -68,6 +68,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           language: snap.language,
           manualRolls: userPrefs.manualRolls,
           masterGuidanceLevel: userPrefs.masterGuidanceLevel,
+          showDifficultyNumbers: userPrefs.showDifficultyNumbers,
         });
 
         const recent = await db

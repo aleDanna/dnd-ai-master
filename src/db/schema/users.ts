@@ -28,6 +28,15 @@ export interface UserPreferences {
    *   options and explicit roll requests per option. Default for new users.
    */
   masterGuidanceLevel?: 'free' | 'balanced' | 'structured';
+  /**
+   * When true (default), the master reveals difficulty numbers in prose:
+   * "tira una prova di Intuito CD 12" / "Roll 1d20+5 to attack (AC 13)".
+   * When false, those numbers are kept hidden — the master uses qualitative
+   * language ("a tough Insight check") and adjudicates privately when the
+   * player's number comes back. More immersive: the player rolls without
+   * knowing exactly how hard the check is.
+   */
+  showDifficultyNumbers?: boolean;
 }
 
 export type MasterGuidanceLevel = NonNullable<UserPreferences['masterGuidanceLevel']>;

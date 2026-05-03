@@ -60,7 +60,33 @@ export interface MasterPromptInput {
    * UserPreferences.masterGuidanceLevel for the full description.
    */
   masterGuidanceLevel?: 'free' | 'balanced' | 'structured';
+  /**
+   * When true (default), the master may reveal DC/AC numbers in prose. When
+   * false, those numbers stay hidden — the master uses qualitative language
+   * and adjudicates privately.
+   */
+  showDifficultyNumbers?: boolean;
 }
+
+export const MASTER_HIDE_DIFFICULTY_RULE = `## Hide difficulty numbers
+Do NOT reveal numeric DC, CD, AC, or CA values in your narration.
+
+When asking for a roll, omit the number. Examples (replace right with left):
+- "Tira una prova di Intuito CD 12." -> "Tira una prova di Intuito."
+- "Roll a DC 14 Dexterity save." -> "Roll a Dexterity save."
+- "Roll 1d20+5 to attack (AC 13)." -> "Roll 1d20+5 to attack."
+
+When describing the situation, use qualitative language instead of numbers:
+- "a tough Insight check", "una prova di Persuasione difficile"
+- "the goblin looks lightly armored", "il guerriero indossa una corazza pesante"
+- never "the AC is 15", "his Dexterity DC is 14"
+
+Internally you still pick the actual numeric DC/AC the way you normally would
+and use it to adjudicate when the player's roll comes back. The player rolls
+without knowing exactly how hard the check is — that's the whole point.
+
+Roll formulas themselves remain visible: "Tira 1d20+3 per attaccare" is fine
+because 1d20+3 is the player's bonus, not the difficulty.`;
 
 export const MASTER_GUIDANCE_FREE = `## Player guidance — minimal
 The player wants maximum freedom. Narrate the scene with sensory detail and
@@ -188,6 +214,13 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
     blocks.push({ type: 'text', text: MASTER_GUIDANCE_STRUCTURED });
   } else {
     blocks.push({ type: 'text', text: MASTER_GUIDANCE_BALANCED });
+  }
+
+  // Hide-difficulty rule: only when the player explicitly opted in. Default
+  // (showDifficultyNumbers omitted or true) keeps the existing behaviour
+  // where the master may show DC/AC numbers.
+  if (input.showDifficultyNumbers === false) {
+    blocks.push({ type: 'text', text: MASTER_HIDE_DIFFICULTY_RULE });
   }
 
   // Dynamic, NOT cached

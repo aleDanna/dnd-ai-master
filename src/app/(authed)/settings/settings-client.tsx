@@ -71,6 +71,12 @@ export function SettingsClient({ initialPreferences, ttsModel }: SettingsClientP
     void save({ masterGuidanceLevel: next });
   };
 
+  const onShowDifficultyNumbersToggle = (): void => {
+    const next = !prefs.showDifficultyNumbers;
+    setPrefs((p) => ({ ...p, showDifficultyNumbers: next }));
+    void save({ showDifficultyNumbers: next });
+  };
+
   const onProviderChange = (next: ProviderName): void => {
     if (next === prefs.aiProvider) return;
     const nextModel = defaultModelForProvider(next);
@@ -329,6 +335,41 @@ export function SettingsClient({ initialPreferences, ttsModel }: SettingsClientP
             );
           })}
         </div>
+      </Card>
+
+      <div style={{ height: 16 }} />
+
+      <Card>
+        <div>
+          <Eyebrow>Behavior</Eyebrow>
+          <h2 style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>Difficulty numbers</h2>
+          <p style={{ marginTop: 4, fontSize: 13, color: 'var(--fg-muted)' }}>
+            When ON, the master shows DC and AC values in narration (e.g. &ldquo;DC 12 Insight check&rdquo;). When OFF, those numbers stay hidden — the master uses qualitative language and adjudicates privately. More immersive: you roll without knowing exactly how hard the check is.
+          </p>
+        </div>
+        <button
+          onClick={onShowDifficultyNumbersToggle}
+          disabled={busy}
+          aria-pressed={prefs.showDifficultyNumbers}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 10,
+            height: 36,
+            padding: '0 14px',
+            background: prefs.showDifficultyNumbers ? 'var(--arcane)' : 'transparent',
+            border: '1px solid ' + (prefs.showDifficultyNumbers ? 'var(--arcane)' : 'var(--border-strong)'),
+            borderRadius: 999,
+            color: prefs.showDifficultyNumbers ? 'var(--bone)' : 'var(--fg-muted)',
+            fontFamily: 'var(--font-ui)',
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: busy ? 'wait' : 'pointer',
+          }}
+        >
+          <Icon name="dice" size={14} />
+          {prefs.showDifficultyNumbers ? 'DC/AC visible' : 'DC/AC hidden'}
+        </button>
       </Card>
 
       <div style={{ marginTop: 16, fontSize: 12, color: 'var(--fg-subtle)', textAlign: 'right', minHeight: 18 }}>

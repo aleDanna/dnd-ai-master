@@ -4,6 +4,7 @@ import {
   MASTER_GUIDANCE_FREE,
   MASTER_GUIDANCE_BALANCED,
   MASTER_GUIDANCE_STRUCTURED,
+  MASTER_HIDE_DIFFICULTY_RULE,
 } from '@/ai/master/system-prompt';
 
 const baseInput = {
@@ -42,6 +43,24 @@ describe('buildMasterSystemPrompt — master guidance level', () => {
     const { system } = buildMasterSystemPrompt(baseInput);
     const texts = system.map((b) => b.text);
     expect(texts).toContain(MASTER_GUIDANCE_BALANCED);
+  });
+
+  it('appends the hide-difficulty rule when showDifficultyNumbers=false', () => {
+    const { system } = buildMasterSystemPrompt({ ...baseInput, showDifficultyNumbers: false });
+    const texts = system.map((b) => b.text);
+    expect(texts).toContain(MASTER_HIDE_DIFFICULTY_RULE);
+  });
+
+  it('does NOT append the hide-difficulty rule when showDifficultyNumbers=true', () => {
+    const { system } = buildMasterSystemPrompt({ ...baseInput, showDifficultyNumbers: true });
+    const texts = system.map((b) => b.text);
+    expect(texts).not.toContain(MASTER_HIDE_DIFFICULTY_RULE);
+  });
+
+  it('does NOT append the hide-difficulty rule when showDifficultyNumbers is unset (default = visible)', () => {
+    const { system } = buildMasterSystemPrompt(baseInput);
+    const texts = system.map((b) => b.text);
+    expect(texts).not.toContain(MASTER_HIDE_DIFFICULTY_RULE);
   });
 
   it('places the guidance block AFTER the cached static prefix (so prompt cache survives)', () => {

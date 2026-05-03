@@ -69,6 +69,12 @@ export async function PUT(req: NextRequest) {
     }
     patch.masterGuidanceLevel = body.masterGuidanceLevel;
   }
+  if ('showDifficultyNumbers' in body) {
+    if (typeof body.showDifficultyNumbers !== 'boolean') {
+      return NextResponse.json({ error: 'invalid-showDifficultyNumbers' }, { status: 400 });
+    }
+    patch.showDifficultyNumbers = body.showDifficultyNumbers;
+  }
 
   const updated = await updateUserPreferences(userId, patch);
   return NextResponse.json({ preferences: updated });

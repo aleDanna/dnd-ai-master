@@ -32,6 +32,9 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   // them as a bullet list. Existing players who set their preference keep
   // their pick; new players start here.
   masterGuidanceLevel: 'balanced',
+  // Default: reveal DC/AC numbers in prose (current behavior). Players who
+  // want a more immersive experience can flip this off.
+  showDifficultyNumbers: true,
 };
 
 export async function getUserPreferences(userId: string): Promise<UserPreferences> {
@@ -54,6 +57,7 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
     aiProvider: provider,
     aiMasterModel: masterModel,
     masterGuidanceLevel: prefs.masterGuidanceLevel ?? DEFAULT_PREFERENCES.masterGuidanceLevel,
+    showDifficultyNumbers: prefs.showDifficultyNumbers ?? DEFAULT_PREFERENCES.showDifficultyNumbers,
   };
 }
 
