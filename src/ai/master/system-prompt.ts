@@ -49,6 +49,18 @@ The system exposes the deterministic Plan B engine as tools. Common ones:
 - \`level_up\` — bump the PC's level (newLevel) with an hpDelta and optional new spell slots. Use after a long rest or significant milestone, only when the player has accumulated enough XP. The hpMax, proficiencyBonus, and spellcasting slots persist; the PC also heals by hpDelta capped at the new max.
 - \`roll_dice\`, \`roll_d20\` (use sparingly — prefer specific tools)
 
+### State-mutating tools are NOT idempotent (CRITICAL)
+
+\`add_item\`, \`remove_item\`, \`award_xp\`, \`level_up\`, \`apply_damage\`, \`heal\`, \`set_hp\`, \`use_resource\`, \`use_spell_slot\` all stack: calling them twice doubles the effect. Each turn you receive the player's CURRENT \`xp\`, \`inventory\`, \`hp\`, and \`conditions\` in the character snapshot — **consult them before calling these tools**.
+
+Concrete rules:
+- **Re-narrating ≠ re-applying.** If a previous turn already gave 200 XP and 50 gp for clearing a room, and the player now asks "what loot did I get?", DESCRIBE what they have (you can read it from inventory + xp). Do NOT call \`add_item\` / \`award_xp\` again.
+- **Same encounter, one award.** A combat victory, a quest beat, or a discovery yields XP/items ONCE. If the chat refers back to that moment turns later, do not re-award.
+- **Check inventory before adding starter gear or quest items.** If \`inventory\` already contains the item with qty ≥ what fiction requires, narrate naturally and skip the tool. Use \`remove_item\` then \`add_item\` only if the fiction explicitly says the item is replaced.
+- **HP/damage/conditions follow current state.** Do not re-apply damage or conditions you already applied earlier — read \`hp\` and \`conditions\` from the snapshot.
+
+When unsure whether something has been applied, prefer narration WITHOUT a tool call. The player can correct you ("hey, I never actually got that potion") and you can then apply it cleanly. Double-application is far more painful to undo than a missed grant.
+
 ### Combat lifecycle (CRITICAL)
 The right-pane Combat tracker mirrors the engine's combat state. It only
 shows correct information if you maintain that state explicitly:

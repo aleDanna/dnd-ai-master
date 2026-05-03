@@ -81,9 +81,17 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
     scene: stateRow.scene,
   };
 
+  // What the master sees about the PC. xp + inventory are included
+  // explicitly so the master can self-check before calling award_xp /
+  // add_item: "the player already has 200 XP, do I really need to grant
+  // 200 more?" / "the player already has 5 torches, do I add a 6th or
+  // narrate them using one?". Without this visibility the master would
+  // sometimes re-award the same loot or XP across turns, since chat
+  // history alone is not a reliable ledger.
   const characterMonoSpace = JSON.stringify({
     name: character.name,
     level: character.level,
+    xp: character.xp,
     class: character.classSlug,
     race: character.raceSlug,
     hp: `${stateRow.hpCurrent}/${character.hpMax}`,
@@ -93,6 +101,7 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
     skills: character.proficiencies.skills,
     conditions: stateRow.conditions,
     inCombat: stateRow.inCombat,
+    inventory: character.inventory,
   });
 
   return { state, characterMonoSpace, scene: stateRow.scene, language: session.language };
