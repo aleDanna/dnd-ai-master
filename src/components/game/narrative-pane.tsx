@@ -31,6 +31,10 @@ export interface NarrativePaneProps {
   manualRolls: boolean;
 }
 
+/** Number of newest messages visible on first load. The "Show previous"
+ *  link reveals an additional batch of this size with each click. */
+const PAGE_SIZE = 10;
+
 export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, onCastSpell, manualRolls }: NarrativePaneProps) {
   const [draft, setDraft] = React.useState('');
   // Tamper-resistant pending roll. The text is set ONLY by handleRollResult
@@ -43,14 +47,32 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
   // auto-roll-from-prose path on Enter and end up with a number that doesn't
   // match the one shown on the chip.
   const [rollingCount, setRollingCount] = React.useState(0);
+  // Pagination: how many of the most recent messages to render. New messages
+  // arriving from the master automatically extend the visible window (we
+  // never want a fresh response to be hidden), but the user can click "Show
+  // previous" to widen the window backwards into history.
+  const [visibleCount, setVisibleCount] = React.useState<number>(PAGE_SIZE);
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
   const merged = mergeMessages(history, liveEvents);
+  const hiddenCount = Math.max(0, merged.length - visibleCount);
+  const visibleMessages = hiddenCount > 0 ? merged.slice(hiddenCount) : merged;
 
-  // Auto-scroll the page (not an internal pane) to the bottom when new content arrives.
+  const loadPrevious = (): void => {
+    setVisibleCount((c) => Math.min(c + PAGE_SIZE, merged.length));
+  };
+
+  // Auto-scroll the page (not an internal pane) to the bottom when new content
+  // arrives. Re-runs on:
+  //   - merged.length  : new persisted message landed
+  //   - liveEvents.len : streaming chunk arrived
+  //   - busy           : "The Master is responding…" appeared / disappeared
+  //   - pendingRollText: chip appeared / disappeared (input bar height
+  //     changes — without this dep, the last message can end up clipped
+  //     behind the freshly-grown input bar)
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
     window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
-  }, [merged.length, busy, liveEvents.length]);
+  }, [merged.length, busy, liveEvents.length, pendingRollText]);
 
   const submit = (): void => {
     if (busy) return;
@@ -136,9 +158,39 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
 
   return (
     <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
-      <div style={{ flex: 1, padding: '32px 40px 16px' }}>
+      {/* Bottom padding is generous so the last message clears the sticky
+          input bar with room to spare (the bar can grow when a chip lands).
+          The sticky bar itself takes space in normal flow, but its shadow /
+          border can still feel cramped without breathing room. */}
+      <div style={{ flex: 1, padding: '32px 40px 80px' }}>
         <div style={{ maxWidth: 680, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 22 }}>
-          {merged.map((m, i) => (
+          {hiddenCount > 0 && (
+            <button
+              type="button"
+              onClick={loadPrevious}
+              aria-label={`Show previous ${Math.min(PAGE_SIZE, hiddenCount)} messages`}
+              style={{
+                alignSelf: 'center',
+                padding: '6px 14px',
+                background: 'transparent',
+                border: '1px dashed var(--border-strong)',
+                borderRadius: 999,
+                color: 'var(--fg-muted)',
+                fontFamily: 'var(--font-ui)',
+                fontSize: 12,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              ↑ Show previous {Math.min(PAGE_SIZE, hiddenCount)}
+              {hiddenCount > PAGE_SIZE && (
+                <span style={{ color: 'var(--fg-subtle)' }}>· {hiddenCount} hidden</span>
+              )}
+            </button>
+          )}
+          {visibleMessages.map((m, i) => (
             <MessageView
               key={m.id ?? `live-${i}`}
               m={m}
