@@ -187,9 +187,7 @@ const CURRENCY_COLOR: Record<string, string> = {
 
 function InventorySection({ inventory }: { inventory: { slug: string; qty: number; equipped: boolean }[] }) {
   const cat = categorizeInventory(inventory);
-  // Don't render anything if there's literally nothing — keeps the panel
-  // tidy for fresh characters who haven't picked anything up yet.
-  if (cat.currency.length === 0 && cat.equipped.length === 0 && cat.other.length === 0) return null;
+  const totalCount = cat.currency.length + cat.equipped.length + cat.other.length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -239,6 +237,26 @@ function InventorySection({ inventory }: { inventory: { slug: string; qty: numbe
             {cat.other.map((it) => (
               <InventoryRow key={it.slug} slug={it.slug} qty={it.qty} equipped={false} />
             ))}
+          </div>
+        </div>
+      )}
+
+      {totalCount === 0 && (
+        <div>
+          <Eyebrow style={{ marginBottom: 6 }}>Inventory</Eyebrow>
+          <div
+            style={{
+              padding: '8px 10px',
+              background: 'var(--bg-card)',
+              border: '1px dashed var(--border)',
+              borderRadius: 6,
+              fontSize: 12,
+              fontStyle: 'italic',
+              color: 'var(--fg-muted)',
+              lineHeight: 1.4,
+            }}
+          >
+            Empty for now. The master adds items as you find or buy them.
           </div>
         </div>
       )}
