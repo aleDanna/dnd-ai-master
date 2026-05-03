@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, and, isNull, asc } from 'drizzle-orm';
+import { eq, and, isNull, desc } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions, sessionMessages } from '@/db/schema';
 
@@ -16,12 +16,17 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     .limit(1);
   if (!session) return NextResponse.json({ error: 'not-found' }, { status: 404 });
 
-  const messages = await db
+  // Return the LATEST 200 messages (then reverse to ascending for the client).
+  // The previous version used asc + limit 200, which silently truncated the
+  // newest messages once a session crossed 200 turns — players reported the
+  // chat "always reopening at message #200" and never seeing recent activity.
+  const recent = await db
     .select()
     .from(sessionMessages)
     .where(eq(sessionMessages.sessionId, sessionId))
-    .orderBy(asc(sessionMessages.createdAt))
+    .orderBy(desc(sessionMessages.createdAt))
     .limit(200);
+  const messages = recent.reverse();
 
   return NextResponse.json({ messages });
 }
