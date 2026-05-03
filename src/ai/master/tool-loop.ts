@@ -1,4 +1,5 @@
 import type { ActionResult, EngineState, Mutation, DiceRoll } from '@/engine/types';
+import type { AnthropicTool } from '@/engine/types';
 import { TOOL_HANDLERS, TOOL_DEFINITIONS } from '@/engine';
 import { TURN_TOOL_CALL_CAP, TURN_TIMEOUT_MS, type TurnEvent } from '@/sessions/types';
 import type {
@@ -23,6 +24,8 @@ export interface ToolLoopInput {
   onEvent?: (event: TurnEvent) => void;
   /** Used as OpenAI prompt_cache_key for cache affinity (Anthropic ignores). */
   sessionId?: string;
+  /** Tool definitions for this turn. Defaults to TOOL_DEFINITIONS for back-compat with existing tests. */
+  tools?: AnthropicTool[];
 }
 
 export interface ToolLoopResult {
@@ -44,6 +47,7 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
     recordUsage,
     onEvent,
     sessionId,
+    tools = TOOL_DEFINITIONS,
   } = input;
   const events: TurnEvent[] = [];
   let finalText = '';
@@ -69,7 +73,7 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
       model,
       systemBlocks,
       messages,
-      tools: TOOL_DEFINITIONS,
+      tools,
       sessionId,
     });
 

@@ -1,7 +1,8 @@
 import type { AnthropicTool } from '../types';
+import type { UserPreferences } from '@/db/schema/users';
 import { ABILITY_ENUM, SKILL_ENUM, DAMAGE_TYPE_ENUM, CONDITION_ENUM, ACTOR_ID } from './schemas';
 
-export const TOOL_DEFINITIONS: AnthropicTool[] = [
+const ALWAYS_ON: AnthropicTool[] = [
   {
     name: 'roll_dice',
     description: 'Roll a dice formula like "3d6+2" and return the total. Use only when no other tool fits.',
@@ -237,15 +238,28 @@ export const TOOL_DEFINITIONS: AnthropicTool[] = [
       },
     } as never,
   },
-  {
-    name: 'generate_scene_image',
-    description: 'Queue a scene image generation with a visual prompt. The prompt is queued asynchronously and will be processed by the image generation service.',
-    input_schema: {
-      type: 'object',
-      required: ['visualPrompt'],
-      properties: {
-        visualPrompt: { type: 'string', description: 'A detailed visual description of the scene to generate.' },
-      },
-    } as never,
-  },
 ];
+
+const SCENE_IMAGE_TOOL: AnthropicTool = {
+  name: 'generate_scene_image',
+  description:
+    'Generate an illustration of the current scene. Use sparingly — only when the visual context meaningfully shifts (combat begins, the party enters a new location, a dramatic event reshapes the scene). The image is generated asynchronously and appears in the Scene panel a few seconds after this call returns. Do NOT call more than once every 3-5 turns. Write the visualPrompt in English.',
+  input_schema: {
+    type: 'object',
+    required: ['visualPrompt'],
+    properties: {
+      visualPrompt: {
+        type: 'string',
+        description: 'A vivid English description of the scene to draw: subjects, action, setting, atmosphere, lighting. Do NOT include style/medium — the player\'s configured art style is added automatically.',
+      },
+    },
+  } as never,
+};
+
+/** Build the tool list for a turn given the user's preferences. */
+export function buildToolDefinitions(prefs: Pick<UserPreferences, 'imageGenerationEnabled'>): AnthropicTool[] {
+  return prefs.imageGenerationEnabled ? [...ALWAYS_ON, SCENE_IMAGE_TOOL] : ALWAYS_ON;
+}
+
+/** @deprecated Use buildToolDefinitions(prefs) instead. Kept only for legacy tests. */
+export const TOOL_DEFINITIONS: AnthropicTool[] = ALWAYS_ON;

@@ -12,5 +12,5 @@ export { useResource } from './resources';
 export { shortRest, longRest } from './rests';
 export { equip, unequip, recomputeAC } from './equipment';
 export { levelUp } from './levelup';
-export { TOOL_DEFINITIONS } from './tools';
+export { buildToolDefinitions, TOOL_DEFINITIONS } from './tools';
 export { TOOL_HANDLERS } from './tools/handlers';

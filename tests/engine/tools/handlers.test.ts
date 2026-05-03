@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { TOOL_HANDLERS, TOOL_DEFINITIONS } from '@/engine';
+import { buildToolDefinitions } from '@/engine/tools';
 import type { EngineState, Character, CombatActor } from '@/engine';
 
 const fighter: Character = {
@@ -59,8 +60,9 @@ describe('TOOL_DEFINITIONS', () => {
     }
   });
 
-  it('every handler has a corresponding definition', () => {
-    const definedNames = new Set(TOOL_DEFINITIONS.map((d) => d.name));
+  it('every handler has a corresponding definition (with all tools enabled)', () => {
+    const all = buildToolDefinitions({ imageGenerationEnabled: true });
+    const definedNames = new Set(all.map((d) => d.name));
     for (const name of Object.keys(TOOL_HANDLERS)) {
       expect(definedNames.has(name), `missing definition for handler ${name}`).toBe(true);
     }

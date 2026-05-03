@@ -11,6 +11,7 @@ import { buildSrdContext } from '@/ai/master/srd-context';
 import { buildMasterSystemPrompt } from '@/ai/master/system-prompt';
 import { detectLanguage } from '@/ai/master/language';
 import { runToolLoop } from '@/ai/master/tool-loop';
+import { buildToolDefinitions } from '@/engine';
 import { getProviderByName } from '@/ai/provider';
 import { recordUsage } from '@/ai/master/usage';
 import { checkQuotas } from '@/ai/master/quotas';
@@ -102,6 +103,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // user can pick their own AI without redeploying.
         const provider = getProviderByName(userPrefs.aiProvider);
         const masterModel = userPrefs.aiMasterModel;
+        const tools = buildToolDefinitions({ imageGenerationEnabled: userPrefs.imageGenerationEnabled });
         const result = await runToolLoop({
           provider,
           model: masterModel,
@@ -109,6 +111,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           history,
           state: snap.state,
           sessionId,
+          tools,
           applyMutations: (muts, rolls) => applyMutations(sessionId, muts, rolls),
           recordUsage: async (usage) => {
             await recordUsage({
