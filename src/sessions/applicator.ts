@@ -1,4 +1,5 @@
 import { eq, and } from 'drizzle-orm';
+import { waitUntil } from '@vercel/functions';
 import { db } from '@/db/client';
 import {
   sessionState as sessionStateTable,
@@ -9,22 +10,30 @@ import {
   type DiceLogInsert,
 } from '@/db/schema';
 import type { ConditionInstance, DiceRoll, Mutation } from '@/engine/types';
+import { getUserPreferences } from '@/lib/preferences';
+import { resolveStyleText } from '@/ai/master/image-style';
+import * as sceneImageJob from './scene-image-job';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 const VALID_KINDS = new Set(['attack', 'damage', 'save', 'check', 'init', 'generic']);
 
 interface SessionContext {
+  userId: string;
   characterId: string;
   hpMax: number;
 }
 
 async function loadContext(tx: Tx, sessionId: string): Promise<SessionContext | null> {
-  const [s] = await tx.select({ characterId: sessionsTable.characterId }).from(sessionsTable).where(eq(sessionsTable.id, sessionId)).limit(1);
+  const [s] = await tx
+    .select({ userId: sessionsTable.userId, characterId: sessionsTable.characterId })
+    .from(sessionsTable)
+    .where(eq(sessionsTable.id, sessionId))
+    .limit(1);
   if (!s) return null;
   const [c] = await tx.select({ hpMax: charactersTable.hpMax }).from(charactersTable).where(eq(charactersTable.id, s.characterId)).limit(1);
   if (!c) return null;
-  return { characterId: s.characterId, hpMax: c.hpMax };
+  return { userId: s.userId, characterId: s.characterId, hpMax: c.hpMax };
 }
 
 export async function applyMutations(sessionId: string, mutations: Mutation[], rolls: DiceRoll[]): Promise<void> {
@@ -239,6 +248,19 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
     }
     case 'recompute_ac': {
       await tx.update(charactersTable).set({ ac: Math.max(1, Math.floor(m.newAc)), updatedAt: new Date() }).where(eq(charactersTable.id, m.characterId));
+      break;
+    }
+    case 'queue_scene_image': {
+      const prefs = await getUserPreferences(ctx.userId);
+      if (!prefs.imageGenerationEnabled) break;
+      const styleText = resolveStyleText(prefs);
+      const [stateRow] = await tx
+        .select({ v: sessionStateTable.sceneImageVersion })
+        .from(sessionStateTable)
+        .where(eq(sessionStateTable.sessionId, sessionId))
+        .limit(1);
+      const nextVersion = (stateRow?.v ?? 0) + 1;
+      waitUntil(sceneImageJob.generateAndPersist(sessionId, m.visualPrompt, styleText, nextVersion));
       break;
     }
     // Ops Plan B emits but Plan D1 does not yet act on; ignore safely.
