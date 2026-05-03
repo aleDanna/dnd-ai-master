@@ -37,12 +37,24 @@ export interface UserPreferences {
    * knowing exactly how hard the check is.
    */
   showDifficultyNumbers?: boolean;
+  /** When true, the master may call generate_scene_image to illustrate the scene. Default false. */
+  imageGenerationEnabled?: boolean;
+  /** Style preset slug. Default 'pastel'. 'custom' uses imageStyleCustom. */
+  imageStylePreset?: 'pastel' | 'watercolor' | 'oil' | 'ink' | 'photo' | 'custom';
+  /** Free-text style description, used only when imageStylePreset === 'custom'. */
+  imageStyleCustom?: string;
 }
 
 export type MasterGuidanceLevel = NonNullable<UserPreferences['masterGuidanceLevel']>;
 export const MASTER_GUIDANCE_LEVELS: MasterGuidanceLevel[] = ['free', 'balanced', 'structured'];
 export function isMasterGuidanceLevel(v: unknown): v is MasterGuidanceLevel {
   return typeof v === 'string' && (MASTER_GUIDANCE_LEVELS as string[]).includes(v);
+}
+
+export type ImageStylePreset = NonNullable<UserPreferences['imageStylePreset']>;
+export const IMAGE_STYLE_PRESETS: ImageStylePreset[] = ['pastel', 'watercolor', 'oil', 'ink', 'photo', 'custom'];
+export function isImageStylePreset(v: unknown): v is ImageStylePreset {
+  return typeof v === 'string' && (IMAGE_STYLE_PRESETS as string[]).includes(v);
 }
 
 export const users = pgTable('users', {

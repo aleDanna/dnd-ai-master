@@ -8,7 +8,7 @@ import {
   type UserPreferences,
 } from '@/lib/preferences';
 import { isKnownProvider, isKnownMasterModel } from '@/lib/ai-models';
-import { isMasterGuidanceLevel } from '@/db/schema/users';
+import { isMasterGuidanceLevel, isImageStylePreset } from '@/db/schema/users';
 
 export async function GET() {
   const { userId } = await auth();
@@ -74,6 +74,27 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'invalid-showDifficultyNumbers' }, { status: 400 });
     }
     patch.showDifficultyNumbers = body.showDifficultyNumbers;
+  }
+  if ('imageGenerationEnabled' in body) {
+    if (typeof body.imageGenerationEnabled !== 'boolean') {
+      return NextResponse.json({ error: 'invalid-imageGenerationEnabled' }, { status: 400 });
+    }
+    patch.imageGenerationEnabled = body.imageGenerationEnabled;
+  }
+  if ('imageStylePreset' in body) {
+    if (!isImageStylePreset(body.imageStylePreset)) {
+      return NextResponse.json({ error: 'invalid-imageStylePreset' }, { status: 400 });
+    }
+    patch.imageStylePreset = body.imageStylePreset;
+  }
+  if ('imageStyleCustom' in body) {
+    if (typeof body.imageStyleCustom !== 'string') {
+      return NextResponse.json({ error: 'invalid-imageStyleCustom' }, { status: 400 });
+    }
+    if (body.imageStyleCustom.length > 500) {
+      return NextResponse.json({ error: 'imageStyleCustom-too-long' }, { status: 400 });
+    }
+    patch.imageStyleCustom = body.imageStyleCustom;
   }
 
   const updated = await updateUserPreferences(userId, patch);

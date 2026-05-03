@@ -35,6 +35,9 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   // Default: reveal DC/AC numbers in prose (current behavior). Players who
   // want a more immersive experience can flip this off.
   showDifficultyNumbers: true,
+  imageGenerationEnabled: false,
+  imageStylePreset: 'pastel',
+  imageStyleCustom: '',
 };
 
 export async function getUserPreferences(userId: string): Promise<UserPreferences> {
@@ -50,6 +53,9 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
   const envProvider = envDefaultProvider();
   const provider = prefs.aiProvider ?? envProvider;
   const masterModel = prefs.aiMasterModel ?? envDefaultMasterModel(provider);
+  const imageGenerationEnabled = prefs.imageGenerationEnabled ?? DEFAULT_PREFERENCES.imageGenerationEnabled;
+  const imageStylePreset = prefs.imageStylePreset ?? DEFAULT_PREFERENCES.imageStylePreset;
+  const imageStyleCustom = prefs.imageStyleCustom ?? DEFAULT_PREFERENCES.imageStyleCustom;
   return {
     ttsVoice: prefs.ttsVoice ?? DEFAULT_PREFERENCES.ttsVoice,
     ttsAutoplay: prefs.ttsAutoplay ?? DEFAULT_PREFERENCES.ttsAutoplay,
@@ -58,6 +64,9 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
     aiMasterModel: masterModel,
     masterGuidanceLevel: prefs.masterGuidanceLevel ?? DEFAULT_PREFERENCES.masterGuidanceLevel,
     showDifficultyNumbers: prefs.showDifficultyNumbers ?? DEFAULT_PREFERENCES.showDifficultyNumbers,
+    imageGenerationEnabled,
+    imageStylePreset,
+    imageStyleCustom,
   };
 }
 
