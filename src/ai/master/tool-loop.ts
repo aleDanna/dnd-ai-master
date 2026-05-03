@@ -129,16 +129,32 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
         mutationCount: result.mutations.length,
       });
 
+      // Persist mutations + rolls BEFORE pushing the tool_result back to the
+      // model. A persistence failure here used to crash the whole turn — the
+      // master's narration was lost and the player saw a 500 with no reply.
+      // Now we catch it, mark the tool as failed so the master can react, and
+      // continue. The transaction rolls back internally so partial state is
+      // not saved.
+      let persistError: string | null = null;
       if (result.mutations.length > 0 || result.rolls.length > 0) {
-        if (applyMutations) await applyMutations(result.mutations, result.rolls);
-        emit({ type: 'state_changed', mutations: result.mutations });
+        if (applyMutations) {
+          try {
+            await applyMutations(result.mutations, result.rolls);
+          } catch (e) {
+            persistError = e instanceof Error ? e.message : String(e);
+          }
+        }
+        if (!persistError) emit({ type: 'state_changed', mutations: result.mutations });
       }
+
+      const finalOk = result.ok && !persistError;
+      const finalError = persistError ? `persistence_failed: ${persistError}` : result.error;
 
       toolResults.push({
         type: 'tool_result',
         tool_use_id: tu.id,
-        content: JSON.stringify({ ok: result.ok, data: result.data, error: result.error, rolls: result.rolls }),
-        is_error: !result.ok,
+        content: JSON.stringify({ ok: finalOk, data: result.data, error: finalError, rolls: result.rolls }),
+        is_error: !finalOk,
       });
     }
 

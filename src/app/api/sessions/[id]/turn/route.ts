@@ -23,18 +23,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const body = (await req.json().catch(() => null)) as { message?: string } | null;
   if (!body?.message?.trim()) return jsonResponse({ error: 'missing-message' }, 400);
 
-  const [session] = await db
-    .select()
-    .from(sessions)
-    .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId), isNull(sessions.deletedAt)))
-    .limit(1);
-  if (!session) return jsonResponse({ error: 'not-found' }, 404);
+  // Wrap the preamble (session lookup, quota, lock) so a DB connection blip
+  // returns a clean JSON error instead of a bare 500. Neon's serverless
+  // Postgres occasionally drops the first query after an idle period; an
+  // unhandled rejection here would surface as "500 (Internal Server Error)"
+  // in the chat UI with no recoverable signal.
+  let session: typeof sessions.$inferSelect | undefined;
+  let lockHolder: string;
+  try {
+    [session] = await db
+      .select()
+      .from(sessions)
+      .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId), isNull(sessions.deletedAt)))
+      .limit(1);
+    if (!session) return jsonResponse({ error: 'not-found' }, 404);
 
-  const quota = await checkQuotas({ userId });
-  if (!quota.ok) return jsonResponse({ error: quota.reason }, 429);
+    const quota = await checkQuotas({ userId });
+    if (!quota.ok) return jsonResponse({ error: quota.reason }, 429);
 
-  const lock = await acquireTurnLock(sessionId);
-  if (!lock.acquired) return jsonResponse({ error: 'turn_in_progress' }, 409);
+    const lock = await acquireTurnLock(sessionId);
+    if (!lock.acquired) return jsonResponse({ error: 'turn_in_progress' }, 409);
+    lockHolder = lock.holder;
+  } catch (e) {
+    return jsonResponse(
+      { error: 'preamble_failed', reason: e instanceof Error ? e.message : 'unknown' },
+      503,
+    );
+  }
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -107,13 +122,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           onEvent: (ev) => send(ev.type, ev),
         });
 
-        // 6. Persist master message
-        const [mm] = await db.insert(sessionMessages).values({ sessionId, role: 'master', content: result.finalText }).returning();
-        send('turn_complete', { type: 'turn_complete', messageId: mm!.id, durationMs: Date.now() - t0, toolCallCount: result.toolCallCount, truncated: result.truncated, timedOut: result.timedOut });
+        // 6. Persist master message — only if it actually has content. An
+        // empty finalText typically means a tool call failed and the master
+        // never got to write narration; persisting an empty row leaves a
+        // ghost "THE MASTER" bubble in the chat with no body. Surface that
+        // as a turn_error instead so the player sees a recoverable signal.
+        if (result.finalText.trim()) {
+          const [mm] = await db.insert(sessionMessages).values({ sessionId, role: 'master', content: result.finalText }).returning();
+          send('turn_complete', { type: 'turn_complete', messageId: mm!.id, durationMs: Date.now() - t0, toolCallCount: result.toolCallCount, truncated: result.truncated, timedOut: result.timedOut });
+        } else {
+          send('turn_error', { type: 'turn_error', reason: 'empty_response', recoverable: true });
+        }
       } catch (e) {
         send('turn_error', { type: 'turn_error', reason: e instanceof Error ? e.message : 'unknown', recoverable: false });
       } finally {
-        await releaseTurnLock(sessionId, lock.holder);
+        await releaseTurnLock(sessionId, lockHolder);
         controller.close();
       }
     },

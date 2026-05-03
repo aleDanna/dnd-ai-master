@@ -131,4 +131,39 @@ describe('runToolLoop', () => {
     expect(seen.includes('tool_use_end')).toBe(true);
     expect(seen.at(-1)).toBe('narrative_delta');
   });
+
+  it('keeps the turn alive when applyMutations rejects (DB blip / connection drop)', async () => {
+    // Master rolls a d20 — the roll itself succeeds, but the persistence
+    // step (applyMutations) throws. Before this fix, the throw bubbled up
+    // out of the tool loop, the route's outer catch fired turn_error, and
+    // the master's narration was never persisted. Now the failure is
+    // surfaced as a tool error so the master sees it and can keep going.
+    const complete = vi.fn()
+      .mockResolvedValueOnce(fakeOutput(
+        [{ type: 'tool_use', id: 'tu1', name: 'roll_d20', input: { modifier: 0 } }],
+        'tool_use',
+      ))
+      .mockResolvedValueOnce(fakeOutput([{ type: 'text', text: 'Sorry, the dice slipped.' }]));
+    const apply = vi.fn().mockRejectedValue(new Error('Failed query: connection terminated'));
+
+    const result = await runToolLoop({
+      provider: fakeProvider(complete),
+      systemBlocks: [{ type: 'text', text: 'sys' }],
+      history: [{ role: 'user', content: 'roll' }],
+      state: baseState,
+      applyMutations: apply,
+    });
+
+    expect(apply).toHaveBeenCalledOnce();
+    // Loop should have completed and the master got to narrate.
+    expect(result.finalText).toContain('Sorry, the dice slipped.');
+    // No state_changed event because the persist failed.
+    expect(result.events.some((e) => e.type === 'state_changed')).toBe(false);
+    // The tool_result fed back to the model carries the persistence error.
+    const lastUserMsg = (complete.mock.calls.at(-1)?.[0] as { messages: { role: string; content: unknown }[] }).messages.at(-1);
+    expect(lastUserMsg?.role).toBe('user');
+    const toolResult = (lastUserMsg!.content as { type: string; content: string; is_error: boolean }[])[0]!;
+    expect(toolResult.is_error).toBe(true);
+    expect(toolResult.content).toMatch(/persistence_failed/);
+  });
 });

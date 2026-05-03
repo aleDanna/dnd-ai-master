@@ -232,7 +232,7 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
     case 'set_equipped': {
       const [c] = await tx.select({ inventory: charactersTable.inventory }).from(charactersTable).where(eq(charactersTable.id, m.characterId)).limit(1);
       if (!c) break;
-      const inv = (c.inventory ?? []) as { slug: string; qty: number; equipped: boolean }[];
+      const inv = asInvArray(c.inventory);
       const next = inv.map((it) => (it.slug === m.itemSlug ? { ...it, equipped: m.equipped } : it));
       await tx.update(charactersTable).set({ inventory: next, updatedAt: new Date() }).where(eq(charactersTable.id, m.characterId));
       break;
@@ -248,18 +248,34 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
   }
 }
 
-function mergeInventoryAdd(inv: { slug: string; qty: number; equipped: boolean }[], slug: string, qty: number): typeof inv {
-  const safeQty = Math.max(1, Math.floor(qty));
-  const existing = inv.find((it) => it.slug === slug);
-  if (existing) {
-    return inv.map((it) => (it.slug === slug ? { ...it, qty: it.qty + safeQty } : it));
-  }
-  return [...inv, { slug, qty: safeQty, equipped: false }];
+type InvRow = { slug: string; qty: number; equipped: boolean };
+
+// Coerce whatever the jsonb column returned into the expected array shape.
+// Drizzle types it as InventoryItem[] but historic rows or partial wizard
+// states could write an object/null/undefined — without this guard the
+// callers' .map/.find would throw inside the transaction and crash the turn.
+function asInvArray(raw: unknown): InvRow[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (it): it is InvRow =>
+      !!it && typeof it === 'object' && typeof (it as InvRow).slug === 'string' && typeof (it as InvRow).qty === 'number',
+  );
 }
 
-function mergeInventoryRemove(inv: { slug: string; qty: number; equipped: boolean }[], slug: string, qty: number): typeof inv {
+function mergeInventoryAdd(inv: unknown, slug: string, qty: number): InvRow[] {
+  const safe = asInvArray(inv);
   const safeQty = Math.max(1, Math.floor(qty));
-  return inv
+  const existing = safe.find((it) => it.slug === slug);
+  if (existing) {
+    return safe.map((it) => (it.slug === slug ? { ...it, qty: it.qty + safeQty } : it));
+  }
+  return [...safe, { slug, qty: safeQty, equipped: false }];
+}
+
+function mergeInventoryRemove(inv: unknown, slug: string, qty: number): InvRow[] {
+  const safe = asInvArray(inv);
+  const safeQty = Math.max(1, Math.floor(qty));
+  return safe
     .map((it) => (it.slug === slug ? { ...it, qty: it.qty - safeQty } : it))
     .filter((it) => it.qty > 0);
 }
