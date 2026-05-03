@@ -215,15 +215,53 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
       }
       break;
     }
+    case 'add_inventory': {
+      const [c] = await tx.select({ inventory: charactersTable.inventory }).from(charactersTable).where(eq(charactersTable.id, m.characterId)).limit(1);
+      if (!c) break;
+      const next = mergeInventoryAdd(c.inventory ?? [], m.itemSlug, m.qty);
+      await tx.update(charactersTable).set({ inventory: next, updatedAt: new Date() }).where(eq(charactersTable.id, m.characterId));
+      break;
+    }
+    case 'remove_inventory': {
+      const [c] = await tx.select({ inventory: charactersTable.inventory }).from(charactersTable).where(eq(charactersTable.id, m.characterId)).limit(1);
+      if (!c) break;
+      const next = mergeInventoryRemove(c.inventory ?? [], m.itemSlug, m.qty);
+      await tx.update(charactersTable).set({ inventory: next, updatedAt: new Date() }).where(eq(charactersTable.id, m.characterId));
+      break;
+    }
+    case 'set_equipped': {
+      const [c] = await tx.select({ inventory: charactersTable.inventory }).from(charactersTable).where(eq(charactersTable.id, m.characterId)).limit(1);
+      if (!c) break;
+      const inv = (c.inventory ?? []) as { slug: string; qty: number; equipped: boolean }[];
+      const next = inv.map((it) => (it.slug === m.itemSlug ? { ...it, equipped: m.equipped } : it));
+      await tx.update(charactersTable).set({ inventory: next, updatedAt: new Date() }).where(eq(charactersTable.id, m.characterId));
+      break;
+    }
+    case 'recompute_ac': {
+      await tx.update(charactersTable).set({ ac: Math.max(1, Math.floor(m.newAc)), updatedAt: new Date() }).where(eq(charactersTable.id, m.characterId));
+      break;
+    }
     // Ops Plan B emits but Plan D1 does not yet act on; ignore safely.
-    case 'add_inventory':
-    case 'remove_inventory':
-    case 'set_equipped':
-    case 'recompute_ac':
     case 'death_save':
     case 'reset_death_saves':
       break;
   }
+}
+
+function mergeInventoryAdd(inv: { slug: string; qty: number; equipped: boolean }[], slug: string, qty: number): typeof inv {
+  const safeQty = Math.max(1, Math.floor(qty));
+  const existing = inv.find((it) => it.slug === slug);
+  if (existing) {
+    return inv.map((it) => (it.slug === slug ? { ...it, qty: it.qty + safeQty } : it));
+  }
+  return [...inv, { slug, qty: safeQty, equipped: false }];
+}
+
+function mergeInventoryRemove(inv: { slug: string; qty: number; equipped: boolean }[], slug: string, qty: number): typeof inv {
+  const safeQty = Math.max(1, Math.floor(qty));
+  return inv
+    .map((it) => (it.slug === slug ? { ...it, qty: it.qty - safeQty } : it))
+    .filter((it) => it.qty > 0);
 }
 
 async function getPcHp(tx: Tx, sessionId: string): Promise<number> {

@@ -1,6 +1,7 @@
 'use client';
 import { Eyebrow } from '@/components/ui/eyebrow';
 import { Chip } from '@/components/ui/chip';
+import { categorizeInventory, slugToLabel } from '@/lib/inventory';
 import type { Character } from '@/engine/types';
 import type { SessionStateRow } from '@/sessions/client-types';
 
@@ -142,6 +143,8 @@ export function CharacterPane({ character, state }: CharacterPaneProps) {
         </div>
       )}
 
+      <InventorySection inventory={character.inventory} />
+
       {character.features.length > 0 && (
         <div>
           <Eyebrow style={{ marginBottom: 6 }}>Resources</Eyebrow>
@@ -170,6 +173,99 @@ function Stat({ label, value }: { label: string; value: string | number }) {
     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 0', textAlign: 'center' }}>
       <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--fg-muted)' }}>{label}</div>
       <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 600, marginTop: 2 }}>{value}</div>
+    </div>
+  );
+}
+
+const CURRENCY_COLOR: Record<string, string> = {
+  pp: 'var(--bone)',
+  gp: 'var(--gold)',
+  ep: 'var(--gold)',
+  sp: 'var(--fg-muted)',
+  cp: 'var(--ember)',
+};
+
+function InventorySection({ inventory }: { inventory: { slug: string; qty: number; equipped: boolean }[] }) {
+  const cat = categorizeInventory(inventory);
+  // Don't render anything if there's literally nothing — keeps the panel
+  // tidy for fresh characters who haven't picked anything up yet.
+  if (cat.currency.length === 0 && cat.equipped.length === 0 && cat.other.length === 0) return null;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {cat.currency.length > 0 && (
+        <div>
+          <Eyebrow style={{ marginBottom: 6 }}>Currency</Eyebrow>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {cat.currency.map(({ code, qty }) => (
+              <div
+                key={code}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'baseline',
+                  gap: 4,
+                  padding: '3px 8px',
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 999,
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 12,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                <span style={{ fontWeight: 600 }}>{qty.toLocaleString()}</span>
+                <span style={{ fontSize: 10, color: CURRENCY_COLOR[code] ?? 'var(--fg-muted)', textTransform: 'uppercase' }}>{code}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {cat.equipped.length > 0 && (
+        <div>
+          <Eyebrow style={{ marginBottom: 6 }}>Equipped</Eyebrow>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {cat.equipped.map((it) => (
+              <InventoryRow key={it.slug} slug={it.slug} qty={it.qty} equipped />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {cat.other.length > 0 && (
+        <div>
+          <Eyebrow style={{ marginBottom: 6 }}>Inventory</Eyebrow>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {cat.other.map((it) => (
+              <InventoryRow key={it.slug} slug={it.slug} qty={it.qty} equipped={false} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InventoryRow({ slug, qty, equipped }: { slug: string; qty: number; equipped: boolean }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        fontSize: 12,
+        padding: '3px 6px',
+        borderRadius: 4,
+        background: equipped ? 'rgba(122,79,184,0.08)' : 'transparent',
+        border: equipped ? '1px solid rgba(122,79,184,0.3)' : '1px solid transparent',
+      }}
+    >
+      <span style={{ flex: 1 }}>{slugToLabel(slug)}</span>
+      {qty > 1 && (
+        <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-muted)', fontVariantNumeric: 'tabular-nums', fontSize: 11 }}>
+          ×{qty}
+        </span>
+      )}
     </div>
   );
 }

@@ -196,6 +196,34 @@ export const TOOL_DEFINITIONS: AnthropicTool[] = [
     } as never,
   },
   {
+    name: 'add_item',
+    description:
+      'Add an item to the player character\'s inventory. Use slugs from the SRD where possible (e.g. "longbow", "leather", "shield", "rope-hempen"). For currency use the standard slugs gp/sp/cp/ep/pp with qty being the amount of coins. Stacks with existing entries of the same slug.',
+    input_schema: {
+      type: 'object',
+      required: ['actor', 'slug'],
+      properties: {
+        actor: ACTOR_ID,
+        slug: { type: 'string', description: 'Item slug or currency code (gp/sp/cp/ep/pp).' },
+        qty: { type: 'integer', minimum: 1, default: 1 },
+      },
+    } as never,
+  },
+  {
+    name: 'remove_item',
+    description:
+      'Remove some quantity of an item from the player\'s inventory. Use when the player consumes a potion, spends gold, drops gear, etc. The item is dropped from inventory entirely when its qty reaches 0.',
+    input_schema: {
+      type: 'object',
+      required: ['actor', 'slug'],
+      properties: {
+        actor: ACTOR_ID,
+        slug: { type: 'string' },
+        qty: { type: 'integer', minimum: 1, default: 1 },
+      },
+    } as never,
+  },
+  {
     name: 'award_xp',
     description:
       'Award experience points to the player character. Use after combat victories, completed objectives, or roleplay milestones. Typical values: 25-100 for trivial encounters, 200-500 for moderate, 750+ for hard. The XP bar updates immediately; level-up is a separate explicit step (use level_up when the threshold is crossed).',

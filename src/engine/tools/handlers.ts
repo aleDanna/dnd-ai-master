@@ -228,6 +228,36 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       data: { newTotal: char.xp + amount, awarded: amount, reason },
     };
   },
+
+  add_item: (state, input) => {
+    const charId = resolveCharacterId(state, input.actor);
+    const char = state.characters.find((c) => c.id === charId);
+    if (!char) return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
+    const slug = String(input.slug || '').trim().toLowerCase();
+    if (!slug) return { ok: false, error: 'invalid_slug', rolls: [], mutations: [] };
+    const qty = Math.max(1, Math.floor(Number(input.qty ?? 1) || 1));
+    return {
+      ok: true,
+      rolls: [],
+      mutations: [{ op: 'add_inventory', characterId: char.id, itemSlug: slug, qty }],
+      data: { slug, qty },
+    };
+  },
+
+  remove_item: (state, input) => {
+    const charId = resolveCharacterId(state, input.actor);
+    const char = state.characters.find((c) => c.id === charId);
+    if (!char) return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
+    const slug = String(input.slug || '').trim().toLowerCase();
+    if (!slug) return { ok: false, error: 'invalid_slug', rolls: [], mutations: [] };
+    const qty = Math.max(1, Math.floor(Number(input.qty ?? 1) || 1));
+    return {
+      ok: true,
+      rolls: [],
+      mutations: [{ op: 'remove_inventory', characterId: char.id, itemSlug: slug, qty }],
+      data: { slug, qty },
+    };
+  },
 };
 
 function resolveCharacterId(state: EngineState, actorRef: unknown): string {
