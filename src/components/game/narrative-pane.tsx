@@ -7,6 +7,7 @@ import { ToolPill } from './tool-pill';
 import { SpinningDie } from './spinning-die';
 import { TtsButton } from './tts-button';
 import { RollRequestGroup } from './roll-request-group';
+import { MarkdownText } from './markdown-text';
 import { parseRollRequests } from '@/lib/roll-parser';
 import type { TurnEvent } from '@/sessions/types';
 import type { MessageRow } from '@/sessions/client-types';
@@ -170,7 +171,10 @@ function MessageView({
     return (
       <div>
         <Eyebrow style={{ marginBottom: 6 }}>The Master</Eyebrow>
-        <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, lineHeight: 1.55, color: 'var(--fg)' }}>{m.content}</div>
+        <MarkdownText
+          text={m.content}
+          style={{ fontFamily: 'var(--font-display)', fontSize: 18, lineHeight: 1.55, color: 'var(--fg)' }}
+        />
         {hasFooter && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10, alignItems: 'center' }}>
             {m.id && <TtsButton sessionId={sessionId} messageId={m.id} />}
@@ -198,7 +202,9 @@ function MessageView({
   if (m.role === 'player') {
     return (
       <div style={{ alignSelf: 'flex-end', marginLeft: 'auto', maxWidth: '85%' }}>
-        <div style={{ background: 'var(--bone)', color: 'var(--ink)', borderRadius: '12px 12px 4px 12px', padding: '10px 14px', fontSize: 14, lineHeight: 1.5 }}>{m.content}</div>
+        <div style={{ background: 'var(--bone)', color: 'var(--ink)', borderRadius: '12px 12px 4px 12px', padding: '10px 14px', fontSize: 14, lineHeight: 1.5 }}>
+          <MarkdownText text={m.content} />
+        </div>
       </div>
     );
   }
