@@ -11,6 +11,7 @@ import { RollRequestGroup } from './roll-request-group';
 import { MarkdownText } from './markdown-text';
 import { formatResultText } from './roll-request-button';
 import { parseRollRequests, pickAutoRoll, rollFormula } from '@/lib/roll-parser';
+import { isOocMessage, stripOocPrefix } from '@/lib/ooc';
 import type { TurnEvent } from '@/sessions/types';
 import type { MessageRow } from '@/sessions/client-types';
 
@@ -248,7 +249,7 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
                   submit();
                 }
               }}
-              placeholder="What do you do?"
+              placeholder="What do you do? · Start with ! to ask the master out-of-character"
               rows={2}
               style={{
                 flex: 1,
@@ -401,10 +402,39 @@ function MessageView({
     );
   }
   if (m.role === 'player') {
+    const ooc = isOocMessage(m.content);
+    const displayText = ooc ? stripOocPrefix(m.content) : m.content;
     return (
       <div style={{ alignSelf: 'flex-end', marginLeft: 'auto', maxWidth: '85%' }}>
-        <div style={{ background: 'var(--bone)', color: 'var(--ink)', borderRadius: '12px 12px 4px 12px', padding: '10px 14px', fontSize: 14, lineHeight: 1.5 }}>
-          <MarkdownText text={m.content} />
+        {ooc && (
+          <div
+            style={{
+              fontSize: 9,
+              fontWeight: 600,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: 'var(--fg-subtle)',
+              textAlign: 'right',
+              marginBottom: 4,
+              fontFamily: 'var(--font-ui)',
+            }}
+          >
+            Aside · OOC
+          </div>
+        )}
+        <div
+          style={{
+            background: ooc ? 'transparent' : 'var(--bone)',
+            color: ooc ? 'var(--fg-muted)' : 'var(--ink)',
+            border: ooc ? '1px dashed var(--border-strong)' : 'none',
+            borderRadius: '12px 12px 4px 12px',
+            padding: '10px 14px',
+            fontSize: 14,
+            lineHeight: 1.5,
+            fontStyle: ooc ? 'italic' : 'normal',
+          }}
+        >
+          <MarkdownText text={displayText} />
         </div>
       </div>
     );

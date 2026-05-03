@@ -44,7 +44,7 @@ describe('NarrativePane — manual roll flow', () => {
     await act(async () => { vi.advanceTimersByTime(1); });
 
     // Tamper-resistance: the rolled number is NOT in the textarea.
-    const textarea = screen.getByPlaceholderText('What do you do?') as HTMLTextAreaElement;
+    const textarea = screen.getByPlaceholderText(/What do you do/) as HTMLTextAreaElement;
     expect(textarea.value).toBe('');
     // It IS rendered as a read-only chip with a status role.
     const chip = screen.getByRole('status', { name: /Pending dice roll/i });
@@ -76,7 +76,7 @@ describe('NarrativePane — manual roll flow', () => {
     await act(async () => { vi.advanceTimersByTime(1); });
 
     // Player types target context.
-    const textarea = screen.getByPlaceholderText('What do you do?') as HTMLTextAreaElement;
+    const textarea = screen.getByPlaceholderText(/What do you do/) as HTMLTextAreaElement;
     fireEvent.change(textarea, { target: { value: 'la sentinella' } });
     fireEvent.keyDown(textarea, { key: 'Enter' });
 
@@ -124,7 +124,7 @@ describe('NarrativePane — manual roll flow', () => {
     // Mid-spinner: try to submit prose. The Send button must be disabled and
     // the Enter shortcut must be a no-op.
     await act(async () => { vi.advanceTimersByTime(200); });
-    const textarea = screen.getByPlaceholderText('What do you do?') as HTMLTextAreaElement;
+    const textarea = screen.getByPlaceholderText(/What do you do/) as HTMLTextAreaElement;
     fireEvent.change(textarea, { target: { value: 'Certo che parlo sul serio.' } });
 
     const sendButton = screen.getByRole('button', { name: /^Send$/i });
@@ -217,7 +217,7 @@ describe('NarrativePane — manual roll flow', () => {
       />,
     );
 
-    const textarea = screen.getByPlaceholderText('What do you do?') as HTMLTextAreaElement;
+    const textarea = screen.getByPlaceholderText(/What do you do/) as HTMLTextAreaElement;
     fireEvent.change(textarea, { target: { value: 'intimidisco urlando' } });
     fireEvent.keyDown(textarea, { key: 'Enter' });
 
@@ -255,7 +255,7 @@ describe('NarrativePane — manual roll flow', () => {
       />,
     );
 
-    const textarea = screen.getByPlaceholderText('What do you do?') as HTMLTextAreaElement;
+    const textarea = screen.getByPlaceholderText(/What do you do/) as HTMLTextAreaElement;
     fireEvent.change(textarea, { target: { value: 'voglio guardarmi intorno con calma' } });
     fireEvent.keyDown(textarea, { key: 'Enter' });
 

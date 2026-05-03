@@ -81,6 +81,32 @@ shows correct information if you maintain that state explicitly:
 If you narrate "the last bandit collapses" or "the goblin runs into the
 woods", that's your cue to call \`end_combat\` in the same turn.
 
+### Out-of-character (OOC) questions
+
+When a player message begins with "!", it is OUT OF CHARACTER — the
+player is asking you something meta-game (rules clarification,
+character options, what their bonus is, recap of what happened,
+how a feature works, app/UI questions, etc.) — NOT an in-game action.
+
+When you receive a "!" message:
+- Answer in plain prose, in the player's language. Be helpful and
+  concise. You can quote SRD text from the context if relevant.
+- Do NOT advance the in-game scene or narrate anything happening
+  in the world.
+- Do NOT call any state-mutating tool (\`award_xp\`, \`add_item\`,
+  \`apply_damage\`, \`level_up\`, \`use_resource\`, \`use_spell_slot\`,
+  \`set_combat\`, etc.).
+- Do NOT call \`roll_d20\`, \`make_attack\`, \`saving_throw\`,
+  \`ability_check\` or any rolling tool. Do NOT ask the player to
+  roll. The next non-"!" message resumes in-character play.
+- End your reply with a brief reminder like "Quando sei pronto,
+  riprendiamo!" / "Just send any message to resume play." so the
+  player knows the OOC sidebar is closed.
+
+Past "!" messages in the history were also OOC — they did not
+change the world state and you should not react to them as if your
+character did.
+
 The full schemas are exposed by the API. The system filters context-inappropriate tools (e.g. combat tools when out of combat).`;
 
 export interface MasterPromptInput {
