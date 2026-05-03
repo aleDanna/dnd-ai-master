@@ -337,6 +337,75 @@ describe('parseRollRequests — attack/damage split safety net', () => {
   });
 });
 
+describe('parseRollRequests — Italian skill checks (no explicit formula)', () => {
+  it('parses "tira una prova di Intimidazione CD 12" as a check button', () => {
+    const reqs = parseRollRequests('Tira una prova di Intimidazione CD 12.');
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.formula).toBe('1d20');
+    expect(reqs[0]!.label).toBe('Intimidazione (CD 12)');
+    expect(reqs[0]!.kind).toBe('check');
+  });
+
+  it('parses "tira una prova di Sopravvivenza" without DC', () => {
+    const reqs = parseRollRequests('Tira una prova di Sopravvivenza.');
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.label).toBe('Sopravvivenza');
+  });
+
+  it('parses "fai una prova di Percezione (CD 15)" with parenthetical DC', () => {
+    const reqs = parseRollRequests('Fai una prova di Percezione (CD 15).');
+    expect(reqs[0]!.label).toBe('Percezione (CD 15)');
+  });
+
+  it('parses an ability-based prova ("prova di Forza CD 10")', () => {
+    const reqs = parseRollRequests('Tira una prova di Forza CD 10.');
+    expect(reqs[0]!.label).toBe('Forza (CD 10)');
+  });
+
+  it('handles the screenshot scenario verbatim — bullet 3 of a "Vuoi:" list', () => {
+    const text =
+      'Tocca a te. Vuoi:\n' +
+      '- Scoccare una freccia al fuggitivo in fuga: tira 1d20+3 per attaccare il fuggitivo (CA 14 con mezza copertura).\n' +
+      '- Inseguirlo a tutta velocità con una Corsa (Dash): nessun tiro.\n' +
+      '- Fermarlo a voce con un urlo minaccioso: tira una prova di Intimidazione CD 12.';
+    const reqs = parseRollRequests(text);
+    // Two roll-able options: the attack and the intimidation check.
+    expect(reqs.length).toBe(2);
+    // Order matches narrative order.
+    expect(reqs[0]!.formula).toBe('1d20+3');
+    expect(reqs[0]!.kind).toBe('attack');
+    expect(reqs[1]!.formula).toBe('1d20');
+    expect(reqs[1]!.kind).toBe('check');
+    expect(reqs[1]!.label).toContain('Intimidazione');
+    expect(reqs[1]!.label).toContain('CD 12');
+  });
+
+  it('normalises "tira una prova di Intimidire" to canonical "Intimidazione"', () => {
+    const reqs = parseRollRequests('Tira una prova di Intimidire CD 12.');
+    expect(reqs[0]!.label).toBe('Intimidazione (CD 12)');
+  });
+});
+
+describe('parseRollRequests — Italian saving throws (no explicit formula)', () => {
+  it('parses "tira un TS Destrezza CD 14"', () => {
+    const reqs = parseRollRequests('Tira un TS Destrezza CD 14.');
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.formula).toBe('1d20');
+    expect(reqs[0]!.label).toBe('TS DES (CD 14)');
+    expect(reqs[0]!.kind).toBe('save');
+  });
+
+  it('parses "tira un tiro salvezza di Costituzione (CD 12)"', () => {
+    const reqs = parseRollRequests('Tira un tiro salvezza di Costituzione (CD 12).');
+    expect(reqs[0]!.label).toBe('TS COS (CD 12)');
+  });
+
+  it('parses "fai un TS Saggezza" without DC', () => {
+    const reqs = parseRollRequests('Fai un TS Saggezza.');
+    expect(reqs[0]!.label).toBe('TS SAG');
+  });
+});
+
 describe('bulletIndexAt', () => {
   it('returns null for prose before any bullet', () => {
     const text = 'Vuoi:\n- Opzione A: tira 1d20.\n- Opzione B: tira 1d20.';

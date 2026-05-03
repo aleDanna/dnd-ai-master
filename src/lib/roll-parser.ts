@@ -123,6 +123,54 @@ export function parseRollRequests(text: string): RollRequest[] {
     });
   }
 
+  // 4. Italian skill / ability check (no explicit formula):
+  //    "tira una prova di Intimidazione (CD 12)"  /  "fai una prova di Sopravvivenza"
+  //    The DC can appear after the skill ("CD 12") and is optional.
+  const ITALIAN_SKILL =
+    'Acrobazia|Addestrare\\s+Animali|Arcano|Atletica|Inganno|Intuito|Intimidazione|Intimidire|Investigazione|Medicina|Natura|Percezione|Intrattenere|Spettacolo|Persuasione|Religione|Rapidit[àa]\\s+di\\s+Mano|Mano\\s+Lesta|Furtivit[àa]|Sopravvivenza|Storia';
+  const ITALIAN_ABILITY = 'Forza|Destrezza|Costituzione|Intelligenza|Saggezza|Carisma';
+  const checkReIt = new RegExp(
+    `(?:tira|fai|effettua)\\s+(?:un[ao]?\\s+)?(?:prova|controllo)\\s+(?:di\\s+)?(${ITALIAN_SKILL}|${ITALIAN_ABILITY})(?:[^.!?\\n]{0,30}?\\bCD\\s*(\\d+))?`,
+    'gi',
+  );
+  while ((m = checkReIt.exec(text)) !== null) {
+    const skill = normalizeItalianSkill(m[1]!);
+    const dc = m[2] ? parseInt(m[2], 10) : null;
+    const formula = '1d20';
+    const key = `${m.index}:check:${skill}:${dc ?? '-'}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    requests.push({
+      formula,
+      label: dc !== null ? `${skill} (CD ${dc})` : skill,
+      kind: 'check',
+      index: m.index,
+      groupMode: 'or',
+    });
+  }
+
+  // 5. Italian saving throw:
+  //    "tira un TS Destrezza CD 14" / "tira un tiro salvezza di Costituzione (CD 12)"
+  const saveReIt = new RegExp(
+    `(?:tira|fai|effettua)\\s+(?:un[ao]?\\s+)?(?:TS|tiro\\s+(?:di\\s+)?salvezza)\\s+(?:di\\s+)?(${ITALIAN_ABILITY})(?:[^.!?\\n]{0,30}?\\bCD\\s*(\\d+))?`,
+    'gi',
+  );
+  while ((m = saveReIt.exec(text)) !== null) {
+    const ability = abbrItalianAbility(m[1]!);
+    const dc = m[2] ? parseInt(m[2], 10) : null;
+    const formula = '1d20';
+    const key = `${m.index}:save:${ability}:${dc ?? '-'}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    requests.push({
+      formula,
+      label: dc !== null ? `TS ${ability} (CD ${dc})` : `TS ${ability}`,
+      kind: 'save',
+      index: m.index,
+      groupMode: 'or',
+    });
+  }
+
   // Safety net: in a single master message the player should never see a damage
   // button next to an attack button — they can't know whether they hit until
   // the to-hit roll resolves. The system prompt instructs the master to split
@@ -289,6 +337,52 @@ function abbrAbility(raw: string): string {
   const k = raw.slice(0, 3).toUpperCase();
   if (['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'].includes(k)) return k;
   return raw;
+}
+
+/**
+ * Map an Italian ability name (Forza/Destrezza/...) to its standard 3-letter
+ * abbreviation. Falls back to the title-cased input when no match.
+ */
+function abbrItalianAbility(raw: string): string {
+  const normalized = raw.trim().toLowerCase();
+  switch (normalized) {
+    case 'forza':
+      return 'FOR';
+    case 'destrezza':
+      return 'DES';
+    case 'costituzione':
+      return 'COS';
+    case 'intelligenza':
+      return 'INT';
+    case 'saggezza':
+      return 'SAG';
+    case 'carisma':
+      return 'CAR';
+    default:
+      return raw;
+  }
+}
+
+/**
+ * Title-case + collapse whitespace for an Italian skill name captured by the
+ * regex. Maps "Intimidire" → "Intimidazione" so the label is consistent
+ * regardless of the verb form the master used. Also normalizes "Spettacolo" /
+ * "Mano Lesta" alternative wordings to the canonical D&D 5e Italian skill list.
+ */
+function normalizeItalianSkill(raw: string): string {
+  const collapsed = raw.replace(/\s+/g, ' ').trim();
+  const lower = collapsed.toLowerCase();
+  // Aliases → canonical form.
+  const aliases: Record<string, string> = {
+    intimidire: 'Intimidazione',
+    spettacolo: 'Intrattenere',
+    'mano lesta': 'Rapidità di Mano',
+    'rapidita di mano': 'Rapidità di Mano',
+    furtivita: 'Furtività',
+  };
+  if (aliases[lower]) return aliases[lower]!;
+  // Otherwise return the original casing (the regex captured it as the master wrote it).
+  return collapsed;
 }
 
 /**
