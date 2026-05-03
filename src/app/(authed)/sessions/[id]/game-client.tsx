@@ -95,20 +95,53 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
     };
   }, [fetchSessionData]);
 
-  // When a turn completes, refresh messages + dice log + character. Guard
-  // with a ref so the effect only fires once per turn_complete (avoids
-  // races if events array mutates).
+  // When a turn completes, optimistically inject the master's response into
+  // `messages` (using the live-streamed text + the persisted ID from
+  // turn_complete) BEFORE resetting events. This prevents the brief gap
+  // where the live message has been cleared but the refetch hasn't landed
+  // yet — that gap was making the player's last reply visually disappear.
+  // Then run the async refetch to sync dice rolls, character XP, etc.
   React.useEffect(() => {
     const last = turn.events.at(-1);
     if (last?.type === 'turn_complete' && !turn.busy && lastCompleteIdRef.current !== last.messageId) {
-      lastCompleteIdRef.current = last.messageId;
+      const completedId = last.messageId;
+      lastCompleteIdRef.current = completedId;
+
+      // Reconstruct the master message text from accumulated narrative_delta
+      // events. Mirrors mergeMessages' live-text logic in narrative-pane.
+      let liveText = '';
+      for (const ev of turn.events) {
+        if (ev.type === 'narrative_delta') liveText += ev.text;
+      }
+
+      // Optimistic insert with the persisted ID. Idempotent: if the message
+      // is already present (e.g. an earlier refetch already landed), skip.
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === completedId)) return prev;
+        return [
+          ...prev,
+          {
+            id: completedId,
+            sessionId,
+            role: 'master',
+            content: liveText,
+            createdAt: new Date().toISOString(),
+          },
+        ];
+      });
+
+      // Now safe to clear live events — the master's text is already in
+      // `messages` so the user sees a continuous render with no flash.
+      turn.reset();
+
+      // Async refresh: pull authoritative state (dice log, XP, full
+      // message list with any tool metadata the server attached).
       let active = true;
       void fetchSessionData().then((data) => {
         if (!active) return;
         if (data.messages) setMessages(data.messages);
         if (data.rolls) setRolls(data.rolls);
         if (data.character) setCharacter(data.character);
-        turn.reset();
       });
       return () => {
         active = false;
