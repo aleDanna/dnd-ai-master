@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { sessions, sessionState, combatActors } from '@/db/schema';
+import { sessions, sessionState, combatActors, characters } from '@/db/schema';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
@@ -74,10 +74,33 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
           .where(eq(sessionState.sessionId, sessionId))
           .limit(1);
         const actors = await db.select().from(combatActors).where(eq(combatActors.sessionId, sessionId));
-        const payload = JSON.stringify({ session, state, actors });
+        // Mutable character fields — XP, level, hpMax, AC, inventory,
+        // spellcasting — all of which the master can change mid-turn.
+        // Including them in the snapshot guarantees the right-pane UI
+        // (XP bar, character pane, spell slots) stays fresh without
+        // depending on the turn_complete refetch path, which has a
+        // history of racing with effect re-renders and silently
+        // dropping updates.
+        const [character] = await db
+          .select({
+            id: characters.id,
+            name: characters.name,
+            level: characters.level,
+            xp: characters.xp,
+            hpMax: characters.hpMax,
+            ac: characters.ac,
+            proficiencyBonus: characters.proficiencyBonus,
+            inventory: characters.inventory,
+            spellcasting: characters.spellcasting,
+            features: characters.features,
+          })
+          .from(characters)
+          .where(eq(characters.id, session.characterId))
+          .limit(1);
+        const payload = JSON.stringify({ session, state, actors, character });
         if (payload !== last) {
           try {
-            send('snapshot', { session, state, actors });
+            send('snapshot', { session, state, actors, character });
           } catch {
             // client disconnected; stop polling
             closed = true;

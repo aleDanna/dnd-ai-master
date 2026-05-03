@@ -60,8 +60,27 @@ export interface SessionStateRow {
   sceneImagePrompt: string | null;
 }
 
+/** Mutable subset of the character row that the right-pane UI cares about
+ * for live updates. Identity fields (race, class, abilities, etc.) are not
+ * shipped — they don't change mid-session and the SSR'd character covers
+ * them. */
+export interface CharacterPatch {
+  id: string;
+  name: string;
+  level: number;
+  xp: number;
+  hpMax: number;
+  ac: number;
+  proficiencyBonus: number;
+  inventory: { slug: string; qty: number; equipped: boolean }[];
+  spellcasting: unknown;
+  features: unknown;
+}
+
 export interface StateSnapshot {
   session: SessionRow;
   state: SessionStateRow;
   actors: CombatActorRow[];
+  /** Live mutable fields; merge onto the SSR'd character. */
+  character?: CharacterPatch;
 }

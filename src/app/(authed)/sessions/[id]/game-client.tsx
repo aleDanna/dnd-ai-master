@@ -51,6 +51,43 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
   const liveState: SessionStateRow | null = stateSub.snapshot?.state ?? initialState;
   const liveActors: CombatActorRow[] = stateSub.snapshot?.actors ?? initialActors;
 
+  // Live character mutable fields from the /state SSE snapshot. Merging
+  // these onto the local React state on every snapshot tick (every 1.5s)
+  // makes the right-pane UI (XP bar, AC, inventory, spell slots) eventually
+  // consistent with the DB regardless of whether the turn_complete refetch
+  // succeeded — that path used to race with effect re-runs and silently
+  // drop updates.
+  React.useEffect(() => {
+    const patch = stateSub.snapshot?.character;
+    if (!patch) return;
+    setCharacter((prev) => {
+      // Skip the setState if nothing in the patch differs from current —
+      // avoids an unnecessary re-render on every keepalive tick.
+      if (
+        prev.id === patch.id &&
+        prev.level === patch.level &&
+        prev.xp === patch.xp &&
+        prev.hpMax === patch.hpMax &&
+        prev.ac === patch.ac &&
+        prev.proficiencyBonus === patch.proficiencyBonus &&
+        prev.inventory === patch.inventory &&
+        prev.spellcasting === patch.spellcasting &&
+        prev.features === patch.features
+      ) return prev;
+      return {
+        ...prev,
+        level: patch.level,
+        xp: patch.xp,
+        hpMax: patch.hpMax,
+        ac: patch.ac,
+        proficiencyBonus: patch.proficiencyBonus,
+        inventory: patch.inventory,
+        spellcasting: patch.spellcasting as Character['spellcasting'],
+        features: patch.features as Character['features'],
+      };
+    });
+  }, [stateSub.snapshot?.character]);
+
   // Derive server-side error from any turn_error event in the stream.
   const serverError = React.useMemo(() => {
     const ev = turn.events.find((e) => e.type === 'turn_error');
