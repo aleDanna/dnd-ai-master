@@ -36,7 +36,7 @@ describe('MechanicsPane scene image', () => {
         pcCharacterId="pc1" pcName="Tharion" pcHpMax={10} pcLevel={1} pcXp={0}
       />,
     );
-    const img = screen.getByRole('img', { name: 'a tower' }) as HTMLImageElement;
+    const img = screen.getByRole('img', { name: 'Scene illustration' }) as HTMLImageElement;
     expect(img.getAttribute('src')).toBe('/api/sessions/sess-1/scene-image?v=7');
   });
 });

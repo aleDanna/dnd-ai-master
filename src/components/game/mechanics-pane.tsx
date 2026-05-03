@@ -54,7 +54,10 @@ export function MechanicsPane({ sessionId, state, actors, diceLog, pcCharacterId
         {state.sceneImageVersion > 0 && (
           <img
             src={`/api/sessions/${sessionId}/scene-image?v=${state.sceneImageVersion}`}
-            alt={state.sceneImagePrompt ?? 'Scene illustration'}
+            // The visual prompt is always English (gpt-image-1 prefers it),
+            // but the player's narrative language may not be. Use a generic
+            // alt instead of leaking the English prompt to assistive tech.
+            alt="Scene illustration"
             style={{
               width: '100%',
               aspectRatio: '1 / 1',

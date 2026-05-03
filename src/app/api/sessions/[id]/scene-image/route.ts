@@ -30,7 +30,9 @@ export async function GET(req: NextRequest | Request, { params }: { params: Prom
     return new Response(null, { status: 304, headers: { ETag: etag } });
   }
 
-  // Return the image data
+  // Wrap the Node Buffer in a Uint8Array view: Next 16's App Router runs on
+  // Web-Fetch primitives whose Response constructor accepts Uint8Array but
+  // not Node Buffer directly. The view is zero-copy.
   return new Response(Buffer.isBuffer(row.data) ? new Uint8Array(row.data) : row.data, {
     status: 200,
     headers: {

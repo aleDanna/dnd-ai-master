@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { sql, eq } from 'drizzle-orm';
 import { db, pool } from '@/db/client';
 import { ensureUser } from '@/db/users';
@@ -27,6 +27,13 @@ describe('generateAndPersist', () => {
     await db.execute(sql`delete from characters where user_id = ${TEST_USER}`);
     await db.execute(sql`delete from users where id = ${TEST_USER}`);
     await pool.end();
+  });
+
+  // Each test sets the OpenAI client override; reset to null between tests so a
+  // future case that forgets to set one doesn't silently inherit the previous
+  // mock.
+  afterEach(() => {
+    __setOpenAIClientForTest(null);
   });
 
   it('on success: writes bytes + prompt + bumps version to expectedVersion', async () => {

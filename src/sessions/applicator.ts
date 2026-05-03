@@ -37,11 +37,17 @@ async function loadContext(tx: Tx, sessionId: string): Promise<SessionContext | 
 }
 
 export async function applyMutations(sessionId: string, mutations: Mutation[], rolls: DiceRoll[]): Promise<void> {
+  // Side effects that must run AFTER the transaction commits (currently:
+  // scheduling background image-gen jobs via waitUntil). Calling waitUntil
+  // inside the tx is unsafe — the registered Promise begins executing
+  // synchronously, and if its first await ever resolves before commit, the
+  // job sees pre-commit state. Collect them here and fire after commit.
+  const postCommit: (() => void)[] = [];
   await db.transaction(async (tx) => {
     const ctx = await loadContext(tx, sessionId);
     if (!ctx) return;
     for (const m of mutations) {
-      await applyOne(tx, sessionId, ctx, m);
+      await applyOne(tx, sessionId, ctx, m, postCommit);
     }
     if (rolls.length) {
       const inserts: DiceLogInsert[] = rolls.map((r) => ({
@@ -56,6 +62,7 @@ export async function applyMutations(sessionId: string, mutations: Mutation[], r
       await tx.insert(diceLogTable).values(inserts);
     }
   });
+  for (const fn of postCommit) fn();
 }
 
 function pickKind(r: DiceRoll): DiceLogInsert['kind'] {
@@ -63,7 +70,7 @@ function pickKind(r: DiceRoll): DiceLogInsert['kind'] {
   return (VALID_KINDS.has(k) ? k : 'generic') as DiceLogInsert['kind'];
 }
 
-async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutation): Promise<void> {
+async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutation, postCommit: (() => void)[]): Promise<void> {
   switch (m.op) {
     case 'set_hp':
     case 'apply_damage':
@@ -260,7 +267,11 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
         .where(eq(sessionStateTable.sessionId, sessionId))
         .limit(1);
       const nextVersion = (stateRow?.v ?? 0) + 1;
-      waitUntil(sceneImageJob.generateAndPersist(sessionId, m.visualPrompt, styleText, nextVersion));
+      // Defer to AFTER the tx commits — see applyMutations comment.
+      const visualPrompt = m.visualPrompt;
+      postCommit.push(() => {
+        waitUntil(sceneImageJob.generateAndPersist(sessionId, visualPrompt, styleText, nextVersion));
+      });
       break;
     }
     // Ops Plan B emits but Plan D1 does not yet act on; ignore safely.
