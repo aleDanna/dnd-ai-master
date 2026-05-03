@@ -127,7 +127,7 @@ export function parseRollRequests(text: string): RollRequest[] {
   //    "tira una prova di Intimidazione (CD 12)"  /  "fai una prova di Sopravvivenza"
   //    The DC can appear after the skill ("CD 12") and is optional.
   const ITALIAN_SKILL =
-    'Acrobazia|Addestrare\\s+Animali|Arcano|Atletica|Inganno|Intuito|Intimidazione|Intimidire|Investigazione|Medicina|Natura|Percezione|Intrattenere|Spettacolo|Persuasione|Religione|Rapidit[àa]\\s+di\\s+Mano|Mano\\s+Lesta|Furtivit[àa]|Sopravvivenza|Storia';
+    'Acrobazia|Addestrare\\s+Animali|Arcano|Atletica|Inganno|Intuito|Intuizione|Intimidazione|Intimidire|Investigazione|Medicina|Natura|Percezione|Intrattenere|Spettacolo|Persuasione|Religione|Rapidit[àa]\\s+di\\s+Mano|Mano\\s+Lesta|Furtivit[àa]|Sopravvivenza|Storia';
   const ITALIAN_ABILITY = 'Forza|Destrezza|Costituzione|Intelligenza|Saggezza|Carisma';
   const checkReIt = new RegExp(
     `(?:tira|fai|effettua)\\s+(?:un[ao]?\\s+)?(?:prova|controllo)\\s+(?:di\\s+)?(${ITALIAN_SKILL}|${ITALIAN_ABILITY})(?:[^.!?\\n]{0,30}?\\bCD\\s*(\\d+))?`,
@@ -340,8 +340,17 @@ const SKILL_SYNONYM_VERBS: Record<string, string[]> = {
     'examine', 'study', 'analyze', 'search', 'investigate',
   ],
   Intuito: [
-    'intuire', 'intuisco', 'sospettare', 'sospetto',
-    'sense', 'suspect',
+    'intuire', 'intuisco', 'sospettare', 'sospetto', 'capire', 'capisco',
+    'percepire', 'percepisco', 'leggere',
+    'sense', 'suspect', 'gut', 'read',
+  ],
+  // Italian translations sometimes use "Intuizione" instead of the canonical
+  // "Intuito" — both refer to the Insight skill. Listed as a separate key so
+  // skillSynonymStems' substring match catches the bullet either way.
+  Intuizione: [
+    'intuire', 'intuisco', 'sospettare', 'sospetto', 'capire', 'capisco',
+    'percepire', 'percepisco', 'leggere',
+    'sense', 'suspect', 'gut', 'read',
   ],
   Sopravvivenza: [
     'tracciare', 'tracce', 'orientarsi', 'oriento', 'cacciare', 'caccio',
@@ -600,6 +609,7 @@ function normalizeItalianSkill(raw: string): string {
     'mano lesta': 'Rapidità di Mano',
     'rapidita di mano': 'Rapidità di Mano',
     furtivita: 'Furtività',
+    intuizione: 'Intuito',
   };
   if (aliases[lower]) return aliases[lower]!;
   // Otherwise return the original casing (the regex captured it as the master wrote it).

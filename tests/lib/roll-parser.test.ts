@@ -385,6 +385,26 @@ describe('parseRollRequests — Italian skill checks (no explicit formula)', () 
     const reqs = parseRollRequests('Tira una prova di Intimidire CD 12.');
     expect(reqs[0]!.label).toBe('Intimidazione (CD 12)');
   });
+
+  it('parses "tira una prova di Intuizione CD 12" (Insight alias)', () => {
+    // Reproduces the user's screenshot: master narrates an Insight check
+    // using "Intuizione" rather than the canonical "Intuito". Both are
+    // valid Italian translations of D&D 5e Insight; the parser must
+    // accept either and produce a button.
+    const text =
+      'Vuoi capire se scapperebbe se lo slegassi. Tira una prova di Intuizione CD 12.';
+    const reqs = parseRollRequests(text);
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.formula).toBe('1d20');
+    // Normalised to canonical "Intuito" in the label.
+    expect(reqs[0]!.label).toBe('Intuito (CD 12)');
+    expect(reqs[0]!.kind).toBe('check');
+  });
+
+  it('parses "tira una prova di Intuito CD 14" (canonical form still works)', () => {
+    const reqs = parseRollRequests('Tira una prova di Intuito CD 14.');
+    expect(reqs[0]!.label).toBe('Intuito (CD 14)');
+  });
 });
 
 describe('parseRollRequests — Italian saving throws (no explicit formula)', () => {
