@@ -32,6 +32,7 @@ export interface NarrativePaneProps {
 
 export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, onCastSpell, manualRolls }: NarrativePaneProps) {
   const [draft, setDraft] = React.useState('');
+  const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
   const merged = mergeMessages(history, liveEvents);
 
   // Auto-scroll the page (not an internal pane) to the bottom when new content arrives.
@@ -47,6 +48,28 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
     setDraft('');
   };
 
+  /**
+   * Handler invoked by RollRequestGroup when one or more dice settle. Instead of
+   * auto-sending we drop the result into the input draft and focus the textarea
+   * so the player can append context (e.g. "stavo mirando alla sentinella")
+   * before pressing Enter. If the player had already typed something, we append
+   * the roll result on a new line rather than clobbering their text. Pressing
+   * Enter immediately is still a one-keystroke send for the common case where
+   * no extra context is needed.
+   */
+  const handleRollResult = (text: string): void => {
+    setDraft((prev) => (prev.trim() ? `${prev}\n${text}` : text));
+    // After the state flush, focus the textarea and put the caret at the end so
+    // typing immediately appends.
+    setTimeout(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      const len = el.value.length;
+      el.setSelectionRange(len, len);
+    }, 0);
+  };
+
   return (
     <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
       <div style={{ flex: 1, padding: '32px 40px 16px' }}>
@@ -57,7 +80,7 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
               m={m}
               sessionId={sessionId}
               manualRolls={manualRolls}
-              onRollResult={onSend}
+              onRollResult={handleRollResult}
             />
           ))}
           {busy && (
@@ -96,6 +119,7 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
           }}
         >
           <textarea
+            ref={inputRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
@@ -122,7 +146,7 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
           <Button variant="primary" size="md" icon="send" disabled={busy || !draft.trim()} onClick={submit}>Send</Button>
         </div>
         <div style={{ maxWidth: 680, margin: '6px auto 0', fontSize: 11, color: 'var(--fg-subtle)', textAlign: 'center' }}>
-          Enter to send · Shift+Enter for new line · Type in any language — the Master mirrors yours
+          Enter to send · Shift+Enter for new line · Rolls fill the input — add context, then send
         </div>
         </div>
       </div>
