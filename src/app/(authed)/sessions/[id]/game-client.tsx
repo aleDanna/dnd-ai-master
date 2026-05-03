@@ -264,6 +264,7 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
           )}
         </div>
         <MechanicsPane
+          sessionId={sessionId}
           state={liveState}
           actors={liveActors}
           diceLog={rolls}

@@ -6,6 +6,7 @@ import { XpBar } from './xp-bar';
 import type { CombatActorRow, DiceRollRow, SessionStateRow } from '@/sessions/client-types';
 
 export interface MechanicsPaneProps {
+  sessionId: string;
   state: SessionStateRow;
   actors: CombatActorRow[];
   diceLog: DiceRollRow[];
@@ -18,7 +19,7 @@ export interface MechanicsPaneProps {
   onEndCombat?: () => void;
 }
 
-export function MechanicsPane({ state, actors, diceLog, pcCharacterId, pcName, pcHpMax, pcLevel, pcXp, onEndCombat }: MechanicsPaneProps) {
+export function MechanicsPane({ sessionId, state, actors, diceLog, pcCharacterId, pcName, pcHpMax, pcLevel, pcXp, onEndCombat }: MechanicsPaneProps) {
   return (
     <aside
       style={{
@@ -50,6 +51,21 @@ export function MechanicsPane({ state, actors, diceLog, pcCharacterId, pcName, p
       <DiceLogPanel rolls={diceLog} />
       <section>
         <Eyebrow style={{ marginBottom: 6 }}>Scene</Eyebrow>
+        {state.sceneImageVersion > 0 && (
+          <img
+            src={`/api/sessions/${sessionId}/scene-image?v=${state.sceneImageVersion}`}
+            alt={state.sceneImagePrompt ?? 'Scene illustration'}
+            style={{
+              width: '100%',
+              aspectRatio: '1 / 1',
+              objectFit: 'cover',
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              marginBottom: 8,
+              display: 'block',
+            }}
+          />
+        )}
         <div style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 14, lineHeight: 1.55, color: 'var(--fg-muted)' }}>
           {state.scene || 'No scene set yet.'}
         </div>
