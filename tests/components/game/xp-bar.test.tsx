@@ -42,4 +42,25 @@ describe('XpBar', () => {
     const bar = screen.getByRole('progressbar');
     expect(bar).toHaveAttribute('aria-valuenow', '100');
   });
+
+  it('shows "Level up ready" badge when xp exceeds the next threshold', () => {
+    render(<XpBar level={1} xp={350} />);
+    expect(screen.getByText(/Level up ready/i)).toBeInTheDocument();
+    // The numeric "350 / 300" readout is hidden — we don't want to mislead
+    // the player into thinking they're stuck above the cap.
+    expect(screen.queryByText('350 / 300')).toBeNull();
+  });
+
+  it('does NOT show the ready badge while still mid-level', () => {
+    render(<XpBar level={1} xp={150} />);
+    expect(screen.queryByText(/Level up ready/i)).toBeNull();
+    expect(screen.getByText('150 / 300')).toBeInTheDocument();
+  });
+
+  it('does NOT show the ready badge at exactly the threshold (intoLevel >= span fires only when >= span)', () => {
+    // Edge: at exactly 300 XP, level 1, intoLevel=300 spanForLevel=300, so
+    // the condition (intoLevel >= spanForLevel) is true → ready.
+    render(<XpBar level={1} xp={300} />);
+    expect(screen.getByText(/Level up ready/i)).toBeInTheDocument();
+  });
 });

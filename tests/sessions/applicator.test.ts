@@ -4,7 +4,7 @@ import { db, pool } from '@/db/client';
 import { ensureUser } from '@/db/users';
 import { saveCharacter } from '@/characters/persist';
 import { emptyWizardState } from '@/characters/types';
-import { sessions, sessionState, combatActors, diceLog } from '@/db/schema';
+import { sessions, sessionState, combatActors, diceLog, characters } from '@/db/schema';
 import { applyMutations } from '@/sessions/applicator';
 import type { Mutation, DiceRoll } from '@/engine/types';
 
@@ -68,5 +68,36 @@ describe('applyMutations', () => {
     await applyMutations(SESSION_ID, muts, []);
     const [row] = await db.select().from(combatActors).where(eq(combatActors.id, MONSTER_ID)).limit(1);
     expect((row!.conditions as { slug: string }[]).some((c) => c.slug === 'poisoned')).toBe(true);
+  });
+
+  it('level_up persists new level + hpMax + proficiencyBonus and heals the PC by hpDelta', async () => {
+    // Pre-condition: PC at level 1, hpMax 11, hpCurrent 8 (from earlier test).
+    // The level_up mutation bumps level to 5, adds 18 hp, expects PB to land
+    // at +3 (the SRD bracket for levels 5-8).
+    const muts: Mutation[] = [
+      { op: 'level_up', characterId: PC_ID, newLevel: 5, hpDelta: 18 },
+    ];
+    await applyMutations(SESSION_ID, muts, []);
+
+    const [char] = await db.select().from(characters).where(eq(characters.id, PC_ID)).limit(1);
+    expect(char!.level).toBe(5);
+    expect(char!.hpMax).toBe(11 + 18); // 29
+    expect(char!.proficiencyBonus).toBe(3);
+
+    const [state] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+    // Was at hpCurrent 8 (from set_hp test), healed by 18 → 26, capped at new max 29.
+    expect(state!.hpCurrent).toBe(8 + 18);
+  });
+
+  it('award_xp adds the amount to characters.xp atomically', async () => {
+    const [before] = await db.select({ xp: characters.xp }).from(characters).where(eq(characters.id, PC_ID)).limit(1);
+    const startXp = before!.xp;
+
+    await applyMutations(SESSION_ID, [
+      { op: 'award_xp', characterId: PC_ID, amount: 250, reason: 'killed the goblin' },
+    ], []);
+
+    const [after] = await db.select({ xp: characters.xp }).from(characters).where(eq(characters.id, PC_ID)).limit(1);
+    expect(after!.xp).toBe(startXp + 250);
   });
 });

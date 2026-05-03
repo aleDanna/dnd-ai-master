@@ -19,6 +19,12 @@ export interface XpBarProps {
  */
 export function XpBar({ level, xp }: XpBarProps) {
   const p = xpProgress(xp, level);
+  // Player has earned enough to advance but the level field hasn't been
+  // bumped yet (the master must call the level_up tool — it is NOT
+  // automatic, since real D&D leveling involves choices). We swap the
+  // numeric readout for a "READY" badge so the player understands why
+  // the bar is full but the level header is unchanged.
+  const readyToLevelUp = !p.atMaxLevel && p.intoLevel >= p.spanForLevel && p.spanForLevel > 0;
 
   return (
     <section aria-label="Character experience">
@@ -35,6 +41,19 @@ export function XpBar({ level, xp }: XpBarProps) {
             }}
           >
             MAX
+          </span>
+        ) : readyToLevelUp ? (
+          <span
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 10,
+              letterSpacing: 0.6,
+              color: 'var(--gold)',
+              textTransform: 'uppercase',
+            }}
+            title="The master will level you up after a rest or milestone."
+          >
+            ↑ Level up ready
           </span>
         ) : (
           <span
@@ -71,7 +90,7 @@ export function XpBar({ level, xp }: XpBarProps) {
           style={{
             height: '100%',
             width: `${Math.round(p.fraction * 100)}%`,
-            background: p.atMaxLevel ? 'var(--gold)' : 'var(--arcane)',
+            background: p.atMaxLevel || readyToLevelUp ? 'var(--gold)' : 'var(--arcane)',
             transition: 'width 0.4s ease-out',
           }}
         />

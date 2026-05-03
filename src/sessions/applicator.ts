@@ -158,12 +158,68 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
         .where(eq(charactersTable.id, m.characterId));
       break;
     }
+    case 'level_up': {
+      // Read current persisted character so we can compute the new hpMax
+      // and merge spell slots without clobbering existing prep state.
+      const [current] = await tx
+        .select({
+          hpMax: charactersTable.hpMax,
+          proficiencyBonus: charactersTable.proficiencyBonus,
+          spellcasting: charactersTable.spellcasting,
+        })
+        .from(charactersTable)
+        .where(eq(charactersTable.id, m.characterId))
+        .limit(1);
+      if (!current) break;
+
+      const newHpMax = Math.max(1, current.hpMax + Math.floor(m.hpDelta || 0));
+      // Proficiency bonus by level (PHB): 1-4 = +2, 5-8 = +3, 9-12 = +4,
+      // 13-16 = +5, 17-20 = +6.
+      const newPB = m.newLevel >= 17 ? 6 : m.newLevel >= 13 ? 5 : m.newLevel >= 9 ? 4 : m.newLevel >= 5 ? 3 : 2;
+
+      let newSpellcasting = current.spellcasting;
+      if (m.newSlots && current.spellcasting) {
+        const mergedSlots: Record<string, number> = { ...(current.spellcasting.slotsMax ?? {}) };
+        for (const [lvl, max] of Object.entries(m.newSlots)) {
+          if (typeof max === 'number') mergedSlots[lvl] = max;
+        }
+        newSpellcasting = { ...current.spellcasting, slotsMax: mergedSlots };
+      }
+
+      await tx
+        .update(charactersTable)
+        .set({
+          level: m.newLevel,
+          hpMax: newHpMax,
+          proficiencyBonus: newPB,
+          spellcasting: newSpellcasting,
+          updatedAt: new Date(),
+        })
+        .where(eq(charactersTable.id, m.characterId));
+
+      // Heal the PC by the HP delta (standard convention: leveling up at a
+      // long rest grants the new max immediately and the player is at
+      // full HP on the new level). We add hpDelta to current HP and clamp
+      // at the new hpMax so we don't over-heal a wounded character beyond
+      // their new ceiling.
+      if (m.hpDelta > 0) {
+        const [s] = await tx
+          .select({ hpCurrent: sessionStateTable.hpCurrent })
+          .from(sessionStateTable)
+          .where(eq(sessionStateTable.sessionId, sessionId))
+          .limit(1);
+        if (s) {
+          const healed = Math.min(newHpMax, s.hpCurrent + m.hpDelta);
+          await tx.update(sessionStateTable).set({ hpCurrent: healed }).where(eq(sessionStateTable.sessionId, sessionId));
+        }
+      }
+      break;
+    }
     // Ops Plan B emits but Plan D1 does not yet act on; ignore safely.
     case 'add_inventory':
     case 'remove_inventory':
     case 'set_equipped':
     case 'recompute_ac':
-    case 'level_up':
     case 'death_save':
     case 'reset_death_saves':
       break;

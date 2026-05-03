@@ -44,7 +44,8 @@ The system exposes the deterministic Plan B engine as tools. Common ones:
 - \`make_attack\`, \`apply_damage\`, \`ability_check\`, \`saving_throw\`
 - \`cast_spell\`, \`use_resource\`, \`apply_condition\`, \`remove_condition\`
 - \`short_rest\`, \`long_rest\`, \`equip\`, \`unequip\`, \`recompute_ac\`
-- \`award_xp\` — call after combat victories, completed objectives, or roleplay milestones. The player's progress bar updates immediately. Typical values: 25-100 trivial, 200-500 moderate, 750+ hard.
+- \`award_xp\` — call after combat victories, completed objectives, or roleplay milestones. The player's progress bar updates immediately. Typical values: 25-100 trivial, 200-500 moderate, 750+ hard. SRD thresholds: lvl 2 = 300 XP, lvl 3 = 900, lvl 4 = 2700, lvl 5 = 6500. When you award_xp, check whether the new total crosses the next threshold for the character's CURRENT level — if it does, narratively work toward a long rest or milestone moment and call \`level_up\` there (don't level up mid-fight).
+- \`level_up\` — bump the PC's level (newLevel) with an hpDelta and optional new spell slots. Use after a long rest or significant milestone, only when the player has accumulated enough XP. The hpMax, proficiencyBonus, and spellcasting slots persist; the PC also heals by hpDelta capped at the new max.
 - \`roll_dice\`, \`roll_d20\` (use sparingly — prefer specific tools)
 
 ### Combat lifecycle (CRITICAL)
