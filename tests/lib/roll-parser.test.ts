@@ -125,6 +125,41 @@ describe('detectGroupMode', () => {
     expect(detectGroupMode('Choose: roll 1d20 or roll 1d20+2.', 2)).toBe('or');
   });
 
+  it('returns "or" when the choice keyword is separated from the colon ("Scegli l\'approccio:")', () => {
+    // Reproduces the screenshot scenario: master prefixes a multi-option block
+    // with "Scegli l'approccio:" instead of bare "Scegli:".
+    const text =
+      'Vedi due vie d\'accesso. Scegli l\'approccio: ' +
+      '- Insegui lungo la pista: tira 1d20+2 per Sopravvivenza. ' +
+      '- Aggira dalla dorsale: tira 1d20+1 per Furtività.';
+    expect(detectGroupMode(text, 2)).toBe('or');
+  });
+
+  it('returns "or" for "Choose the path:" (English, separated)', () => {
+    const text = 'Choose the path: roll 1d20 for stealth or roll 1d20+2 for survival.';
+    expect(detectGroupMode(text, 2)).toBe('or');
+  });
+
+  it('returns "or" for "Hai due opzioni davanti a te:"', () => {
+    const text = 'Hai due opzioni davanti a te: tira 1d20 oppure tira 1d20+2.';
+    expect(detectGroupMode(text, 2)).toBe('or');
+  });
+
+  it('returns "or" for "You have two options:"', () => {
+    expect(detectGroupMode('You have two options: roll 1d20 or roll 1d20+2.', 2)).toBe('or');
+  });
+
+  it('returns "or" for "You may:" softer introducer', () => {
+    expect(detectGroupMode('You may: roll 1d20 for athletics or roll 1d20+2 for stealth.', 2)).toBe('or');
+  });
+
+  it('does NOT trigger "or" when the choice keyword and colon are split by a sentence end', () => {
+    // "Devi scegliere. Tira 1d20+5. Tira 1d8+3." — no colon-introduced list.
+    const text = 'Devi scegliere. Tira 1d20+5 per attacco. Tira 1d8+3 per danni.';
+    // No "if you hit" either, so this stays AND (default for 2+ rolls).
+    expect(detectGroupMode(text, 2)).toBe('and');
+  });
+
   it('returns "or" when the message says "You can:"', () => {
     expect(detectGroupMode('You can: roll 1d20 to attack or roll 1d20+3 for stealth.', 2)).toBe('or');
   });

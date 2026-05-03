@@ -127,14 +127,29 @@ export function parseRollRequests(text: string): RollRequest[] {
 export function detectGroupMode(text: string, count: number): RollGroupMode {
   if (count < 2) return 'or';
 
-  // Choice introducers (Italian + English). The colon variant is the strong
-  // signal — the master is announcing "here's a list of options, pick one".
+  // Choice introducers (Italian + English). The keyword is followed (eventually,
+  // within the same sentence) by a colon that introduces the list of options.
+  // The relaxed colon match (up to 120 chars, no sentence-end in between) catches:
+  //   "Scegli l'approccio:"        → "scegli" + " l'approccio" + ":"
+  //   "Vuoi:"                      → "vuoi" + ":" (zero chars between)
+  //   "Choose the path:"           → "choose" + " the path" + ":"
+  //   "You have two options:"      → "options" + ":" (zero chars between)
+  //   "Hai due opzioni davanti a te:" → "opzioni" + " davanti a te" + ":"
+  // It does NOT cross sentence boundaries (`.!?\n`), so prose like
+  //   "Devi scegliere. Tira 1d20."  doesn't trigger (no colon at all)
+  //   "Sembra che tu debba scegliere bene la tua arma. Poi: tira 1d20."
+  //   here "scegliere" and ":" are split by ".", so no match.
   const choiceIntroducers =
-    /\b(?:vuoi|scegli|scegliere|puoi|opzioni|opzione|alternative|choose|options|option|pick\s+one)\s*:/i;
+    /\b(?:vuoi|scegli|scegliere|scelta|puoi|opzioni|opzione|alternative|alternativa|decidi|decisione)\b[^.!?\n]{0,120}:/i;
   if (choiceIntroducers.test(text)) return 'or';
 
-  // "You can:" / "Puoi:" — a softer choice introducer; accept too.
-  if (/\byou\s+can\s*:/i.test(text)) return 'or';
+  const choiceIntroducersEn =
+    /\b(?:choose|options|option|pick|decide|decision|either)\b[^.!?\n]{0,120}:/i;
+  if (choiceIntroducersEn.test(text)) return 'or';
+
+  // "You can:" / "You may:" — softer choice introducer; accept too. The colon
+  // here MUST follow within a few words, otherwise too many false positives.
+  if (/\byou\s+(?:can|may)\b[^.!?\n]{0,30}:/i.test(text)) return 'or';
 
   // Disjunctive connectives — "oppure" in Italian, "either ... or" in English.
   if (/\boppure\b/i.test(text)) return 'or';
