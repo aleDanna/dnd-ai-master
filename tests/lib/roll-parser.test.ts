@@ -48,6 +48,50 @@ describe('parseRollRequests', () => {
     expect(reqs[1]!.kind).toBe('damage');
   });
 
+  // ─── Purpose extraction ───────────────────────────────────────────────────────
+
+  it('extracts the Italian "per una prova di X" purpose', () => {
+    const reqs = parseRollRequests('tira 1d20+2 per una prova di Sopravvivenza (CD 10).');
+    expect(reqs[0]!.label).toBe('1d20+2 (Sopravvivenza)');
+  });
+
+  it('extracts purpose with a parenthetical sub-skill', () => {
+    const reqs = parseRollRequests('tira 1d20 per una prova di Intelligenza (Investigazione) (CD 12).');
+    expect(reqs[0]!.label).toBe('1d20 (Intelligenza)');
+  });
+
+  it('extracts purpose without "prova di"', () => {
+    const reqs = parseRollRequests('tira 1d20+1 per Furtività; la confronterò con le percezioni passive.');
+    expect(reqs[0]!.label).toBe('1d20+1 (Furtività)');
+  });
+
+  it('extracts English "for a X check"', () => {
+    const reqs = parseRollRequests('Roll 1d20 for a Perception check.');
+    expect(reqs[0]!.label).toBe('1d20 (Perception)');
+  });
+
+  it('extracts English damage', () => {
+    const reqs = parseRollRequests('It hits! Roll 1d8+3 for damage.');
+    expect(reqs[0]!.label).toBe('1d8+3 (damage)');
+  });
+
+  it('extracts all three purposes from a multi-option Italian message', () => {
+    const reqs = parseRollRequests(
+      'Vuoi: - Seguire le tracce subito: tira 1d20+2 per una prova di Sopravvivenza (CD 10). ' +
+      '- Studiare la mappa: tira 1d20 per una prova di Intelligenza (Investigazione) (CD 12). ' +
+      '- Avanzare di soppiatto: tira 1d20+1 per Furtività.',
+    );
+    expect(reqs.length).toBe(3);
+    expect(reqs[0]!.label).toBe('1d20+2 (Sopravvivenza)');
+    expect(reqs[1]!.label).toBe('1d20 (Intelligenza)');
+    expect(reqs[2]!.label).toBe('1d20+1 (Furtività)');
+  });
+
+  it('falls back to bare formula when no purpose phrase follows', () => {
+    const reqs = parseRollRequests('Roll 1d20+3.');
+    expect(reqs[0]!.label).toBe('1d20+3');
+  });
+
   it('rejects bogus formulas', () => {
     expect(normalizeFormula('1d7')).toBeNull(); // d7 isn't a real die
     expect(normalizeFormula('xd20')).toBeNull();

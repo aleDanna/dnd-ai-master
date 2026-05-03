@@ -26,6 +26,7 @@ export function parseRollRequests(text: string): RollRequest[] {
   const seen = new Set<string>();
 
   // 1. Bare formula: "Roll 1d20+5"  /  "Roll 2d6 + 3"  / "Roll 1d8"
+  // Capture group 1 is the formula; we then look at the text right after to extract the purpose.
   const bareRe = /(?:^|[\s(.,!])(?:roll|tira|lancia)\s+((?:\d+)?d\d+\s*(?:[+-]\s*\d+)?)/gi;
   let m: RegExpExecArray | null;
   while ((m = bareRe.exec(text)) !== null) {
@@ -35,9 +36,11 @@ export function parseRollRequests(text: string): RollRequest[] {
     const key = `${m.index}:${formula}`;
     if (seen.has(key)) continue;
     seen.add(key);
+    const formulaEnd = m.index + m[0].length;
+    const purpose = extractPurpose(text, formulaEnd);
     requests.push({
       formula,
-      label: formula,
+      label: purpose ? `${formula} (${purpose})` : formula,
       kind: inferKind(text, m.index),
       index: m.index,
     });
@@ -119,6 +122,48 @@ function abbrAbility(raw: string): string {
   const k = raw.slice(0, 3).toUpperCase();
   if (['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'].includes(k)) return k;
   return raw;
+}
+
+/**
+ * Look at the text immediately after a formula and try to pull out a short
+ * purpose phrase ("Sopravvivenza", "Perception", "attaccare il goblin", "damage").
+ * Stops at the first sentence-ending delimiter so we don't bleed into the next
+ * action in a multi-option message.
+ */
+export function extractPurpose(text: string, fromIdx: number): string | null {
+  // Window after the formula, capped at the next strong delimiter.
+  const window = text.slice(fromIdx);
+  // Optional leading punctuation/whitespace, then "per/for ..." up to a sentence break.
+  const m = /^[\s,]*(?:per|for)\s+([^.;:!?\n]+)/i.exec(window);
+  if (!m) return null;
+  let phrase = m[1]!.trim();
+
+  // Strip trailing parentheticals like "(CD 10)" / "(DC 14)" / "(TS Forza)".
+  phrase = phrase.replace(/\s*\([^)]*\)\s*$/, '').trim();
+
+  // Strip leading article: "una/un/uno/an/a/the".
+  phrase = phrase.replace(/^(?:un[ao]?|an?|the)\s+/i, '');
+
+  // Strip the boilerplate template that wraps the actual descriptor:
+  //   "prova [di] ", "tiro salvezza [di] ", "tiro di ", "saving throw [of] ", "skill check ".
+  phrase = phrase.replace(/^(?:prova\s+(?:di\s+)?|tiro\s+(?:salvezza\s+)?(?:di\s+)?|saving\s+throw\s+(?:of\s+)?|skill\s+check\s+(?:of\s+)?)/i, '');
+
+  // After stripping the template, a second article might surface: "for a Perception check"
+  // → "a Perception check" → after stripping leading "a " → "Perception check".
+  phrase = phrase.replace(/^(?:un[ao]?|an?|a)\s+/i, '');
+
+  // Strip mid-phrase parentheticals (e.g. "Intelligenza (Investigazione)" → "Intelligenza").
+  phrase = phrase.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
+
+  // Strip trailing "check" / "save" / "throw" / "prova" / "tiro".
+  phrase = phrase.replace(/\s+(?:check|save|saving\s+throw|throw|prova|tiro)$/i, '');
+
+  // Cap length and bail on empties.
+  phrase = phrase.trim();
+  if (!phrase) return null;
+  if (phrase.length > 35) phrase = phrase.slice(0, 32).trimEnd() + '…';
+
+  return phrase;
 }
 
 function inferKind(text: string, idx: number): RollKind {
