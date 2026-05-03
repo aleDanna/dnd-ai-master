@@ -127,7 +127,7 @@ export function parseRollRequests(text: string): RollRequest[] {
   //    "tira una prova di Intimidazione (CD 12)"  /  "fai una prova di Sopravvivenza"
   //    The DC can appear after the skill ("CD 12") and is optional.
   const ITALIAN_SKILL =
-    'Acrobazia|Addestrare\\s+Animali|Arcano|Atletica|Inganno|Intuito|Intuizione|Intimidazione|Intimidire|Investigazione|Medicina|Natura|Percezione|Intrattenere|Spettacolo|Persuasione|Religione|Rapidit[àa]\\s+di\\s+Mano|Mano\\s+Lesta|Furtivit[àa]|Sopravvivenza|Storia';
+    'Acrobazia|Addestrare\\s+Animali|Arcano|Atletica|Inganno|Intuito|Intuizione|Intimidazione|Intimidire|Investigazione|Indagine|Indagare|Medicina|Natura|Percezione|Intrattenere|Spettacolo|Persuasione|Religione|Rapidit[àa]\\s+di\\s+Mano|Mano\\s+Lesta|Furtivit[àa]|Sopravvivenza|Storia';
   const ITALIAN_ABILITY = 'Forza|Destrezza|Costituzione|Intelligenza|Saggezza|Carisma';
   const checkReIt = new RegExp(
     `(?:tira|fai|effettua)\\s+(?:un[ao]?\\s+)?(?:prova|controllo)\\s+(?:di\\s+)?(${ITALIAN_SKILL}|${ITALIAN_ABILITY})(?:[^.!?\\n]{0,30}?\\bCD\\s*(\\d+))?`,
@@ -621,6 +621,11 @@ function normalizeItalianSkill(raw: string): string {
     'rapidita di mano': 'Rapidità di Mano',
     furtivita: 'Furtività',
     intuizione: 'Intuito',
+    // "Indagine" / "Indagare" are common Italian translations for the
+    // Investigation skill — some sources use them in place of the more
+    // literal "Investigazione". Treat both as the same skill.
+    indagine: 'Investigazione',
+    indagare: 'Investigazione',
   };
   if (aliases[lower]) return aliases[lower]!;
   // Otherwise return the original casing (the regex captured it as the master wrote it).

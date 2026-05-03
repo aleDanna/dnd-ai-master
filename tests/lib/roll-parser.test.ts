@@ -405,6 +405,23 @@ describe('parseRollRequests — Italian skill checks (no explicit formula)', () 
     const reqs = parseRollRequests('Tira una prova di Intuito CD 14.');
     expect(reqs[0]!.label).toBe('Intuito (CD 14)');
   });
+
+  it('parses "tira una prova di Indagine" (Investigation alias)', () => {
+    // User report: master narrated "Per cavarne dettagli utili, devi
+    // passarla al setaccio. Tira una prova di Indagine." but no roll
+    // button rendered because the parser only knew "Investigazione".
+    // Both "Indagine" and "Indagare" are common Italian translations
+    // of the Investigation skill — accept either, normalise to the
+    // canonical "Investigazione".
+    const reqs1 = parseRollRequests('Tira una prova di Indagine.');
+    expect(reqs1.length).toBe(1);
+    expect(reqs1[0]!.formula).toBe('1d20');
+    expect(reqs1[0]!.label).toBe('Investigazione');
+    expect(reqs1[0]!.kind).toBe('check');
+
+    const reqs2 = parseRollRequests('Fai una prova di Indagare CD 12.');
+    expect(reqs2[0]!.label).toBe('Investigazione (CD 12)');
+  });
 });
 
 describe('parseRollRequests — Italian saving throws (no explicit formula)', () => {
