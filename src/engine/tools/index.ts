@@ -95,7 +95,12 @@ export const TOOL_DEFINITIONS: AnthropicTool[] = [
   },
   {
     name: 'end_turn',
-    description: 'End the current combat turn and advance to the next actor in initiative order.',
+    description: 'End the current combat turn and advance to the next actor in initiative order. Call after each actor (PC or NPC) finishes their actions in a combat round.',
+    input_schema: { type: 'object', properties: {} } as never,
+  },
+  {
+    name: 'end_combat',
+    description: 'End the active combat and return to exploration mode. Call when all hostile combatants are defeated, surrendered, fled, or otherwise no longer pose a threat. Clears the initiative tracker and the round counter.',
     input_schema: { type: 'object', properties: {} } as never,
   },
   {

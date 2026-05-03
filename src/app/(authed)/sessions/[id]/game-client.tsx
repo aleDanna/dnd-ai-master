@@ -121,6 +121,14 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
     void turn.send(text);
   };
 
+  // Manual override: force the session out of combat. Used when the master
+  // forgot to call end_combat (or the session pre-dates that tool) and the
+  // tracker is stuck on "Combat · Round 1" with the fight long over. The
+  // session-state SSE subscription picks up the cleared row automatically.
+  const endCombat = React.useCallback((): void => {
+    void fetch(`/api/sessions/${sessionId}/end-combat`, { method: 'POST' });
+  }, [sessionId]);
+
   // Auto-play the latest persisted master message when the toggle is on.
   React.useEffect(() => {
     if (!autoplay) return;
@@ -229,6 +237,7 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
           pcCharacterId={character.id}
           pcLevel={character.level}
           pcXp={character.xp}
+          onEndCombat={endCombat}
           pcName={character.name}
           pcHpMax={character.hpMax}
         />

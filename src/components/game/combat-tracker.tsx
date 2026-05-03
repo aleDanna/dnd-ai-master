@@ -10,6 +10,10 @@ export interface CombatTrackerProps {
   pcName: string;
   pcHpCurrent: number;
   pcHpMax: number;
+  /** Optional escape hatch invoked when the player clicks "End combat".
+   *  When omitted the button is hidden — useful for tests that don't
+   *  care about the manual override. */
+  onEndCombat?: () => void;
 }
 
 interface TurnRow {
@@ -22,7 +26,7 @@ interface TurnRow {
   current: boolean;
 }
 
-export function CombatTracker({ state, actors, pcCharacterId, pcName, pcHpCurrent, pcHpMax }: CombatTrackerProps) {
+export function CombatTracker({ state, actors, pcCharacterId, pcName, pcHpCurrent, pcHpMax, onEndCombat }: CombatTrackerProps) {
   if (!state.inCombat || !state.combat) {
     return (
       <section>
@@ -65,9 +69,30 @@ export function CombatTracker({ state, actors, pcCharacterId, pcName, pcHpCurren
 
   return (
     <section>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
         <Eyebrow>Combat · Round {state.combat.round}</Eyebrow>
-        {currentIsPc && <Chip tone="warn" dot>Your turn</Chip>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {currentIsPc && <Chip tone="warn" dot>Your turn</Chip>}
+          {onEndCombat && (
+            <button
+              type="button"
+              onClick={onEndCombat}
+              title="Force-end combat — clears the tracker. Use if the master forgot to call end_combat."
+              style={{
+                padding: '2px 8px',
+                background: 'transparent',
+                border: '1px solid var(--border)',
+                borderRadius: 999,
+                color: 'var(--fg-subtle)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 10,
+                cursor: 'pointer',
+              }}
+            >
+              End
+            </button>
+          )}
+        </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {order.map((a) => (

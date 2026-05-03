@@ -109,6 +109,16 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
     return endTurn({ combat: state.combat });
   },
 
+  end_combat: (state) => {
+    if (!state.combat) return { ok: false, error: 'not_in_combat', rolls: [], mutations: [] };
+    return {
+      ok: true,
+      rolls: [],
+      mutations: [{ op: 'set_combat', combat: null }],
+      data: { roundsElapsed: state.combat.round },
+    };
+  },
+
   cast_spell: (state, input) => {
     const casterId = resolveCharacterId(state, input.caster);
     const caster = state.characters.find((c) => c.id === casterId);

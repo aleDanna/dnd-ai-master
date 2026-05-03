@@ -14,9 +14,11 @@ export interface MechanicsPaneProps {
   pcHpMax: number;
   pcLevel: number;
   pcXp: number;
+  /** Forwarded to CombatTracker for the manual "End combat" escape hatch. */
+  onEndCombat?: () => void;
 }
 
-export function MechanicsPane({ state, actors, diceLog, pcCharacterId, pcName, pcHpMax, pcLevel, pcXp }: MechanicsPaneProps) {
+export function MechanicsPane({ state, actors, diceLog, pcCharacterId, pcName, pcHpMax, pcLevel, pcXp, onEndCombat }: MechanicsPaneProps) {
   return (
     <aside
       style={{
@@ -43,6 +45,7 @@ export function MechanicsPane({ state, actors, diceLog, pcCharacterId, pcName, p
         pcName={pcName}
         pcHpCurrent={state.hpCurrent}
         pcHpMax={pcHpMax}
+        onEndCombat={onEndCombat}
       />
       <DiceLogPanel rolls={diceLog} />
       <section>

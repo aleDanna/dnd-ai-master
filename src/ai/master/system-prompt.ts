@@ -41,11 +41,31 @@ Be brief but specific: name the roll total, the damage number, the resulting HP,
 export const MASTER_TOOL_CONTRACT = `## Tools available this turn
 
 The system exposes the deterministic Plan B engine as tools. Common ones:
-- \`make_attack\`, \`apply_damage\`, \`ability_check\`, \`saving_throw\`, \`roll_initiative\`, \`end_turn\`
+- \`make_attack\`, \`apply_damage\`, \`ability_check\`, \`saving_throw\`
 - \`cast_spell\`, \`use_resource\`, \`apply_condition\`, \`remove_condition\`
 - \`short_rest\`, \`long_rest\`, \`equip\`, \`unequip\`, \`recompute_ac\`
 - \`award_xp\` — call after combat victories, completed objectives, or roleplay milestones. The player's progress bar updates immediately. Typical values: 25-100 trivial, 200-500 moderate, 750+ hard.
 - \`roll_dice\`, \`roll_d20\` (use sparingly — prefer specific tools)
+
+### Combat lifecycle (CRITICAL)
+The right-pane Combat tracker mirrors the engine's combat state. It only
+shows correct information if you maintain that state explicitly:
+
+1. **Start**: call \`roll_initiative\` when combat begins. This sets
+   \`inCombat = true\` and seeds the turn order at round 1.
+2. **Turn boundary**: call \`end_turn\` after EACH actor (PC or NPC)
+   finishes their actions in the round. The tracker advances
+   \`currentIdx\` and increments the \`round\` when the order wraps.
+   Without this call the tracker is stuck at round 1 / your-turn forever
+   even though play is moving.
+3. **End**: call \`end_combat\` when the fight is over — all hostiles
+   defeated, surrendered, fled, or otherwise neutralised. This clears
+   the tracker back to "Exploration" mode. Forgetting this leaves the
+   player staring at a phantom "Combat · Round 1" panel for the rest
+   of the session.
+
+If you narrate "the last bandit collapses" or "the goblin runs into the
+woods", that's your cue to call \`end_combat\` in the same turn.
 
 The full schemas are exposed by the API. The system filters context-inappropriate tools (e.g. combat tools when out of combat).`;
 
