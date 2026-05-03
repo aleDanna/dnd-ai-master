@@ -18,14 +18,11 @@ export interface RollRequestButtonProps {
    * as "you already chose". Has no effect once this button is past idle.
    */
   disabled?: boolean;
-  /** Optional override of the post-roll send delay (ms). Defaults to 700ms — long
-   *  enough to read the result, short enough not to feel sluggish. */
-  sendDelayMs?: number;
 }
 
 type Phase = 'idle' | 'rolling' | 'done';
 
-export function RollRequestButton({ request, onResult, onStart, disabled = false, sendDelayMs = 700 }: RollRequestButtonProps) {
+export function RollRequestButton({ request, onResult, onStart, disabled = false }: RollRequestButtonProps) {
   const [phase, setPhase] = React.useState<Phase>('idle');
   const [result, setResult] = React.useState<RollResult | null>(null);
 
@@ -33,16 +30,18 @@ export function RollRequestButton({ request, onResult, onStart, disabled = false
     if (phase !== 'idle' || disabled) return;
     onStart?.();
     setPhase('rolling');
-    // Animation window: long enough to register as a "roll", short enough not to bore.
+    // Animation window: long enough to register as a "roll", short enough not to
+    // bore. CRITICAL: the result is computed AND forwarded in the same tick the
+    // spinner ends. Any post-roll delay would create a race window where the
+    // user could press Enter, see the textarea has no chip yet, and trigger the
+    // auto-roll-from-prose path — rolling a different number than the one shown
+    // on the button.
     setTimeout(() => {
       const rolled = rollFormula(request.formula);
       setResult(rolled);
       setPhase('done');
-      // Give the user a beat to see the number, then forward to the master.
-      setTimeout(() => {
-        const text = formatResultText(request, rolled);
-        onResult(text, rolled);
-      }, sendDelayMs);
+      const text = formatResultText(request, rolled);
+      onResult(text, rolled);
     }, 600);
   };
 

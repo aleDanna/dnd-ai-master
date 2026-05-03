@@ -38,9 +38,9 @@ describe('NarrativePane — manual roll flow', () => {
     const rollButton = screen.getByRole('button', { name: /Roll 1d6\+1/ });
     fireEvent.click(rollButton);
 
-    // 600ms spinner + 700ms post-roll delay + setTimeout(0) for focus.
+    // 600ms spinner — result + chip update fire in the same tick. No
+    // post-roll delay (eliminating that race was the whole point).
     await act(async () => { vi.advanceTimersByTime(600); });
-    await act(async () => { vi.advanceTimersByTime(700); });
     await act(async () => { vi.advanceTimersByTime(1); });
 
     // Tamper-resistance: the rolled number is NOT in the textarea.
@@ -84,6 +84,72 @@ describe('NarrativePane — manual roll flow', () => {
     const sent = onSend.mock.calls[0]![0] as string;
     // Prose first, then the (unmodified, system-generated) roll line.
     expect(sent).toMatch(/^la sentinella\n.*I rolled \*\*\d+\*\* for 1d6\+1/s);
+
+    vi.useRealTimers();
+  });
+
+  it('Send is disabled while a button is mid-roll, preventing prose-auto-roll races', async () => {
+    // Reproduces the user's bug: the button shows 7 but the message says 8
+    // because pressing Enter during the post-roll window triggered the
+    // auto-roll-from-prose path with a different RNG draw. Now Send must
+    // be disabled while ANY button is spinning.
+    const masterContent =
+      'Per metterlo davvero sulla tua strada, serve una parola che lo smuova. Tira una prova di Persuasione CD 12.';
+    const messages: MessageRow[] = [
+      {
+        id: 'm-pers',
+        sessionId: 's1',
+        role: 'master',
+        content: masterContent,
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    vi.useFakeTimers();
+    const onSend = vi.fn();
+    render(
+      <NarrativePane
+        sessionId="s1"
+        history={messages}
+        liveEvents={[]}
+        busy={false}
+        onSend={onSend}
+        manualRolls={true}
+      />,
+    );
+
+    // Click the roll button — spinner starts.
+    const rollButton = screen.getByRole('button', { name: /Roll Persuasione/ });
+    fireEvent.click(rollButton);
+
+    // Mid-spinner: try to submit prose. The Send button must be disabled and
+    // the Enter shortcut must be a no-op.
+    await act(async () => { vi.advanceTimersByTime(200); });
+    const textarea = screen.getByPlaceholderText('What do you do?') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: 'Certo che parlo sul serio.' } });
+
+    const sendButton = screen.getByRole('button', { name: /^Send$/i });
+    expect(sendButton).toBeDisabled();
+
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onSend).not.toHaveBeenCalled();
+
+    // Finish the spinner. The chip lands, Send re-enables.
+    await act(async () => { vi.advanceTimersByTime(401); });
+    await act(async () => { vi.advanceTimersByTime(1); });
+    expect(sendButton).not.toBeDisabled();
+
+    // NOW submit. Outgoing message uses the chip's number.
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onSend).toHaveBeenCalledTimes(1);
+    const sent = onSend.mock.calls[0]![0] as string;
+    // Prose first, chip text second. Critically: the rolled number was
+    // computed at button-spinner-end and is the SAME one shown on the chip
+    // — there is no second roll from the auto-roll-from-prose fallback.
+    expect(sent).toMatch(/^Certo che parlo sul serio\.\n.*I rolled \*\*\d+\*\* for Persuasione/);
+    // Sanity: only one "I rolled" line — no duplicate roll from the prose
+    // auto-detect path.
+    const rollLineCount = (sent.match(/I rolled/g) ?? []).length;
+    expect(rollLineCount).toBe(1);
 
     vi.useRealTimers();
   });

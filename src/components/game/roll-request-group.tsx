@@ -14,6 +14,19 @@ export interface RollRequestGroupProps {
    * - In AND mode: called when the LAST roll settles, with a combined multi-line text.
    */
   onSend: (resultText: string) => void;
+  /**
+   * Fired when ANY button in the group starts rolling (the click event, before
+   * the spinner). The parent uses this to disable the global Send button so the
+   * player can't auto-roll from prose during the 600ms spinner window — that
+   * would race against the button click and roll a different number than the
+   * one shown on the chip.
+   */
+  onAnyRollStart?: () => void;
+  /**
+   * Fired when a button in the group settles (immediately after onResult). Pairs
+   * with onAnyRollStart for ref-counted "any roll in flight" tracking.
+   */
+  onAnyRollEnd?: () => void;
 }
 
 interface RolledItem {
@@ -40,7 +53,7 @@ interface RolledItem {
  * - When the last button settles, onSend fires once with a combined multi-line
  *   message listing every result.
  */
-export function RollRequestGroup({ requests, onSend }: RollRequestGroupProps) {
+export function RollRequestGroup({ requests, onSend, onAnyRollStart, onAnyRollEnd }: RollRequestGroupProps) {
   // OR mode: the moment any peer starts rolling, sibling buttons lock out so a
   // racing double-click can't fire two messages. We track the index that started
   // first; everyone else is dimmed.
@@ -65,9 +78,11 @@ export function RollRequestGroup({ requests, onSend }: RollRequestGroupProps) {
     if (groupMode === 'or' && orStartedAt === null) {
       setOrStartedAt(req.index);
     }
+    onAnyRollStart?.();
   };
 
   const handleResult = (req: RollRequest) => (text: string, result: RollResult): void => {
+    onAnyRollEnd?.();
     if (sentRef.current) return;
 
     if (groupMode === 'or') {

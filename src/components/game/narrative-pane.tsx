@@ -38,6 +38,11 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
   // a read-only chip outside the textarea. The player cannot edit the rolled
   // number — they can only discard it (which clears state) or send it.
   const [pendingRollText, setPendingRollText] = React.useState<string | null>(null);
+  // Ref-counted "any roll currently spinning" tracker. Disables the Send
+  // button while a button is mid-roll so the player can't fire the
+  // auto-roll-from-prose path on Enter and end up with a number that doesn't
+  // match the one shown on the chip.
+  const [rollingCount, setRollingCount] = React.useState(0);
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
   const merged = mergeMessages(history, liveEvents);
 
@@ -49,6 +54,11 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
 
   const submit = (): void => {
     if (busy) return;
+    // While any roll button is currently spinning, do not submit. The user
+    // would otherwise race against the in-flight roll and trigger the
+    // auto-roll-from-prose fallback, sending a different number than the one
+    // about to land on the chip.
+    if (rollingCount > 0) return;
     const prose = draft.trim();
 
     // Determine the roll result that will be attached to this message. Three
@@ -121,6 +131,9 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
     setPendingRollText(null);
   };
 
+  const handleRollStart = (): void => setRollingCount((c) => c + 1);
+  const handleRollEnd = (): void => setRollingCount((c) => Math.max(0, c - 1));
+
   return (
     <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
       <div style={{ flex: 1, padding: '32px 40px 16px' }}>
@@ -132,6 +145,8 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
               sessionId={sessionId}
               manualRolls={manualRolls}
               onRollResult={handleRollResult}
+              onAnyRollStart={handleRollStart}
+              onAnyRollEnd={handleRollEnd}
             />
           ))}
           {busy && (
@@ -200,7 +215,7 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
               variant="primary"
               size="md"
               icon="send"
-              disabled={busy || (!draft.trim() && !pendingRollText)}
+              disabled={busy || rollingCount > 0 || (!draft.trim() && !pendingRollText)}
               onClick={submit}
             >
               Send
@@ -303,11 +318,15 @@ function MessageView({
   sessionId,
   manualRolls,
   onRollResult,
+  onAnyRollStart,
+  onAnyRollEnd,
 }: {
   m: NarrativeMessage;
   sessionId: string;
   manualRolls: boolean;
   onRollResult: (text: string) => void;
+  onAnyRollStart?: () => void;
+  onAnyRollEnd?: () => void;
 }) {
   if (m.role === 'master') {
     const rollRequests = manualRolls ? parseRollRequests(m.content) : [];
@@ -327,6 +346,8 @@ function MessageView({
                 key={`${m.id ?? 'live'}-roll-group`}
                 requests={rollRequests}
                 onSend={onRollResult}
+                onAnyRollStart={onAnyRollStart}
+                onAnyRollEnd={onAnyRollEnd}
               />
             )}
             {m.tools?.map((t, i) => (
