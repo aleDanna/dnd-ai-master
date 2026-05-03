@@ -6,7 +6,7 @@ import type { CompleteMessageOutput, MasterProvider } from '@/ai/provider/types'
 const baseState: EngineState = {
   characters: [
     {
-      id: 'pc1', name: 'Tharion', level: 1,
+      id: 'pc1', name: 'Tharion', level: 1, xp: 0,
       classSlug: 'fighter', raceSlug: 'half-elf', backgroundSlug: 'soldier',
       abilities: { STR: 16, DEX: 14, CON: 14, INT: 10, WIS: 12, CHA: 8 },
       proficiencyBonus: 2, hpMax: 12, ac: 16, speed: 30,

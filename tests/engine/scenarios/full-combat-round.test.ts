@@ -34,7 +34,7 @@ function applyAll(state: EngineState, mutations: Mutation[]): EngineState {
 }
 
 const fighter: Character = {
-  id: 'pc1', name: 'Tharion', level: 5,
+  id: 'pc1', name: 'Tharion', level: 5, xp: 0,
   classSlug: 'fighter', raceSlug: 'human', backgroundSlug: 'soldier',
   abilities: { STR: 18, DEX: 14, CON: 14, INT: 10, WIS: 12, CHA: 10 },
   proficiencyBonus: 3, hpMax: 44, ac: 18, speed: 30,

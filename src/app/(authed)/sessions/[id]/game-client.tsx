@@ -29,9 +29,16 @@ export interface GameClientProps {
   initialManualRolls: boolean;
 }
 
-export function GameClient({ sessionId, session, character, initialState, initialMessages, initialRolls, initialActors, initialAutoplay, initialManualRolls }: GameClientProps) {
+export function GameClient({ sessionId, session, character: initialCharacter, initialState, initialMessages, initialRolls, initialActors, initialAutoplay, initialManualRolls }: GameClientProps) {
   const [messages, setMessages] = React.useState<MessageRow[]>(initialMessages);
   const [rolls, setRolls] = React.useState<DiceRollRow[]>(initialRolls);
+  // Character mirror: starts from SSR-provided value, refreshed on mount and
+  // after every turn_complete. Mutable character fields (level, xp, hpMax,
+  // ...) stay in sync with the server even when the player navigates away
+  // and back to the session — that scenario was producing a stale chat
+  // before this state was here, because returning to the page reused the
+  // initially-rendered React tree.
+  const [character, setCharacter] = React.useState<Character>(initialCharacter);
   const [spellOpen, setSpellOpen] = React.useState(false);
   const [autoplay, setAutoplay] = React.useState(initialAutoplay);
   const lastCompleteIdRef = React.useRef<string | null>(null);
@@ -51,24 +58,63 @@ export function GameClient({ sessionId, session, character, initialState, initia
     return ev && ev.type === 'turn_error' ? ev.reason : null;
   }, [turn.events]);
 
-  // When a turn completes, refresh messages + dice log. Guard with a ref so the
-  // effect only fires once per turn_complete (avoids races if events array mutates).
+  // Pure fetch — no setState side-effects. Returns a snapshot of the
+  // server-side session state for the caller to apply via setState. Keeping
+  // this side-effect-free lets us use it inside useEffect without tripping
+  // the React 19 cascading-renders lint rule.
+  const fetchSessionData = React.useCallback(async (): Promise<{
+    messages: MessageRow[] | null;
+    rolls: DiceRollRow[] | null;
+    character: Character | null;
+  }> => {
+    const [msgsRes, rollsRes, charRes] = await Promise.all([
+      fetch(`/api/sessions/${sessionId}/messages`).then((r) => (r.ok ? r.json() : null)),
+      fetch(`/api/sessions/${sessionId}/dice-log`).then((r) => (r.ok ? r.json() : null)),
+      fetch(`/api/sessions/${sessionId}/character`).then((r) => (r.ok ? r.json() : null)),
+    ]);
+    return {
+      messages: (msgsRes as { messages: MessageRow[] } | null)?.messages ?? null,
+      rolls: (rollsRes as { rolls: DiceRollRow[] } | null)?.rolls ?? null,
+      character: (charRes as { character: Character } | null)?.character ?? null,
+    };
+  }, [sessionId]);
+
+  // On mount: pull fresh server state. Fixes the "I went to /settings, came
+  // back, the chat shows old messages" bug — the page is client-navigated
+  // and the SSR'd messages prop can be minutes out of date.
+  React.useEffect(() => {
+    let active = true;
+    void fetchSessionData().then((data) => {
+      if (!active) return;
+      if (data.messages) setMessages(data.messages);
+      if (data.rolls) setRolls(data.rolls);
+      if (data.character) setCharacter(data.character);
+    });
+    return () => {
+      active = false;
+    };
+  }, [fetchSessionData]);
+
+  // When a turn completes, refresh messages + dice log + character. Guard
+  // with a ref so the effect only fires once per turn_complete (avoids
+  // races if events array mutates).
   React.useEffect(() => {
     const last = turn.events.at(-1);
     if (last?.type === 'turn_complete' && !turn.busy && lastCompleteIdRef.current !== last.messageId) {
       lastCompleteIdRef.current = last.messageId;
-      void Promise.all([
-        fetch(`/api/sessions/${sessionId}/messages`).then((r) => (r.ok ? r.json() : null)),
-        fetch(`/api/sessions/${sessionId}/dice-log`).then((r) => (r.ok ? r.json() : null)),
-      ]).then((results) => {
-        const msgs = results[0] as { messages: MessageRow[] } | null;
-        const rs = results[1] as { rolls: DiceRollRow[] } | null;
-        if (msgs) setMessages(msgs.messages);
-        if (rs) setRolls(rs.rolls);
+      let active = true;
+      void fetchSessionData().then((data) => {
+        if (!active) return;
+        if (data.messages) setMessages(data.messages);
+        if (data.rolls) setRolls(data.rolls);
+        if (data.character) setCharacter(data.character);
         turn.reset();
       });
+      return () => {
+        active = false;
+      };
     }
-  }, [turn, sessionId]);
+  }, [turn, sessionId, fetchSessionData]);
 
   const send = (text: string): void => {
     setMessages((prev) => [...prev, { id: `temp-${Date.now()}`, sessionId, role: 'player', content: text, createdAt: new Date().toISOString() }]);
@@ -181,6 +227,8 @@ export function GameClient({ sessionId, session, character, initialState, initia
           actors={liveActors}
           diceLog={rolls}
           pcCharacterId={character.id}
+          pcLevel={character.level}
+          pcXp={character.xp}
           pcName={character.name}
           pcHpMax={character.hpMax}
         />

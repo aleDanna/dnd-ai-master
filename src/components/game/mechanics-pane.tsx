@@ -2,6 +2,7 @@
 import { Eyebrow } from '@/components/ui/eyebrow';
 import { CombatTracker } from './combat-tracker';
 import { DiceLogPanel } from './dice-log-panel';
+import { XpBar } from './xp-bar';
 import type { CombatActorRow, DiceRollRow, SessionStateRow } from '@/sessions/client-types';
 
 export interface MechanicsPaneProps {
@@ -11,9 +12,11 @@ export interface MechanicsPaneProps {
   pcCharacterId: string;
   pcName: string;
   pcHpMax: number;
+  pcLevel: number;
+  pcXp: number;
 }
 
-export function MechanicsPane({ state, actors, diceLog, pcCharacterId, pcName, pcHpMax }: MechanicsPaneProps) {
+export function MechanicsPane({ state, actors, diceLog, pcCharacterId, pcName, pcHpMax, pcLevel, pcXp }: MechanicsPaneProps) {
   return (
     <aside
       style={{
@@ -32,6 +35,7 @@ export function MechanicsPane({ state, actors, diceLog, pcCharacterId, pcName, p
         overflowY: 'auto',
       }}
     >
+      <XpBar level={pcLevel} xp={pcXp} />
       <CombatTracker
         state={state}
         actors={actors}

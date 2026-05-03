@@ -4,7 +4,7 @@ import { makeSeededRng } from '@/engine/rand';
 import type { Character } from '@/engine/types';
 
 const fighter: Character = {
-  id: 'pc1', name: 'Tharion', level: 3,
+  id: 'pc1', name: 'Tharion', level: 3, xp: 0,
   classSlug: 'fighter', raceSlug: 'human', backgroundSlug: 'soldier',
   abilities: { STR: 16, DEX: 12, CON: 14, INT: 10, WIS: 12, CHA: 8 },
   proficiencyBonus: 2,

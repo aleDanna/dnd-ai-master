@@ -6,7 +6,7 @@ import {
 import type { Character } from '@/engine/types';
 
 const sampleFighter: Character = {
-  id: 'pc1', name: 'Tharion', level: 5,
+  id: 'pc1', name: 'Tharion', level: 5, xp: 0,
   classSlug: 'fighter', raceSlug: 'half-elf', backgroundSlug: 'soldier',
   abilities: { STR: 16, DEX: 14, CON: 14, INT: 10, WIS: 12, CHA: 10 },
   proficiencyBonus: 3,

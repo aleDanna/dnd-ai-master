@@ -32,6 +32,7 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
       id: character.id,
       name: character.name,
       level: character.level,
+      xp: character.xp,
       classSlug: character.classSlug,
       raceSlug: character.raceSlug,
       backgroundSlug: character.backgroundSlug,

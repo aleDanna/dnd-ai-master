@@ -25,6 +25,8 @@ export interface Character {
   id: string;
   name: string;
   level: number;
+  /** Cumulative XP earned. D&D 5e: 0 at level 1, 300 at level 2, 900 at level 3, ... */
+  xp: number;
   classSlug: string;
   raceSlug: string;
   backgroundSlug: string;

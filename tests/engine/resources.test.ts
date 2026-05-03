@@ -5,7 +5,7 @@ import type { ActorRuntimeState, Character, FeatureInstance } from '@/engine/typ
 const rage: FeatureInstance = { slug: 'rage', source: 'class', usesMax: 2, description: 'Barbarian rage' };
 
 const barbarian: Character = {
-  id: 'pc1', name: 'Korg', level: 1,
+  id: 'pc1', name: 'Korg', level: 1, xp: 0,
   classSlug: 'barbarian', raceSlug: 'half-orc', backgroundSlug: 'outlander',
   abilities: { STR: 16, DEX: 14, CON: 16, INT: 8, WIS: 12, CHA: 10 },
   proficiencyBonus: 2, hpMax: 14, ac: 14, speed: 30,

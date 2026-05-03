@@ -4,7 +4,7 @@ import { makeSeededRng } from '@/engine/rand';
 import type { Character, CombatActor } from '@/engine/types';
 
 const pc: Character = {
-  id: 'pc1', name: 'Tharion', level: 1, classSlug: 'fighter', raceSlug: 'human', backgroundSlug: 'soldier',
+  id: 'pc1', name: 'Tharion', level: 1, xp: 0, classSlug: 'fighter', raceSlug: 'human', backgroundSlug: 'soldier',
   abilities: { STR: 14, DEX: 16, CON: 12, INT: 10, WIS: 12, CHA: 8 },
   proficiencyBonus: 2, hpMax: 12, ac: 16, speed: 30,
   proficiencies: { saves: ['STR', 'CON'], skills: [], expertise: [], weapons: ['Simple', 'Martial'], armor: ['Light', 'Medium', 'Heavy', 'Shield'], tools: [], languages: ['Common'] },

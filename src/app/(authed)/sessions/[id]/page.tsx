@@ -37,6 +37,7 @@ export default async function GameSessionPage({ params }: { params: Promise<{ id
     id: character.id,
     name: character.name,
     level: character.level,
+    xp: character.xp,
     classSlug: character.classSlug,
     raceSlug: character.raceSlug,
     backgroundSlug: character.backgroundSlug,

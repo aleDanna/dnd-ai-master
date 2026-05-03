@@ -41,7 +41,7 @@ describe('applyDamage', () => {
 
   it('PCs at 0 HP enter death save state, not dead', () => {
     const fighter: Character = {
-      id: 'pc1', name: 'Tharion', level: 1,
+      id: 'pc1', name: 'Tharion', level: 1, xp: 0,
       classSlug: 'fighter', raceSlug: 'human', backgroundSlug: 'soldier',
       abilities: { STR: 16, DEX: 12, CON: 14, INT: 10, WIS: 12, CHA: 8 },
       proficiencyBonus: 2, hpMax: 12, ac: 16, speed: 30,
@@ -56,7 +56,7 @@ describe('applyDamage', () => {
 
   it('massive damage: PC drops to 0 with leftover ≥ hpMax → instant death', () => {
     const fighter: Character = {
-      id: 'pc1', name: 'Tharion', level: 1,
+      id: 'pc1', name: 'Tharion', level: 1, xp: 0,
       classSlug: 'fighter', raceSlug: 'human', backgroundSlug: 'soldier',
       abilities: { STR: 16, DEX: 12, CON: 14, INT: 10, WIS: 12, CHA: 8 },
       proficiencyBonus: 2, hpMax: 12, ac: 16, speed: 30,

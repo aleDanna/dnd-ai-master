@@ -3,7 +3,7 @@ import { TOOL_HANDLERS, TOOL_DEFINITIONS } from '@/engine';
 import type { EngineState, Character, CombatActor } from '@/engine';
 
 const fighter: Character = {
-  id: 'pc1', name: 'Tharion', level: 5,
+  id: 'pc1', name: 'Tharion', level: 5, xp: 0,
   classSlug: 'fighter', raceSlug: 'human', backgroundSlug: 'soldier',
   abilities: { STR: 18, DEX: 14, CON: 14, INT: 10, WIS: 12, CHA: 10 },
   proficiencyBonus: 3, hpMax: 44, ac: 18, speed: 30,
@@ -14,7 +14,7 @@ const fighter: Character = {
 };
 
 const wizard: Character = {
-  id: 'pc2', name: 'Lyra', level: 5,
+  id: 'pc2', name: 'Lyra', level: 5, xp: 0,
   classSlug: 'wizard', raceSlug: 'high-elf', backgroundSlug: 'sage',
   abilities: { STR: 8, DEX: 14, CON: 12, INT: 18, WIS: 12, CHA: 10 },
   proficiencyBonus: 3, hpMax: 28, ac: 12, speed: 30,

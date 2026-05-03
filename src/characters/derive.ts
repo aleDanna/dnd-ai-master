@@ -50,6 +50,7 @@ export function deriveCharacter(wizard: WizardState, context: DeriveContext = {}
   return {
     name: wizard.identity.name || 'Unnamed',
     level,
+    xp: 0,
     classSlug: wizard.classSlug,
     raceSlug: wizard.raceSlug,
     backgroundSlug: wizard.backgroundSlug,

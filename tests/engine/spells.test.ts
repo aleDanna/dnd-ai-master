@@ -4,7 +4,7 @@ import { makeSeededRng } from '@/engine/rand';
 import type { Character, CombatActor, ActorRuntimeState } from '@/engine/types';
 
 const wizard: Character = {
-  id: 'pc1', name: 'Lyra', level: 5,
+  id: 'pc1', name: 'Lyra', level: 5, xp: 0,
   classSlug: 'wizard', raceSlug: 'high-elf', backgroundSlug: 'sage',
   abilities: { STR: 8, DEX: 14, CON: 12, INT: 18, WIS: 12, CHA: 10 },
   proficiencyBonus: 3, hpMax: 28, ac: 12, speed: 30,

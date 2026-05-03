@@ -8,6 +8,7 @@ export const characters = pgTable(
     userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     level: integer('level').notNull().default(1),
+    xp: integer('xp').notNull().default(0),
     raceSlug: text('race_slug').notNull(),
     classSlug: text('class_slug').notNull(),
     backgroundSlug: text('background_slug').notNull(),
