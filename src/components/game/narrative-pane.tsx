@@ -33,6 +33,11 @@ export interface NarrativePaneProps {
 
 export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, onCastSpell, manualRolls }: NarrativePaneProps) {
   const [draft, setDraft] = React.useState('');
+  // Tamper-resistant pending roll. The text is set ONLY by handleRollResult
+  // (called from the dice-button after the spinner settles) and rendered as
+  // a read-only chip outside the textarea. The player cannot edit the rolled
+  // number — they can only discard it (which clears state) or send it.
+  const [pendingRollText, setPendingRollText] = React.useState<string | null>(null);
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
   const merged = mergeMessages(history, liveEvents);
 
@@ -43,50 +48,66 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
   }, [merged.length, busy, liveEvents.length]);
 
   const submit = (): void => {
-    const t = draft.trim();
-    if (!t || busy) return;
+    if (busy) return;
+    const prose = draft.trim();
 
-    // Auto-roll-from-prose: if the player committed to one of the master's
-    // pending options in free text (e.g. "intimidisco urlando" while the
-    // master had offered an Intimidation check button), fire that roll
-    // automatically and append the result so the master narrates the
-    // outcome in one shot — no second "ok now roll the dice" round-trip.
+    // Determine the roll result that will be attached to this message. Three
+    // sources, in priority order:
     //
-    // We skip detection when:
-    //   - manual rolls are off (the master rolls server-side via tools);
-    //   - the player already rolled (their text already has the dice emoji);
-    //   - the latest master message has no roll requests, or its mode is AND
-    //     (every roll required, can't infer just one from prose).
-    let outgoing = t;
-    if (manualRolls && !/🎲/.test(t)) {
+    // 1. Pending roll from a clicked button (held in `pendingRollText`,
+    //    untouchable by the user).
+    // 2. Auto-roll detection: the player's prose commits to one of the
+    //    master's pending options (e.g. "intimidisco urlando" while an
+    //    Intimidazione button is on offer). We compute the roll here and
+    //    keep the result string LOCAL — never round-trips through React
+    //    state that the player could read back.
+    //
+    // Both cases produce a single read-only string we splice onto the
+    // outgoing message. There is no path where a player-controlled text
+    // ends up driving the rolled number.
+    let rollResultText: string | null = pendingRollText;
+    if (!rollResultText && manualRolls && prose) {
       const lastMaster = [...merged].reverse().find((m) => m.role === 'master' && m.content);
       if (lastMaster) {
         const reqs = parseRollRequests(lastMaster.content);
-        const matched = pickAutoRoll(t, reqs, lastMaster.content);
+        const matched = pickAutoRoll(prose, reqs, lastMaster.content);
         if (matched) {
           const rolled = rollFormula(matched.formula);
-          outgoing = `${t}\n${formatResultText(matched, rolled)}`;
+          rollResultText = formatResultText(matched, rolled);
         }
       }
     }
 
+    let outgoing: string;
+    if (prose && rollResultText) {
+      outgoing = `${prose}\n${rollResultText}`;
+    } else if (rollResultText) {
+      outgoing = rollResultText;
+    } else if (prose) {
+      outgoing = prose;
+    } else {
+      return; // nothing to send
+    }
+
     onSend(outgoing);
     setDraft('');
+    setPendingRollText(null);
   };
 
   /**
-   * Handler invoked by RollRequestGroup when one or more dice settle. Instead of
-   * auto-sending we drop the result into the input draft and focus the textarea
-   * so the player can append context (e.g. "stavo mirando alla sentinella")
-   * before pressing Enter. If the player had already typed something, we append
-   * the roll result on a new line rather than clobbering their text. Pressing
-   * Enter immediately is still a one-keystroke send for the common case where
-   * no extra context is needed.
+   * Handler invoked by RollRequestGroup when one or more dice settle. The
+   * formatted result string lands in a dedicated piece of state and is
+   * rendered as a read-only chip above the textarea. The textarea itself
+   * is reserved for the player's free prose.
+   *
+   * Critical: this string is the SOURCE OF TRUTH for the rolled number that
+   * will be sent. It must never be merged into the player-editable draft —
+   * doing so would let the player rewrite the number ("rolled a 3" → "rolled
+   * a 17") before pressing Send. The chip exposes only a discard button.
    */
   const handleRollResult = (text: string): void => {
-    setDraft((prev) => (prev.trim() ? `${prev}\n${text}` : text));
-    // After the state flush, focus the textarea and put the caret at the end so
-    // typing immediately appends.
+    setPendingRollText(text);
+    // Move focus to the textarea so the player can immediately add context.
     setTimeout(() => {
       const el = inputRef.current;
       if (!el) return;
@@ -94,6 +115,10 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
       const len = el.value.length;
       el.setSelectionRange(len, len);
     }, 0);
+  };
+
+  const discardPendingRoll = (): void => {
+    setPendingRollText(null);
   };
 
   return (
@@ -136,43 +161,54 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
             maxWidth: 680,
             margin: '0 auto',
             display: 'flex',
-            gap: 8,
-            alignItems: 'flex-end',
+            flexDirection: 'column',
+            gap: 6,
             background: 'var(--bg-card)',
             border: '1px solid var(--border-strong)',
             borderRadius: 12,
             padding: 8,
           }}
         >
-          <textarea
-            ref={inputRef}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                submit();
-              }
-            }}
-            placeholder="What do you do?"
-            rows={2}
-            style={{
-              flex: 1,
-              border: 'none',
-              outline: 'none',
-              resize: 'none',
-              background: 'transparent',
-              color: 'var(--fg)',
-              fontFamily: 'var(--font-ui)',
-              fontSize: 14,
-              lineHeight: 1.5,
-              padding: '6px 8px',
-            }}
-          />
-          <Button variant="primary" size="md" icon="send" disabled={busy || !draft.trim()} onClick={submit}>Send</Button>
+          {pendingRollText && <PendingRollChip text={pendingRollText} onDiscard={discardPendingRoll} />}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+            <textarea
+              ref={inputRef}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+              placeholder="What do you do?"
+              rows={2}
+              style={{
+                flex: 1,
+                border: 'none',
+                outline: 'none',
+                resize: 'none',
+                background: 'transparent',
+                color: 'var(--fg)',
+                fontFamily: 'var(--font-ui)',
+                fontSize: 14,
+                lineHeight: 1.5,
+                padding: '6px 8px',
+              }}
+            />
+            <Button
+              variant="primary"
+              size="md"
+              icon="send"
+              disabled={busy || (!draft.trim() && !pendingRollText)}
+              onClick={submit}
+            >
+              Send
+            </Button>
+          </div>
         </div>
         <div style={{ maxWidth: 680, margin: '6px auto 0', fontSize: 11, color: 'var(--fg-subtle)', textAlign: 'center' }}>
-          Enter to send · Shift+Enter for new line · Rolls fill the input — add context, then send
+          Enter to send · Shift+Enter for new line · Rolls show as a chip — add context, then send
         </div>
         </div>
       </div>
@@ -201,6 +237,64 @@ function Quick({ icon, label, onClick }: { icon: IconName; label: string; onClic
     >
       <Icon name={icon} size={13} /> {label}
     </button>
+  );
+}
+
+/**
+ * Read-only chip that shows the rolled result that will be attached to the
+ * outgoing message. The displayed text is bound to `text` via React state and
+ * has no editable surface — the only user-visible action is the discard
+ * button. This is the tamper-resistant counterpart to the editable textarea:
+ * the rolled number can be seen, dismissed, or sent, but never re-typed.
+ */
+function PendingRollChip({ text, onDiscard }: { text: string; onDiscard: () => void }) {
+  return (
+    <div
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 8,
+        alignSelf: 'flex-start',
+        padding: '4px 6px 4px 10px',
+        borderRadius: 999,
+        background: 'rgba(122, 79, 184, 0.15)',
+        border: '1px solid var(--arcane)',
+        color: 'var(--fg)',
+        fontFamily: 'var(--font-mono)',
+        fontSize: 12,
+        maxWidth: '100%',
+      }}
+      role="status"
+      aria-label="Pending dice roll"
+    >
+      <Icon name="dice" size={13} />
+      <span style={{ whiteSpace: 'pre-wrap' }}>
+        <MarkdownText text={text} />
+      </span>
+      <button
+        type="button"
+        onClick={onDiscard}
+        title="Discard this roll"
+        aria-label="Discard pending roll"
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 20,
+          height: 20,
+          borderRadius: '50%',
+          border: 'none',
+          background: 'transparent',
+          color: 'var(--fg-muted)',
+          cursor: 'pointer',
+          fontSize: 14,
+          lineHeight: 1,
+          padding: 0,
+        }}
+      >
+        ×
+      </button>
+    </div>
   );
 }
 
