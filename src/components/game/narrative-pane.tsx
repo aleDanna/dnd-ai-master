@@ -8,7 +8,8 @@ import { SpinningDie } from './spinning-die';
 import { TtsButton } from './tts-button';
 import { RollRequestGroup } from './roll-request-group';
 import { MarkdownText } from './markdown-text';
-import { parseRollRequests } from '@/lib/roll-parser';
+import { formatResultText } from './roll-request-button';
+import { parseRollRequests, pickAutoRoll, rollFormula } from '@/lib/roll-parser';
 import type { TurnEvent } from '@/sessions/types';
 import type { MessageRow } from '@/sessions/client-types';
 
@@ -44,7 +45,32 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
   const submit = (): void => {
     const t = draft.trim();
     if (!t || busy) return;
-    onSend(t);
+
+    // Auto-roll-from-prose: if the player committed to one of the master's
+    // pending options in free text (e.g. "intimidisco urlando" while the
+    // master had offered an Intimidation check button), fire that roll
+    // automatically and append the result so the master narrates the
+    // outcome in one shot — no second "ok now roll the dice" round-trip.
+    //
+    // We skip detection when:
+    //   - manual rolls are off (the master rolls server-side via tools);
+    //   - the player already rolled (their text already has the dice emoji);
+    //   - the latest master message has no roll requests, or its mode is AND
+    //     (every roll required, can't infer just one from prose).
+    let outgoing = t;
+    if (manualRolls && !/🎲/.test(t)) {
+      const lastMaster = [...merged].reverse().find((m) => m.role === 'master' && m.content);
+      if (lastMaster) {
+        const reqs = parseRollRequests(lastMaster.content);
+        const matched = pickAutoRoll(t, reqs, lastMaster.content);
+        if (matched) {
+          const rolled = rollFormula(matched.formula);
+          outgoing = `${t}\n${formatResultText(matched, rolled)}`;
+        }
+      }
+    }
+
+    onSend(outgoing);
     setDraft('');
   };
 

@@ -59,6 +59,88 @@ describe('NarrativePane — manual roll flow', () => {
     vi.useRealTimers();
   });
 
+  it('auto-rolls and appends the result when the player commits in prose without clicking', async () => {
+    // Master offers 3 options, one of which needs an Intimidation check.
+    // Player types "intimidisco urlando" and presses Enter without clicking.
+    // The system should auto-roll the matching bullet, append the result,
+    // and send it all in one outgoing message.
+    const masterContent =
+      'Tocca a te. Vuoi:\n' +
+      '- Scoccare una freccia: tira 1d20+3 per attaccare il fuggitivo (CA 14).\n' +
+      '- Inseguirlo a tutta velocità con una Corsa (Dash): nessun tiro.\n' +
+      '- Fermarlo a voce con un urlo minaccioso: tira una prova di Intimidazione CD 12.';
+    const messages: MessageRow[] = [
+      {
+        id: 'm-vuoi',
+        sessionId: 's1',
+        role: 'master',
+        content: masterContent,
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    const onSend = vi.fn();
+    render(
+      <NarrativePane
+        sessionId="s1"
+        history={messages}
+        liveEvents={[]}
+        busy={false}
+        onSend={onSend}
+        manualRolls={true}
+      />,
+    );
+
+    const textarea = screen.getByPlaceholderText('What do you do?') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: 'intimidisco urlando' } });
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+
+    // onSend was called once with the player's prose + the auto-rolled
+    // Intimidation result appended on a new line.
+    expect(onSend).toHaveBeenCalledTimes(1);
+    const sent = onSend.mock.calls[0]![0] as string;
+    expect(sent).toMatch(/^intimidisco urlando\n/);
+    expect(sent).toContain('🎲');
+    expect(sent).toContain('Intimidazione');
+    // Sanity: the appended line includes a rolled total in bold markdown.
+    expect(sent).toMatch(/I rolled \*\*\d+\*\*/);
+  });
+
+  it('does NOT auto-roll when the player text matches no bullet', async () => {
+    const masterContent =
+      'Tocca a te. Vuoi:\n' +
+      '- Scoccare una freccia: tira 1d20+3 per attaccare il fuggitivo (CA 14).\n' +
+      '- Fermarlo a voce con un urlo minaccioso: tira una prova di Intimidazione CD 12.';
+    const messages: MessageRow[] = [
+      {
+        id: 'm-vuoi',
+        sessionId: 's1',
+        role: 'master',
+        content: masterContent,
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    const onSend = vi.fn();
+    render(
+      <NarrativePane
+        sessionId="s1"
+        history={messages}
+        liveEvents={[]}
+        busy={false}
+        onSend={onSend}
+        manualRolls={true}
+      />,
+    );
+
+    const textarea = screen.getByPlaceholderText('What do you do?') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: 'voglio guardarmi intorno con calma' } });
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+    const sent = onSend.mock.calls[0]![0] as string;
+    expect(sent).toBe('voglio guardarmi intorno con calma');
+    expect(sent).not.toContain('🎲');
+  });
+
   it('appends to existing draft text on a new line instead of clobbering', async () => {
     vi.useFakeTimers();
     const onSend = vi.fn();

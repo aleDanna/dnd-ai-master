@@ -211,6 +211,107 @@ export function parseRollRequests(text: string): RollRequest[] {
 }
 
 /**
+ * Try to identify which pending roll the player's free-text prose commits to,
+ * so the UI can fire that roll automatically (saving the player from having to
+ * click the corresponding button explicitly).
+ *
+ * Returns the matching request, or null if there's no clear winner. We only
+ * fire when:
+ *  - there is at least one pending roll;
+ *  - the request set is in OR group mode (mutually-exclusive options or a
+ *    single roll). AND-mode messages require every roll, not just one
+ *    inferred from prose;
+ *  - exactly one bullet's keywords beat every other bullet — ties produce
+ *    null so the player gets a chance to pick explicitly.
+ *
+ * Matching strategy: for each request we tokenize the bullet line that
+ * contains it (plus the request's own label) into "content words" — alphabetic
+ * runs of length 4+, minus a small Italian/English stopword set of generic
+ * roll vocabulary ("tira", "prova", "roll", "check", etc.). Each bullet's
+ * keywords are matched against the player's tokens with a 4-char
+ * case-insensitive prefix comparison (so "Intimidazione" / "intimidisco"
+ * both stem to "inti", "attaccare" / "attacco" both stem to "atta").
+ */
+export function pickAutoRoll(
+  playerText: string,
+  requests: RollRequest[],
+  masterContent: string,
+): RollRequest | null {
+  if (requests.length === 0) return null;
+  // Only OR-mode (incl. single-roll) messages auto-route by prose. AND-mode
+  // expects every roll to land before continuing.
+  if (requests[0]!.groupMode !== 'or') return null;
+
+  const playerTokens = tokenize(playerText);
+  if (playerTokens.length === 0) return null;
+
+  const scored = requests.map((req) => {
+    const bulletLine = bulletLineAt(masterContent, req.index);
+    const keywords = [...tokenize(bulletLine), ...tokenize(req.label)];
+    let score = 0;
+    const seenStems = new Set<string>();
+    for (const kw of keywords) {
+      const stem = kw.slice(0, 4).toLowerCase();
+      if (seenStems.has(stem)) continue;
+      seenStems.add(stem);
+      if (playerTokens.some((p) => p.slice(0, 4).toLowerCase() === stem)) {
+        score++;
+      }
+    }
+    return { req, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  if (scored[0]!.score === 0) return null;
+  // Tie → ambiguous, let the player click instead.
+  if (scored.length > 1 && scored[0]!.score === scored[1]!.score) return null;
+  return scored[0]!.req;
+}
+
+/**
+ * Italian + English stopwords that appear in roll requests regardless of which
+ * action they describe. Filtering them out leaves only the action-specific
+ * vocabulary that distinguishes one bullet from another.
+ */
+const AUTO_ROLL_STOPWORDS = new Set([
+  // Italian roll vocabulary
+  'tira', 'tiro', 'fai', 'effettua', 'lancia', 'prova', 'controllo', 'salvezza',
+  'sono', 'stai', 'devo', 'voglio', 'puoi', 'vuoi', 'allora', 'quando', 'mentre',
+  'dopo', 'prima', 'molto', 'poco', 'questa', 'questo', 'quella', 'quello',
+  'mezza', 'mezzo', 'tutti', 'tutto', 'ogni', 'caso', 'volta',
+  // English roll vocabulary
+  'roll', 'make', 'check', 'save', 'with', 'from', 'into', 'onto', 'when',
+  'where', 'while', 'this', 'that', 'these', 'those', 'have', 'will', 'would',
+  'after', 'before', 'every', 'some',
+]);
+
+function tokenize(text: string): string[] {
+  return text
+    .split(/[^a-zà-ÿ]+/i)
+    .map((w) => w.trim())
+    .filter((w) => w.length >= 4 && !AUTO_ROLL_STOPWORDS.has(w.toLowerCase()));
+}
+
+/**
+ * Return the line of `text` that contains `charIdx`. If charIdx is on a
+ * non-bullet line that follows a bullet line, returns just that line — we
+ * don't try to merge continuation lines for now (the bullet content rarely
+ * spans multiple lines in master prose).
+ */
+function bulletLineAt(text: string, charIdx: number): string {
+  let lineStart = 0;
+  for (let i = 0; i <= text.length; i++) {
+    if (i === text.length || text[i] === '\n') {
+      if (charIdx >= lineStart && charIdx <= i) {
+        return text.slice(lineStart, i);
+      }
+      lineStart = i + 1;
+    }
+  }
+  return '';
+}
+
+/**
  * Find the 0-based bullet index for the bullet line that contains the given
  * character position, or null if the position is outside any bullet.
  *

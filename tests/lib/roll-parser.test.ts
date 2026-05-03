@@ -5,6 +5,7 @@ import {
   normalizeFormula,
   detectGroupMode,
   bulletIndexAt,
+  pickAutoRoll,
 } from '@/lib/roll-parser';
 
 describe('parseRollRequests', () => {
@@ -468,6 +469,82 @@ describe('parseRollRequests — bullet-aware label numbering', () => {
     // Three rolls total; first two share bullet 0, third is in bullet 1 → not all distinct → no suffix.
     expect(reqs.length).toBe(3);
     for (const r of reqs) expect(r.label).not.toMatch(/\(\d\)$/);
+  });
+});
+
+describe('pickAutoRoll', () => {
+  // The screenshot scenario: 3-bullet "Vuoi:" with attack on bullet 1,
+  // dash (no roll) on bullet 2, intimidation on bullet 3. The player can
+  // commit to any option in prose without clicking a button.
+  const masterMessage =
+    'Tocca a te. Vuoi:\n' +
+    '- Scoccare una freccia al fuggitivo in fuga: tira 1d20+3 per attaccare il fuggitivo (CA 14 con mezza copertura).\n' +
+    '- Inseguirlo a tutta velocità con una Corsa (Dash): nessun tiro.\n' +
+    '- Fermarlo a voce con un urlo minaccioso: tira una prova di Intimidazione CD 12.';
+
+  it('matches the intimidation bullet from "intimidisco urlando"', () => {
+    const reqs = parseRollRequests(masterMessage);
+    const matched = pickAutoRoll('intimidisco urlando', reqs, masterMessage);
+    expect(matched).not.toBeNull();
+    expect(matched!.kind).toBe('check');
+    expect(matched!.label).toContain('Intimidazione');
+  });
+
+  it('matches the intimidation bullet from "grido per intimidirlo"', () => {
+    const reqs = parseRollRequests(masterMessage);
+    const matched = pickAutoRoll('grido per intimidirlo', reqs, masterMessage);
+    expect(matched).not.toBeNull();
+    expect(matched!.label).toContain('Intimidazione');
+  });
+
+  it('matches the attack bullet from "scocco una freccia al fuggitivo"', () => {
+    const reqs = parseRollRequests(masterMessage);
+    const matched = pickAutoRoll('scocco una freccia al fuggitivo', reqs, masterMessage);
+    expect(matched).not.toBeNull();
+    expect(matched!.kind).toBe('attack');
+    expect(matched!.formula).toBe('1d20+3');
+  });
+
+  it('returns null when the prose matches no bullet ("voglio guardarmi intorno")', () => {
+    const reqs = parseRollRequests(masterMessage);
+    const matched = pickAutoRoll('voglio guardarmi intorno', reqs, masterMessage);
+    expect(matched).toBeNull();
+  });
+
+  it('returns null when the prose matches the no-roll bullet (Inseguirlo / Dash)', () => {
+    // Bullet 2 has no roll, so "lo inseguo correndo" matches a bullet but
+    // not one of the parsed requests. With no overlap to bullet 1 or 3, we
+    // expect null.
+    const reqs = parseRollRequests(masterMessage);
+    const matched = pickAutoRoll('lo inseguo correndo', reqs, masterMessage);
+    expect(matched).toBeNull();
+  });
+
+  it('returns null for AND-mode messages even with a clear keyword match', () => {
+    // Two simultaneous saves — every roll required, can't pick just one.
+    const text =
+      "L'esplosione ti investe. Roll a DC 14 Dexterity save. Then roll a DC 12 Constitution save.";
+    const reqs = parseRollRequests(text);
+    expect(reqs.every((r) => r.groupMode === 'and')).toBe(true);
+    const matched = pickAutoRoll('schivo l\'esplosione', reqs, text);
+    expect(matched).toBeNull();
+  });
+
+  it('matches a single-roll message ("attacco con la spada")', () => {
+    const text = 'Vedi un goblin. Roll 1d20+5 to attack the goblin (AC 13).';
+    const reqs = parseRollRequests(text);
+    const matched = pickAutoRoll('attacco col mio fendente', reqs, text);
+    expect(matched).not.toBeNull();
+    expect(matched!.formula).toBe('1d20+5');
+  });
+
+  it('returns null on empty player text', () => {
+    const reqs = parseRollRequests(masterMessage);
+    expect(pickAutoRoll('', reqs, masterMessage)).toBeNull();
+  });
+
+  it('returns null when there are no pending requests', () => {
+    expect(pickAutoRoll('intimidisco', [], 'no rolls here')).toBeNull();
   });
 });
 
