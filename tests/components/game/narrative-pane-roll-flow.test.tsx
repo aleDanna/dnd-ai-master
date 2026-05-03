@@ -154,7 +154,7 @@ describe('NarrativePane — manual roll flow', () => {
     vi.useRealTimers();
   });
 
-  it('discarding the chip removes the pending roll without sending', async () => {
+  it('the chip exposes no discard button — once rolled, the result is committed', async () => {
     vi.useFakeTimers();
     const onSend = vi.fn();
     render(
@@ -170,16 +170,18 @@ describe('NarrativePane — manual roll flow', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Roll 1d6\+1/ }));
     await act(async () => { vi.advanceTimersByTime(600); });
-    await act(async () => { vi.advanceTimersByTime(700); });
     await act(async () => { vi.advanceTimersByTime(1); });
 
-    // Discard the chip.
-    const discardBtn = screen.getByRole('button', { name: /Discard pending roll/i });
-    fireEvent.click(discardBtn);
-
-    // Chip is gone. Textarea still empty. onSend not called.
-    expect(screen.queryByRole('status', { name: /Pending dice roll/i })).toBeNull();
-    expect(onSend).not.toHaveBeenCalled();
+    // The chip itself is rendered…
+    const chip = screen.getByRole('status', { name: /Pending dice roll/i });
+    expect(chip).toBeInTheDocument();
+    // …but no discard control inside it. The player can't roll a die,
+    // see a bad number, and back out by clearing the chip — the only
+    // path is to send.
+    expect(screen.queryByRole('button', { name: /Discard pending roll/i })).toBeNull();
+    // And nothing inside the chip is a button at all.
+    const buttonsInsideChip = chip.querySelectorAll('button');
+    expect(buttonsInsideChip.length).toBe(0);
 
     vi.useRealTimers();
   });

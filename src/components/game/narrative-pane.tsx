@@ -149,10 +149,6 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
     }, 0);
   };
 
-  const discardPendingRoll = (): void => {
-    setPendingRollText(null);
-  };
-
   const handleRollStart = (): void => setRollingCount((c) => c + 1);
   const handleRollEnd = (): void => setRollingCount((c) => Math.max(0, c - 1));
 
@@ -236,7 +232,7 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
             padding: 8,
           }}
         >
-          {pendingRollText && <PendingRollChip text={pendingRollText} onDiscard={discardPendingRoll} />}
+          {pendingRollText && <PendingRollChip text={pendingRollText} />}
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <textarea
               ref={inputRef}
@@ -309,12 +305,14 @@ function Quick({ icon, label, onClick }: { icon: IconName; label: string; onClic
 
 /**
  * Read-only chip that shows the rolled result that will be attached to the
- * outgoing message. The displayed text is bound to `text` via React state and
- * has no editable surface — the only user-visible action is the discard
- * button. This is the tamper-resistant counterpart to the editable textarea:
- * the rolled number can be seen, dismissed, or sent, but never re-typed.
+ * outgoing message. The displayed text is bound to `text` via React state
+ * and has no editable surface AND no discard button: once the dice are
+ * rolled, the result is committed — the player cannot back out and "re-roll"
+ * by waiting for the next opportunity. This is the tamper-resistant
+ * counterpart to the editable textarea: the rolled number can be seen and
+ * sent, but never re-typed and never thrown away.
  */
-function PendingRollChip({ text, onDiscard }: { text: string; onDiscard: () => void }) {
+function PendingRollChip({ text }: { text: string }) {
   return (
     <div
       style={{
@@ -322,7 +320,7 @@ function PendingRollChip({ text, onDiscard }: { text: string; onDiscard: () => v
         alignItems: 'center',
         gap: 8,
         alignSelf: 'flex-start',
-        padding: '4px 6px 4px 10px',
+        padding: '4px 12px',
         borderRadius: 999,
         background: 'rgba(122, 79, 184, 0.15)',
         border: '1px solid var(--arcane)',
@@ -338,29 +336,6 @@ function PendingRollChip({ text, onDiscard }: { text: string; onDiscard: () => v
       <span style={{ whiteSpace: 'pre-wrap' }}>
         <MarkdownText text={text} />
       </span>
-      <button
-        type="button"
-        onClick={onDiscard}
-        title="Discard this roll"
-        aria-label="Discard pending roll"
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          width: 20,
-          height: 20,
-          borderRadius: '50%',
-          border: 'none',
-          background: 'transparent',
-          color: 'var(--fg-muted)',
-          cursor: 'pointer',
-          fontSize: 14,
-          lineHeight: 1,
-          padding: 0,
-        }}
-      >
-        ×
-      </button>
     </div>
   );
 }
