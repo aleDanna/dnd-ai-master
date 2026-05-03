@@ -151,6 +151,7 @@ export type Mutation =
   | { op: 'set_equipped'; characterId: string; itemSlug: string; equipped: boolean }
   | { op: 'recompute_ac'; characterId: string; newAc: number }
   | { op: 'level_up'; characterId: string; newLevel: number; hpDelta: number; newSlots?: Partial<Record<1|2|3|4|5|6|7|8|9, number>> }
+  | { op: 'award_xp'; characterId: string; amount: number; reason?: string }
   | { op: 'death_save'; actorId: string; success: boolean; isCrit?: boolean }
   | { op: 'reset_death_saves'; actorId: string }
   | { op: 'set_combat'; combat: CombatState | null }

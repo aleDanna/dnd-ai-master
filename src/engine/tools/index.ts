@@ -190,4 +190,18 @@ export const TOOL_DEFINITIONS: AnthropicTool[] = [
       },
     } as never,
   },
+  {
+    name: 'award_xp',
+    description:
+      'Award experience points to the player character. Use after combat victories, completed objectives, or roleplay milestones. Typical values: 25-100 for trivial encounters, 200-500 for moderate, 750+ for hard. The XP bar updates immediately; level-up is a separate explicit step (use level_up when the threshold is crossed).',
+    input_schema: {
+      type: 'object',
+      required: ['actor', 'amount'],
+      properties: {
+        actor: ACTOR_ID,
+        amount: { type: 'integer', minimum: 1, description: 'XP to add to the current total.' },
+        reason: { type: 'string', description: 'Short narrative reason (e.g. "defeated the goblin patrol").' },
+      },
+    } as never,
+  },
 ];

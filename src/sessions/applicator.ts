@@ -143,6 +143,21 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
       await tx.update(sessionStateTable).set({ scene: m.scene }).where(eq(sessionStateTable.sessionId, sessionId));
       break;
     }
+    case 'award_xp': {
+      // Atomic increment: read current xp, add the delta, write back. The
+      // transaction guards against concurrent writes within a single turn.
+      const [current] = await tx
+        .select({ xp: charactersTable.xp })
+        .from(charactersTable)
+        .where(eq(charactersTable.id, m.characterId))
+        .limit(1);
+      if (!current) break;
+      await tx
+        .update(charactersTable)
+        .set({ xp: current.xp + Math.max(0, Math.floor(m.amount)) })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
     // Ops Plan B emits but Plan D1 does not yet act on; ignore safely.
     case 'add_inventory':
     case 'remove_inventory':

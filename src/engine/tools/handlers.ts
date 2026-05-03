@@ -203,6 +203,21 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       hpRollMode: (input.hpRollMode as 'average' | 'rolled') ?? 'average',
     });
   },
+
+  award_xp: (state, input) => {
+    const charId = resolveCharacterId(state, input.actor);
+    const char = state.characters.find((c) => c.id === charId);
+    if (!char) return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
+    const amount = Math.max(0, Math.floor(Number(input.amount) || 0));
+    if (amount === 0) return { ok: false, error: 'invalid_amount', rolls: [], mutations: [] };
+    const reason = typeof input.reason === 'string' && input.reason.trim() ? input.reason.trim() : undefined;
+    return {
+      ok: true,
+      rolls: [],
+      mutations: [{ op: 'award_xp', characterId: char.id, amount, reason }],
+      data: { newTotal: char.xp + amount, awarded: amount, reason },
+    };
+  },
 };
 
 function resolveCharacterId(state: EngineState, actorRef: unknown): string {

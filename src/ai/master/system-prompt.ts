@@ -44,6 +44,7 @@ The system exposes the deterministic Plan B engine as tools. Common ones:
 - \`make_attack\`, \`apply_damage\`, \`ability_check\`, \`saving_throw\`, \`roll_initiative\`, \`end_turn\`
 - \`cast_spell\`, \`use_resource\`, \`apply_condition\`, \`remove_condition\`
 - \`short_rest\`, \`long_rest\`, \`equip\`, \`unequip\`, \`recompute_ac\`
+- \`award_xp\` — call after combat victories, completed objectives, or roleplay milestones. The player's progress bar updates immediately. Typical values: 25-100 trivial, 200-500 moderate, 750+ hard.
 - \`roll_dice\`, \`roll_d20\` (use sparingly — prefer specific tools)
 
 The full schemas are exposed by the API. The system filters context-inappropriate tools (e.g. combat tools when out of combat).`;
