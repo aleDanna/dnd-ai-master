@@ -242,6 +242,17 @@ export function pickAutoRoll(
   // expects every roll to land before continuing.
   if (requests[0]!.groupMode !== 'or') return null;
 
+  // Skip auto-roll when the player is asking a question rather than
+  // committing to an action. "ho un longbow?" should NOT trigger a damage
+  // roll just because "longbow" matches one of the bullets — the player is
+  // asking, not declaring. Question-detection is intentionally minimal:
+  // a trailing "?" after trimming is enough. Roleplay prose like
+  //   "Vado, dico al goblin: cosa vuoi?"
+  // would still skip auto-roll, which is fine — the player can click the
+  // button to commit explicitly.
+  const trimmed = playerText.trim();
+  if (trimmed.endsWith('?')) return null;
+
   const playerTokens = tokenize(playerText);
   if (playerTokens.length === 0) return null;
 

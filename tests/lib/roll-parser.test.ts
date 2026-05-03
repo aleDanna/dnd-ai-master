@@ -583,6 +583,38 @@ describe('pickAutoRoll', () => {
     expect(pickAutoRoll('', reqs, masterMessage)).toBeNull();
   });
 
+  it('returns null when the player text is a question (ends with "?")', () => {
+    // Reproduces the screenshot bug: the master had offered a Longbow
+    // damage option, the player asked "ho un longbow?" — that should NOT
+    // trigger an auto-roll just because "longbow" matches the bullet.
+    // Questions are inquiries, not commitments.
+    const text =
+      'La tua freccia sfreccia dal bordo della barca. Scegli:\n' +
+      '- Longbow: tira 1d8+1 danni perforanti.\n' +
+      '- Shortbow: tira 1d6+1 danni perforanti.';
+    const reqs = parseRollRequests(text);
+    const matched = pickAutoRoll('ho un longbow?', reqs, text);
+    expect(matched).toBeNull();
+  });
+
+  it('returns null even with whitespace after the question mark', () => {
+    const text = 'Roll 1d20+5 to attack the goblin (AC 13).';
+    const reqs = parseRollRequests(text);
+    expect(pickAutoRoll('attacco col fendente?   ', reqs, text)).toBeNull();
+  });
+
+  it('still auto-rolls when the prose is a statement, not a question', () => {
+    // Sanity: removing the "?" must restore the previous behavior.
+    const text =
+      'La tua freccia sfreccia dal bordo della barca. Scegli:\n' +
+      '- Longbow: tira 1d8+1 danni perforanti.\n' +
+      '- Shortbow: tira 1d6+1 danni perforanti.';
+    const reqs = parseRollRequests(text);
+    const matched = pickAutoRoll('uso il longbow', reqs, text);
+    expect(matched).not.toBeNull();
+    expect(matched!.formula).toBe('1d8+1');
+  });
+
   it('returns null when there are no pending requests', () => {
     expect(pickAutoRoll('intimidisco', [], 'no rolls here')).toBeNull();
   });
