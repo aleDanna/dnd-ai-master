@@ -247,7 +247,7 @@ export function SettingsClient({ initialPreferences, ttsModel }: SettingsClientP
           <Eyebrow>Behavior</Eyebrow>
           <h2 style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>Dice rolls</h2>
           <p style={{ marginTop: 4, fontSize: 13, color: 'var(--fg-muted)' }}>
-            Auto-roll: the AI uses its tools to compute attacks, saves and damage server-side. Manual: the master asks you to roll your physical dice and report the total — your number is authoritative.
+            Auto-roll: the AI uses its tools to compute attacks, saves and damage server-side. Manual: the master writes the formula and the app shows you a roll button to tap — the result is sent back automatically.
           </p>
         </div>
         <button

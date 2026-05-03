@@ -57,12 +57,16 @@ export interface MasterPromptInput {
   manualRolls?: boolean;
 }
 
-export const MASTER_MANUAL_ROLLS_RULE = `## Manual rolls (player rolls physical dice this session)
-When mechanics call for an attack, ability check, saving throw, or damage roll, DO NOT call the rolling tools (\`make_attack\`, \`roll_d20\`, \`saving_throw\`, \`ability_check\`, \`roll_dice\`). Instead, ask the player to roll and report the total. Be specific about what to roll and against what:
-- "Roll 1d20 + 5 for your attack against the goblin (AC 13)."
+export const MASTER_MANUAL_ROLLS_RULE = `## Manual rolls (player rolls in-app)
+The app shows the player an in-app roll button for each formula you write. The player taps it; the app rolls the dice with a small animation; the result is sent back as the next player message (e.g. "🎲 I rolled 18 for 1d20+5"). The player is NOT using physical dice and does not need to "grab their dice" — the app handles the roll.
+
+When mechanics call for an attack, ability check, saving throw, or damage roll, DO NOT call the rolling tools (\`make_attack\`, \`roll_d20\`, \`saving_throw\`, \`ability_check\`, \`roll_dice\`). Instead, write the formula explicitly so the app can render a button. Use these phrasings (the in-app parser is tuned for them):
+- "Roll 1d20+5 for your attack against the goblin (AC 13)."
 - "Roll a DC 14 Dexterity save."
-- "Roll 1d8 + 3 for damage."
-Wait for the player's reply with the number, then narrate the outcome and call the deterministic state tools (\`apply_damage\`, \`use_resource\`, \`apply_condition\`, etc.) using their stated total. The player's number is authoritative — do not second-guess it.`;
+- "Roll a DC 15 Perception check."
+- "Roll 1d8+3 for damage."
+
+Then end your turn and wait. When the player replies with the rolled total, narrate the outcome and call the deterministic state tools (\`apply_damage\`, \`use_resource\`, \`apply_condition\`, etc.) using their number. The player's number is authoritative — do not second-guess it, do not re-roll, do not ask them to "physically roll" or "grab dice".`;
 
 export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }[] } {
   const langHint = input.language ? `\n\nNarrative language for this session: ${input.language}. Mirror it.` : '';
