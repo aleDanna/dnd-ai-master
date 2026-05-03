@@ -85,6 +85,8 @@ export default async function GameSessionPage({ params }: { params: Promise<{ id
               inCombat: stateRow.inCombat,
               combat: stateRow.combat,
               scene: stateRow.scene,
+              sceneImageVersion: stateRow.sceneImageVersion,
+              sceneImagePrompt: stateRow.sceneImagePrompt,
             }
           : null
       }

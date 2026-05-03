@@ -56,6 +56,8 @@ export interface SessionStateRow {
   inCombat: boolean;
   combat: { round: number; turnOrder: { actorId: string; initiative: number }[]; currentIdx: number } | null;
   scene: string;
+  sceneImageVersion: number;
+  sceneImagePrompt: string | null;
 }
 
 export interface StateSnapshot {

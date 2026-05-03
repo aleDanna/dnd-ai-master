@@ -53,7 +53,26 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
           }
           return;
         }
-        const [state] = await db.select().from(sessionState).where(eq(sessionState.sessionId, sessionId)).limit(1);
+        const [state] = await db
+          .select({
+            sessionId: sessionState.sessionId,
+            hpCurrent: sessionState.hpCurrent,
+            tempHp: sessionState.tempHp,
+            hitDiceRemaining: sessionState.hitDiceRemaining,
+            spellSlotsUsed: sessionState.spellSlotsUsed,
+            conditions: sessionState.conditions,
+            resourcesUsed: sessionState.resourcesUsed,
+            inCombat: sessionState.inCombat,
+            combat: sessionState.combat,
+            scene: sessionState.scene,
+            inventoryDelta: sessionState.inventoryDelta,
+            statusFlag: sessionState.statusFlag,
+            sceneImageVersion: sessionState.sceneImageVersion,
+            sceneImagePrompt: sessionState.sceneImagePrompt,
+          })
+          .from(sessionState)
+          .where(eq(sessionState.sessionId, sessionId))
+          .limit(1);
         const actors = await db.select().from(combatActors).where(eq(combatActors.sessionId, sessionId));
         const payload = JSON.stringify({ session, state, actors });
         if (payload !== last) {
