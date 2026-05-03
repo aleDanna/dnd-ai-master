@@ -38,10 +38,34 @@ export function parseRollRequests(text: string): RollRequest[] {
   const requests: RollRequest[] = [];
   const seen = new Set<string>();
 
-  // 1. Bare formula: "Roll 1d20+5"  /  "Roll 2d6 + 3"  / "Roll 1d8"
+  // 1a. Tagged formula: "Tira iniziativa: 1d20+1"  /  "Roll initiative: 1d20+2"
+  //     The verb is followed by a short noun-phrase describing the roll, then a
+  //     colon, then the formula. Group 1 is the descriptor (used as label),
+  //     group 2 is the formula. We run this BEFORE the bare pattern so we don't
+  //     miss formulas tagged this way; the seen-set dedupes any overlap.
+  const taggedRe = /(?:^|[\s(.,!])(?:roll|tira|lancia)\s+([^.!?\n:]{1,40}?)\s*:\s*((?:\d+)?d\d+\s*(?:[+-]\s*\d+)?)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = taggedRe.exec(text)) !== null) {
+    const purposeRaw = m[1]!.trim();
+    const formulaRaw = m[2]!.replace(/\s+/g, '');
+    const formula = normalizeFormula(formulaRaw);
+    if (!formula) continue;
+    const key = `${m.index}:${formula}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const purpose = cleanInlinePurpose(purposeRaw);
+    requests.push({
+      formula,
+      label: purpose ? `${formula} (${purpose})` : formula,
+      kind: inferKind(text, m.index),
+      index: m.index,
+      groupMode: 'or',
+    });
+  }
+
+  // 1b. Bare formula: "Roll 1d20+5"  /  "Roll 2d6 + 3"  / "Roll 1d8"
   // Capture group 1 is the formula; we then look at the text right after to extract the purpose.
   const bareRe = /(?:^|[\s(.,!])(?:roll|tira|lancia)\s+((?:\d+)?d\d+\s*(?:[+-]\s*\d+)?)/gi;
-  let m: RegExpExecArray | null;
   while ((m = bareRe.exec(text)) !== null) {
     const raw = m[1]!.replace(/\s+/g, '');
     const formula = normalizeFormula(raw);
@@ -247,6 +271,30 @@ export function extractPurpose(text: string, fromIdx: number): string | null {
   if (phrase.length > 35) phrase = phrase.slice(0, 32).trimEnd() + '…';
 
   return phrase;
+}
+
+/**
+ * Cleanup helper for the descriptor that lives BEFORE the formula in the
+ * tagged-pattern case ("Tira iniziativa: 1d20+1" → "iniziativa"). Lighter than
+ * extractPurpose because the descriptor is already a short noun-phrase — we
+ * only strip leading articles and trailing parentheticals, then cap length.
+ */
+export function cleanInlinePurpose(raw: string): string | null {
+  let p = raw.trim();
+  // Strip leading articles. Two forms:
+  //   1) word-articles followed by a space: "un ", "una ", "an ", "the ", "il ", "la ", ...
+  //   2) Italian apostrophe-elided forms: "l'", "un'" (no space between article and noun).
+  // It is critical that the space-separated form requires \s+ (not \s*) so we
+  // don't strip the leading "a" of "attacco" or "anything".
+  p = p.replace(/^(?:(?:un[ao]?|an?|the|il|la|lo|i|gli|le)\s+|(?:un['’]|l['’]))/i, '');
+  // Strip trailing parentheticals like "(CD 14)" or "(DC 12)".
+  p = p.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  // Strip "prova di " / "tiro [salvezza] [di] " / "saving throw of " prefixes.
+  p = p.replace(/^(?:prova\s+(?:di\s+)?|tiro\s+(?:salvezza\s+)?(?:di\s+)?|saving\s+throw\s+(?:of\s+)?)/i, '');
+  p = p.trim();
+  if (!p) return null;
+  if (p.length > 35) p = p.slice(0, 32).trimEnd() + '…';
+  return p;
 }
 
 function inferKind(text: string, idx: number): RollKind {

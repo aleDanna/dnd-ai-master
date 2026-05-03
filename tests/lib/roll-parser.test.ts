@@ -92,6 +92,45 @@ describe('parseRollRequests', () => {
     expect(reqs[0]!.label).toBe('1d20+3');
   });
 
+  // ─── Tagged formula ("Tira iniziativa: 1d20+1") ─────────────────────────────
+
+  it('parses "Tira iniziativa: 1d20+1" with purpose label', () => {
+    // Reproduces the screenshot scenario verbatim.
+    const reqs = parseRollRequests(
+      'Niente sorpresa: si voltano tutti verso di te. Tira iniziativa: 1d20+1.',
+    );
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.formula).toBe('1d20+1');
+    expect(reqs[0]!.label).toBe('1d20+1 (iniziativa)');
+    expect(reqs[0]!.kind).toBe('init');
+  });
+
+  it('parses "Roll initiative: 1d20+2" (English tagged form)', () => {
+    const reqs = parseRollRequests('Roll initiative: 1d20+2.');
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.formula).toBe('1d20+2');
+    expect(reqs[0]!.label).toBe('1d20+2 (initiative)');
+    expect(reqs[0]!.kind).toBe('init');
+  });
+
+  it('parses "Tira l\'iniziativa: 1d20+1" stripping the article', () => {
+    const reqs = parseRollRequests('Tira l\'iniziativa: 1d20+1.');
+    expect(reqs[0]!.label).toBe('1d20+1 (iniziativa)');
+  });
+
+  it('parses "Tira attacco: 1d20+5" without a "for" phrase', () => {
+    const reqs = parseRollRequests('Tira attacco: 1d20+5.');
+    expect(reqs[0]!.label).toBe('1d20+5 (attacco)');
+  });
+
+  it('does not double-parse a formula that matches both bare and tagged forms', () => {
+    // "Tira 1d20+5" matches bareRe (no colon, no tag); taggedRe should not
+    // also match because there's no descriptor before a colon.
+    const reqs = parseRollRequests('Tira 1d20+5 per attaccare.');
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.label).toBe('1d20+5 (attaccare)');
+  });
+
   it('rejects bogus formulas', () => {
     expect(normalizeFormula('1d7')).toBeNull(); // d7 isn't a real die
     expect(normalizeFormula('xd20')).toBeNull();
