@@ -490,6 +490,26 @@ describe('pickAutoRoll', () => {
     expect(matched!.label).toContain('Intimidazione');
   });
 
+  it('matches the intimidation bullet via skill synonyms when the prose is creative', () => {
+    // Reproduces the user's scenario: the player commits to intimidating in
+    // their own words, mentioning the bow as a threat ("Punto l'arco verso
+    // il fuggitivo, gridando ... gli ordino di fermarsi"). The previous
+    // letter-overlap matcher tied 1-1 between the attack and intimidation
+    // bullets and skipped the auto-roll. With skill synonyms, "gridando"
+    // and "ordino" both expand into the Intimidazione bullet's keyword set
+    // (gridare/ordinare are canonical Intimidation verbs), so bullet 3
+    // wins clearly.
+    const reqs = parseRollRequests(masterMessage);
+    const matched = pickAutoRoll(
+      "Punto l'arco verso il fuggitivo, gridando che ho la mira pronta sulla sua testa e gli ordino di fermarsi.",
+      reqs,
+      masterMessage,
+    );
+    expect(matched).not.toBeNull();
+    expect(matched!.kind).toBe('check');
+    expect(matched!.label).toContain('Intimidazione');
+  });
+
   it('matches the intimidation bullet from "grido per intimidirlo"', () => {
     const reqs = parseRollRequests(masterMessage);
     const matched = pickAutoRoll('grido per intimidirlo', reqs, masterMessage);

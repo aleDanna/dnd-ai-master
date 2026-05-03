@@ -247,16 +247,30 @@ export function pickAutoRoll(
 
   const scored = requests.map((req) => {
     const bulletLine = bulletLineAt(masterContent, req.index);
-    const keywords = [...tokenize(bulletLine), ...tokenize(req.label)];
+    const baseKeywords = [...tokenize(bulletLine), ...tokenize(req.label)];
+
+    // Build the set of 4-char stems that match this bullet. Includes both
+    // direct word stems extracted from the bullet/label and — when the bullet
+    // mentions a canonical D&D skill name — the synonym verb stems for that
+    // skill (so "gridando"/"ordino" can match a bullet that asked for an
+    // Intimidazione check).
+    const targetStems = new Set<string>();
+    for (const kw of baseKeywords) {
+      targetStems.add(kw.slice(0, 4).toLowerCase());
+    }
+    for (const stem of skillSynonymStems(bulletLine)) {
+      targetStems.add(stem);
+    }
+
+    // Count distinct player stems that hit the target set. Dedup on the
+    // player side too so repeating a word doesn't inflate the score.
     let score = 0;
-    const seenStems = new Set<string>();
-    for (const kw of keywords) {
-      const stem = kw.slice(0, 4).toLowerCase();
-      if (seenStems.has(stem)) continue;
-      seenStems.add(stem);
-      if (playerTokens.some((p) => p.slice(0, 4).toLowerCase() === stem)) {
-        score++;
-      }
+    const seenPlayerStems = new Set<string>();
+    for (const p of playerTokens) {
+      const ps = p.slice(0, 4).toLowerCase();
+      if (seenPlayerStems.has(ps)) continue;
+      seenPlayerStems.add(ps);
+      if (targetStems.has(ps)) score++;
     }
     return { req, score };
   });
@@ -267,6 +281,94 @@ export function pickAutoRoll(
   if (scored.length > 1 && scored[0]!.score === scored[1]!.score) return null;
   return scored[0]!.req;
 }
+
+/**
+ * For each canonical D&D 5e skill name, a list of Italian + English action
+ * verbs/nouns that semantically imply that skill. When a master's bullet
+ * mentions the skill by name (e.g. "tira una prova di Intimidazione"), the
+ * pickAutoRoll matcher expands the bullet's keyword set with these synonyms
+ * so the player can commit to the action with natural prose ("gridando",
+ * "ordino di fermarsi", "minaccio") instead of repeating the skill name.
+ *
+ * Synonyms are only activated when the bullet contains the canonical name
+ * (case-insensitive substring) — they don't pollute matches for unrelated
+ * bullets in the same message.
+ */
+const SKILL_SYNONYM_VERBS: Record<string, string[]> = {
+  Intimidazione: [
+    'intimidire', 'intimidisco', 'intimidisce', 'minacciare', 'minaccia', 'minacciando',
+    'urlare', 'urlando', 'urlo', 'urli', 'urla',
+    'gridare', 'gridando', 'grido', 'grida', 'gridi',
+    'ordinare', 'ordina', 'ordino', 'ordini',
+    'comandare', 'comando', 'spaventare', 'terrorizzare', 'intimorire',
+    'threaten', 'scare', 'frighten', 'yell', 'shout', 'command', 'order',
+  ],
+  Inganno: [
+    'ingannare', 'inganno', 'mentire', 'mento', 'mentisco', 'fingere', 'fingo',
+    'simulare', 'simulo', 'falsificare', 'bugia', 'menzogna',
+    'deceive', 'lie', 'feign', 'pretend', 'falsify',
+  ],
+  Persuasione: [
+    'persuadere', 'persuado', 'convincere', 'convinco', 'argomentare', 'argomento',
+    'mediare', 'parlamentare', 'spiegare', 'spiego', 'ragionare',
+    'persuade', 'convince', 'argue', 'mediate', 'reason', 'explain',
+  ],
+  Furtività: [
+    'nascondersi', 'nascondo', 'sgattaiolare', 'sgattaiolo', 'soppiatto',
+    'silenziosamente', 'eludere', 'sgusciare', 'sguscio',
+    'sneak', 'hide', 'slip', 'shadow', 'silent',
+  ],
+  Acrobazia: [
+    'saltare', 'salto', 'balzare', 'balzo', 'capriola', 'equilibrio', 'rotolare',
+    'ruzzolare', 'piroetta',
+    'jump', 'leap', 'tumble', 'roll', 'balance',
+  ],
+  Atletica: [
+    'scalare', 'scalo', 'arrampicare', 'arrampico', 'nuotare', 'nuoto',
+    'correre', 'corro', 'lottare', 'lotto', 'spingere', 'spingo',
+    'sollevare', 'sollevo',
+    'climb', 'swim', 'run', 'push', 'grapple', 'lift',
+  ],
+  Percezione: [
+    'notare', 'noto', 'accorgersi', 'accorgo', 'ascoltare', 'ascolto',
+    'osservare', 'osservo', 'guardare', 'guardo',
+    'notice', 'observe', 'listen', 'spot',
+  ],
+  Investigazione: [
+    'investigare', 'investigo', 'esaminare', 'esamino', 'studiare', 'studio',
+    'analizzare', 'analizzo', 'cercare', 'cerco', 'frugare', 'frugo',
+    'examine', 'study', 'analyze', 'search', 'investigate',
+  ],
+  Intuito: [
+    'intuire', 'intuisco', 'sospettare', 'sospetto',
+    'sense', 'suspect',
+  ],
+  Sopravvivenza: [
+    'tracciare', 'tracce', 'orientarsi', 'oriento', 'cacciare', 'caccio',
+    'foraggiare', 'seguire',
+    'track', 'forage', 'navigate', 'hunt',
+  ],
+  Medicina: [
+    'curare', 'curo', 'soccorrere', 'soccorro', 'rianimare', 'rianimo',
+    'medicare', 'medico', 'bendare', 'bendo',
+    'heal', 'treat', 'tend', 'bandage',
+  ],
+  'Addestrare Animali': [
+    'calmare', 'calmo', 'addestrare', 'addestro', 'cavalcare', 'cavalco',
+    'placare',
+    'tame', 'mount', 'ride', 'soothe',
+  ],
+  'Rapidità di Mano': [
+    'rubare', 'rubo', 'borseggiare', 'borseggio', 'sottrarre', 'sottraggo',
+    'palmeggiare', 'sgraffignare',
+    'pickpocket', 'palm', 'pilfer', 'steal',
+  ],
+  Intrattenere: [
+    'cantare', 'canto', 'recitare', 'recito', 'suonare', 'suono',
+    'danzare', 'ballare', 'ballo', 'esibire',
+    'sing', 'recite', 'play', 'dance', 'perform',
+  ],
+};
 
 /**
  * Italian + English stopwords that appear in roll requests regardless of which
@@ -290,6 +392,24 @@ function tokenize(text: string): string[] {
     .split(/[^a-zà-ÿ]+/i)
     .map((w) => w.trim())
     .filter((w) => w.length >= 4 && !AUTO_ROLL_STOPWORDS.has(w.toLowerCase()));
+}
+
+/**
+ * If `bulletText` mentions a canonical D&D skill name (case-insensitive
+ * substring), return all 4-char synonym verb stems that semantically imply
+ * that skill. Empty array when the bullet doesn't reference a known skill.
+ */
+function skillSynonymStems(bulletText: string): string[] {
+  const lower = bulletText.toLowerCase();
+  const stems: string[] = [];
+  for (const [skill, synonyms] of Object.entries(SKILL_SYNONYM_VERBS)) {
+    if (!lower.includes(skill.toLowerCase())) continue;
+    for (const syn of synonyms) {
+      const stem = syn.slice(0, 4).toLowerCase();
+      if (stem.length === 4) stems.push(stem);
+    }
+  }
+  return stems;
 }
 
 /**
