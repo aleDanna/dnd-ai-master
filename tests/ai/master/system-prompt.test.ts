@@ -76,3 +76,19 @@ describe('buildMasterSystemPrompt — master guidance level', () => {
     expect(system[guidanceIdx]!.cache_control).toBeUndefined();
   });
 });
+
+describe('buildMasterSystemPrompt — scene illustrations', () => {
+  it('omits the scene-image section when imageGenerationEnabled is false', () => {
+    const out = buildMasterSystemPrompt({ ...baseInput, imageGenerationEnabled: false });
+    const text = out.system.map((b) => b.text).join('\n');
+    expect(text).not.toMatch(/generate_scene_image/);
+  });
+
+  it('includes a generate_scene_image section when enabled', () => {
+    const out = buildMasterSystemPrompt({ ...baseInput, imageGenerationEnabled: true });
+    const text = out.system.map((b) => b.text).join('\n');
+    expect(text).toMatch(/generate_scene_image/);
+    expect(text).toMatch(/visualPrompt must be in English/i);
+    expect(text).toMatch(/3-5 turns/);
+  });
+});

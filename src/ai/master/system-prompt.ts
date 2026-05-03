@@ -89,6 +89,8 @@ export interface MasterPromptInput {
    * and adjudicates privately.
    */
   showDifficultyNumbers?: boolean;
+  /** When true, the scene-image tool is registered and the master is instructed when to call it. */
+  imageGenerationEnabled?: boolean;
 }
 
 export const MASTER_HIDE_DIFFICULTY_RULE = `## Hide difficulty numbers
@@ -110,6 +112,16 @@ without knowing exactly how hard the check is — that's the whole point.
 
 Roll formulas themselves remain visible: "Tira 1d20+3 per attaccare" is fine
 because 1d20+3 is the player's bonus, not the difficulty.`;
+
+export const MASTER_SCENE_IMAGE_RULE = `## Scene illustrations
+
+You can generate an illustration of the current scene with the
+\`generate_scene_image\` tool. Use it sparingly — appropriate moments are:
+- the start of a combat,
+- the party arriving at a new significant location,
+- a dramatic event reshaping the visible scene.
+
+Do NOT call this tool more than once every 3-5 turns. The visualPrompt must be in English, vivid, concrete: subjects, action, setting, light, atmosphere. The art style is configured by the player and added automatically — do NOT include style words ("watercolor", "cartoon", "realistic") in your prompt.`;
 
 export const MASTER_GUIDANCE_FREE = `## Player guidance — FREE (HARD CONSTRAINT)
 
@@ -271,6 +283,11 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
   // where the master may show DC/AC numbers.
   if (input.showDifficultyNumbers === false) {
     blocks.push({ type: 'text', text: MASTER_HIDE_DIFFICULTY_RULE });
+  }
+
+  // Scene illustrations: only when image generation is enabled
+  if (input.imageGenerationEnabled) {
+    blocks.push({ type: 'text', text: MASTER_SCENE_IMAGE_RULE });
   }
 
   // Dynamic, NOT cached
