@@ -8,7 +8,9 @@ import * as React from 'react';
  *
  *   - **bold** for emphasising the rolled number
  *   - \n line breaks
- *   - "- " bullet prefixes (for the AND-mode combined roll message)
+ *   - "- " bullet prefixes — rendered as a numbered list (1., 2., 3., …)
+ *     because the choice lists in master prose are easier to reference by
+ *     ordinal (and the roll buttons get matching "(N)" suffixes).
  *
  * Pulling in a markdown library for that would be overkill. This renderer
  * handles exactly those three things and nothing else, so unsupported markdown
@@ -24,17 +26,51 @@ export interface MarkdownTextProps {
 export function MarkdownText({ text, style }: MarkdownTextProps) {
   const lines = text.split('\n');
 
+  // Pre-pass: assign a sequential number to every "- prefix" bullet line so we
+  // can render them as a numbered list (1., 2., 3., …). Numbering resets only
+  // when the document ends — consecutive blocks of bullets continue the same
+  // count, which matches how the master usually presents a single choice list.
+  // If the master ever interleaves two distinct bullet groups separated by
+  // prose, they'll keep counting upward; that's an acceptable tradeoff for the
+  // common case (single choice list per turn).
+  const bulletNumbers: (number | null)[] = [];
+  let counter = 0;
+  for (const line of lines) {
+    if (/^\s*-\s+/.test(line)) {
+      counter++;
+      bulletNumbers.push(counter);
+    } else {
+      bulletNumbers.push(null);
+    }
+  }
+  // Width in characters of the largest number — used to right-align the marker
+  // column so "10." and "1." line up nicely.
+  const markerWidth = `${counter}`.length;
+
   return (
     <span style={style}>
       {lines.map((line, lineIdx) => {
-        const isBullet = /^\s*-\s+/.test(line);
+        const bulletNum = bulletNumbers[lineIdx];
+        const isBullet = bulletNum !== null;
         const content = isBullet ? line.replace(/^\s*-\s+/, '') : line;
         const inline = renderInline(content);
         return (
           <React.Fragment key={lineIdx}>
             {isBullet ? (
-              <span style={{ display: 'block', paddingLeft: 16, position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 4 }}>•</span>
+              <span style={{ display: 'block', paddingLeft: `${markerWidth + 2}ch`, position: 'relative' }}>
+                <span
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    minWidth: `${markerWidth + 1}ch`,
+                    textAlign: 'right',
+                    paddingRight: 4,
+                    color: 'var(--fg-muted)',
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {bulletNum}.
+                </span>
                 {inline}
               </span>
             ) : (

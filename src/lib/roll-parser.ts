@@ -139,7 +139,56 @@ export function parseRollRequests(text: string): RollRequest[] {
   const mode = detectGroupMode(text, filtered.length);
   for (const r of filtered) r.groupMode = mode;
 
-  return filtered.sort((a, b) => a.index - b.index);
+  // Bullet-aware label numbering: when the master writes a choice list of
+  // bullet items and EACH item contains a roll, we suffix every button label
+  // with "(N)" matching the bullet's rendered number. This way "Roll 1d20+4
+  // (attaccare)" and "Roll 1d20+4 (attaccare)" become "(1)" and "(2)" so the
+  // player can tell them apart at a glance. We only apply this when every
+  // request lives inside a distinct bullet — otherwise the numbering would
+  // be ambiguous (two rolls in the same bullet would share a number).
+  filtered.sort((a, b) => a.index - b.index);
+  if (filtered.length > 1) {
+    const bulletIndices = filtered.map((r) => bulletIndexAt(text, r.index));
+    const allInBullets = bulletIndices.every((b) => b !== null);
+    const allDistinct = new Set(bulletIndices).size === bulletIndices.length;
+    if (allInBullets && allDistinct) {
+      for (let i = 0; i < filtered.length; i++) {
+        const n = bulletIndices[i]! + 1;
+        filtered[i]!.label = `${filtered[i]!.label} (${n})`;
+      }
+    }
+  }
+
+  return filtered;
+}
+
+/**
+ * Find the 0-based bullet index for the bullet line that contains the given
+ * character position, or null if the position is outside any bullet.
+ *
+ * "Bullet line" = a line whose first non-whitespace token is `-`, `*`, or
+ * `<digits>.` followed by whitespace. Continuation lines that hang off a
+ * previous bullet (no leading marker) inherit that bullet's index.
+ *
+ * Returns null when the position lies in prose that came before the first
+ * bullet — common case is the lead-in paragraph.
+ */
+export function bulletIndexAt(text: string, charIdx: number): number | null {
+  let lineStart = 0;
+  let bulletIndex = -1;
+  for (let i = 0; i <= text.length; i++) {
+    if (i === text.length || text[i] === '\n') {
+      const line = text.slice(lineStart, i);
+      const isBulletStart = /^\s*(?:[-*]|\d+\.)\s+/.test(line);
+      if (isBulletStart) bulletIndex++;
+      // Are we on the line that contains charIdx?
+      if (charIdx >= lineStart && charIdx <= i) {
+        return bulletIndex >= 0 ? bulletIndex : null;
+      }
+      lineStart = i + 1;
+    }
+  }
+  return null;
 }
 
 /**

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { parseRollRequests, rollFormula, normalizeFormula, detectGroupMode } from '@/lib/roll-parser';
+import {
+  parseRollRequests,
+  rollFormula,
+  normalizeFormula,
+  detectGroupMode,
+  bulletIndexAt,
+} from '@/lib/roll-parser';
 
 describe('parseRollRequests', () => {
   it('catches a basic "Roll 1d20+5"', () => {
@@ -328,6 +334,71 @@ describe('parseRollRequests — attack/damage split safety net', () => {
     );
     expect(reqs.length).toBe(1);
     expect(reqs[0]!.groupMode).toBe('or');
+  });
+});
+
+describe('bulletIndexAt', () => {
+  it('returns null for prose before any bullet', () => {
+    const text = 'Vuoi:\n- Opzione A: tira 1d20.\n- Opzione B: tira 1d20.';
+    // Position inside "Vuoi:" header.
+    expect(bulletIndexAt(text, 2)).toBeNull();
+  });
+
+  it('returns 0 for content inside the first bullet', () => {
+    const text = 'Vuoi:\n- Opzione A: tira 1d20.\n- Opzione B: tira 1d20.';
+    const idx = text.indexOf('1d20'); // first formula
+    expect(bulletIndexAt(text, idx)).toBe(0);
+  });
+
+  it('returns 1 for content inside the second bullet', () => {
+    const text = 'Vuoi:\n- Opzione A: tira 1d20+1.\n- Opzione B: tira 1d20+2.';
+    const idx = text.indexOf('1d20+2');
+    expect(bulletIndexAt(text, idx)).toBe(1);
+  });
+});
+
+describe('parseRollRequests — bullet-aware label numbering', () => {
+  it('appends "(N)" suffixes when each roll lives in its own bullet', () => {
+    // The screenshot scenario: 3 attack options, each in its own bullet.
+    // After the attack/damage filter strips the conditional damage rolls,
+    // the surviving 3 attack rolls each sit inside a distinct bullet, so
+    // we suffix their labels with (1), (2), (3) for disambiguation.
+    const text =
+      'Vuoi:\n' +
+      '- Caricare il fuggitivo: tira 1d20+4 per attaccare. Se colpisci, tira 1d8+2 danni taglienti.\n' +
+      '- Scattare sulla sentinella: tira 1d20+4 per attaccare. Se colpisci, tira 1d8+2 danni taglienti.\n' +
+      "- Imbracciare l'arco: tira 1d20+3 per l'attacco con l'arco corto. Se colpisci, tira 1d6+1 danni perforanti.";
+    const reqs = parseRollRequests(text);
+    expect(reqs.length).toBe(3);
+    expect(reqs[0]!.label).toBe('1d20+4 (attaccare) (1)');
+    expect(reqs[1]!.label).toBe('1d20+4 (attaccare) (2)');
+    expect(reqs[2]!.label).toBe("1d20+3 (l'attacco con l'arco corto) (3)");
+  });
+
+  it('does NOT suffix when there is only one roll', () => {
+    const reqs = parseRollRequests('Vuoi:\n- Solo una scelta: tira 1d20+5 per attaccare.');
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.label).toBe('1d20+5 (attaccare)');
+  });
+
+  it('does NOT suffix when rolls are in flowing prose (no bullets)', () => {
+    const reqs = parseRollRequests(
+      'Roll 1d20+2 for a Perception check. Also, roll 1d20+3 for an Insight check.',
+    );
+    expect(reqs.length).toBe(2);
+    expect(reqs[0]!.label).toBe('1d20+2 (Perception)');
+    expect(reqs[1]!.label).toBe('1d20+3 (Insight)');
+  });
+
+  it('does NOT suffix when two rolls share the same bullet', () => {
+    // If the master puts two rolls in the same bullet, our heuristic skips
+    // numbering — sharing a "(N)" would be ambiguous.
+    const reqs = parseRollRequests(
+      'Vuoi:\n- Doppia prova: tira 1d20+2 per Sopravvivenza poi tira 1d20+1 per Furtività.\n- Singola: tira 1d20 per Investigazione.',
+    );
+    // Three rolls total; first two share bullet 0, third is in bullet 1 → not all distinct → no suffix.
+    expect(reqs.length).toBe(3);
+    for (const r of reqs) expect(r.label).not.toMatch(/\(\d\)$/);
   });
 });
 

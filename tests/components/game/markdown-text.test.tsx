@@ -42,12 +42,25 @@ describe('MarkdownText', () => {
     expect(container.textContent).toBe('line oneline two');
   });
 
-  it('renders "- prefix" lines as bulleted blocks', () => {
+  it('renders "- prefix" lines as a numbered list (1., 2., 3.)', () => {
+    const text =
+      'Vuoi:\n- Prima opzione: attacca col d20.\n- Seconda opzione: usa il dardo.\n- Terza opzione: scappa.';
+    const { container } = render(<MarkdownText text={text} />);
+    // The visible markers are "1.", "2.", "3.".
+    expect(container.textContent).toContain('1.');
+    expect(container.textContent).toContain('2.');
+    expect(container.textContent).toContain('3.');
+    // The literal "- " markers from markdown are stripped.
+    expect(container.textContent).not.toMatch(/^- /m);
+    // The dot-bullet character is no longer used.
+    expect(container.textContent).not.toContain('•');
+  });
+
+  it('renders the AND-mode combined roll message as a numbered list with bold totals', () => {
     const text = '🎲 I rolled:\n- **18** for DEX save\n- **14** for CON save';
     const { container } = render(<MarkdownText text={text} />);
-    // At least one bullet "•" present — exact count depends on markup, just assert presence.
-    expect(container.textContent).toContain('•');
-    // Bold values still rendered.
+    expect(container.textContent).toContain('1.');
+    expect(container.textContent).toContain('2.');
     const strongs = container.querySelectorAll('strong');
     expect(strongs.length).toBe(2);
     expect(strongs[0]!.textContent).toBe('18');
