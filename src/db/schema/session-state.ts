@@ -1,4 +1,5 @@
 import { pgTable, uuid, integer, jsonb, boolean, text } from 'drizzle-orm/pg-core';
+import { bytea } from '../types';
 import { sessions } from './sessions';
 
 export const sessionState = pgTable('session_state', {
@@ -16,6 +17,9 @@ export const sessionState = pgTable('session_state', {
   scene: text('scene').notNull().default(''),
   inventoryDelta: jsonb('inventory_delta').$type<unknown[]>().notNull().default([]),
   statusFlag: text('status_flag'),
+  sceneImageData: bytea('scene_image_data'),
+  sceneImagePrompt: text('scene_image_prompt'),
+  sceneImageVersion: integer('scene_image_version').notNull().default(0),
 });
 
 export type SessionState = typeof sessionState.$inferSelect;
