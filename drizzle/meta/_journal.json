@@ -43,6 +43,13 @@
       "when": 1777813852531,
       "tag": "0005_reflective_sugar_man",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1777820000000,
+      "tag": "0006_xp_backfill",
+      "breakpoints": true
     }
   ]
 }
