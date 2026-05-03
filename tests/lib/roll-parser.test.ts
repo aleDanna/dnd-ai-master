@@ -40,12 +40,14 @@ describe('parseRollRequests', () => {
   });
 
   it('catches multiple requests in the same message', () => {
+    // Two rolls at once for two simultaneous skill checks (no attack/damage
+    // pair, so the safety-net filter doesn't fire).
     const reqs = parseRollRequests(
-      'Roll 1d20+5 to attack. If you hit, roll 1d8+3 for damage.',
+      'Roll 1d20+2 for a Perception check. Also, roll 1d20+3 for an Insight check.',
     );
     expect(reqs.length).toBe(2);
-    expect(reqs[0]!.kind).toBe('attack');
-    expect(reqs[1]!.kind).toBe('damage');
+    expect(reqs[0]!.kind).toBe('check');
+    expect(reqs[1]!.kind).toBe('check');
   });
 
   // ─── Purpose extraction ───────────────────────────────────────────────────────
@@ -257,14 +259,73 @@ describe('parseRollRequests — group mode stamping', () => {
     expect(reqs.every((r) => r.groupMode === 'and')).toBe(true);
   });
 
-  it('stamps an attack-then-conditional-damage pair as "or"', () => {
-    const reqs = parseRollRequests('Roll 1d20+5 to attack. If you hit, roll 1d8+3 for damage.');
+  it('a "Choose:" message of skill checks all gets "or"', () => {
+    const reqs = parseRollRequests(
+      'Choose: roll 1d20+2 for a Perception check or roll 1d20+1 for an Investigation check.',
+    );
     expect(reqs.length).toBe(2);
     expect(reqs.every((r) => r.groupMode === 'or')).toBe(true);
   });
 
   it('a single roll is always "or"', () => {
     const reqs = parseRollRequests('Roll 1d20+5 for your attack against the goblin.');
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.groupMode).toBe('or');
+  });
+});
+
+describe('parseRollRequests — attack/damage split safety net', () => {
+  it('drops a damage roll when an attack roll is in the same message', () => {
+    // The master broke the "two-turn" rule. We render only the attack button.
+    const reqs = parseRollRequests(
+      'Roll 1d20+5 to attack the goblin. If you hit, roll 1d8+3 for damage.',
+    );
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.formula).toBe('1d20+5');
+    expect(reqs[0]!.kind).toBe('attack');
+  });
+
+  it('drops Italian damage rolls when paired with attack rolls', () => {
+    // Reproduces the screenshot scenario: 3 options, each with attack + damage.
+    // Only the 3 attack buttons should survive.
+    const reqs = parseRollRequests(
+      'Vuoi: ' +
+        '- Caricare il fuggitivo: tira 1d20+4 per attaccare. Se colpisci, tira 1d8+2 danni taglienti. ' +
+        '- Scattare sulla sentinella: tira 1d20+4 per attaccare. Se colpisci, tira 1d8+2 danni taglienti. ' +
+        '- Imbracciare l\'arco: tira 1d20+3 per l\'attacco con l\'arco corto. Se colpisci, tira 1d6+1 danni perforanti.',
+    );
+    expect(reqs.length).toBe(3);
+    expect(reqs.every((r) => r.kind === 'attack')).toBe(true);
+    // The three attack formulas appear in narrative order.
+    expect(reqs[0]!.formula).toBe('1d20+4');
+    expect(reqs[1]!.formula).toBe('1d20+4');
+    expect(reqs[2]!.formula).toBe('1d20+3');
+  });
+
+  it('keeps damage rolls when there is NO attack roll in the message (e.g. environmental)', () => {
+    // The trap deals damage automatically — there's nothing to gate it on,
+    // so the player should still be able to roll the damage.
+    const reqs = parseRollRequests('La trappola scatta. Tira 2d6 per i danni da fuoco.');
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.formula).toBe('2d6');
+    expect(reqs[0]!.kind).toBe('damage');
+  });
+
+  it('keeps damage rolls when paired with skill checks (no attack)', () => {
+    // Contrived but not impossible: a skill check that's unrelated to a
+    // damage roll. The filter only fires when an ATTACK roll is present.
+    const reqs = parseRollRequests(
+      'Roll 1d20+3 for an Athletics check to hold the rope. Also, roll 1d6 for damage from the burning splinters.',
+    );
+    expect(reqs.length).toBe(2);
+  });
+
+  it('group mode after filtering reflects the surviving rolls only', () => {
+    // After dropping the conditional damage roll, only one roll survives.
+    // A 1-roll message should be classified as 'or' (mode is moot).
+    const reqs = parseRollRequests(
+      'Roll 1d20+5 to attack the goblin. If you hit, roll 1d8+3 for damage.',
+    );
     expect(reqs.length).toBe(1);
     expect(reqs[0]!.groupMode).toBe('or');
   });

@@ -123,12 +123,23 @@ export function parseRollRequests(text: string): RollRequest[] {
     });
   }
 
+  // Safety net: in a single master message the player should never see a damage
+  // button next to an attack button — they can't know whether they hit until
+  // the to-hit roll resolves. The system prompt instructs the master to split
+  // attack and damage across two turns, but this filter catches sloppy turns
+  // where it pre-emits both. The damage roll will be re-requested by the
+  // master in the next turn iff the attack actually hit.
+  let filtered = requests;
+  if (requests.some((r) => r.kind === 'attack') && requests.some((r) => r.kind === 'damage')) {
+    filtered = requests.filter((r) => r.kind !== 'damage');
+  }
+
   // Determine the group mode once for the whole message and stamp it onto every request.
   // All rolls in the same master message share the same coordination policy.
-  const mode = detectGroupMode(text, requests.length);
-  for (const r of requests) r.groupMode = mode;
+  const mode = detectGroupMode(text, filtered.length);
+  for (const r of filtered) r.groupMode = mode;
 
-  return requests.sort((a, b) => a.index - b.index);
+  return filtered.sort((a, b) => a.index - b.index);
 }
 
 /**
@@ -303,9 +314,10 @@ function inferKind(text: string, idx: number): RollKind {
   const window = text.slice(Math.max(0, idx - 15), idx + 40).toLowerCase();
   // Damage first because "for damage" and "to attack" can both appear in a
   // single chained sentence; the descriptor closest to the formula wins.
-  if (/damage|danno|impatt/.test(window)) return 'damage';
-  if (/attack|hit/.test(window)) return 'attack';
-  if (/save|salvezza/.test(window)) return 'save';
+  if (/damage|danno|danni|impatt/.test(window)) return 'damage';
+  // English "attack/hit" + Italian "attacc(o|are|hi|a)" / "colp(ire|isci|isce|ito)".
+  if (/attack|attacc|\bhit\b|colpir|colpisc|colpit/.test(window)) return 'attack';
+  if (/save|salvezza|tiro\s+salvezza|\bts\b/.test(window)) return 'save';
   if (/check|prova/.test(window)) return 'check';
   if (/initiative|iniziativa/.test(window)) return 'init';
   return 'generic';
