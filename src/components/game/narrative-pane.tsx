@@ -6,7 +6,7 @@ import { Icon, type IconName } from '@/components/ui/icon';
 import { ToolPill } from './tool-pill';
 import { SpinningDie } from './spinning-die';
 import { TtsButton } from './tts-button';
-import { RollRequestButton } from './roll-request-button';
+import { RollRequestGroup } from './roll-request-group';
 import { parseRollRequests } from '@/lib/roll-parser';
 import type { TurnEvent } from '@/sessions/types';
 import type { MessageRow } from '@/sessions/client-types';
@@ -174,13 +174,13 @@ function MessageView({
         {hasFooter && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10, alignItems: 'center' }}>
             {m.id && <TtsButton sessionId={sessionId} messageId={m.id} />}
-            {rollRequests.map((req) => (
-              <RollRequestButton
-                key={`${m.id ?? 'live'}-roll-${req.index}`}
-                request={req}
-                onResult={(text) => onRollResult(text)}
+            {rollRequests.length > 0 && (
+              <RollRequestGroup
+                key={`${m.id ?? 'live'}-roll-group`}
+                requests={rollRequests}
+                onSend={onRollResult}
               />
-            ))}
+            )}
             {m.tools?.map((t, i) => (
               <ToolPill
                 key={i}

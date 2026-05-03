@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseRollRequests, rollFormula, normalizeFormula } from '@/lib/roll-parser';
+import { parseRollRequests, rollFormula, normalizeFormula, detectGroupMode } from '@/lib/roll-parser';
 
 describe('parseRollRequests', () => {
   it('catches a basic "Roll 1d20+5"', () => {
@@ -98,6 +98,101 @@ describe('parseRollRequests', () => {
     expect(normalizeFormula('1d20+5')).toBe('1d20+5');
     expect(normalizeFormula('d20')).toBe('1d20');
     expect(normalizeFormula('2d6-1')).toBe('2d6-1');
+  });
+});
+
+describe('detectGroupMode', () => {
+  it('returns "or" for a single roll (mode is moot)', () => {
+    expect(detectGroupMode('Roll 1d20+5.', 1)).toBe('or');
+  });
+
+  it('returns "and" by default for two unrelated rolls', () => {
+    const text = 'Sei colpita dall\'esplosione. Tira un TS Destrezza CD 14 e poi un TS Costituzione CD 12.';
+    expect(detectGroupMode(text, 2)).toBe('and');
+  });
+
+  it('returns "or" when the message starts with "Vuoi:" (Italian choice list)', () => {
+    const text =
+      'Vuoi: - Seguire le tracce: tira 1d20+2. - Studiare la mappa: tira 1d20.';
+    expect(detectGroupMode(text, 2)).toBe('or');
+  });
+
+  it('returns "or" when the message starts with "Scegli:"', () => {
+    expect(detectGroupMode('Scegli: tira 1d20 oppure tira 1d20+2.', 2)).toBe('or');
+  });
+
+  it('returns "or" when the message starts with "Choose:" (English choice list)', () => {
+    expect(detectGroupMode('Choose: roll 1d20 or roll 1d20+2.', 2)).toBe('or');
+  });
+
+  it('returns "or" when the message says "You can:"', () => {
+    expect(detectGroupMode('You can: roll 1d20 to attack or roll 1d20+3 for stealth.', 2)).toBe('or');
+  });
+
+  it('returns "or" for "either ... or" English idiom', () => {
+    expect(
+      detectGroupMode('You can either roll 1d20 for stealth or roll 1d20+2 for survival.', 2),
+    ).toBe('or');
+  });
+
+  it('returns "or" for "oppure" Italian connector', () => {
+    expect(detectGroupMode('Tira 1d20 per furtività oppure tira 1d20+2 per percezione.', 2)).toBe('or');
+  });
+
+  it('returns "or" for an English conditional second roll ("if you hit")', () => {
+    const text = 'Roll 1d20+5 to attack. If you hit, roll 1d8+3 for damage.';
+    expect(detectGroupMode(text, 2)).toBe('or');
+  });
+
+  it('returns "or" for "on a hit"', () => {
+    expect(detectGroupMode('Roll 1d20+5 to attack. On a hit, roll 1d8+3 for damage.', 2)).toBe('or');
+  });
+
+  it('returns "or" for an Italian conditional second roll ("se colpisci")', () => {
+    const text = 'Tira 1d20+5 per attaccare. Se colpisci, tira 1d8+3 per i danni.';
+    expect(detectGroupMode(text, 2)).toBe('or');
+  });
+
+  it('returns "or" for "in caso di successo"', () => {
+    const text = 'Tira 1d20+5 per attaccare. In caso di successo, tira 1d8+3 per i danni.';
+    expect(detectGroupMode(text, 2)).toBe('or');
+  });
+
+  it('returns "and" for two simultaneous saves (no choice/conditional cue)', () => {
+    const text = 'L\'esplosione ti investe. Tira un TS Destrezza CD 14 e un TS Costituzione CD 12.';
+    expect(detectGroupMode(text, 2)).toBe('and');
+  });
+});
+
+describe('parseRollRequests — group mode stamping', () => {
+  it('stamps every request in a "Vuoi:" message as "or"', () => {
+    const reqs = parseRollRequests(
+      'Vuoi: - Seguire le tracce subito: tira 1d20+2 per una prova di Sopravvivenza (CD 10). ' +
+        '- Studiare la mappa: tira 1d20 per una prova di Intelligenza (Investigazione) (CD 12). ' +
+        '- Avanzare di soppiatto: tira 1d20+1 per Furtività.',
+    );
+    expect(reqs.length).toBe(3);
+    expect(reqs.every((r) => r.groupMode === 'or')).toBe(true);
+  });
+
+  it('stamps two simultaneous saves as "and"', () => {
+    const reqs = parseRollRequests(
+      'L\'esplosione ti investe. Roll a DC 14 Dexterity save. Then roll a DC 12 Constitution save.',
+    );
+    expect(reqs.length).toBe(2);
+    expect(reqs.every((r) => r.groupMode === 'and')).toBe(true);
+  });
+
+  it('stamps an attack-then-conditional-damage pair as "or"', () => {
+    const reqs = parseRollRequests('Roll 1d20+5 to attack. If you hit, roll 1d8+3 for damage.');
+    expect(reqs.length).toBe(2);
+    expect(reqs.every((r) => r.groupMode === 'or')).toBe(true);
+  });
+
+  it('a single roll is always "or"', () => {
+    const reqs = parseRollRequests('Roll 1d20+5 for your attack against the goblin.');
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.groupMode).toBe('or');
   });
 });
 

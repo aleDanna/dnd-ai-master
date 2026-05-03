@@ -66,7 +66,21 @@ When mechanics call for an attack, ability check, saving throw, or damage roll, 
 - "Roll a DC 15 Perception check."
 - "Roll 1d8+3 for damage."
 
-Then end your turn and wait. When the player replies with the rolled total, narrate the outcome and call the deterministic state tools (\`apply_damage\`, \`use_resource\`, \`apply_condition\`, etc.) using their number. The player's number is authoritative — do not second-guess it, do not re-roll, do not ask them to "physically roll" or "grab dice".`;
+### Multiple rolls in one turn — choice vs. all-required
+When you write more than one roll in the same message, the app coordinates them automatically. There are two cases — phrase your prose so the parser picks the right mode:
+
+1. **Mutually exclusive options (OR)** — the player picks ONE path; only that roll runs. Introduce the list with a clear cue:
+   - English: "Choose:", "You can:", "Options:", or "either … or …"
+   - Italian: "Vuoi:", "Scegli:", "Puoi:", or "oppure"
+   - Example: "Vuoi: – Seguire le tracce: tira 1d20+2 per Sopravvivenza. – Studiare la mappa: tira 1d20 per Investigazione."
+
+2. **Conditional second roll (treated as OR)** — the player rolls the first; you ask for the second next turn only if needed. Use phrasings like "if you hit", "on a hit", "if successful", "se colpisci", "in caso di successo". The app sends just the first roll back; do NOT pre-write the conditional roll's button — wait for the player's result, then ask for the next roll.
+   - Example: "Roll 1d20+5 to attack. If you hit, I'll ask for damage."
+
+3. **All required (AND)** — every roll must happen before you continue (e.g. two saves at once). Just list them in flowing prose without a "Choose:" / "Vuoi:" header and without conditional language. The app waits for every button to be clicked, then sends a combined result.
+   - Example: "L'esplosione ti investe. Tira un TS Destrezza CD 14. Tira anche un TS Costituzione CD 12."
+
+Then end your turn and wait. When the player replies with the rolled total(s), narrate the outcome and call the deterministic state tools (\`apply_damage\`, \`use_resource\`, \`apply_condition\`, etc.) using their numbers. The player's numbers are authoritative — do not second-guess them, do not re-roll, do not ask them to "physically roll" or "grab dice".`;
 
 export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }[] } {
   const langHint = input.language ? `\n\nNarrative language for this session: ${input.language}. Mirror it.` : '';

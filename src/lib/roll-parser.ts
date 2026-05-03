@@ -10,6 +10,17 @@
 
 export type RollKind = 'attack' | 'damage' | 'check' | 'save' | 'init' | 'generic';
 
+/**
+ * Group coordination mode for multiple rolls in the same message.
+ * - 'and': every button must be clicked before the result is sent (e.g. two saves required).
+ * - 'or':  the first button click sends, the others lock out (e.g. multi-option choice or
+ *   a conditional second roll like "if you hit, then roll damage").
+ *
+ * A single-roll message is always 'or' (mode is moot, but 'or' = "first click wins" is the
+ * trivial answer).
+ */
+export type RollGroupMode = 'and' | 'or';
+
 export interface RollRequest {
   /** A parseable formula like "1d20+5" or "2d6+3". */
   formula: string;
@@ -18,6 +29,8 @@ export interface RollRequest {
   kind: RollKind;
   /** Index inside the source text — used as a stable React key alongside messageId. */
   index: number;
+  /** Group coordination mode. All requests parsed from the same message share this value. */
+  groupMode: RollGroupMode;
 }
 
 /** Parse a free-form master text for explicit roll requests. */
@@ -43,6 +56,8 @@ export function parseRollRequests(text: string): RollRequest[] {
       label: purpose ? `${formula} (${purpose})` : formula,
       kind: inferKind(text, m.index),
       index: m.index,
+      // groupMode is stamped after all rolls are collected, see below.
+      groupMode: 'or',
     });
   }
 
@@ -61,6 +76,7 @@ export function parseRollRequests(text: string): RollRequest[] {
       label: `${ability} save (DC ${dc})`,
       kind: 'save',
       index: m.index,
+      groupMode: 'or',
     });
   }
 
@@ -79,10 +95,62 @@ export function parseRollRequests(text: string): RollRequest[] {
       label: dc !== null ? `${skill} check (DC ${dc})` : `${skill} check`,
       kind: 'check',
       index: m.index,
+      groupMode: 'or',
     });
   }
 
+  // Determine the group mode once for the whole message and stamp it onto every request.
+  // All rolls in the same master message share the same coordination policy.
+  const mode = detectGroupMode(text, requests.length);
+  for (const r of requests) r.groupMode = mode;
+
   return requests.sort((a, b) => a.index - b.index);
+}
+
+/**
+ * Pick the group coordination mode for a master message containing N rolls.
+ *
+ * Default for 2+ rolls is 'and' — safer because in case of doubt the app waits
+ * for every roll instead of sending prematurely. We escape to 'or' only when we
+ * see clear cues:
+ *
+ * 1. **Choice introducers**: "Vuoi:", "Scegli:", "Puoi:", "Choose:", "You can:",
+ *    "Either ... or", "Oppure". The master writes these when offering a list of
+ *    mutually exclusive options.
+ * 2. **Conditional second roll**: "if you hit", "se colpisci", "in caso di
+ *    successo", etc. — the second roll is gated on the first, so the player
+ *    only commits to the first now and the master will ask for the rest later.
+ *
+ * Single-roll messages are always 'or' (mode is moot — there's nothing to wait
+ * for; first-click-wins is the trivial answer).
+ */
+export function detectGroupMode(text: string, count: number): RollGroupMode {
+  if (count < 2) return 'or';
+
+  // Choice introducers (Italian + English). The colon variant is the strong
+  // signal — the master is announcing "here's a list of options, pick one".
+  const choiceIntroducers =
+    /\b(?:vuoi|scegli|scegliere|puoi|opzioni|opzione|alternative|choose|options|option|pick\s+one)\s*:/i;
+  if (choiceIntroducers.test(text)) return 'or';
+
+  // "You can:" / "Puoi:" — a softer choice introducer; accept too.
+  if (/\byou\s+can\s*:/i.test(text)) return 'or';
+
+  // Disjunctive connectives — "oppure" in Italian, "either ... or" in English.
+  if (/\boppure\b/i.test(text)) return 'or';
+  if (/\beither\b[^.!?\n]+\bor\b/i.test(text)) return 'or';
+
+  // Conditional second roll — the master gates roll #2 on the result of roll #1.
+  // English: "if you hit", "if it hits", "if successful", "on a hit", "on success".
+  if (/\bif\s+(?:you|it|that)?\s*(?:hit|hits|succeed|succeeds|miss|misses)/i.test(text)) return 'or';
+  if (/\bon\s+(?:a\s+)?(?:hit|success|miss)/i.test(text)) return 'or';
+  // Italian: "se colpisci/colpisce/riesci/riesce/va a segno/hai successo/ha successo".
+  if (/\bse\s+(?:colpisci|colpisce|riesci|riesce|va\s+a\s+segno|hai\s+successo|ha\s+successo|manchi|manca)/i.test(text)) {
+    return 'or';
+  }
+  if (/\bin\s+caso\s+di\s+(?:successo|colpo|fallimento)/i.test(text)) return 'or';
+
+  return 'and';
 }
 
 /** Normalize a formula like "d20" → "1d20" and clamp valid die sizes. */
