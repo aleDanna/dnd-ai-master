@@ -1,15 +1,13 @@
 'use client';
 import { Eyebrow } from '@/components/ui/eyebrow';
 import { CombatTracker } from './combat-tracker';
-import { DiceLogPanel } from './dice-log-panel';
 import { XpBar } from './xp-bar';
-import type { CombatActorRow, DiceRollRow, SessionStateRow } from '@/sessions/client-types';
+import type { CombatActorRow, SessionStateRow } from '@/sessions/client-types';
 
 export interface MechanicsPaneProps {
   sessionId: string;
   state: SessionStateRow;
   actors: CombatActorRow[];
-  diceLog: DiceRollRow[];
   pcCharacterId: string;
   pcName: string;
   pcHpMax: number;
@@ -19,7 +17,7 @@ export interface MechanicsPaneProps {
   onEndCombat?: () => void;
 }
 
-export function MechanicsPane({ sessionId, state, actors, diceLog, pcCharacterId, pcName, pcHpMax, pcLevel, pcXp, onEndCombat }: MechanicsPaneProps) {
+export function MechanicsPane({ sessionId, state, actors, pcCharacterId, pcName, pcHpMax, pcLevel, pcXp, onEndCombat }: MechanicsPaneProps) {
   return (
     <aside
       style={{
@@ -48,7 +46,6 @@ export function MechanicsPane({ sessionId, state, actors, diceLog, pcCharacterId
         pcHpMax={pcHpMax}
         onEndCombat={onEndCombat}
       />
-      <DiceLogPanel rolls={diceLog} />
       <section>
         <Eyebrow style={{ marginBottom: 6 }}>Scene</Eyebrow>
         {state.sceneImageVersion > 0 && (

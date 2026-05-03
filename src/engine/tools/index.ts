@@ -240,26 +240,18 @@ const ALWAYS_ON: AnthropicTool[] = [
   },
 ];
 
-const SCENE_IMAGE_TOOL: AnthropicTool = {
-  name: 'generate_scene_image',
-  description:
-    'Generate an illustration of the current scene. Use sparingly — only when the visual context meaningfully shifts (combat begins, the party enters a new location, a dramatic event reshapes the scene). The image is generated asynchronously and appears in the Scene panel a few seconds after this call returns. Do NOT call more than once every 3-5 turns. Write the visualPrompt in English.',
-  input_schema: {
-    type: 'object',
-    required: ['visualPrompt'],
-    properties: {
-      visualPrompt: {
-        type: 'string',
-        description: 'A vivid English description of the scene to draw: subjects, action, setting, atmosphere, lighting. Do NOT include style/medium — the player\'s configured art style is added automatically.',
-      },
-    },
-  } as never,
-};
-
-/** Build the tool list for a turn given the user's preferences. */
-export function buildToolDefinitions(prefs: Pick<UserPreferences, 'imageGenerationEnabled'>): AnthropicTool[] {
-  return prefs.imageGenerationEnabled ? [...ALWAYS_ON, SCENE_IMAGE_TOOL] : ALWAYS_ON;
+/**
+ * Build the tool list for a turn. Currently a thin wrapper over `ALWAYS_ON` —
+ * the prefs argument is retained for forward-compatibility (e.g. future
+ * opt-in tools).
+ *
+ * Note: scene-image generation USED to live here as a master-callable tool
+ * gated on `prefs.imageGenerationEnabled`. It was removed because gpt-5
+ * called it too aggressively when given the chance. Image generation is now
+ * a manual user action (button in the chat next to Listen).
+ */
+export function buildToolDefinitions(_prefs: Pick<UserPreferences, 'imageGenerationEnabled'>): AnthropicTool[] {
+  return ALWAYS_ON;
 }
 
-/** @deprecated Use buildToolDefinitions(prefs) instead. Kept only for legacy tests. */
 export const TOOL_DEFINITIONS: AnthropicTool[] = ALWAYS_ON;

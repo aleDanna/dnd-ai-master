@@ -6,6 +6,7 @@ import { Icon, type IconName } from '@/components/ui/icon';
 import { ToolPill } from './tool-pill';
 import { SpinningDie } from './spinning-die';
 import { TtsButton } from './tts-button';
+import { SceneImageButton } from './scene-image-button';
 import { RollRequestGroup } from './roll-request-group';
 import { MarkdownText } from './markdown-text';
 import { formatResultText } from './roll-request-button';
@@ -29,13 +30,15 @@ export interface NarrativePaneProps {
   onCastSpell?: () => void;
   /** When true, master messages get inline roll buttons parsed from their text. */
   manualRolls: boolean;
+  /** When true, master messages get a "Generate image" button next to Listen. Default false. */
+  imageGenerationEnabled?: boolean;
 }
 
 /** Number of newest messages visible on first load. The "Show previous"
  *  link reveals an additional batch of this size with each click. */
 const PAGE_SIZE = 10;
 
-export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, onCastSpell, manualRolls }: NarrativePaneProps) {
+export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, onCastSpell, manualRolls, imageGenerationEnabled = false }: NarrativePaneProps) {
   const [draft, setDraft] = React.useState('');
   // Tamper-resistant pending roll. The text is set ONLY by handleRollResult
   // (called from the dice-button after the spinner settles) and rendered as
@@ -192,6 +195,7 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
               m={m}
               sessionId={sessionId}
               manualRolls={manualRolls}
+              imageGenerationEnabled={imageGenerationEnabled}
               onRollResult={handleRollResult}
               onAnyRollStart={handleRollStart}
               onAnyRollEnd={handleRollEnd}
@@ -344,6 +348,7 @@ function MessageView({
   m,
   sessionId,
   manualRolls,
+  imageGenerationEnabled,
   onRollResult,
   onAnyRollStart,
   onAnyRollEnd,
@@ -351,6 +356,7 @@ function MessageView({
   m: NarrativeMessage;
   sessionId: string;
   manualRolls: boolean;
+  imageGenerationEnabled: boolean;
   onRollResult: (text: string) => void;
   onAnyRollStart?: () => void;
   onAnyRollEnd?: () => void;
@@ -368,6 +374,9 @@ function MessageView({
         {hasFooter && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10, alignItems: 'center' }}>
             {m.id && <TtsButton sessionId={sessionId} messageId={m.id} />}
+            {m.id && imageGenerationEnabled && (
+              <SceneImageButton sessionId={sessionId} messageId={m.id} />
+            )}
             {rollRequests.length > 0 && (
               <RollRequestGroup
                 key={`${m.id ?? 'live'}-roll-group`}

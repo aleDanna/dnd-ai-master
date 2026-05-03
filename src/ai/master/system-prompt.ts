@@ -89,8 +89,6 @@ export interface MasterPromptInput {
    * and adjudicates privately.
    */
   showDifficultyNumbers?: boolean;
-  /** When true, the scene-image tool is registered and the master is instructed when to call it. */
-  imageGenerationEnabled?: boolean;
 }
 
 export const MASTER_HIDE_DIFFICULTY_RULE = `## Hide difficulty numbers
@@ -112,22 +110,6 @@ without knowing exactly how hard the check is — that's the whole point.
 
 Roll formulas themselves remain visible: "Tira 1d20+3 per attaccare" is fine
 because 1d20+3 is the player's bonus, not the difficulty.`;
-
-export const MASTER_SCENE_IMAGE_RULE = `## Scene illustrations
-
-You have a \`generate_scene_image\` tool that displays an illustration in the player's right-hand panel. **Use it actively** — when the scene visibly shifts, generate. The player has explicitly enabled this feature and expects to see images.
-
-Call \`generate_scene_image\` whenever any of these happen:
-- combat starts (call it right after \`roll_initiative\` and your scene-setting paragraph),
-- the party arrives at a new location worth picturing (a new building, street, room, landscape, ship, encampment, dungeon area),
-- a dramatic visual event reshapes the scene (a creature appears, a structure collapses, a ritual completes, a chase begins, a reveal happens),
-- the lighting or atmosphere changes meaningfully (day → night, calm → storm, mundane → magical).
-
-**When in doubt, lean toward generating.** The image arrives a few seconds after the tool returns and runs in the background — it does NOT block your narration. A missed opportunity feels worse than an extra image.
-
-Soft cap: do not call more than once per ~2 narrative turns so the panel does not churn during fast combat back-and-forth. There is NO hard floor — generate as often as the scene shifts.
-
-The \`visualPrompt\` must be in English, vivid, concrete: subjects, action, setting, light, atmosphere. The art style is configured by the player and appended automatically — do NOT include style words ("watercolor", "cartoon", "realistic") in your prompt.`;
 
 export const MASTER_GUIDANCE_FREE = `## Player guidance — FREE (HARD CONSTRAINT)
 
@@ -289,11 +271,6 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
   // where the master may show DC/AC numbers.
   if (input.showDifficultyNumbers === false) {
     blocks.push({ type: 'text', text: MASTER_HIDE_DIFFICULTY_RULE });
-  }
-
-  // Scene illustrations: only when image generation is enabled
-  if (input.imageGenerationEnabled) {
-    blocks.push({ type: 'text', text: MASTER_SCENE_IMAGE_RULE });
   }
 
   // Dynamic, NOT cached

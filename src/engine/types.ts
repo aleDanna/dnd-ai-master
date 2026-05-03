@@ -154,7 +154,6 @@ export type Mutation =
   | { op: 'award_xp'; characterId: string; amount: number; reason?: string }
   | { op: 'death_save'; actorId: string; success: boolean; isCrit?: boolean }
   | { op: 'reset_death_saves'; actorId: string }
-  | { op: 'queue_scene_image'; visualPrompt: string }
   | { op: 'set_combat'; combat: CombatState | null }
   | { op: 'advance_turn' }
   | { op: 'set_scene'; scene: string };

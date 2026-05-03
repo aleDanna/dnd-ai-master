@@ -78,22 +78,9 @@ describe('buildMasterSystemPrompt — master guidance level', () => {
 });
 
 describe('buildMasterSystemPrompt — scene illustrations', () => {
-  it('omits the scene-image section when imageGenerationEnabled is false', () => {
-    const out = buildMasterSystemPrompt({ ...baseInput, imageGenerationEnabled: false });
+  it('does NOT mention generate_scene_image: scene image generation is now a manual user action via the chat UI, not a master tool', () => {
+    const out = buildMasterSystemPrompt({ ...baseInput });
     const text = out.system.map((b) => b.text).join('\n');
     expect(text).not.toMatch(/generate_scene_image/);
-  });
-
-  it('includes a generate_scene_image section when enabled', () => {
-    const out = buildMasterSystemPrompt({ ...baseInput, imageGenerationEnabled: true });
-    const text = out.system.map((b) => b.text).join('\n');
-    expect(text).toMatch(/generate_scene_image/);
-    expect(text).toMatch(/visualPrompt`?\s*must be in English/i);
-    // The rule should be encouraging, not deterring — gpt-5 was too
-    // conservative with the original "Use it sparingly" / "every 3-5 turns"
-    // wording and rarely called the tool. The prompt now leans toward
-    // generation: "use it actively", "lean toward generating".
-    expect(text).toMatch(/use it actively/i);
-    expect(text).toMatch(/lean toward generating/i);
   });
 });

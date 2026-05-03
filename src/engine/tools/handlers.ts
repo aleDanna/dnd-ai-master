@@ -258,20 +258,6 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       data: { slug, qty },
     };
   },
-
-  generate_scene_image: (_state, input) => {
-    const raw = input.visualPrompt;
-    const visualPrompt = typeof raw === 'string' ? raw.trim() : '';
-    if (!visualPrompt) {
-      return { ok: false, error: 'invalid_visualPrompt', rolls: [], mutations: [] };
-    }
-    return {
-      ok: true,
-      rolls: [],
-      mutations: [{ op: 'queue_scene_image', visualPrompt }],
-      data: { status: 'queued' },
-    };
-  },
 };
 
 function resolveCharacterId(state: EngineState, actorRef: unknown): string {

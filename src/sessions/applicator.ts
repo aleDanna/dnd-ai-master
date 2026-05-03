@@ -1,5 +1,4 @@
 import { eq, and } from 'drizzle-orm';
-import { waitUntil } from '@vercel/functions';
 import { db } from '@/db/client';
 import {
   sessionState as sessionStateTable,
@@ -10,44 +9,34 @@ import {
   type DiceLogInsert,
 } from '@/db/schema';
 import type { ConditionInstance, DiceRoll, Mutation } from '@/engine/types';
-import { getUserPreferences } from '@/lib/preferences';
-import { resolveStyleText } from '@/ai/master/image-style';
-import * as sceneImageJob from './scene-image-job';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 const VALID_KINDS = new Set(['attack', 'damage', 'save', 'check', 'init', 'generic']);
 
 interface SessionContext {
-  userId: string;
   characterId: string;
   hpMax: number;
 }
 
 async function loadContext(tx: Tx, sessionId: string): Promise<SessionContext | null> {
   const [s] = await tx
-    .select({ userId: sessionsTable.userId, characterId: sessionsTable.characterId })
+    .select({ characterId: sessionsTable.characterId })
     .from(sessionsTable)
     .where(eq(sessionsTable.id, sessionId))
     .limit(1);
   if (!s) return null;
   const [c] = await tx.select({ hpMax: charactersTable.hpMax }).from(charactersTable).where(eq(charactersTable.id, s.characterId)).limit(1);
   if (!c) return null;
-  return { userId: s.userId, characterId: s.characterId, hpMax: c.hpMax };
+  return { characterId: s.characterId, hpMax: c.hpMax };
 }
 
 export async function applyMutations(sessionId: string, mutations: Mutation[], rolls: DiceRoll[]): Promise<void> {
-  // Side effects that must run AFTER the transaction commits (currently:
-  // scheduling background image-gen jobs via waitUntil). Calling waitUntil
-  // inside the tx is unsafe — the registered Promise begins executing
-  // synchronously, and if its first await ever resolves before commit, the
-  // job sees pre-commit state. Collect them here and fire after commit.
-  const postCommit: (() => void)[] = [];
   await db.transaction(async (tx) => {
     const ctx = await loadContext(tx, sessionId);
     if (!ctx) return;
     for (const m of mutations) {
-      await applyOne(tx, sessionId, ctx, m, postCommit);
+      await applyOne(tx, sessionId, ctx, m);
     }
     if (rolls.length) {
       const inserts: DiceLogInsert[] = rolls.map((r) => ({
@@ -62,7 +51,6 @@ export async function applyMutations(sessionId: string, mutations: Mutation[], r
       await tx.insert(diceLogTable).values(inserts);
     }
   });
-  for (const fn of postCommit) fn();
 }
 
 function pickKind(r: DiceRoll): DiceLogInsert['kind'] {
@@ -70,7 +58,7 @@ function pickKind(r: DiceRoll): DiceLogInsert['kind'] {
   return (VALID_KINDS.has(k) ? k : 'generic') as DiceLogInsert['kind'];
 }
 
-async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutation, postCommit: (() => void)[]): Promise<void> {
+async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutation): Promise<void> {
   switch (m.op) {
     case 'set_hp':
     case 'apply_damage':
@@ -255,23 +243,6 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
     }
     case 'recompute_ac': {
       await tx.update(charactersTable).set({ ac: Math.max(1, Math.floor(m.newAc)), updatedAt: new Date() }).where(eq(charactersTable.id, m.characterId));
-      break;
-    }
-    case 'queue_scene_image': {
-      const prefs = await getUserPreferences(ctx.userId);
-      if (!prefs.imageGenerationEnabled) break;
-      const styleText = resolveStyleText(prefs);
-      const [stateRow] = await tx
-        .select({ v: sessionStateTable.sceneImageVersion })
-        .from(sessionStateTable)
-        .where(eq(sessionStateTable.sessionId, sessionId))
-        .limit(1);
-      const nextVersion = (stateRow?.v ?? 0) + 1;
-      // Defer to AFTER the tx commits — see applyMutations comment.
-      const visualPrompt = m.visualPrompt;
-      postCommit.push(() => {
-        waitUntil(sceneImageJob.generateAndPersist(sessionId, visualPrompt, styleText, nextVersion));
-      });
       break;
     }
     // Ops Plan B emits but Plan D1 does not yet act on; ignore safely.

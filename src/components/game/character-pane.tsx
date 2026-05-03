@@ -5,6 +5,13 @@ import { categorizeInventory, slugToLabel } from '@/lib/inventory';
 import type { Character } from '@/engine/types';
 import type { SessionStateRow } from '@/sessions/client-types';
 
+// Classes that learn spells at any level. Used to decide whether to render
+// the Spells section even when `character.spellcasting` is null (e.g. older
+// characters created before deriveCharacter populated the field).
+const SPELLCASTER_CLASSES = new Set([
+  'bard', 'cleric', 'druid', 'paladin', 'ranger', 'sorcerer', 'warlock', 'wizard',
+]);
+
 export interface CharacterPaneProps {
   character: Character;
   state: SessionStateRow;
@@ -141,6 +148,13 @@ export function CharacterPane({ character, state }: CharacterPaneProps) {
             })}
           </div>
         </div>
+      )}
+
+      {SPELLCASTER_CLASSES.has(character.classSlug) && (
+        <SpellsSection
+          spellsKnown={character.spellcasting?.spellsKnown ?? []}
+          spellsPrepared={character.spellcasting?.spellsPrepared ?? []}
+        />
       )}
 
       <InventorySection inventory={character.inventory} />
@@ -284,6 +298,82 @@ function InventoryRow({ slug, qty, equipped }: { slug: string; qty: number; equi
           ×{qty}
         </span>
       )}
+    </div>
+  );
+}
+
+function SpellsSection({ spellsKnown, spellsPrepared }: { spellsKnown: string[]; spellsPrepared: string[] }) {
+  if (spellsKnown.length === 0) {
+    return (
+      <div>
+        <Eyebrow style={{ marginBottom: 6 }}>Spells</Eyebrow>
+        <div
+          style={{
+            padding: '8px 10px',
+            background: 'var(--bg-card)',
+            border: '1px dashed var(--border)',
+            borderRadius: 6,
+            fontSize: 12,
+            fontStyle: 'italic',
+            color: 'var(--fg-muted)',
+            lineHeight: 1.4,
+          }}
+        >
+          No spells known yet.
+        </div>
+      </div>
+    );
+  }
+
+  const preparedSet = new Set(spellsPrepared);
+  // Show "prep" indicator only when the class actually distinguishes prepared
+  // from known (i.e. the prepared list is a non-empty proper subset). For
+  // know-everything casters (sorcerer, warlock) the two arrays are equal —
+  // highlighting every row would be noise.
+  const showsPrepared =
+    spellsPrepared.length > 0 && spellsPrepared.length < spellsKnown.length;
+
+  const sorted = [...spellsKnown].sort((a, b) => a.localeCompare(b));
+
+  return (
+    <div>
+      <Eyebrow style={{ marginBottom: 6 }}>Spells</Eyebrow>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        {sorted.map((slug) => {
+          const isPrepared = preparedSet.has(slug);
+          const highlight = showsPrepared && isPrepared;
+          return (
+            <div
+              key={slug}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 12,
+                padding: '3px 6px',
+                borderRadius: 4,
+                background: highlight ? 'rgba(122,79,184,0.08)' : 'transparent',
+                border: highlight ? '1px solid rgba(122,79,184,0.3)' : '1px solid transparent',
+              }}
+            >
+              <span style={{ flex: 1 }}>{slugToLabel(slug)}</span>
+              {highlight && (
+                <span
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    color: 'var(--arcane)',
+                    fontSize: 9,
+                    letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  prep
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

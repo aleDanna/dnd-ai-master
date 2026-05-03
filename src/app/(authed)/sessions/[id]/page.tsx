@@ -1,10 +1,11 @@
 import { auth } from '@clerk/nextjs/server';
 import { notFound } from 'next/navigation';
-import { eq, and, isNull, asc, desc } from 'drizzle-orm';
+import { eq, and, isNull, asc } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { sessions, sessionState, sessionMessages, diceLog, combatActors, characters } from '@/db/schema';
+import { sessions, sessionState, sessionMessages, combatActors, characters } from '@/db/schema';
 import { GameClient } from './game-client';
 import { getResolvedPreferences } from '@/lib/preferences';
+import { deriveLevel1Spellcasting } from '@/characters/derive';
 import type { Character, FeatureInstance, SpellcastingState } from '@/engine/types';
 
 export const dynamic = 'force-dynamic';
@@ -21,14 +22,47 @@ export default async function GameSessionPage({ params }: { params: Promise<{ id
     .limit(1);
   if (!session) notFound();
 
-  const [character] = await db.select().from(characters).where(eq(characters.id, session.characterId)).limit(1);
-  if (!character) notFound();
+  const [characterRow] = await db.select().from(characters).where(eq(characters.id, session.characterId)).limit(1);
+  if (!characterRow) notFound();
+
+  // One-time backfill: characters created before deriveCharacter populated
+  // spellcasting can have a null block (or empty spellsKnown) even when the
+  // class is a caster. Fix it on read so the Spells panel shows the starter
+  // loadout immediately, with no manual migration required.
+  let character = characterRow;
+  const persistedSpellcasting = character.spellcasting as SpellcastingState | null;
+  const needsSpellBackfill =
+    deriveLevel1Spellcasting(character.classSlug, character.abilities, character.proficiencyBonus) !== null &&
+    (persistedSpellcasting === null || persistedSpellcasting.spellsKnown.length === 0);
+  if (needsSpellBackfill) {
+    const derived = deriveLevel1Spellcasting(
+      character.classSlug,
+      character.abilities,
+      character.proficiencyBonus,
+    );
+    if (derived) {
+      // Preserve any pre-existing slot tracking the master mutated (e.g. a
+      // wizard that already leveled up): we only fill missing fields,
+      // never overwrite a non-empty spellsKnown.
+      const merged: SpellcastingState = persistedSpellcasting
+        ? {
+            ...persistedSpellcasting,
+            spellsKnown: persistedSpellcasting.spellsKnown.length > 0 ? persistedSpellcasting.spellsKnown : derived.spellsKnown,
+            spellsPrepared: persistedSpellcasting.spellsPrepared.length > 0 ? persistedSpellcasting.spellsPrepared : derived.spellsPrepared,
+          }
+        : derived;
+      await db
+        .update(characters)
+        .set({ spellcasting: merged, updatedAt: new Date() })
+        .where(eq(characters.id, character.id));
+      character = { ...character, spellcasting: merged };
+    }
+  }
 
   const [stateRow] = await db.select().from(sessionState).where(eq(sessionState.sessionId, sessionId)).limit(1);
 
-  const [history, rolls, actors] = await Promise.all([
+  const [history, actors] = await Promise.all([
     db.select().from(sessionMessages).where(eq(sessionMessages.sessionId, sessionId)).orderBy(asc(sessionMessages.createdAt)).limit(100),
-    db.select().from(diceLog).where(eq(diceLog.sessionId, sessionId)).orderBy(desc(diceLog.createdAt)).limit(50),
     db.select().from(combatActors).where(eq(combatActors.sessionId, sessionId)),
   ]);
 
@@ -61,6 +95,7 @@ export default async function GameSessionPage({ params }: { params: Promise<{ id
       sessionId={sessionId}
       initialAutoplay={preferences.ttsAutoplay}
       initialManualRolls={preferences.manualRolls}
+      initialImageGenerationEnabled={preferences.imageGenerationEnabled}
       session={{
         id: session.id,
         userId: session.userId,
@@ -96,17 +131,6 @@ export default async function GameSessionPage({ params }: { params: Promise<{ id
         role: m.role,
         content: m.content,
         createdAt: m.createdAt.toISOString(),
-      }))}
-      initialRolls={rolls.map((r) => ({
-        id: r.id,
-        sessionId: r.sessionId,
-        kind: r.kind,
-        formula: r.formula,
-        rolls: r.rolls,
-        modifier: r.modifier,
-        total: r.total,
-        meta: r.meta,
-        createdAt: r.createdAt.toISOString(),
       }))}
       initialActors={actors.map((a) => ({
         id: a.id,

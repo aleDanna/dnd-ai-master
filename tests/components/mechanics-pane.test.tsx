@@ -20,7 +20,7 @@ describe('MechanicsPane scene image', () => {
       <MechanicsPane
         sessionId="sess-1"
         state={baseState()}
-        actors={[]} diceLog={[]}
+        actors={[]}
         pcCharacterId="pc1" pcName="Tharion" pcHpMax={10} pcLevel={1} pcXp={0}
       />,
     );
@@ -32,7 +32,7 @@ describe('MechanicsPane scene image', () => {
       <MechanicsPane
         sessionId="sess-1"
         state={baseState({ sceneImageVersion: 7, sceneImagePrompt: 'a tower' })}
-        actors={[]} diceLog={[]}
+        actors={[]}
         pcCharacterId="pc1" pcName="Tharion" pcHpMax={10} pcLevel={1} pcXp={0}
       />,
     );

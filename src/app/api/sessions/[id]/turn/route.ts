@@ -85,7 +85,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           manualRolls: userPrefs.manualRolls,
           masterGuidanceLevel: userPrefs.masterGuidanceLevel,
           showDifficultyNumbers: userPrefs.showDifficultyNumbers,
-          imageGenerationEnabled: userPrefs.imageGenerationEnabled,
         });
 
         const recent = await db

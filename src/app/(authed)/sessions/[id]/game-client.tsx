@@ -15,7 +15,7 @@ import { AutoplayToggle } from '@/components/game/autoplay-toggle';
 import { SettingsLink } from '@/components/ui/settings-link';
 import { setActiveAudio, getActiveAudio } from '@/lib/tts-playback';
 import type { Character } from '@/engine/types';
-import type { CombatActorRow, DiceRollRow, MessageRow, SessionRow, SessionStateRow } from '@/sessions/client-types';
+import type { CombatActorRow, MessageRow, SessionRow, SessionStateRow } from '@/sessions/client-types';
 
 export interface GameClientProps {
   sessionId: string;
@@ -23,15 +23,14 @@ export interface GameClientProps {
   character: Character;
   initialState: SessionStateRow | null;
   initialMessages: MessageRow[];
-  initialRolls: DiceRollRow[];
   initialActors: CombatActorRow[];
   initialAutoplay: boolean;
   initialManualRolls: boolean;
+  initialImageGenerationEnabled: boolean;
 }
 
-export function GameClient({ sessionId, session, character: initialCharacter, initialState, initialMessages, initialRolls, initialActors, initialAutoplay, initialManualRolls }: GameClientProps) {
+export function GameClient({ sessionId, session, character: initialCharacter, initialState, initialMessages, initialActors, initialAutoplay, initialManualRolls, initialImageGenerationEnabled }: GameClientProps) {
   const [messages, setMessages] = React.useState<MessageRow[]>(initialMessages);
-  const [rolls, setRolls] = React.useState<DiceRollRow[]>(initialRolls);
   // Character mirror: starts from SSR-provided value, refreshed on mount and
   // after every turn_complete. Mutable character fields (level, xp, hpMax,
   // ...) stay in sync with the server even when the player navigates away
@@ -64,17 +63,14 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
   // the React 19 cascading-renders lint rule.
   const fetchSessionData = React.useCallback(async (): Promise<{
     messages: MessageRow[] | null;
-    rolls: DiceRollRow[] | null;
     character: Character | null;
   }> => {
-    const [msgsRes, rollsRes, charRes] = await Promise.all([
+    const [msgsRes, charRes] = await Promise.all([
       fetch(`/api/sessions/${sessionId}/messages`).then((r) => (r.ok ? r.json() : null)),
-      fetch(`/api/sessions/${sessionId}/dice-log`).then((r) => (r.ok ? r.json() : null)),
       fetch(`/api/sessions/${sessionId}/character`).then((r) => (r.ok ? r.json() : null)),
     ]);
     return {
       messages: (msgsRes as { messages: MessageRow[] } | null)?.messages ?? null,
-      rolls: (rollsRes as { rolls: DiceRollRow[] } | null)?.rolls ?? null,
       character: (charRes as { character: Character } | null)?.character ?? null,
     };
   }, [sessionId]);
@@ -87,7 +83,6 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
     void fetchSessionData().then((data) => {
       if (!active) return;
       if (data.messages) setMessages(data.messages);
-      if (data.rolls) setRolls(data.rolls);
       if (data.character) setCharacter(data.character);
     });
     return () => {
@@ -134,13 +129,12 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
       // `messages` so the user sees a continuous render with no flash.
       turn.reset();
 
-      // Async refresh: pull authoritative state (dice log, XP, full
-      // message list with any tool metadata the server attached).
+      // Async refresh: pull authoritative state (XP, full message list
+      // with any tool metadata the server attached).
       let active = true;
       void fetchSessionData().then((data) => {
         if (!active) return;
         if (data.messages) setMessages(data.messages);
-        if (data.rolls) setRolls(data.rolls);
         if (data.character) setCharacter(data.character);
       });
       return () => {
@@ -245,6 +239,7 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
             onSend={send}
             onCastSpell={character.spellcasting && slots.length > 0 ? () => setSpellOpen(true) : undefined}
             manualRolls={initialManualRolls}
+            imageGenerationEnabled={initialImageGenerationEnabled}
           />
           {(turn.error || serverError) && (
             <div style={{ padding: '8px 16px', background: 'var(--bg-card)', color: 'var(--ember)', borderTop: '1px solid var(--ember)', fontSize: 12 }}>
@@ -267,7 +262,6 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
           sessionId={sessionId}
           state={liveState}
           actors={liveActors}
-          diceLog={rolls}
           pcCharacterId={character.id}
           pcLevel={character.level}
           pcXp={character.xp}

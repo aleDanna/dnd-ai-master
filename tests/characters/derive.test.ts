@@ -67,6 +67,45 @@ describe('deriveCharacter', () => {
   });
 });
 
+describe('deriveCharacter spellcasting', () => {
+  it('returns null spellcasting for non-caster classes', () => {
+    const d = deriveCharacter(baseWizard);
+    expect(d.spellcasting).toBeNull();
+  });
+
+  it('populates spellcasting with starter spells for a wizard', () => {
+    const w: WizardState = { ...baseWizard, classSlug: 'wizard', abilities: { STR: 8, DEX: 14, CON: 14, INT: 16, WIS: 12, CHA: 10 } };
+    const d = deriveCharacter(w);
+    expect(d.spellcasting).not.toBeNull();
+    expect(d.spellcasting!.ability).toBe('INT');
+    // L1 PB 2 + INT mod 3 = save DC 13, attack +5
+    expect(d.spellcasting!.spellSaveDC).toBe(13);
+    expect(d.spellcasting!.spellAttackBonus).toBe(5);
+    expect(d.spellcasting!.slotsMax[1]).toBe(2);
+    expect(d.spellcasting!.spellsKnown).toContain('magic-missile');
+    expect(d.spellcasting!.spellsKnown).toContain('fire-bolt');
+    expect(d.spellcasting!.spellsPrepared.length).toBeGreaterThan(0);
+  });
+
+  it('populates spellcasting for warlock with 1 L1 slot', () => {
+    const w: WizardState = { ...baseWizard, classSlug: 'warlock' };
+    const d = deriveCharacter(w);
+    expect(d.spellcasting).not.toBeNull();
+    expect(d.spellcasting!.ability).toBe('CHA');
+    expect(d.spellcasting!.slotsMax[1]).toBe(1);
+    expect(d.spellcasting!.spellsKnown).toContain('eldritch-blast');
+  });
+
+  it('paladin gets a spellcasting block but no L1 slots', () => {
+    const w: WizardState = { ...baseWizard, classSlug: 'paladin' };
+    const d = deriveCharacter(w);
+    expect(d.spellcasting).not.toBeNull();
+    expect(d.spellcasting!.ability).toBe('CHA');
+    expect(d.spellcasting!.slotsMax[1] ?? 0).toBe(0);
+    expect(d.spellcasting!.spellsKnown).toEqual([]);
+  });
+});
+
 describe('deriveCharacter with background context', () => {
   it('merges background skill proficiencies into proficiencies.skills', () => {
     const w: WizardState = { ...baseWizard, skills: ['Perception'] };

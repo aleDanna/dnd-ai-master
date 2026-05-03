@@ -45,8 +45,9 @@ describe('generateAndPersist', () => {
     };
     __setOpenAIClientForTest(fake as never);
 
-    await generateAndPersist(SESSION_ID, 'a tower', 'soft pastel', 1);
+    const result = await generateAndPersist(SESSION_ID, 'a tower', 'soft pastel', 1);
 
+    expect(result).toEqual({ ok: true, version: 1 });
     const [row] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
     expect(row!.sceneImageVersion).toBe(1);
     expect(row!.sceneImagePrompt).toBe('a tower');
@@ -54,7 +55,7 @@ describe('generateAndPersist', () => {
     expect(fake.images.generate).toHaveBeenCalledOnce();
   });
 
-  it('on API failure: leaves the row unchanged (silent fail)', async () => {
+  it('on API failure: returns api_error and leaves the row unchanged', async () => {
     // Pre-state: row currently at version 1 from previous test.
     const fake = {
       images: {
@@ -63,7 +64,12 @@ describe('generateAndPersist', () => {
     };
     __setOpenAIClientForTest(fake as never);
 
-    await generateAndPersist(SESSION_ID, 'something else', 'pastel', 2);
+    const result = await generateAndPersist(SESSION_ID, 'something else', 'pastel', 2);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe('api_error');
+      expect(result.detail).toContain('rate_limit');
+    }
 
     const [row] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
     // version is still 1, prompt still "a tower", bytes unchanged
@@ -71,7 +77,7 @@ describe('generateAndPersist', () => {
     expect(row!.sceneImagePrompt).toBe('a tower');
   });
 
-  it('on stale expectedVersion: conditional UPDATE no-ops without overwriting newer state', async () => {
+  it('on stale expectedVersion: returns race_lost without overwriting newer state', async () => {
     // Force a newer version into the row (simulating a concurrent job that already finished).
     await db.update(sessionState).set({ sceneImageVersion: 5, sceneImagePrompt: 'newer' }).where(eq(sessionState.sessionId, SESSION_ID));
     const fake = {
@@ -82,14 +88,16 @@ describe('generateAndPersist', () => {
     __setOpenAIClientForTest(fake as never);
 
     // Try to write expectedVersion=2 when the row is already at 5 — must be a no-op.
-    await generateAndPersist(SESSION_ID, 'stale', 'pastel', 2);
+    const result = await generateAndPersist(SESSION_ID, 'stale', 'pastel', 2);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('race_lost');
 
     const [row] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
     expect(row!.sceneImageVersion).toBe(5);
     expect(row!.sceneImagePrompt).toBe('newer');
   });
 
-  it('on empty model response: leaves the row unchanged', async () => {
+  it('on empty model response: returns empty_response and leaves the row unchanged', async () => {
     // Reset the row to a known state.
     await db.update(sessionState).set({ sceneImageVersion: 5, sceneImagePrompt: 'newer' }).where(eq(sessionState.sessionId, SESSION_ID));
     const fake = {
@@ -97,7 +105,9 @@ describe('generateAndPersist', () => {
     };
     __setOpenAIClientForTest(fake as never);
 
-    await generateAndPersist(SESSION_ID, 'empty', 'pastel', 6);
+    const result = await generateAndPersist(SESSION_ID, 'empty', 'pastel', 6);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('empty_response');
 
     const [row] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
     expect(row!.sceneImageVersion).toBe(5);
