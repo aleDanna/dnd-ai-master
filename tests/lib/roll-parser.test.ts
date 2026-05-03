@@ -406,6 +406,19 @@ describe('parseRollRequests — Italian skill checks (no explicit formula)', () 
     expect(reqs[0]!.label).toBe('Intuito (CD 14)');
   });
 
+  it('parses "tira una prova di Arcana" (Arcano alias)', () => {
+    // User report: master narrated "Tira una prova di Arcana." for an
+    // arcane-knowledge check and the parser produced no button. The
+    // SRD-canonical Italian skill name is "Arcano" (masc) but the
+    // English/feminine "Arcana" surfaces frequently in master prose;
+    // both must produce a button, normalised to "Arcano" in the label.
+    const reqs = parseRollRequests('Tira una prova di Arcana.');
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.formula).toBe('1d20');
+    expect(reqs[0]!.label).toBe('Arcano');
+    expect(reqs[0]!.kind).toBe('check');
+  });
+
   it('parses "tira una prova di Indagine" (Investigation alias)', () => {
     // User report: master narrated "Per cavarne dettagli utili, devi
     // passarla al setaccio. Tira una prova di Indagine." but no roll
