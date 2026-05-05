@@ -38,6 +38,29 @@ function getClient(): GoogleGenAI {
   return _client;
 }
 
+/**
+ * Retry a Gemini SDK call up to `maxAttempts` times with exponential backoff
+ * (1s, 2s, 4s) when Google returns 503/UNAVAILABLE/overloaded. The Pro model
+ * in particular hits these spikes; without retry every spike surfaces as a
+ * turn_error in the UI.
+ */
+async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!/503|UNAVAILABLE|overloaded|high demand/i.test(msg)) throw e;
+      if (i < maxAttempts - 1) {
+        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, i)));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 export class GeminiProvider implements MasterProvider {
   readonly name = 'gemini' as const;
 
@@ -47,7 +70,7 @@ export class GeminiProvider implements MasterProvider {
     const contents = anthropicMessagesToGemini(input.messages);
     const functionDeclarations = input.tools.map(anthropicToolToGemini);
 
-    const response = (await client.models.generateContent({
+    const response = (await withRetry(() => client.models.generateContent({
       model: input.model ?? MASTER_MODEL,
       contents,
       config: {
@@ -55,7 +78,7 @@ export class GeminiProvider implements MasterProvider {
         ...(functionDeclarations.length ? { tools: [{ functionDeclarations }] } : {}),
         maxOutputTokens: input.maxTokens ?? 4096,
       },
-    })) as GeminiResponse;
+    }))) as GeminiResponse;
 
     const contentBlocks = geminiResponseToContentBlocks(response);
     const hasFunctionCall = contentBlocks.some((b) => b.type === 'tool_use');
@@ -73,7 +96,7 @@ export class GeminiProvider implements MasterProvider {
     if (isTrivial(input.text)) return null;
     const client = getClient();
     try {
-      const response = (await client.models.generateContent({
+      const response = (await withRetry(() => client.models.generateContent({
         model: LANGUAGE_MODEL,
         contents: [{ role: 'user', parts: [{ text: input.text }] }],
         config: {
@@ -85,7 +108,7 @@ export class GeminiProvider implements MasterProvider {
           },
           maxOutputTokens: 8,
         },
-      })) as GeminiResponse;
+      }))) as GeminiResponse;
       if (input.userId) {
         await recordUsage({
           userId: input.userId,
@@ -110,7 +133,7 @@ export class GeminiProvider implements MasterProvider {
     const client = getClient();
     const tool = anthropicToolToGemini(input.toolDefinition);
     const model = input.model ?? MASTER_MODEL;
-    const response = (await client.models.generateContent({
+    const response = (await withRetry(() => client.models.generateContent({
       model,
       contents: [{ role: 'user', parts: [{ text: input.userMessage }] }],
       config: {
@@ -124,7 +147,7 @@ export class GeminiProvider implements MasterProvider {
         },
         maxOutputTokens: 1024,
       },
-    })) as GeminiResponse;
+    }))) as GeminiResponse;
 
     const usage = normalizeGeminiUsage(response.usageMetadata);
     if (input.userId) {
