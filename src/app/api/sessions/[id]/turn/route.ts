@@ -8,6 +8,7 @@ import { buildSnapshot } from '@/sessions/snapshot';
 import { applyMutations } from '@/sessions/applicator';
 import { acquireTurnLock, releaseTurnLock } from '@/sessions/lock';
 import { buildSrdContext } from '@/ai/master/srd-context';
+import { getMasterHandbook } from '@/ai/master/handbook';
 import { buildMasterSystemPrompt } from '@/ai/master/system-prompt';
 import { detectLanguage } from '@/ai/master/language';
 import { runToolLoop } from '@/ai/master/tool-loop';
@@ -77,8 +78,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
         // 4. Build system prompt + history
         const srd = await buildSrdContext();
+        const handbook = getMasterHandbook();
         const sys = buildMasterSystemPrompt({
           srdContext: srd,
+          handbook,
           characterMonoSpace: snap.characterMonoSpace,
           scene: snap.scene,
           language: snap.language,

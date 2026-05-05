@@ -9,6 +9,7 @@ import {
 
 const baseInput = {
   srdContext: '## SRD\n(stub)',
+  handbook: '# DM Handbook\n(stub)',
   characterMonoSpace: '{}',
   scene: '(no scene)',
   language: null,
@@ -82,6 +83,22 @@ describe('buildMasterSystemPrompt — scene illustrations', () => {
     const out = buildMasterSystemPrompt({ ...baseInput });
     const text = out.system.map((b) => b.text).join('\n');
     expect(text).not.toMatch(/generate_scene_image/);
+  });
+});
+
+describe('buildMasterSystemPrompt — DM craft handbook block', () => {
+  it('embeds the handbook string as one of the cached blocks', () => {
+    const handbook = '# DM Craft Handbook (TEST MARKER 39c8)\n\n## 1.1 example\nhello';
+    const out = buildMasterSystemPrompt({ ...baseInput, handbook });
+    const texts = out.system.map((b) => b.text);
+    const blockIdx = texts.findIndex((t) => t.includes('TEST MARKER 39c8'));
+    expect(blockIdx).toBeGreaterThanOrEqual(0);
+    // Handbook block must be cached so the prompt-cache hit covers it.
+    expect(out.system[blockIdx]!.cache_control).toEqual({ type: 'ephemeral' });
+    // Order: ROLE → TOOLS → HANDBOOK → SRD. The handbook should sit between
+    // the tool contract and the SRD reference.
+    const srdIdx = texts.findIndex((t) => t.includes(baseInput.srdContext));
+    expect(blockIdx).toBeLessThan(srdIdx);
   });
 });
 

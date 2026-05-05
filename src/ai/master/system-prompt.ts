@@ -111,6 +111,8 @@ The full schemas are exposed by the API. The system filters context-inappropriat
 
 export interface MasterPromptInput {
   srdContext: string;
+  /** Curated DM craft guidance from the 5e DMG 2024. Loaded via getMasterHandbook(). */
+  handbook: string;
   characterMonoSpace: string;
   scene: string;
   language: string | null;
@@ -281,9 +283,13 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
   const dynamicTail = `## Current snapshot\n\n### Character\n\`\`\`json\n${input.characterMonoSpace}\n\`\`\`\n\n### Scene\n${input.scene || '(no scene set yet)'}${langHint}`;
 
   const blocks: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }[] = [
-    // Static, cached: role + tool contract + SRD KB
+    // Static, cached: role + tool contract + DM craft handbook + SRD KB.
+    // Order matters: ROLE → TOOLS → CRAFT → MECHANICS. The model reads
+    // top-to-bottom, so big-picture identity comes first, mechanical
+    // reference last.
     { type: 'text', text: MASTER_SYSTEM_PROMPT_BASE, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: MASTER_TOOL_CONTRACT, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: input.handbook, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: input.srdContext, cache_control: { type: 'ephemeral' } },
   ];
 
