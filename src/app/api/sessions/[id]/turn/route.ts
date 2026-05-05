@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eq, and, desc, isNull } from 'drizzle-orm';
 import type Anthropic from '@anthropic-ai/sdk';
+import { waitUntil } from '@vercel/functions';
 import { db } from '@/db/client';
 import { sessions, sessionMessages } from '@/db/schema';
 import { buildSnapshot } from '@/sessions/snapshot';
@@ -17,6 +18,8 @@ import { getProviderByName } from '@/ai/provider';
 import { recordUsage } from '@/ai/master/usage';
 import { checkQuotas } from '@/ai/master/quotas';
 import { getResolvedPreferences } from '@/lib/preferences';
+import { loadMemoryContext } from '@/sessions/memory/context';
+import { extractMemory } from '@/sessions/memory/extractor';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
@@ -80,6 +83,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const srd = await buildSrdContext();
         const handbook = getMasterHandbook();
         const worldLore = getMasterWorldLore();
+        const memory = await loadMemoryContext(sessionId, snap.scene);
         const sys = buildMasterSystemPrompt({
           srdContext: srd,
           handbook,
@@ -90,6 +94,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           manualRolls: userPrefs.manualRolls,
           masterGuidanceLevel: userPrefs.masterGuidanceLevel,
           showDifficultyNumbers: userPrefs.showDifficultyNumbers,
+          chapterDigests: memory.chapterDigests,
+          sceneCard: memory.sceneCard,
+          codexIndex: memory.codexIndex,
         });
 
         const recent = await db
@@ -137,6 +144,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // as a turn_error instead so the player sees a recoverable signal.
         if (result.finalText.trim()) {
           const [mm] = await db.insert(sessionMessages).values({ sessionId, role: 'master', content: result.finalText }).returning();
+          waitUntil(
+            extractMemory(sessionId).catch((e) => {
+              console.error('memory.extract.fire_and_forget', e instanceof Error ? e.message : String(e));
+            }),
+          );
           send('turn_complete', { type: 'turn_complete', messageId: mm!.id, durationMs: Date.now() - t0, toolCallCount: result.toolCallCount, truncated: result.truncated, timedOut: result.timedOut });
         } else {
           send('turn_error', { type: 'turn_error', reason: 'empty_response', recoverable: true });
