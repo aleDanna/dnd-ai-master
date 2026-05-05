@@ -18,3 +18,4 @@ export * from './dice-log';
 export * from './combat-actors';
 export * from './ai-usage';
 export * from './tts-cache';
+export * from './session-chapters';
