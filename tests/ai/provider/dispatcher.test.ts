@@ -28,8 +28,13 @@ describe('getMasterProvider', () => {
     expect(getMasterProvider().name).toBe('openai');
   });
 
-  it('throws for an unknown MASTER_PROVIDER value', () => {
+  it('returns gemini for MASTER_PROVIDER=gemini', () => {
     process.env.MASTER_PROVIDER = 'gemini';
-    expect(() => getMasterProvider()).toThrow(/unknown MASTER_PROVIDER: gemini/);
+    expect(getMasterProvider().name).toBe('gemini');
+  });
+
+  it('throws for an unknown MASTER_PROVIDER value', () => {
+    process.env.MASTER_PROVIDER = 'cohere';
+    expect(() => getMasterProvider()).toThrow(/unknown MASTER_PROVIDER: cohere/);
   });
 });
