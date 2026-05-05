@@ -19,3 +19,4 @@ export * from './combat-actors';
 export * from './ai-usage';
 export * from './tts-cache';
 export * from './session-chapters';
+export * from './codex-entities';
