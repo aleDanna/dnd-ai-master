@@ -238,6 +238,25 @@ const ALWAYS_ON: AnthropicTool[] = [
       },
     } as never,
   },
+  {
+    name: 'lookup_codex',
+    description:
+      "Look up a campaign-codex entity by kind + name/slug. Use when an NPC, location, quest, faction, lore fact, named item, or relationship is referenced in chat and is NOT already visible in the Scene card. The codex is the single source of truth for narrative continuity — prefer it over re-inventing details. Returns up to 5 matches; returns an empty array when nothing matches.",
+    input_schema: {
+      type: 'object',
+      required: ['kind', 'query'],
+      properties: {
+        kind: {
+          type: 'string',
+          enum: ['npc', 'location', 'quest', 'faction', 'lore_fact', 'named_item', 'relationship'],
+        },
+        query: {
+          type: 'string',
+          description: 'Name or slug to look up. Case-insensitive substring match on slug AND name.',
+        },
+      },
+    } as never,
+  },
 ];
 
 /**
