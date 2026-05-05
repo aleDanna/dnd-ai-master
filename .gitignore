@@ -54,3 +54,6 @@ next-env.d.ts
 # IntelliJ
 /.idea/
 .claude/
+
+# git worktrees
+.worktrees/
