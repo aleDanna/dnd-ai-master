@@ -14,3 +14,5 @@ export { equip, unequip, recomputeAC } from './equipment';
 export { levelUp } from './levelup';
 export { buildToolDefinitions, TOOL_DEFINITIONS } from './tools';
 export { TOOL_HANDLERS } from './tools/handlers';
+export { TOOL_HANDLERS_DB } from './tools/handlers';
+export type { DbToolCtx, DbToolHandler } from './tools/handlers';

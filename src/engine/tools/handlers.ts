@@ -266,3 +266,18 @@ function resolveCharacterId(state: EngineState, actorRef: unknown): string {
   }
   return String(actorRef);
 }
+
+import { lookupCodex } from './lookup-codex';
+
+export interface DbToolCtx {
+  sessionId: string;
+}
+
+export type DbToolHandler = (
+  ctx: DbToolCtx,
+  input: Record<string, unknown>,
+) => Promise<import('../types').ActionResult>;
+
+export const TOOL_HANDLERS_DB: Record<string, DbToolHandler> = {
+  lookup_codex: (ctx, input) => lookupCodex(ctx, input),
+};
