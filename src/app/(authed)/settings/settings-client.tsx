@@ -9,7 +9,10 @@ import { TTS_VOICES } from '@/lib/tts-voices';
 import {
   modelsForProvider,
   defaultModelForProvider,
+  imageModelsForProvider,
+  defaultImageModelForProvider,
   type ProviderName,
+  type ImageProviderName,
 } from '@/lib/ai-models';
 import type { UserPreferences } from '@/db/schema/users';
 
@@ -98,6 +101,19 @@ export function SettingsClient({ initialPreferences, ttsModel }: SettingsClientP
     void save({ imageStyleCustom: prefs.imageStyleCustom });
   };
 
+  const onImageProviderChange = (next: ImageProviderName): void => {
+    if (next === prefs.imageProvider) return;
+    const nextModel = defaultImageModelForProvider(next);
+    setPrefs((p) => ({ ...p, imageProvider: next, imageModel: nextModel }));
+    void save({ imageProvider: next, imageModel: nextModel });
+  };
+
+  const onImageModelChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
+    const slug = e.target.value;
+    setPrefs((p) => ({ ...p, imageModel: slug }));
+    void save({ imageModel: slug });
+  };
+
   const onProviderChange = (next: ProviderName): void => {
     if (next === prefs.aiProvider) return;
     const nextModel = defaultModelForProvider(next);
@@ -142,7 +158,7 @@ export function SettingsClient({ initialPreferences, ttsModel }: SettingsClientP
             Provider
           </label>
           <div style={{ display: 'flex', gap: 6 }}>
-            {(['anthropic', 'openai'] as ProviderName[]).map((p) => (
+            {(['anthropic', 'openai', 'gemini'] as ProviderName[]).map((p) => (
               <button
                 key={p}
                 onClick={() => onProviderChange(p)}
@@ -160,7 +176,7 @@ export function SettingsClient({ initialPreferences, ttsModel }: SettingsClientP
                   fontWeight: 600,
                 }}
               >
-                {p === 'anthropic' ? 'Anthropic' : 'OpenAI'}
+                {p === 'anthropic' ? 'Anthropic' : p === 'openai' ? 'OpenAI' : 'Gemini'}
               </button>
             ))}
           </div>
@@ -422,7 +438,64 @@ export function SettingsClient({ initialPreferences, ttsModel }: SettingsClientP
         </button>
 
         {prefs.imageGenerationEnabled && (
-          <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <label style={{ fontSize: 13, color: 'var(--fg-muted)', minWidth: 80 }}>
+                Provider
+              </label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {(['openai', 'gemini'] as ImageProviderName[]).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => onImageProviderChange(p)}
+                    disabled={busy}
+                    aria-pressed={prefs.imageProvider === p}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: 999,
+                      background: prefs.imageProvider === p ? 'var(--arcane)' : 'var(--bg-card)',
+                      color: prefs.imageProvider === p ? 'var(--bone)' : 'var(--fg)',
+                      border: '1px solid ' + (prefs.imageProvider === p ? 'var(--arcane)' : 'var(--border)'),
+                      cursor: busy ? 'wait' : 'pointer',
+                      fontFamily: 'inherit',
+                      fontSize: 13,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {p === 'openai' ? 'OpenAI' : 'Gemini'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <label htmlFor="imageModel" style={{ fontSize: 13, color: 'var(--fg-muted)', minWidth: 80 }}>
+                Model
+              </label>
+              <select
+                id="imageModel"
+                value={prefs.imageModel}
+                onChange={onImageModelChange}
+                disabled={busy}
+                style={{
+                  flex: 1,
+                  padding: '8px 12px',
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border-strong)',
+                  borderRadius: 8,
+                  color: 'var(--fg)',
+                  fontFamily: 'var(--font-ui)',
+                  fontSize: 14,
+                }}
+              >
+                {imageModelsForProvider(prefs.imageProvider).map((m) => (
+                  <option key={m.slug} value={m.slug}>
+                    {m.label}{m.recommended ? ' (recommended)' : ''} — {m.blurb}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <label style={{ fontSize: 13, color: 'var(--fg-muted)' }}>Image style</label>
             <select
               value={prefs.imageStylePreset}
