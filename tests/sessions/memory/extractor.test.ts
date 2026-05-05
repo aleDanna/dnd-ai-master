@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { sql, eq, asc } from 'drizzle-orm';
 import { db, pool } from '@/db/client';
 import { ensureUser } from '@/db/users';
@@ -71,12 +71,15 @@ describe('extractMemory', () => {
     await freshSession();
   });
 
+  afterEach(() => {
+    __setExtractorProviderForTest(null);
+  });
+
   afterAll(async () => {
     await db.execute(sql`delete from sessions where user_id = ${TEST_USER}`);
     await db.execute(sql`delete from characters where user_id = ${TEST_USER}`);
     await db.execute(sql`delete from users where id = ${TEST_USER}`);
     await pool.end();
-    __setExtractorProviderForTest(null);
   });
 
   it('light mode: with <40 new messages, runs LIGHT and applies upserts only', async () => {

@@ -1,4 +1,4 @@
-import { eq, and, asc, gt, sql } from 'drizzle-orm';
+import { eq, and, asc, gt, or, not, like, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import {
   sessions,
@@ -30,11 +30,14 @@ function provider(): MasterProvider {
   return _override ?? getMasterProvider();
 }
 
-function isOoc(content: string): boolean {
-  return content.trimStart().startsWith('!');
-}
-
-/** Acquire a per-session advisory lock. Returns true if acquired. */
+/** Acquire a per-session advisory lock. Returns true if acquired.
+ *
+ * Lock-key contract: `pg_try_advisory_lock(hashtextextended(sessionId, 0))`.
+ * Any other code that needs mutual exclusion against extractMemory (e.g. the
+ * rebuild endpoint) MUST use the SAME function — otherwise the keys hash to
+ * different buckets and the locks don't contend. We use `hashtextextended`
+ * (64-bit) instead of plain `hashtext` (32-bit) for a much smaller collision
+ * surface across active sessions. */
 async function tryLock(sessionId: string): Promise<boolean> {
   const r = await db.execute<{ pg_try_advisory_lock: boolean }>(
     sql`select pg_try_advisory_lock(hashtextextended(${sessionId}, 0)) as pg_try_advisory_lock`,
@@ -56,32 +59,51 @@ async function getNonOocMessagesAfter(
   afterId: string | null,
 ): Promise<SessionMessage[]> {
   if (afterId === null) {
-    const rows = await db
+    return db
       .select()
       .from(sessionMessages)
-      .where(eq(sessionMessages.sessionId, sessionId))
+      .where(
+        and(
+          eq(sessionMessages.sessionId, sessionId),
+          not(like(sessionMessages.content, '!%')),
+        ),
+      )
       .orderBy(asc(sessionMessages.createdAt), asc(sessionMessages.id));
-    return rows.filter((r) => !isOoc(r.content));
   }
   const [pivot] = await db
-    .select({ createdAt: sessionMessages.createdAt })
+    .select({ createdAt: sessionMessages.createdAt, id: sessionMessages.id })
     .from(sessionMessages)
     .where(eq(sessionMessages.id, afterId))
     .limit(1);
   if (!pivot) {
-    const rows = await db
+    return db
       .select()
       .from(sessionMessages)
-      .where(eq(sessionMessages.sessionId, sessionId))
+      .where(
+        and(
+          eq(sessionMessages.sessionId, sessionId),
+          not(like(sessionMessages.content, '!%')),
+        ),
+      )
       .orderBy(asc(sessionMessages.createdAt), asc(sessionMessages.id));
-    return rows.filter((r) => !isOoc(r.content));
   }
-  const rows = await db
+  return db
     .select()
     .from(sessionMessages)
-    .where(and(eq(sessionMessages.sessionId, sessionId), gt(sessionMessages.createdAt, pivot.createdAt)))
+    .where(
+      and(
+        eq(sessionMessages.sessionId, sessionId),
+        or(
+          gt(sessionMessages.createdAt, pivot.createdAt),
+          and(
+            eq(sessionMessages.createdAt, pivot.createdAt),
+            gt(sessionMessages.id, pivot.id),
+          ),
+        ),
+        not(like(sessionMessages.content, '!%')),
+      ),
+    )
     .orderBy(asc(sessionMessages.createdAt), asc(sessionMessages.id));
-  return rows.filter((r) => !isOoc(r.content));
 }
 
 interface ExtractorContext {
@@ -115,7 +137,10 @@ async function buildContext(sessionId: string): Promise<ExtractorContext | null>
     inputMessages = pending.slice(0, CHAPTER_SIZE);
   } else {
     mode = 'light';
-    // Light mode reads the LATEST player+master pair (last 2 non-OOC messages).
+    // Light mode reads the last 1–2 non-OOC messages — usually a player/master
+    // pair, but the schema does not guarantee strict alternation (e.g. two
+    // master messages in a row when a tool call splits narration). The
+    // extractor prompt handles whichever shape it gets.
     inputMessages = pending.slice(-2);
   }
   if (inputMessages.length === 0) return null;
@@ -211,14 +236,22 @@ export async function extractMemory(sessionId: string): Promise<void> {
 
     const lastSeenMsgId = ctx.inputMessages[ctx.inputMessages.length - 1]!.id;
     const patch: MemoryPatch = { upserts: raw.upserts, lastSeenMsgId };
-    if (ctx.mode === 'full' && typeof raw.chapterSummary === 'string') {
-      patch.chapter = {
-        chapterIndex: ctx.nextChapterIndex,
-        firstMsgId: ctx.inputMessages[0]!.id,
-        lastMsgId: lastSeenMsgId,
-        messageCount: ctx.inputMessages.length,
-        summary: raw.chapterSummary,
-      };
+    if (ctx.mode === 'full') {
+      if (typeof raw.chapterSummary === 'string' && raw.chapterSummary.length > 0) {
+        patch.chapter = {
+          chapterIndex: ctx.nextChapterIndex,
+          firstMsgId: ctx.inputMessages[0]!.id,
+          lastMsgId: lastSeenMsgId,
+          messageCount: ctx.inputMessages.length,
+          summary: raw.chapterSummary,
+        };
+      } else {
+        console.warn('extractor.full_no_summary', {
+          sessionId,
+          chapterIndex: ctx.nextChapterIndex,
+          messagesPending: ctx.inputMessages.length,
+        });
+      }
     }
 
     try {
