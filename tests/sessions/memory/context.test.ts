@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { sql, eq } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db, pool } from '@/db/client';
 import { ensureUser } from '@/db/users';
 import { saveCharacter } from '@/characters/persist';
