@@ -1,4 +1,3 @@
-import { sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import {
   codexEntities,
@@ -24,21 +23,21 @@ function validate(u: CodexUpsert): void {
 
   if (kind === 'npc') {
     const d = data as CodexNpcData;
-    need(typeof d.description === 'string', 'description');
+    need(typeof d.description === 'string' && d.description.length > 0, 'description');
     need(['alive', 'dead', 'unknown'].includes(d.status), 'status');
     need(['ally', 'neutral', 'hostile', 'unknown'].includes(d.disposition), 'disposition');
     need(Array.isArray(d.tags), 'tags');
   } else if (kind === 'location') {
     const d = data as CodexLocationData;
-    need(typeof d.description === 'string', 'description');
+    need(typeof d.description === 'string' && d.description.length > 0, 'description');
     need(Array.isArray(d.tags), 'tags');
   } else if (kind === 'quest') {
     const d = data as CodexQuestData;
-    need(typeof d.description === 'string', 'description');
+    need(typeof d.description === 'string' && d.description.length > 0, 'description');
     need(['open', 'completed', 'failed', 'abandoned'].includes(d.status), 'status');
   } else if (kind === 'faction') {
     const d = data as CodexFactionData;
-    need(typeof d.description === 'string', 'description');
+    need(typeof d.description === 'string' && d.description.length > 0, 'description');
     need(['ally', 'neutral', 'hostile', 'unknown'].includes(d.pcRelation), 'pcRelation');
   } else if (kind === 'lore_fact') {
     const d = data as CodexLoreFactData;
@@ -46,20 +45,28 @@ function validate(u: CodexUpsert): void {
     need(Array.isArray(d.tags), 'tags');
   } else if (kind === 'named_item') {
     const d = data as CodexNamedItemData;
-    need(typeof d.description === 'string', 'description');
+    need(typeof d.description === 'string' && d.description.length > 0, 'description');
     need(typeof d.magical === 'boolean', 'magical');
   } else if (kind === 'relationship') {
     const d = data as CodexRelationshipData;
     need(typeof d.fromSlug === 'string' && d.fromSlug.length > 0, 'fromSlug');
     need(typeof d.toSlug === 'string' && d.toSlug.length > 0, 'toSlug');
-    need(typeof d.nature === 'string', 'nature');
+    need(typeof d.nature === 'string' && d.nature.length > 0, 'nature');
   } else {
     throw new Error(`patch_invalid:unknown_kind:${String(kind)}`);
   }
 }
 
-/** Apply a memory patch atomically. Throws on validation failure (whole
- * transaction rolls back). Designed to be safe to retry: upserts use
+/** Apply a memory patch atomically.
+ *
+ * Slug contract: the caller (extractor / prompt) is responsible for producing
+ * canonical slugs (lowercase, ASCII, hyphenated). This function does NOT
+ * normalize them — it would obscure debugging when the slug stored differs
+ * from what the LLM emitted. If two upserts in the same patch use slugs that
+ * differ only in case, they are treated as distinct entities.
+ *
+ * Throws BEFORE opening the transaction on shape violations, so no partial
+ * writes are possible. Designed to be safe to retry: upserts use
  * (session_id, kind, slug) as the conflict target; chapters dedup by
  * (session_id, chapter_index). */
 export async function applyPatch(sessionId: string, patch: MemoryPatch): Promise<void> {
@@ -84,7 +91,7 @@ export async function applyPatch(sessionId: string, patch: MemoryPatch): Promise
             name: row.name,
             data: row.data,
             lastSeenMsgId: row.lastSeenMsgId,
-            updatedAt: sql`now()`,
+            updatedAt: new Date(),
           },
         });
     }

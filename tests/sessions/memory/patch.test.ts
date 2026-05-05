@@ -170,4 +170,63 @@ describe('applyPatch', () => {
     const after = await db.select().from(codexEntities).where(eq(codexEntities.sessionId, SESSION_ID));
     expect(after.length).toBe(before.length);
   });
+
+  it('inserts a non-NPC kind (location) on a happy-path call', async () => {
+    await applyPatch(SESSION_ID, {
+      upserts: [
+        {
+          kind: 'location',
+          slug: 'silver-tavern',
+          name: 'Silver Tavern',
+          data: { description: 'Cozy inn at the crossroads.', tags: ['inn', 'town'] },
+        },
+      ],
+      lastSeenMsgId: MSG_B,
+    });
+    const [row] = await db
+      .select()
+      .from(codexEntities)
+      .where(and(eq(codexEntities.sessionId, SESSION_ID), eq(codexEntities.kind, 'location')));
+    expect(row!.slug).toBe('silver-tavern');
+    expect((row!.data as { description: string }).description).toContain('Cozy inn');
+  });
+
+  it('rejects empty description string with patch_invalid error', async () => {
+    await expect(
+      applyPatch(SESSION_ID, {
+        upserts: [
+          {
+            kind: 'location',
+            slug: 'empty-loc',
+            name: 'Empty',
+            data: { description: '', tags: [] },
+          },
+        ],
+        lastSeenMsgId: MSG_B,
+      }),
+    ).rejects.toThrow(/patch_invalid:location:description/);
+  });
+
+  it('chapter insert is idempotent on (session_id, chapter_index)', async () => {
+    // Already inserted chapter 0 in earlier test. Re-running with the same
+    // chapterIndex must NOT duplicate — onConflictDoNothing protects us.
+    await applyPatch(SESSION_ID, {
+      upserts: [],
+      chapter: {
+        chapterIndex: 0,
+        firstMsgId: MSG_A,
+        lastMsgId: MSG_B,
+        messageCount: 2,
+        summary: 'Different summary that should be ignored.',
+      },
+      lastSeenMsgId: MSG_B,
+    });
+    const rows = await db
+      .select()
+      .from(sessionChapters)
+      .where(eq(sessionChapters.sessionId, SESSION_ID));
+    expect(rows).toHaveLength(1);
+    // The original summary is preserved.
+    expect(rows[0]!.summary).toBe('A first encounter.');
+  });
 });
