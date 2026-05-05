@@ -94,3 +94,48 @@ describe('GeminiProvider', () => {
     expect(args.model).toBe('gemini-2.5-flash');
   });
 });
+
+describe('GeminiProvider.detectLanguage', () => {
+  it('returns null for trivial text without calling the API', async () => {
+    const provider = new GeminiProvider();
+    const before = generateContent.mock.calls.length;
+    const code = await provider.detectLanguage({ text: 'ok' });
+    expect(code).toBeNull();
+    expect(generateContent.mock.calls.length).toBe(before);
+  });
+
+  it('returns lowercase 2-letter code from Gemini response', async () => {
+    generateContent.mockResolvedValueOnce({
+      candidates: [{ content: { role: 'model', parts: [{ text: 'IT' }] }, finishReason: 'STOP' }],
+      usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 1 },
+    });
+    const provider = new GeminiProvider();
+    const code = await provider.detectLanguage({
+      text: 'Esploro la stanza con cautela e cerco trappole sul pavimento.',
+    });
+    expect(code).toBe('it');
+    const args = generateContent.mock.calls.at(-1)![0] as { model: string };
+    expect(args.model).toBe('gemini-2.5-flash-lite');
+  });
+
+  it('returns null when response is not a 2-letter code', async () => {
+    generateContent.mockResolvedValueOnce({
+      candidates: [{ content: { role: 'model', parts: [{ text: 'italian' }] }, finishReason: 'STOP' }],
+      usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 1 },
+    });
+    const provider = new GeminiProvider();
+    const code = await provider.detectLanguage({
+      text: 'Esploro la stanza con cautela e cerco trappole sul pavimento.',
+    });
+    expect(code).toBeNull();
+  });
+
+  it('returns null when SDK throws', async () => {
+    generateContent.mockRejectedValueOnce(new Error('boom'));
+    const provider = new GeminiProvider();
+    const code = await provider.detectLanguage({
+      text: 'Esploro la stanza con cautela e cerco trappole sul pavimento.',
+    });
+    expect(code).toBeNull();
+  });
+});

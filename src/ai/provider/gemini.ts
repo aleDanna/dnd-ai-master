@@ -16,9 +16,18 @@ import {
   normalizeGeminiUsage,
   type GeminiResponse,
 } from './gemini-adapter';
+import { recordUsage } from '@/ai/master/usage';
 
 const MASTER_MODEL = process.env.GEMINI_MASTER_MODEL ?? 'gemini-2.5-pro';
 const LANGUAGE_MODEL = process.env.GEMINI_LANGUAGE_MODEL ?? 'gemini-2.5-flash-lite';
+
+const TRIVIAL_TOKENS = new Set(['ok', 'yes', 'no', 'sì', 'si', 'k', 'np']);
+function isTrivial(text: string): boolean {
+  const cleaned = text.trim().toLowerCase();
+  if (cleaned.length < 5) return true;
+  const words = cleaned.split(/\s+/).filter((w) => w.length > 1 && !TRIVIAL_TOKENS.has(w));
+  return words.length < 5;
+}
 
 let _client: GoogleGenAI | null = null;
 function getClient(): GoogleGenAI {
@@ -60,8 +69,41 @@ export class GeminiProvider implements MasterProvider {
     };
   }
 
-  async detectLanguage(_input: DetectLanguageInput): Promise<string | null> {
-    throw new Error('GeminiProvider.detectLanguage not implemented yet');
+  async detectLanguage(input: DetectLanguageInput): Promise<string | null> {
+    if (isTrivial(input.text)) return null;
+    const client = getClient();
+    try {
+      const response = (await client.models.generateContent({
+        model: LANGUAGE_MODEL,
+        contents: [{ role: 'user', parts: [{ text: input.text }] }],
+        config: {
+          systemInstruction: {
+            parts: [{
+              text:
+                'You are a language detector. Reply with ONLY the ISO 639-1 lowercase 2-letter language code of the user message (e.g. "en", "it", "es"). No prose, no punctuation.',
+            }],
+          },
+          maxOutputTokens: 8,
+        },
+      })) as GeminiResponse;
+      if (input.userId) {
+        await recordUsage({
+          userId: input.userId,
+          sessionId: input.sessionId ?? null,
+          endpoint: 'language',
+          model: LANGUAGE_MODEL,
+          usage: normalizeGeminiUsage(response.usageMetadata),
+        });
+      }
+      const text = response.candidates?.[0]?.content?.parts
+        ?.map((p) => ('text' in p && p.text) || '')
+        .join('')
+        .trim()
+        .toLowerCase() ?? '';
+      return /^[a-z]{2}$/.test(text) ? text : null;
+    } catch {
+      return null;
+    }
   }
 
   async proposeWizard(_input: ProposeWizardInput): Promise<ProposeWizardOutput> {
@@ -69,5 +111,3 @@ export class GeminiProvider implements MasterProvider {
   }
 }
 
-// Suppress unused-variable warning — LANGUAGE_MODEL is reserved for Tasks 11/12.
-void LANGUAGE_MODEL;
