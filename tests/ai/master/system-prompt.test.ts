@@ -10,6 +10,7 @@ import {
 const baseInput = {
   srdContext: '## SRD\n(stub)',
   handbook: '# DM Handbook\n(stub)',
+  worldLore: '# World Lore\n(stub)',
   characterMonoSpace: '{}',
   scene: '(no scene)',
   language: null,
@@ -83,6 +84,42 @@ describe('buildMasterSystemPrompt — scene illustrations', () => {
     const out = buildMasterSystemPrompt({ ...baseInput });
     const text = out.system.map((b) => b.text).join('\n');
     expect(text).not.toMatch(/generate_scene_image/);
+  });
+});
+
+describe('buildMasterSystemPrompt — rewards mandate', () => {
+  it('always includes the MASTER_REWARDS_MANDATE block, regardless of other settings', () => {
+    const out = buildMasterSystemPrompt(baseInput);
+    const text = out.system.map((b) => b.text).join('\n\n');
+    // Anchor phrases from the mandate.
+    expect(text).toMatch(/Rewards at the end of every dungeon/i);
+    expect(text).toMatch(/CRITICAL — do not skip/i);
+    expect(text).toMatch(/MUST narrate a tangible reward/i);
+    expect(text).toMatch(/dungeon-end checklist/i);
+    // The mandate must be a CACHED block, since it ships on every turn.
+    const mandateBlock = out.system.find((b) => b.text.includes('Rewards at the end of every dungeon'));
+    expect(mandateBlock?.cache_control).toEqual({ type: 'ephemeral' });
+  });
+
+  it('positions the rewards mandate before the SRD context (priority signal)', () => {
+    const out = buildMasterSystemPrompt(baseInput);
+    const texts = out.system.map((b) => b.text);
+    const mandateIdx = texts.findIndex((t) => t.includes('Rewards at the end of every dungeon'));
+    const srdIdx = texts.findIndex((t) => t.includes(baseInput.srdContext));
+    expect(mandateIdx).toBeGreaterThanOrEqual(0);
+    expect(srdIdx).toBeGreaterThanOrEqual(0);
+    expect(mandateIdx).toBeLessThan(srdIdx);
+  });
+});
+
+describe('buildMasterSystemPrompt — world & lore block', () => {
+  it('embeds the worldLore string as a cached block', () => {
+    const worldLore = '# World Lore (TEST MARKER 7be4)\n\n## 1. Cosmology\nstub';
+    const out = buildMasterSystemPrompt({ ...baseInput, worldLore });
+    const texts = out.system.map((b) => b.text);
+    const idx = texts.findIndex((t) => t.includes('TEST MARKER 7be4'));
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(out.system[idx]!.cache_control).toEqual({ type: 'ephemeral' });
   });
 });
 

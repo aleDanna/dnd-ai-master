@@ -6,6 +6,11 @@ vi.mock('@google/genai', () => {
     GoogleGenAI: class FakeGenAI {
       models = { generateContent };
     },
+    // The provider uses FunctionCallingConfigMode.ANY; the actual SDK
+    // exports a TypeScript enum whose runtime value is the string "ANY".
+    // The mock just needs an object with that property so the provider's
+    // `mode: FunctionCallingConfigMode.ANY` assignment doesn't read undefined.
+    FunctionCallingConfigMode: { ANY: 'ANY', NONE: 'NONE', AUTO: 'AUTO', MODE_UNSPECIFIED: 'MODE_UNSPECIFIED' },
   };
 });
 

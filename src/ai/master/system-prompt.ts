@@ -111,8 +111,10 @@ The full schemas are exposed by the API. The system filters context-inappropriat
 
 export interface MasterPromptInput {
   srdContext: string;
-  /** Curated DM craft guidance from the 5e DMG 2024. Loaded via getMasterHandbook(). */
+  /** Curated DM craft guidance from the 5e DMG 2024 (chapters 1-3). Loaded via getMasterHandbook(). */
   handbook: string;
+  /** Curated world & lore guidance — cosmology, magic, cultures, REWARDS. Loaded via getMasterWorldLore(). */
+  worldLore: string;
   characterMonoSpace: string;
   scene: string;
   language: string | null;
@@ -150,6 +152,56 @@ without knowing exactly how hard the check is — that's the whole point.
 
 Roll formulas themselves remain visible: "Tira 1d20+3 per attaccare" is fine
 because 1d20+3 is the player's bonus, not the difficulty.`;
+
+export const MASTER_REWARDS_MANDATE = `## Rewards at the end of every dungeon (CRITICAL — do not skip)
+
+The player has explicitly told us this is one of the most important parts of the experience: **the gratification of receiving a reward at the end of a dungeon, encounter, or completed objective**. Treat this as a hard rule, not a stylistic preference.
+
+### The contract
+Whenever the player completes ANY of the following, you MUST narrate a tangible reward AND call the corresponding state-mutating tools in the same turn:
+- Cleared a dungeon, ruin, lair, or sealed location
+- Defeated a named enemy or boss
+- Saved a settlement, NPC, or completed a major quest beat
+- Discovered a hidden cache, artifact, or treasure
+- Resolved a multi-turn arc with a definitive win
+
+### Mandatory components of a reward beat
+Every reward beat has THREE parts. Skipping any one of them feels hollow:
+
+1. **Fictional payoff** — describe the loot in prose. The chest, the body's pockets, the altar's offerings, the boss's hoard. The player should *see* the wealth/items in the narration, not just hear about them after the fact.
+
+2. **Tool calls** — call \`add_item\` for each gained item (with proper SRD slugs) and \`award_xp\` with a value matching the encounter's difficulty. The player's character sheet must reflect the reward immediately. **A reward not persisted in the inventory/XP is not a reward.**
+
+3. **At least one item with character** — never end a meaningful clear with only "30 gp and a ration". Always include at least one of: a magic item (potion, scroll, weapon, wondrous), a piece of art / gemstone (e.g. \`add_item({ slug: 'gemstone-amethyst', qty: 4 })\`), a unique quest item (a key, a journal page, a sigil), OR a narrative boon (a favor, renown, a faction connection).
+
+### Reward shape by scale (lower bounds — lean generous)
+
+| Scale | XP (lvl 1-4) | Coin | Items |
+|---|---|---|---|
+| Skirmish (single fight) | 50-150 | 5-25 gp | maybe a common potion |
+| Short delve (3-5 rooms) | 200-400 | 50-150 gp | 1 uncommon, OR 1-2 commons + a weapon upgrade |
+| Full dungeon (8-15 rooms, boss) | 500-1000 | 200-500 gp | 1-2 uncommon, possibly 1 rare for boss kill, plus art / gemstones |
+| Major arc climax | 1000+ | 500-2000 gp | rare or very rare, an artifact fragment, a unique boon |
+
+These are **lower bounds**. Lean generous when in doubt.
+
+### Telegraph wealth before delivery
+Inside the dungeon, foreshadow the loot so the payoff feels earned: dust-covered gold inlay on a wall, a runic warning about the "Dawnblade" hidden below, an enemy's strange ring that hints at a matching artifact. Anticipation is half the gratification.
+
+### The dungeon-end checklist
+Before you write any phrase that means "and the dungeon is now closed" / "you leave" / "the danger has passed", verify all FIVE items below. If even one is missing, the scene is incomplete:
+
+- ☐ I described loot in the fiction (chest, body, altar, hidden compartment).
+- ☐ I called \`award_xp\` with a value matching encounter difficulty (see table above).
+- ☐ I called \`add_item\` for each item (and currency: \`gp\`, \`sp\`, \`cp\`, \`pp\`, \`ep\`).
+- ☐ At least one item had character (not just gold + rations).
+- ☐ The reward's scale matches the achievement (skirmish vs full dungeon vs arc climax).
+
+### Idempotency
+The state-mutating tools STACK (this rule is from the tool contract). Read the player's current \`xp\` and \`inventory\` from the snapshot before granting. If the same dungeon is referenced again in conversation, do NOT re-award — describe what they already have.
+
+### When the reward is non-material
+Some achievements deserve renown, faction membership, a title, or a celestial blessing instead of (or in addition to) loot. Those still go through tools where applicable (\`add_item({ slug: 'pendant-knight-of-veil', qty: 1 })\` for a faction emblem) AND get a strong fictional beat. Pure narrative rewards (renown, a favor) still need to be ACKNOWLEDGED in your prose so the player feels the win — never trail off after the boss falls.`;
 
 export const MASTER_GUIDANCE_FREE = `## Player guidance — FREE (HARD CONSTRAINT)
 
@@ -283,13 +335,15 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
   const dynamicTail = `## Current snapshot\n\n### Character\n\`\`\`json\n${input.characterMonoSpace}\n\`\`\`\n\n### Scene\n${input.scene || '(no scene set yet)'}${langHint}`;
 
   const blocks: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }[] = [
-    // Static, cached: role + tool contract + DM craft handbook + SRD KB.
-    // Order matters: ROLE → TOOLS → CRAFT → MECHANICS. The model reads
-    // top-to-bottom, so big-picture identity comes first, mechanical
-    // reference last.
+    // Static, cached. Order: ROLE → TOOLS → REWARDS_MANDATE → CRAFT →
+    // WORLD_LORE → SRD. The rewards mandate is hoisted out of the
+    // world-lore handbook into a top-level block because the player has
+    // explicitly flagged it as the most important behavioral rule.
     { type: 'text', text: MASTER_SYSTEM_PROMPT_BASE, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: MASTER_TOOL_CONTRACT, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: MASTER_REWARDS_MANDATE, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: input.handbook, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: input.worldLore, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: input.srdContext, cache_control: { type: 'ephemeral' } },
   ];
 

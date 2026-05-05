@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, FunctionCallingConfigMode } from '@google/genai';
 import type {
   CompleteMessageInput,
   CompleteMessageOutput,
@@ -118,7 +118,7 @@ export class GeminiProvider implements MasterProvider {
         tools: [{ functionDeclarations: [tool] }],
         toolConfig: {
           functionCallingConfig: {
-            mode: 'ANY',
+            mode: FunctionCallingConfigMode.ANY,
             allowedFunctionNames: [input.toolDefinition.name],
           },
         },

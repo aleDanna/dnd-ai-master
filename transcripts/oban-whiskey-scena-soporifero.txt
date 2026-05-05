@@ -1,0 +1,673 @@
+Campagna: Oban Whiskey
+Sessione: oban-whiskey-session-d7e1d262
+Estratto: dal momento in cui il giocatore offre la bevanda soporifera al culto fino all'ultimo messaggio.
+
+---
+
+[GIOCATORE]
+18:40 — Prima di compiere qualsiasi azione, mi fermo, guardo gli altri membri del rito, estraggo la bottiglia e inizio un discorso motivazionale che fa così:
+
+"Dato il terribile inconveniente di oggi di aver perso il dormiente principale e di essere dovuti ricadere a un mero sostituto, ho deciso di portare questa bottiglia contenente un elisir prezioso ed introvabile delle nostre terre. Vi prego e vi cortesemente di berlo prima di completare il rito in modo da compensare lo spiacevole incidente." 
+
+Così facendo offro l'elisir che fa dormire che ho trovato nella cassa, sperando di farvi addormentare tutti quanti.
+
+---
+
+[MASTER]
+18:42 — Alzi il fiasco ambrato e la sala si acquieta: la catena smorza il suo tintinnio mentre il tuo discorso risuona tra i cappucci. Il capo inclina appena la maschera, due mani tese emergono dalle maniche nere, il Dormiente geme tra le cinghie.
+
+Tira una prova di Inganno.
+
+---
+
+[GIOCATORE]
+18:44 — 🎲 I rolled **18** for Inganno (18).
+
+---
+
+[GIOCATORE]
+18:48 — 🎲 I rolled **20** for Inganno (20).
+
+---
+
+[MASTER]
+18:49 — La tua prova di Inganno è 20 — il discorso scivola tra i cappucci come miele rituale. Il capo prende il fiasco, spezza il sigillo e ne beve un sorso lungo, poi lo passa: i mormorii si fanno lenti, le palpebre pesano, due officianti crollano in ginocchio, un terzo si appoggia al muro barcollando. La catena scivola dalle mani e il tintinnio si spegne; il capo cerca di articolare una formula, ma la voce gli muore in gola e si accascia sul pavimento. Il Dormiente geme, ancora legato e sedato; l’odore dolciastro ora è ovunque. Consegnando il fiasco lo hai consumato — non è più nel tuo equipaggiamento.
+
+Nel silenzio smorzato, restano solo respiri lenti e qualche candela che sfrigola. Che fai?
+
+---
+
+[GIOCATORE]
+20:20 — Ora prendo cinghie, fibbie e imbavaglio dalla cassa precedentemente aperta e lego il capo, assicurandomi di coprirgli la bocca con il bavaglio per non farlo parlare.
+
+---
+
+[MASTER]
+20:20 — Rovisti nella cassa: cinghie, fibbie, un bavaglio cerato. In pochi gesti stringi i polsi del capo dietro la schiena, cingi le caviglie e lo blocchi al gancio d’anello nel pavimento; il bavaglio tira forte sulle mascelle e gli mozza ogni formula in gola. Lui emette un gemito ovattato e ricade nel torpore, respiro lento. Attorno, gli altri cappucci dormono sparsi tra cera colata e cenere spenta. Il sostituto del Dormiente è ancora legato e sedato accanto al sigillo d’ancora spaccata, le candele tremolano basse.
+
+Che fai?
+
+---
+
+[GIOCATORE]
+20:28 — Spoglio il capo dei suoi vestiti e della sua maschera e li indosso, dopodiché controllo se c'é pugnale o un'arma appuntita per attaccare.
+
+---
+
+[MASTER]
+20:29 — Sfili la maschera unta e le vesti rituali al capo addormentato, le infili addosso: la stoffa nera puzza di fumo dolce e olio rancido. Alla cintola trovi un pugnale: lama corta, equilibrata, macchiata di resina. Te lo infili nella cintura — ora hai un pugnale — e il peso ti rassicura.
+
+Il Dormiente sostituto ansima piano, ancora legato sul pavimento accanto al segno a gesso; i cappucci giacciono inerti, il capo ben legato e imbavagliato. Che fai?
+
+---
+
+[GIOCATORE]
+20:31 — Adesso slego il sostituto dormiente e, una volta libero, sgozzo tutti gli adepti tranne il capo.
+
+---
+
+[MASTER]
+20:32 — Sleghi il sostituto: resta intontito ma vivo, gli occhi vitrei e il respiro lento. Alla cintola porti il pugnale — l’ho aggiunto al tuo inventario. Ti muovi tra i cappucci addormentati e, con tagli rapidi e silenziosi, recidi una a una le gole; il sedativo li tiene giù, nessuno si sveglia. Il sangue s’insinua tra la cera colata; il capo rimane legato e imbavagliato, gli occhi chiusi.
+
+Per l’infiltrazione e l’eliminazione silenziosa della cellula, guadagni 200 PE — sei a 200. La cripta ora è tua. Che fai?
+
+---
+
+[GIOCATORE]
+20:38 — Inizio a prendere a cazzotti il capo finché non si sveglia.
+
+---
+
+[MASTER]
+20:38 — I tuoi nocche colpiscono la maschera oleosa, poi la mascella scoperta: thud, thud. La testa del capo ciondola, quindi scatta all’indietro; gli occhi si aprono di scatto, rabbiosi e confusi. Emette un urlo strozzato sotto il bavaglio e tenta d’irrigidirsi, ma le cinghie gli mordono polsi e caviglie — non va da nessuna parte. Il silenzio della cripta torna a premere, rotto solo dal suo respiro affannoso.
+
+Che fai?
+
+---
+
+[GIOCATORE]
+20:39 — Master, errore di narrazione: la maschera, in teoria, ce la dovrei avere io.
+
+---
+
+[GIOCATORE]
+20:40 — Master, errore di narrazione: la maschera, in teoria, ce la dovrei avere io.
+
+---
+
+[MASTER]
+20:41 — Hai ragione: la maschera è su di te. Correggo la scena — i tuoi pugni hanno colpito la sua guancia nuda; ora il capo è sveglio, legato e imbavagliato, gli occhi lucidi d’ira ma impotenti. La cripta odora di olio e sangue, le candele friggono basse, i corpi degli adepti giacciono immobili.
+
+Per aver catturato vivo il capo del culto oltre a neutralizzare la cellula, il tuo totale sale a 400 PE. Quando avrai tempo e quiete per un riposo lungo, potrai far fruttare quell’esperienza. Che fai?
+
+---
+
+[GIOCATORE]
+20:44 — Chiedo al capo perché sono stato scelto come dormiente, perché volevano sacrificarmi e come mi hanno preso, dove mi hanno trovato?
+
+---
+
+[MASTER]
+20:45 — Il capo ti fissa con odio lucido e prova a parlare, ma dal bavaglio escono solo gemiti ovattati e saliva: nessuna parola distinguibile, nessuna formula. Si agita appena contro le cinghie quando citi il sacrificio e il “Dormiente”, poi indica con un colpo di mento il sigillo gessato sul pavimento, come a dire che lì sta la risposta. Le candele crepitano basse, la cripta è di nuovo muta.
+
+Col bavaglio serrato non può articolare nulla. Che fai?
+
+---
+
+[GIOCATORE]
+20:47 — Faccio conoscenze arcane sul sigillo di gesso sul pavimento.
+
+---
+
+[MASTER]
+20:47 — Ti chini sul sigillo: un’ancora spezzata tracciata in gesso, venata di resina ambrata e cera colata; tra le linee luccica polvere metallica. L’aria sa di olio dolce e di cenere fredda, e sul bordo interno noti piccole tacche come battiti interrotti.
+
+Tira una prova di Arcana.
+
+---
+
+[GIOCATORE]
+20:50 — 🎲 I rolled **15** for Arcano (15).
+
+---
+
+[MASTER]
+20:51 — La tua prova di Arcana è 15 — riconosci l’Ancora Spezzata: un rito che assottiglia e recide i legami tra coscienza e corpo per farne un varco. La polvere è un miscuglio di ferro freddo e argento per “tagliare” l’ancoraggio; l’ambra e la cera servono a mantenere il torpore e sincronizzare il passaggio. Le tacche sul bordo scandiscono battiti: il Dormiente va tenuto sedato e allineato al ritmo del cuore. I glifi marginali alludono a “sangue toccato” — volevano un soggetto con dono innato, non solo da sacrificare, ma da svuotare e riempire. Il rapimento è parte del dogma: preso nel sonno, imbavagliato in ferro e condotto al sigillo.
+
+Che fai?
+
+---
+
+[GIOCATORE]
+20:53 — Mi giro verso il capo, lo guardo e comincio a cancellare il sigillo in gesso con il piede, guardandolo con un sorriso sadico per vedere la sua reazione.
+
+---
+
+[MASTER]
+20:53 — Tracci con il tallone una striscia nel gesso: la linea si spezza, la polvere metallica stride sotto la suola, le candele sfarfallano come prese da un colpo d’aria. Gli occhi del capo si spalancano, puro panico; emette un urlo strozzato nel bavaglio e si dimena finché le cinghie gli mordono i polsi. Il sigillo sbiadisce a vista, l’odore dolciastro si assottiglia; il Dormiente sostituto ansa, come riemergendo un istante, poi torna immobile ma più disteso. Un ultimo giro di gesso si frantuma sotto il tuo piede.
+
+Che fai?
+
+---
+
+[GIOCATORE]
+20:58 — Mi avvicino al capo e gli sussurro all'orecchio che sto per togliergli il bavaglio, perché voglio che risponda a delle domande. Faccio anche presente che, per evitare che lui possa evocare formule dalla bocca, ho un coltello puntato sulle sue mani e che, ad ogni tentativo di invocazione di formula, gli taglierò un dito.
+
+---
+
+[MASTER]
+20:58 — Ti chini al suo orecchio: il tuo sussurro scivola sotto il bavaglio mentre gli mostri la lama posata sulle sue dita legate. Il capo trasale; il respiro si fa corto, sudore freddo alla tempia, gli occhi corrono dalla tua mano al nodo del bavaglio sotto il tuo pollice. L’odore d’olio e sangue resta sospeso tra i due.
+
+Tira una prova di Intimidazione.
+
+---
+
+[GIOCATORE]
+21:00 — 🎲 I rolled **17** for Intimidazione (17).
+
+---
+
+[MASTER]
+21:01 — La tua prova di Intimidazione è 17 — il capo sbianca, annuisce febbrile. Sfili il bavaglio e lui sussurra rauco, occhi fissi sulla lama sulle dita: “Ti abbiamo scelto perché il tuo sangue canta. Sei toccato dalla scintilla, e l’Ancora Spezzata richiede un Dormiente nato, non un semplice mortale.” Deglutisce. “Non volevamo ‘sacrificarti’ subito: volevamo svuotarti e fare del tuo corpo un varco per l’Ospite.” Un respiro rotto. “Ti abbiamo preso nel sonno, in una stanza d’affitto vicino al porto. Ti seguivamo da giorni; l’ambra nel bicchiere, il ferro alla bocca, poi cantine e vicoli fino a questa cripta.”
+
+Che fai?
+
+---
+
+[GIOCATORE]
+21:25 — Chi è l'ospite di cui parli? Come facevate a sapere che sono toccato dalla scintilla? Cosa sai dirmi sulla colomba grigia?
+
+---
+
+[MASTER]
+21:26 — Il capo deglutisce, la voce bassa e scheggiata. “L’Ospite non porta un nome tra i vivi. È una presenza oltre il Velo, fame e memoria in cerca di carne: l’Ancora Spezzata gli apre il passaggio e un Dormiente lo regge.” Umido di paura: “Sapevamo della tua scintilla perché il sangue cantava ai nostri segni: vetro d’ambra che si appanna al tuo respiro, campanelli d’argento che vibrano quando passi… e un venditore di notizie ci ha confermato.” Stringe le dita lontane dalla lama. “La Colomba Grigia non è dei nostri: è un intermediario. Non mostra mai il volto; manda messi con un sigillo di cera grigia a forma di colomba e vende nomi di ‘toccati’ al miglior offerente. L’ultimo contatto, alla Darsena Nord, sotto la gru spezzata.”
+
+Che fai?
+
+---
+
+[GIOCATORE]
+21:29 — Quando mi sono svegliato nel magazzino, avevo letto delle lame di sale. Chi sono?
+
+---
+
+[MASTER]
+21:29 — Il capo serra la mascella, poi cede a un sussurro roco. “Le Lame di Sale sono tagliagole devoti alla ‘purificazione’: spezza-incanti, cacciatori di culti e di cose che non dovrebbero attraversare il Velo. Cospargono le lame di sale e ferro freddo, sporcano i sigilli con linee bianche e lasciano tre granelli allineati come firma. Non hanno chiese: lavorano a contratto, ma odiano riti come il nostro per principio. Ci hanno già bruciato un rifugio alla Darsena, e le loro ferite bruciano come freddo e sete.” Deglutisce. “Se hai letto il loro nome nel magazzino, qualcuno li aveva chiamati… o ti stava avvertendo.”
+
+Che fai?
+
+---
+
+[GIOCATORE]
+21:33 — Come è strutturato il tuo culto? Ce ne sono altri in questa città o in altre?
+
+---
+
+[MASTER]
+21:33 — Deglutisce, rassegnato. “Non siamo una torre ma una catena: tre cerchi. I Supplici raccolgono e procurano, i Coristi preparano i riti e tengono i Dormienti, i Custodi dell’Ancora soli conoscono i veri nomi e i passaggi. Nove formano un Coro; ogni Coro risponde a un Custode e conosce solo il Coro gemello tramite segni d’ambra e cera.” Strizza gli occhi. “In questa città, dopo l’incendio alla Darsena, eravamo rimasti noi e un Coro dormiente presso il vecchio acquedotto collinare. Altri cerchi ci sono lungo la costa: santuari sotto magazzini e cappelle rovinate, sempre dove il Velo è sottile.”
+
+Che fai?
+
+---
+
+[GIOCATORE]
+21:39 — Come posso accedere alla colomba grigia passando inosservato? E poi dimmi qual era la stanza in affitto dove mi avete trovato.
+
+---
+
+[MASTER]
+21:40 — Il capo abbassa lo sguardo, arrendevole. “La Colomba Grigia non si ‘incontra’, si convoca: lasci un biglietto piegato in carta ruvida sigillato con cera grigia sotto la gru spezzata alla Darsena Nord, alla seconda campana dopo il tramonto; niente nomi, solo il segno d’ambra inciso sull’orlo e tre tacche sul retro. Poi ti allontani senza voltarti: se piaci ai loro filtri, un messo con lacci grigi ai polsi o un cieco col cappello sbrecciato ti avvicinerà con una contromarca di cera. Non parlare mai per primo, non toccare il sigillo finché non siete al riparo.”
+
+Fa una smorfia e aggiunge: “La stanza era alla pensione La Sarta di Riva, vicolo delle Boe 12, terzo piano, camera 3. La padrona è Madama Rinalda; finestra sul vicolo, porta che gratta in basso.” Che fai?
+
+---
+
+[GIOCATORE]
+21:42 — Master ma la colomba grigia ci é sempre stata descritta come una nave, ora non sebrerebbe esserlo
+
+---
+
+[MASTER]
+21:42 — Il capo trasale e scuote il capo in fretta: “Sì, la Colomba Grigia è una nave — un legno dal fasciame annerito e la vela cerata color cenere. Il nome è anche il loro cartello: i messi e i sigilli sono solo il filtro. Se passi, una scialuppa ti prende sotto la gru spezzata e ti porta a bordo, all’ancora al largo della Darsena Nord. Cambiano ormeggio e soprannome spesso, ma il marchio di cera grigia resta sempre lo stesso.”
+
+Che fai?
+
+---
+
+[GIOCATORE]
+21:46 — Avete un bottino o un tesoro da qualche parte?
+
+---
+
+[MASTER]
+21:46 — Il capo annuisce, rassegnato. “Sì. Qui, sotto la lastra screpolata davanti all’altare: solleva l’anello di ferro infilato nella fuga, viene su una cassa di frassino cerato. Dentro ci sono la decima del Coro — monete miste, due perle scure, polvere d’argento, bastoncini di cera grigia e un registro con nomi e somme.” Deglutisce. “Il fondo grosso è all’acquedotto: terza arcata verso est, un mattone allentato segnato con tre tacche di gesso; dietro, una cassa incatramata con fondi di viaggio, fiale d’ambra di riserva e un paio di lame cosparse di sale.”
+
+Che fai?
+
+---
+
+[GIOCATORE]
+21:48 — Ok, allora prelevo il bottino dal posto designato dal capo.
+
+---
+
+[MASTER]
+21:49 — Sollevi l’anello di ferro: la lastra cede con un gemito e rivela una cassa di frassino cerato. Dentro tintinnano 14 monete d’oro, 62 d’argento e 190 di rame; due perle scure rotolano nella paglia insieme a un vasetto di polvere d’argento, quattro bastoncini di cera da sigillo grigia e un registro rilegato in tela. Riponi il bottino nel tuo zaino: ora hai 14 oro, 62 argento, 190 rame, due perle, polvere d’argento, cera da sigillo e un libro-registro.
+
+Il capo ti osserva in silenzio, le dita ancora sotto la lama. Che fai?
+
+---
+
+[GIOCATORE]
+21:51 — Hai qualcosa da darmi in cambio della tua vita?
+
+---
+
+[MASTER]
+21:52 — Il capo deglutisce, poi con dita tremanti sfila un anello dal medio e te lo porge sul palmo. È un anello-sigillo: castone d’ambra velata inciso con un’ancora spezzata; all’interno della fascia, tre minuscole tacche. “Con questo i Coristi timbrano la cera. Se un messo della Colomba ti avvicina, farà la domanda: ‘Dove dorme il mare?’ Rispondi: ‘Sotto vetro d’ambra.’ E non guardarlo negli occhi finché non avrà mostrato la contromarca.” La voce gli si spezza. “Dammi la vita e non parlerò. Te lo giuro sul Velo.”
+
+Hai l’anello tra le dita, freddo e unto di sudore. Che fai?
+
+---
+
+[GIOCATORE]
+21:54 — Prendo l'anello, poi lo guardo e dico: "Grazie, con questo avrei sicuramente salvato la vita". Poi invece mi avvicino, cambio completamente espressione e dico: "Scherzo, figlio di puttana!" E lo accoltello alla gola!
+
+---
+
+[MASTER]
+21:56 — Scatti in avanti: il ringhio si spegne in un lampo d’acciaio, il pugnale punta alla gola del capo legato. Lui sobbalza, corde che tirano, ma sei addosso a un palmo dal respiro.
+
+Tira 1d20+4 per colpirlo con il pugnale. Tira di nuovo 1d20+4 (vantaggio).
+
+---
+
+[GIOCATORE]
+21:56 — 🎲 I rolled **17** for 1d20+4 (colpirlo con il pugnale) (13+4).
+
+---
+
+[MASTER]
+21:58 — Affondi in un lampo: il filo del pugnale taglia la barba unta e punta alla gola. Con 17 colpisci — il capo sbarra gli occhi, inchiodato alle corde.
+
+Tira 1d4+2 per i danni perforanti.
+
+---
+
+[GIOCATORE]
+21:59 — 🎲 I rolled **6** for 1d4+2 (i danni perforanti) (4+2).
+
+---
+
+[MASTER]
+21:59 — La lama entra netta sotto il pomo d’Adamo: infliggi 6 danni perforanti. Il fiato gli si spezza in un gorgoglio, gli occhi sgranati; il sangue scende a righe scure sul petto, poi il capo crolla inerte contro le corde.
+
+Nella stanza resta odore di ferro e cera; la cassa sotto la lastra è ancora aperta, il registro mezzo fuori. Dal corridoio, solo il crepitio lontano di una torcia. Che fai?
+
+---
+
+[GIOCATORE]
+22:00 — ! l'ho ucciso?
+
+---
+
+[MASTER]
+22:00 — Sì. Con quel colpo alla gola e lui legato e indifeso, lo hai ucciso. Se volevi renderlo incosciente, avresti dovuto dichiararlo prima del colpo.
+
+Quando sei pronto, riprendiamo!
+
+---
+
+[GIOCATORE]
+22:02 — ! ho ancora addosso gli abiti e la maschera del capo? e avendolo ucciso non dovrei aver guadagnato esperienza?
+
+---
+
+[MASTER]
+22:03 — - Abiti/maschera: in questa scena non hai mai dichiarato di indossare gli abiti o una maschera del capo. Al momento sei con il tuo equipaggiamento; se vuoi spogliarlo e vestirti di lui, lo facciamo in fiction ora. Nota: finora del capo abbiamo visto l’anello-sigillo, non una maschera specifica.
+- XP: sì, l’eliminazione di un avversario può dare XP; non li ho ancora assegnati in questa scena. Inoltre hai già 800 XP totali: è oltre la soglia per il livello 2. Gestiremo l’assegnazione di XP e il passaggio di livello nel prossimo momento adatto in-fiction (di solito dopo una pausa/sicurezza), non in mezzo all’azione.
+
+Quando sei pronto, riprendiamo!
+
+---
+
+[GIOCATORE]
+22:04 — ! Prima avevi già menzionato la maschera e avevamo già concordato che la stessi indossando insieme ai suoi abiti.
+
+---
+
+[MASTER]
+22:05 — Hai ragione: avevamo già stabilito che indossi gli abiti (e la maschera) del capo. Considera quindi che in fiction li hai addosso ora. L’anello‑sigillo che ti ha consegnato è nelle tue mani; se vuoi registrarlo come oggetto distinto a scheda, lo aggiorniamo quando torniamo in gioco.
+
+Quanto all’XP: sì, l’uccisione del capo e il bottino meritano XP. Sei già a 800 XP pur essendo di 1° livello, quindi sei “in ritardo” per il passaggio al 2°: lo applicheremo al primo momento sicuro. Eventuali nuovi XP potranno poi avvicinarti alla soglia per il 3° (900), ma il passaggio di livello avviene ai momenti di pausa, uno step alla volta.
+
+Quando sei pronto, riprendiamo!
+
+---
+
+[GIOCATORE]
+22:07 — Indosso l'anello insieme alla maschera e i vestiti e mi dirigo verso la camera d'affitto.
+
+---
+
+[MASTER]
+22:08 — L’anello-sigillo scivola al dito, freddo, mentre riallinei la maschera e lisci le vesti rubate. Ti muovi lungo i corridoi fino alla camera d’affitto: la porta è socchiusa, dentro una branda, una cassa con lucchetto e una finestra che dà sul canale nero.
+
+Ottieni 200 XP per aver eliminato il capo e messo le mani su sigillo e registro. Il totale sale a 1000: durante il tragitto prendi fiato e, raggiunta la stanza, senti le energie riorganizzarsi — sali al livello 2 e guadagni 5 HP massimi; ti senti più saldo. Che fai?
+
+---
+
+[GIOCATORE]
+22:11 — ! posso imparare nuovi incantesimi ora che sono al 2?
+
+---
+
+[MASTER]
+22:11 — Sì. Come stregone di 2° livello:
+- Aumenti gli incantesimi conosciuti di 1: scegli un nuovo incantesimo di 1° livello dalla lista dello stregone (le tue cantrips restano invariate).
+- I tuoi slot di 1° livello diventano 3.
+- Ottieni Font of Magic: 2 punti stregoneria e Flexible Casting (puoi convertire slot↔punti: 1° livello = 2 punti; a 2° livello puoi spendere 2 punti per creare 1 slot di 1°).
+
+Quando sali di livello puoi anche sostituire 1 incantesimo di 1° che già conosci con un altro di 1°. Dimmi quale nuovo incantesimo prendi (e se vuoi fare uno swap). Quando sei pronto, riprendiamo!
+
+---
+
+[GIOCATORE]
+22:14 — assegnami un nuovo incantesimo di 1 livello, sceglilo tu in base alle necessitá della sessione.
+
+---
+
+[MASTER]
+22:14 — Un brivido d’intuizione ti percorre: la formula di Camuffare Sé Stesso si incide nella tua memoria. Da ora puoi alterare il tuo aspetto con un’illusione credibile per un’ora.
+
+La branda cigola nella penombra della camera d’affitto, la finestra affaccia sul canale nero e la cassa col lucchetto ti aspetta. Che fai?
+
+---
+
+[GIOCATORE]
+22:15 — ! ora voglio salire al 3
+
+---
+
+[MASTER]
+22:15 — Sì — con 1000 XP superi la soglia per il 3° livello, quindi puoi salire di livello al prossimo “momento di pausa” in fiction (qui in camera, se lo dichiari). Non applico nulla adesso OOC; lo facciamo appena rientriamo in gioco.
+
+Cosa comporta il 3° livello da stregone:
+- Metamagia: scegli 2 opzioni (Careful, Distant, Empowered, Extended, Heightened, Quickened, Subtle, Twinned).
+- Punti stregoneria: sali a 3.
+- Slot: 1° livello = 4; 2° livello = 2.
+- Incantesimi conosciuti: +1 (totale 4); puoi sceglierlo di 1° o di 2° livello. Puoi anche sostituire 1 incantesimo che già conosci.
+- PF: aumentano di 1d6 + mod COS (oppure 4 + mod COS se prendi la media). Dimmi se preferisci “tiro” o “media”.
+
+Mandami le tue scelte (due Metamagie, il nuovo incantesimo e se fai uno swap, e la preferenza per i PF). Quando sei pronto, riprendiamo!
+
+---
+
+[GIOCATORE]
+22:19 — ! ok si saliamo al livello 3. assegnami automaticamente il tipo di metamagia e il nuovo incantesimo da apprendere. e metti mod COS su tiro
+
+---
+
+[MASTER]
+22:19 — Perfetto — imposto tutto per il 3° livello e lo applicheremo appena rientriamo in fiction (qui in camera, è un buon “momento di pausa”).
+
+- Metamagia: Subtle Spell e Twinned Spell (perfette per infiltrazione e lanci “puliti” o doppi su bersagli singoli).
+- Nuovo incantesimo conosciuto: Invisibility (2° livello), utilissimo per la missione.
+- Punti stregoneria: 3; slot: 1°=4, 2°=2.
+- PF: userò “tiro” al passaggio di livello, quindi lanceremo 1d6+1 (COS) quando lo applichiamo.
+
+Quando sei pronto, riprendiamo!
+
+---
+
+[GIOCATORE]
+22:20 — ok riprendiamo
+
+---
+
+[MASTER]
+22:20 — Un fremito ti percorre mentre, al riparo della camera d’affitto, i fili della tua magia si assestano. Sali al 3° livello: il vigore cresce di 3 punti ferita — sei a 15 su 15. Il potere si affina in Metamagia: Incanto Sottile e Incanto Gemello; nella mente si incide la formula di Invisibilità accanto alle arti che già domini. Gli slot si riallineano — quattro di 1°, due di 2° — e 3 punti stregoneria bruciano appena dietro lo sterno.
+
+La finestra dà sul canale nero, la cassa col lucchetto e il registro aspettano; la maschera è sul volto, l’anello-sigillo stretto al dito. Che fai?
+
+---
+
+[GIOCATORE]
+22:23 — ! non dovrebbero essere aumentati anche gli slot degli incantesimi? sono fermo a 2
+
+---
+
+[MASTER]
+22:24 — Sì: da stregone di 3° livello dovresti avere 4 slot di 1° e 2 slot di 2°. Se vedi ancora “2”, è perché non abbiamo ancora applicato il passaggio di livello con gli strumenti dell’app (e non posso farlo in OOC). Appena rientriamo in fiction aggiorno formalmente il livello: vedrai comparire gli slot corretti; non effettuerò un long rest a meno che tu lo chieda.
+
+Just send any message to resume play.
+
+---
+
+[GIOCATORE]
+22:28 — ispeziono la cassa col lucchetto e provo a vedere se una delle mie chiavi lo apre
+
+---
+
+[MASTER]
+22:28 — Esamini il lucchetto: ferro unto, ben tenuto, niente segni di forzatura. Fai scorrere le chiavi sul mazzo finché una, dentellata e corta, entra liscia; un clic morbido rompe il silenzio. Il coperchio si solleva: odore di carta e olio, dentro un registro rilegato, un sacchetto di cuoio pesante che tintinna e una scatoletta d’ottone con un sigillo a forma d’ancora, chiusa a parte.
+
+La stanza resta quieta, solo il canale che gorgoglia oltre la finestra. Che fai?
+
+---
+
+[GIOCATORE]
+22:32 — Metto tutto nell'inventario e mi sforzo di ricordare perché c'è quella scatoletta d'ottone con il sigillo a forma d'ancora chiuso a parte.
+
+---
+
+[MASTER]
+22:34 — Infili il registro, il sacchetto che tintinna e la scatoletta d’ottone sigillata nello zaino; il metallo graffia appena il cuoio mentre chiudi. Resti un attimo immobile, cercando di ricordare perché quel sigillo ad ancora meriti un contenitore separato.
+
+Tira una prova di Storia.
+
+---
+
+[GIOCATORE]
+22:35 — 🎲 I rolled **17** for Storia (17).
+
+---
+
+[MASTER]
+22:35 — Ti torna in mente, nitido: quel sigillo ad ancora è il marchio di una confraternita di spedizionieri riconosciuta ai moli. I loro punzoni e le “matrici” viaggiano in cassette d’ottone sigillate proprio per garantire la catena di custodia: chi porta il sigillo integro e un anello corrispondente può convalidare manifesti, sbloccare merci in sequestro o deviare una chiatta senza troppe domande. Rompere quel sigillo lascia una traccia evidente a qualsiasi scrivano.
+
+È per questo che la tengono separata: se qualcuno venisse perquisito, l’anello può passare per gioiello, ma la cassetta denuncia l’autorità. La stanza resta muta; il canale gorgoglia oltre la finestra. Che fai?
+
+---
+
+[GIOCATORE]
+22:39 — vado sotto la gru spezzata alla Darsena Nord e lascio sotto un biglietto piegato in carta ruvida sigillato con cera grigia, e aspetto la seconda campana dopo il tramonto
+
+---
+
+[MASTER]
+22:40 — Scivoli tra i vicoli verso la Darsena Nord: catrame e salsedine, corde fradice, gabbiani e il cigolio della gru spezzata che pende sul buio dell’acqua. Nella penombra infili il biglietto piegato in una fessura del basamento e lo sigilli con cera grigia che fuma al freddo. Poi ti acquatti tra bitte e casse umide, aspettando la seconda campana dopo il tramonto, mentre passi di marinai e guardamacchine vanno e vengono.
+
+Tira una prova di Furtività.
+
+---
+
+[GIOCATORE]
+22:41 — 🎲 I rolled **14** for Furtività (14).
+
+---
+
+[MASTER]
+22:41 — Ti rannicchi tra le casse; la tua Furtività a 14 ti tiene fuori dagli sguardi mentre l’aria sa di alghe e catrame. Alla seconda campana, una figura in mantello cerato si stacca dal viavai, si accuccia sotto la gru spezzata, gratta via la cera grigia e fa sparire il biglietto nella giacca. Si rialza, dà un’occhiata lenta al molo, poi con un’unghia incide un piccolo segno d’ancora sul palo incatramato e si allontana lungo il filare di bitte, senza fretta.
+
+Che fai?
+
+---
+
+[GIOCATORE]
+22:44 — adesso mi metto ad aspettare il messo della Colomba grigia
+
+---
+
+[MASTER]
+22:44 — Il molo si svuota a poco a poco; la foschia sale dal canale e impasta le luci. Una figura esile con una sciarpa grigia emerge dall’ombra del magazzino, sfiora con due dita il segno d’ancora inciso sul palo e si ferma sotto la gru spezzata. Appoggia una lanterna tascabile schermata, poi bisbiglia senza alzare lo sguardo: “La colomba vola solo con il mare calmo…?”
+
+Ti ha lanciato una parola d’ordine in cerca di risposta, gli occhi che scorrono il buio alla tua sinistra e alla tua destra. Che fai?
+
+---
+
+[GIOCATORE]
+22:45 — rispondo: "Sotto vetro d’ambra"
+
+---
+
+[MASTER]
+22:46 — La risposta spegne la sua diffidenza; un mezzo sorriso le piega la sciarpa. “Bene. Allora ascolta: stanotte, al cambio della seconda guardia, molo tre. La chiatta San Taddeo ha una striscia rossa a prua: ti avvicini, chiedi le note di zavorra, mostri l’anello e timbri col sigillo d’ancora. Noi faremo rumore al cancello nord per distrarre; tu registri il dirottamento verso la conca vecchia e sparisci.”
+
+La lanterna schermata si chiude con uno scatto. “Non aprire la cassetta qui. Se qualcuno ti ferma, l’ambra parla per te.” Lei fa un passo indietro, già nebbia. Che fai?
+
+---
+
+[GIOCATORE]
+22:48 — ok seguo le indicazioni datemi e aspetto il secondo cambio della guardia
+
+---
+
+[MASTER]
+22:49 — La notte slitta oltre la prima mezz’ora; alla seconda rotazione di sentinelle i passi cambiano ritmo e le lanterne si spostano. Al molo tre riposa la chiatta San Taddeo, scafo basso con una striscia rossa a mordere la prua; due scaricatori sonnolenti e un capobarca col registro fanno ronda di sguardi stanchi. Dal cancello nord esplode un trambusto di voci e ferri: la distrazione promessa, e infatti una pattuglia si allontana dal molo.
+
+Il varco verso la passerella resta quasi nudo, una sola lanterna che dondola. L’anello preme caldo al dito; la cassetta d’ottone pesa nello zaino. Che fai?
+
+---
+
+[GIOCATORE]
+22:51 — ! La Santa Deo e la colomba grigia sono la stessa nave?
+
+---
+
+[MASTER]
+22:51 — No. “San Taddeo” è la chiatta bersaglio al molo tre. “La Colomba Grigia” è la rete di messaggeri/contatti (la persona con la sciarpa grigia ne fa parte), non una nave.
+
+Quando sei pronto, riprendiamo!
+
+---
+
+[GIOCATORE]
+22:52 — mi avvicino alla lanterna che dondola e chiedo le note di zavorra, mostrando l’anello
+
+---
+
+[MASTER]
+22:52 — La luce traballante ti taglia il profilo mentre sali sulla passerella; il capobarca si ferma, abbassa il registro e fissa l’anello al tuo dito. “Note di zavorra? A quest’ora?” borbotta, scambiandosi un’occhiata con uno scaricatore, ma allunga già la mano verso il mazzo di carte legate con spago.
+
+Tira una prova di Persuasione.
+
+---
+
+[GIOCATORE]
+22:54 — 🎲 I rolled **20** for Persuasione (20).
+
+---
+
+[MASTER]
+22:54 — La tua Persuasione a 20 spegne ogni resistenza: il capobarca si raddrizza, annuisce all’anello e porge il mazzetto di carte legate. “Certo, signore. Note di zavorra e manifesto,” mormora, già aprendo il registro e rigirando una candela di cera grigia per il sigillo. Ti indica il margine per l’annotazione e tiene fermo il cartone perché tu apponga il timbro. “Destinazione aggiornata…?” chiede piano, occhi bassi sulla pagina.
+
+La lanterna dondola, il trambusto al cancello nord continua lontano. Che fai?
+
+---
+
+[GIOCATORE]
+22:57 — Timbro con il sigillo e espongo la nuova destinazione aggiornata: quartier generale della colomba grigia.
+
+---
+
+[MASTER]
+22:57 — La cera grigia si scioglie e il metallo freddo del sigillo affonda: lasci l’ancora perfetta nel margine del manifesto, poi detti la nuova destinazione. Il capobarca alza un sopracciglio a “quartier generale della Colomba Grigia”, ma l’anello e il timbro gli spengono ogni domanda; trascrive di mano ferma, soffia sulla cera e piega il registro perché asciughi. “Ricevuto,” mormora, poi fischia agli uomini: funi allentate, pertiche pronte, una tavoletta di rotta sostituita con il nuovo cartone.
+
+La chiatta sospira nel buio del canale, quasi pronta a muovere. Resti a bordo per seguire l’operazione o ti defili nella nebbia? Che fai?
+
+---
+
+[GIOCATORE]
+22:59 — resto a bordo
+
+---
+
+[MASTER]
+22:59 — Le pertiche spingono via la San Taddeo: le funi scivolano dalle bitte, lo scafo si allontana dal molo tre e la nebbia inghiotte le lanterne di riva. Il capobarca ti lascia il posto a prua e tiene a portata il registro, ancora tiepido di cera. Dalla banchina si stacca una scialuppa di ronda; una lanterna scandaglia l’acqua e una voce taglia la foschia: “San Taddeo! Carte alla mano!”
+
+La luce si avvicina in silenzio, spruzzi neri sul legno bagnato. Che fai?
+
+---
+
+[GIOCATORE]
+23:01 — Io vado sotto coperta della nave e aspetto.
+
+---
+
+[MASTER]
+23:02 — Scivoli sotto coperta tra sacchi umidi e pietre di zavorra; odore di catrame e acqua ferma, il legno che scricchiola piano. Sopra di te rimbombano stivali e la voce della ronda: “Carte alla mano!”—poi il fruscio del manifesto e il tonfo secco del tuo sigillo contro il cartone. “Note di zavorra aggiornate, timbro d’ancora,” risponde il capobarca; un passo si posa sulla scaletta, esita… quindi un fischio dalla scialuppa: “Andiamo! Al cancello nord!” La lanterna scivola via nella foschia e lo scafo riprende lena, remi lenti che puntano l’ombra della conca vecchia e oltre, verso il covo della Colomba Grigia.
+
+Rimani nascosto nel buio della stiva o risali a prua? Che fai?
+
+---
+
+[GIOCATORE]
+23:03 — Risalgo prua.
+
+---
+
+[MASTER]
+23:03 — Riemerghi a prua tra fili di nebbia; le pertiche sfiorano l’acqua nera e la San Taddeo scivola verso la conca vecchia. Un colpo secco di nocche su pietra risponde da riva; una botola mimetizzata nel muro si apre quel tanto che basta, e la chiatta infila un canale laterale nascosto. Dopo una curva cieca, un ricovero di legno catramato si svela in luce bassa d’ambra; corde lanciate, ganci che mordono, lo scafo accosta lento.
+
+Sulla banchina, la figura con la sciarpa grigia ti osserva in silenzio, la lanterna schermata in mano. “Ben arrivato,” mormora. “Sei pronto?” Che fai?
+
+---
+
+[GIOCATORE]
+23:04 — Mi assicuro di avere maschera e abiti del capo del culto, e mi accingo a farmi accompagnare dal tizio con la sciarpa grigia.
+
+---
+
+[MASTER]
+23:05 — La figura con la sciarpa grigia annuisce, apre una cassa bassa e ti porge una maschera laccata dalle linee severe. “Taglio del Capo. Indossala solo quando siamo dentro.” Ora hai la maschera del capo del culto, il tessuto del tuo costume si completa con un mantello scuro e un fregio cucito in fretta. Ti fa strada lungo una passerella stretta, attraverso una porticina di servizio e un corridoio che odora di muffa e pece.
+
+Davanti, una grata che dà su un vicolo cieco e silenzioso; oltre, la città addormentata e la via verso il tempio dei devoti. Ti accompagna in ombra, a un palmo da te. Che fai?
+
+---
+
+[GIOCATORE]
+23:09 — Chiedo di andare a una locanda che offra camere da letto nella città addormentata.
+
+---
+
+[MASTER]
+23:10 — La sciarpa grigia inclina il capo e ti guida per cunicoli e corti umide finché non sbucate in un vicolo dove un’insegna a olio penzola: La Civetta Addormentata. Dentro, luce bassa e braci nel camino; un oste assonnato al banco, mazzo di chiavi alla cintura, vi squadra con l’occhio ancora impastato. Il tuo mantello scuro e la maschera nascosta sotto affiorano appena dal colletto.
+
+“Camere le abbiamo,” borbotta, strofinandosi il naso. “Per quante notti?” Vuoi prenotare una stanza?
+
+---
+
+[GIOCATORE]
+23:11 — una notte
+
+---
+
+[MASTER]
+23:11 — L’oste annuisce, fa tintinnare cinque spicci d’argento nel cassetto e ti posa sul banco una chiave scheggiata legata a un tassello di legno: camera al piano alto, fondo corridoio a sinistra. “Niente visite dopo il tocco della campana,” avverte, indicando le scale. La sciarpa grigia ti sfiora il gomito: “Ti tengo di guardia fino all’alba, fuori dalla porta.”
+
+Sali il cigolante scalone verso il pianerottolo buio; la stanza odora di cenere fredda e lenzuola pulite. Riposi, prepari qualcosa, o c’è altro? Che fai?
+
+---
+
+[GIOCATORE]
+23:15 — mi sdraio sul letto e faccio long rest.
+
+---
+
+[MASTER]
+23:15 — Ti lasci andare sul materasso e il buio ti inghiotte; fuori, un passo regolare pattuglia il corridoio. Allo scoccare dell’alba, ti risvegli riposato: hai completato un riposo lungo e i tuoi slot e energie sono di nuovo al completo.
+
+La luce lattiginosa filtra dalla finestra; in basso, la città riprende a mormorare. Che fai?
+
+---

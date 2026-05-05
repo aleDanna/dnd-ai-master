@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { getMasterHandbook, clearMasterHandbookCache } from '@/ai/master/handbook';
+import { getMasterHandbook, getMasterWorldLore, clearMasterHandbookCache } from '@/ai/master/handbook';
 
 describe('getMasterHandbook', () => {
   beforeEach(() => {
@@ -32,5 +32,32 @@ describe('getMasterHandbook', () => {
     const b = getMasterHandbook();
     expect(a).toEqual(b); // same content
     // Note: identity may differ since the cache was rebuilt.
+  });
+});
+
+describe('getMasterWorldLore', () => {
+  beforeEach(() => {
+    clearMasterHandbookCache();
+  });
+
+  it('loads the curated world & lore handbook from data/master_world_lore.md', () => {
+    const text = getMasterWorldLore();
+    expect(text).toMatch(/^# DM World & Lore Handbook/);
+    // Anchor sections that must remain.
+    expect(text).toMatch(/## 1\. The Multiverse/);
+    expect(text).toMatch(/## 2\. Magic in the World/);
+    expect(text).toMatch(/## 7\. Rewards and Gratification/);
+    expect(text).toMatch(/Sigil/);
+    expect(text).toMatch(/Great Wheel/);
+    // Rewards section must call out mandatory tool calls.
+    expect(text).toMatch(/add_item/);
+    expect(text).toMatch(/award_xp/);
+    expect(text.length).toBeGreaterThan(10000);
+  });
+
+  it('caches the file across calls', () => {
+    const a = getMasterWorldLore();
+    const b = getMasterWorldLore();
+    expect(a).toBe(b);
   });
 });
