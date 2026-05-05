@@ -7,7 +7,12 @@ import {
   isValidTtsVoice,
   type UserPreferences,
 } from '@/lib/preferences';
-import { isKnownProvider, isKnownMasterModel } from '@/lib/ai-models';
+import {
+  isKnownProvider,
+  isKnownMasterModel,
+  isKnownImageProvider,
+  isKnownImageModel,
+} from '@/lib/ai-models';
 import { isMasterGuidanceLevel, isImageStylePreset } from '@/db/schema/users';
 
 export async function GET() {
@@ -95,6 +100,18 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'imageStyleCustom-too-long' }, { status: 400 });
     }
     patch.imageStyleCustom = body.imageStyleCustom;
+  }
+  if ('imageProvider' in body) {
+    if (!isKnownImageProvider(body.imageProvider)) {
+      return NextResponse.json({ error: 'invalid-imageProvider' }, { status: 400 });
+    }
+    patch.imageProvider = body.imageProvider;
+  }
+  if ('imageModel' in body) {
+    if (body.imageModel !== undefined && !isKnownImageModel(body.imageModel)) {
+      return NextResponse.json({ error: 'invalid-imageModel' }, { status: 400 });
+    }
+    patch.imageModel = body.imageModel as string | undefined;
   }
 
   const updated = await updateUserPreferences(userId, patch);

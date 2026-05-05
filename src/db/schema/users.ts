@@ -43,6 +43,10 @@ export interface UserPreferences {
   imageStylePreset?: 'pastel' | 'watercolor' | 'oil' | 'ink' | 'photo' | 'custom';
   /** Free-text style description, used only when imageStylePreset === 'custom'. */
   imageStyleCustom?: string;
+  /** Provider for scene illustration. When unset, falls back to IMAGE_PROVIDER env (default 'openai'). */
+  imageProvider?: 'openai' | 'gemini';
+  /** Specific image model slug. When unset, falls back to provider env default. */
+  imageModel?: string;
 }
 
 export type MasterGuidanceLevel = NonNullable<UserPreferences['masterGuidanceLevel']>;

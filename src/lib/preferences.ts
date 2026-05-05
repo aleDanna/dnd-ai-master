@@ -23,6 +23,16 @@ function envDefaultMasterModel(provider: 'anthropic' | 'openai' | 'gemini'): str
   return process.env.ANTHROPIC_MASTER_MODEL ?? 'claude-sonnet-4-5';
 }
 
+function envDefaultImageProvider(): 'openai' | 'gemini' {
+  const raw = (process.env.IMAGE_PROVIDER ?? '').trim().toLowerCase();
+  return raw === 'gemini' ? 'gemini' : 'openai';
+}
+
+function envDefaultImageModel(provider: 'openai' | 'gemini'): string {
+  if (provider === 'gemini') return process.env.GEMINI_IMAGE_MODEL ?? 'gemini-2.5-flash-image';
+  return process.env.OPENAI_IMAGE_MODEL ?? 'gpt-image-1';
+}
+
 export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   ttsVoice: 'onyx',
   ttsAutoplay: false,
@@ -41,6 +51,8 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   imageGenerationEnabled: false,
   imageStylePreset: 'pastel',
   imageStyleCustom: '',
+  imageProvider: 'openai',
+  imageModel: 'gpt-image-1',
 };
 
 export async function getUserPreferences(userId: string): Promise<UserPreferences> {
@@ -59,6 +71,8 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
   const imageGenerationEnabled = prefs.imageGenerationEnabled ?? DEFAULT_PREFERENCES.imageGenerationEnabled;
   const imageStylePreset = prefs.imageStylePreset ?? DEFAULT_PREFERENCES.imageStylePreset;
   const imageStyleCustom = prefs.imageStyleCustom ?? DEFAULT_PREFERENCES.imageStyleCustom;
+  const imageProvider = prefs.imageProvider ?? envDefaultImageProvider();
+  const imageModel = prefs.imageModel ?? envDefaultImageModel(imageProvider);
   return {
     ttsVoice: prefs.ttsVoice ?? DEFAULT_PREFERENCES.ttsVoice,
     ttsAutoplay: prefs.ttsAutoplay ?? DEFAULT_PREFERENCES.ttsAutoplay,
@@ -70,6 +84,8 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
     imageGenerationEnabled,
     imageStylePreset,
     imageStyleCustom,
+    imageProvider,
+    imageModel,
   };
 }
 
