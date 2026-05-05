@@ -185,6 +185,51 @@ function parseModelOutput(text: string): RawPatch | null {
   }
 }
 
+/** Wipe existing memory and rebuild it from scratch by running extractMemory
+ * sequentially until no more chapters can be produced from the message
+ * history. Streams progress events. Idempotent: callers can re-trigger after
+ * a partial failure.
+ *
+ * Lock semantics: this function briefly acquires the per-session advisory
+ * lock to claim ownership, then unlocks before each extractMemory call (so
+ * extractMemory can acquire it itself), then re-acquires after each call.
+ * This prevents another concurrent extractor (e.g. a player turn arriving
+ * mid-rebuild) from interleaving its own extraction with ours. */
+export async function* rebuildMemoryStream(
+  sessionId: string,
+): AsyncGenerator<{ event: 'chapter_done' | 'complete' | 'error'; data: unknown }, void, unknown> {
+  const acquired = await tryLock(sessionId);
+  if (!acquired) {
+    yield { event: 'error', data: { reason: 'locked' } };
+    return;
+  }
+  try {
+    // Wipe existing memory for this session.
+    await db.delete(codexEntities).where(eq(codexEntities.sessionId, sessionId));
+    await db.delete(sessionChapters).where(eq(sessionChapters.sessionId, sessionId));
+
+    // Count total non-OOC messages → totalChapters.
+    const allMsgs = await getNonOocMessagesAfter(sessionId, null);
+    const totalChapters = Math.floor(allMsgs.length / CHAPTER_SIZE);
+
+    for (let i = 0; i < totalChapters; i++) {
+      // Release lock so extractMemory can acquire it itself.
+      await unlock(sessionId);
+      await extractMemory(sessionId);
+      // Re-acquire ownership for the next iteration.
+      const re = await tryLock(sessionId);
+      if (!re) {
+        yield { event: 'error', data: { reason: 'lock_lost' } };
+        return;
+      }
+      yield { event: 'chapter_done', data: { index: i, total: totalChapters } };
+    }
+    yield { event: 'complete', data: { totalChapters } };
+  } finally {
+    await unlock(sessionId);
+  }
+}
+
 export async function extractMemory(sessionId: string): Promise<void> {
   const acquired = await tryLock(sessionId);
   if (!acquired) return;
