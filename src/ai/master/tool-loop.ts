@@ -1,6 +1,6 @@
 import type { ActionResult, EngineState, Mutation, DiceRoll } from '@/engine/types';
 import type { AnthropicTool } from '@/engine/types';
-import { TOOL_HANDLERS, TOOL_DEFINITIONS } from '@/engine';
+import { TOOL_HANDLERS, TOOL_DEFINITIONS, TOOL_HANDLERS_DB } from '@/engine';
 import { TURN_TOOL_CALL_CAP, TURN_TIMEOUT_MS, type TurnEvent } from '@/sessions/types';
 import type {
   MasterProvider,
@@ -112,16 +112,27 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
       toolCallCount += 1;
       emit({ type: 'tool_use_start', toolUseId: tu.id, name: tu.name, input: tu.input });
 
-      const handler = TOOL_HANDLERS[tu.name];
+      const syncHandler = TOOL_HANDLERS[tu.name];
+      const dbHandler = TOOL_HANDLERS_DB[tu.name];
       let result: ActionResult;
-      if (!handler) {
-        result = { ok: false, error: `unknown_tool:${tu.name}`, rolls: [], mutations: [] };
-      } else {
+      if (syncHandler) {
         try {
-          result = handler(state, tu.input);
+          result = syncHandler(state, tu.input);
         } catch (e) {
           result = { ok: false, error: e instanceof Error ? e.message : String(e), rolls: [], mutations: [] };
         }
+      } else if (dbHandler) {
+        if (!sessionId) {
+          result = { ok: false, error: 'missing_session_for_db_tool', rolls: [], mutations: [] };
+        } else {
+          try {
+            result = await dbHandler({ sessionId }, tu.input);
+          } catch (e) {
+            result = { ok: false, error: e instanceof Error ? e.message : String(e), rolls: [], mutations: [] };
+          }
+        }
+      } else {
+        result = { ok: false, error: `unknown_tool:${tu.name}`, rolls: [], mutations: [] };
       }
 
       emit({
