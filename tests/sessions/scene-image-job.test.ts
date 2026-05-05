@@ -5,7 +5,7 @@ import { ensureUser } from '@/db/users';
 import { saveCharacter } from '@/characters/persist';
 import { emptyWizardState } from '@/characters/types';
 import { sessions, sessionState } from '@/db/schema';
-import { generateAndPersist, __setOpenAIClientForTest } from '@/sessions/scene-image-job';
+import { generateAndPersist, __setOpenAIClientForTest, __setGeminiClientForTest } from '@/sessions/scene-image-job';
 
 const TEST_USER = 'user_sceneimg_' + Date.now();
 let SESSION_ID = '';
@@ -112,5 +112,37 @@ describe('generateAndPersist', () => {
     const [row] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
     expect(row!.sceneImageVersion).toBe(5);
     expect(row!.sceneImagePrompt).toBe('newer');
+  });
+
+  it('dispatches to Gemini when provider="gemini"', async () => {
+    // Reset the row to a known version (earlier tests left it at 5).
+    await db.update(sessionState).set({ sceneImageVersion: 5, sceneImagePrompt: 'newer' }).where(eq(sessionState.sessionId, SESSION_ID));
+    const fakeBytes = Buffer.from([0xab, 0xcd]);
+    const fakeGemini = {
+      models: {
+        generateContent: vi.fn().mockResolvedValue({
+          candidates: [
+            {
+              content: {
+                role: 'model',
+                parts: [{ inlineData: { mimeType: 'image/png', data: fakeBytes.toString('base64') } }],
+              },
+            },
+          ],
+        }),
+        generateImages: vi.fn(),
+      },
+    };
+    __setGeminiClientForTest(fakeGemini as never);
+    try {
+      const result = await generateAndPersist(SESSION_ID, 'a wizard', 'pastel', 6, 'gemini', 'gemini-2.5-flash-image');
+      expect(result).toEqual({ ok: true, version: 6 });
+      const [row] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(row!.sceneImageVersion).toBe(6);
+      expect(row!.sceneImageData?.equals(fakeBytes)).toBe(true);
+      expect(fakeGemini.models.generateContent).toHaveBeenCalledOnce();
+    } finally {
+      __setGeminiClientForTest(null);
+    }
   });
 });

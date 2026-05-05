@@ -1,27 +1,13 @@
-import OpenAI from 'openai';
 import { and, eq } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessionState } from '@/db/schema';
 import { buildImagePrompt } from '@/ai/master/image-style';
+import { generateBytesOpenAI, __setOpenAIClientForTest } from './image-providers/openai';
+import { generateBytesGemini, __setGeminiClientForTest } from './image-providers/gemini';
 
-let _client: OpenAI | null = null;
-let _override: OpenAI | null = null;
+export { __setOpenAIClientForTest, __setGeminiClientForTest };
 
-function client(): OpenAI {
-  if (_override) return _override;
-  if (_client) return _client;
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error('OPENAI_API_KEY is not set');
-  _client = new OpenAI({ apiKey });
-  return _client;
-}
-
-/** Test-only seam — let unit tests inject a mocked OpenAI instance. */
-export function __setOpenAIClientForTest(mock: OpenAI | null): void {
-  _override = mock;
-}
-
-const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL ?? 'gpt-image-1';
+export type ImageProvider = 'openai' | 'gemini';
 
 export type GenerateResult =
   | { ok: true; version: number }
@@ -41,30 +27,27 @@ export async function generateAndPersist(
   visualPrompt: string,
   styleText: string,
   expectedVersion: number,
+  provider: ImageProvider = 'openai',
+  model?: string,
 ): Promise<GenerateResult> {
   const fullPrompt = buildImagePrompt(visualPrompt, styleText);
-  let bytes: Buffer;
-  try {
-    const res = await client().images.generate({
-      model: IMAGE_MODEL,
-      prompt: fullPrompt,
-      size: '1024x1024',
-    });
-    const b64 = res.data?.[0]?.b64_json;
-    if (!b64) {
-      console.warn('[scene-image] empty response from image API', { sessionId });
-      return { ok: false, reason: 'empty_response' };
+  const result =
+    provider === 'gemini'
+      ? await generateBytesGemini(fullPrompt, model)
+      : await generateBytesOpenAI(fullPrompt, model);
+
+  if (!result.ok) {
+    if (result.reason === 'api_error') {
+      console.error('[scene-image] generation failed', { sessionId, provider, detail: result.detail });
+      return { ok: false, reason: 'api_error', detail: result.detail };
     }
-    bytes = Buffer.from(b64, 'base64');
-  } catch (e) {
-    const detail = e instanceof Error ? e.message : String(e);
-    console.error('[scene-image] generation failed', { sessionId, error: detail });
-    return { ok: false, reason: 'api_error', detail };
+    console.warn('[scene-image] empty response from image API', { sessionId, provider });
+    return { ok: false, reason: 'empty_response' };
   }
 
   const updated = await db.update(sessionState)
     .set({
-      sceneImageData: bytes,
+      sceneImageData: result.bytes,
       sceneImagePrompt: visualPrompt,
       sceneImageVersion: expectedVersion,
     })
@@ -73,9 +56,6 @@ export async function generateAndPersist(
       eq(sessionState.sceneImageVersion, expectedVersion - 1),
     ));
 
-  // pg driver exposes rowCount on the result; if 0, our expectedVersion was
-  // stale (a concurrent writer moved the row). The caller can decide
-  // whether to retry.
   if ((updated.rowCount ?? 0) === 0) {
     return { ok: false, reason: 'race_lost' };
   }
