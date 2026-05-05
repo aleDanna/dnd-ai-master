@@ -13,6 +13,7 @@ import { useTurnStream } from '@/sessions/use-turn-stream';
 import { useSessionState } from '@/sessions/use-session-state';
 import { AutoplayToggle } from '@/components/game/autoplay-toggle';
 import { SettingsLink } from '@/components/ui/settings-link';
+import { MemoryStatusBanner } from '@/components/memory-status-banner';
 import { setActiveAudio, getActiveAudio } from '@/lib/tts-playback';
 import type { Character } from '@/engine/types';
 import type { CombatActorRow, MessageRow, SessionRow, SessionStateRow } from '@/sessions/client-types';
@@ -30,6 +31,7 @@ export interface GameClientProps {
 }
 
 export function GameClient({ sessionId, session, character: initialCharacter, initialState, initialMessages, initialActors, initialAutoplay, initialManualRolls, initialImageGenerationEnabled }: GameClientProps) {
+  const [memoryReady, setMemoryReady] = React.useState(false);
   const [messages, setMessages] = React.useState<MessageRow[]>(initialMessages);
   // Character mirror: starts from SSR-provided value, refreshed on mount and
   // after every turn_complete. Mutable character fields (level, xp, hpMax,
@@ -268,6 +270,11 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
       <div style={{ display: 'flex', flex: 1, alignItems: 'stretch' }}>
         <CharacterPane character={character} state={liveState} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, position: 'relative' }}>
+          {!memoryReady && (
+            <div style={{ padding: '8px 16px', flexShrink: 0 }}>
+              <MemoryStatusBanner sessionId={sessionId} onReady={() => setMemoryReady(true)} />
+            </div>
+          )}
           <NarrativePane
             sessionId={sessionId}
             history={messages}
@@ -277,6 +284,7 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
             onCastSpell={character.spellcasting && slots.length > 0 ? () => setSpellOpen(true) : undefined}
             manualRolls={initialManualRolls}
             imageGenerationEnabled={initialImageGenerationEnabled}
+            disabled={!memoryReady}
           />
           {(turn.error || serverError) && (
             <div style={{ padding: '8px 16px', background: 'var(--bg-card)', color: 'var(--ember)', borderTop: '1px solid var(--ember)', fontSize: 12 }}>

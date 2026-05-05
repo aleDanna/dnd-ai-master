@@ -33,13 +33,15 @@ export interface NarrativePaneProps {
   manualRolls: boolean;
   /** When true, master messages get a "Generate image" button next to Listen. Default false. */
   imageGenerationEnabled?: boolean;
+  /** When true, the chat input and Send button are disabled (e.g. memory backfill in progress). */
+  disabled?: boolean;
 }
 
 /** Number of newest messages visible on first load. The "Show previous"
  *  link reveals an additional batch of this size with each click. */
 const PAGE_SIZE = 10;
 
-export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, onCastSpell, manualRolls, imageGenerationEnabled = false }: NarrativePaneProps) {
+export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, onCastSpell, manualRolls, imageGenerationEnabled = false, disabled = false }: NarrativePaneProps) {
   const [draft, setDraft] = React.useState('');
   // Tamper-resistant pending roll. The text is set ONLY by handleRollResult
   // (called from the dice-button after the spinner settles) and rendered as
@@ -249,7 +251,8 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
                   submit();
                 }
               }}
-              placeholder="What do you do? · Start with ! to ask the master out-of-character"
+              disabled={disabled}
+              placeholder={disabled ? 'Preparazione memoria in corso…' : 'What do you do? · Start with ! to ask the master out-of-character'}
               rows={2}
               style={{
                 flex: 1,
@@ -262,13 +265,14 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
                 fontSize: 14,
                 lineHeight: 1.5,
                 padding: '6px 8px',
+                opacity: disabled ? 0.4 : undefined,
               }}
             />
             <Button
               variant="primary"
               size="md"
               icon="send"
-              disabled={busy || rollingCount > 0 || (!draft.trim() && !pendingRollText)}
+              disabled={disabled || busy || rollingCount > 0 || (!draft.trim() && !pendingRollText)}
               onClick={submit}
             >
               Send
