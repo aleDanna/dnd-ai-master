@@ -1,6 +1,6 @@
 import type { Anthropic } from '@anthropic-ai/sdk';
 
-export type ProviderName = 'anthropic' | 'openai';
+export type ProviderName = 'anthropic' | 'openai' | 'gemini';
 
 /** The Anthropic-shaped tool definition is the canonical form across the codebase. */
 export type ToolDef = Anthropic.Messages.Tool;

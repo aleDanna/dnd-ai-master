@@ -10,13 +10,16 @@ export { TTS_VOICES, type TtsVoice, isValidTtsVoice } from './tts-voices';
  * cascade from env vars when user hasn't picked anything; if env is also unset,
  * fall back to anthropic + claude-sonnet-4-5 (the historical default).
  */
-function envDefaultProvider(): 'anthropic' | 'openai' {
+function envDefaultProvider(): 'anthropic' | 'openai' | 'gemini' {
   const raw = (process.env.MASTER_PROVIDER ?? '').trim().toLowerCase();
-  return raw === 'openai' ? 'openai' : 'anthropic';
+  if (raw === 'openai') return 'openai';
+  if (raw === 'gemini') return 'gemini';
+  return 'anthropic';
 }
 
-function envDefaultMasterModel(provider: 'anthropic' | 'openai'): string {
+function envDefaultMasterModel(provider: 'anthropic' | 'openai' | 'gemini'): string {
   if (provider === 'openai') return process.env.OPENAI_MASTER_MODEL ?? 'gpt-5';
+  if (provider === 'gemini') return process.env.GEMINI_MASTER_MODEL ?? 'gemini-2.5-pro';
   return process.env.ANTHROPIC_MASTER_MODEL ?? 'claude-sonnet-4-5';
 }
 

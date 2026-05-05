@@ -6,7 +6,8 @@
  * actionable failure.
  */
 
-export type ProviderName = 'anthropic' | 'openai';
+export type ProviderName = 'anthropic' | 'openai' | 'gemini';
+export type ImageProviderName = 'openai' | 'gemini';
 
 export interface ModelOption {
   slug: string;
@@ -35,36 +36,54 @@ export const ANTHROPIC_MASTER_MODELS: ModelOption[] = [
 ];
 
 export const OPENAI_MASTER_MODELS: ModelOption[] = [
+  { slug: 'gpt-5.5', label: 'GPT-5.5', blurb: 'Latest flagship.' },
+  { slug: 'gpt-5.5-mini', label: 'GPT-5.5 mini', blurb: 'Smaller, faster 5.5.' },
+  { slug: 'gpt-5', label: 'GPT-5', blurb: 'Stable flagship.', recommended: true },
+  { slug: 'gpt-5-mini', label: 'GPT-5 mini', blurb: 'Smaller, faster 5.' },
+  { slug: 'gpt-4.1', label: 'GPT-4.1', blurb: 'Previous-gen flagship; battle-tested with tools.' },
+];
+
+export const GEMINI_MASTER_MODELS: ModelOption[] = [
   {
-    slug: 'gpt-5.5',
-    label: 'GPT-5.5',
-    blurb: 'Latest flagship.',
-  },
-  {
-    slug: 'gpt-5.5-mini',
-    label: 'GPT-5.5 mini',
-    blurb: 'Smaller, faster 5.5.',
-  },
-  {
-    slug: 'gpt-5',
-    label: 'GPT-5',
-    blurb: 'Stable flagship.',
+    slug: 'gemini-2.5-pro',
+    label: 'Gemini 2.5 Pro',
+    blurb: 'Most capable; deep reasoning.',
     recommended: true,
   },
   {
-    slug: 'gpt-5-mini',
-    label: 'GPT-5 mini',
-    blurb: 'Smaller, faster 5.',
+    slug: 'gemini-2.5-flash',
+    label: 'Gemini 2.5 Flash',
+    blurb: 'Balanced speed and quality.',
   },
   {
-    slug: 'gpt-4.1',
-    label: 'GPT-4.1',
-    blurb: 'Previous-gen flagship; battle-tested with tools.',
+    slug: 'gemini-2.5-flash-lite',
+    label: 'Gemini 2.5 Flash Lite',
+    blurb: 'Fastest, cheapest, smaller context.',
+  },
+];
+
+export const OPENAI_IMAGE_MODELS: ModelOption[] = [
+  { slug: 'gpt-image-1', label: 'GPT Image 1', blurb: 'Current default; high quality.', recommended: true },
+];
+
+export const GEMINI_IMAGE_MODELS: ModelOption[] = [
+  {
+    slug: 'gemini-2.5-flash-image',
+    label: 'Gemini 2.5 Flash Image',
+    blurb: 'Fast and cheap; good defaults.',
+    recommended: true,
+  },
+  {
+    slug: 'imagen-4.0-generate-001',
+    label: 'Imagen 4',
+    blurb: 'Higher quality; slower and pricier.',
   },
 ];
 
 export function modelsForProvider(p: ProviderName): ModelOption[] {
-  return p === 'anthropic' ? ANTHROPIC_MASTER_MODELS : OPENAI_MASTER_MODELS;
+  if (p === 'anthropic') return ANTHROPIC_MASTER_MODELS;
+  if (p === 'openai') return OPENAI_MASTER_MODELS;
+  return GEMINI_MASTER_MODELS;
 }
 
 export function defaultModelForProvider(p: ProviderName): string {
@@ -72,12 +91,33 @@ export function defaultModelForProvider(p: ProviderName): string {
   return list.find((m) => m.recommended)?.slug ?? list[0]!.slug;
 }
 
-export function isKnownProvider(value: unknown): value is ProviderName {
-  return value === 'anthropic' || value === 'openai';
+export function imageModelsForProvider(p: ImageProviderName): ModelOption[] {
+  return p === 'openai' ? OPENAI_IMAGE_MODELS : GEMINI_IMAGE_MODELS;
 }
 
-/** Validates that the slug is in the union of known model slugs (no provider-consistency check). */
+export function defaultImageModelForProvider(p: ImageProviderName): string {
+  const list = imageModelsForProvider(p);
+  return list.find((m) => m.recommended)?.slug ?? list[0]!.slug;
+}
+
+export function isKnownProvider(value: unknown): value is ProviderName {
+  return value === 'anthropic' || value === 'openai' || value === 'gemini';
+}
+
+export function isKnownImageProvider(value: unknown): value is ImageProviderName {
+  return value === 'openai' || value === 'gemini';
+}
+
+/** Validates that the slug is in the union of known master model slugs. */
 export function isKnownMasterModel(value: unknown): boolean {
   if (typeof value !== 'string') return false;
-  return [...ANTHROPIC_MASTER_MODELS, ...OPENAI_MASTER_MODELS].some((m) => m.slug === value);
+  return [...ANTHROPIC_MASTER_MODELS, ...OPENAI_MASTER_MODELS, ...GEMINI_MASTER_MODELS].some(
+    (m) => m.slug === value,
+  );
+}
+
+/** Validates that the slug is in the union of known image model slugs. */
+export function isKnownImageModel(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  return [...OPENAI_IMAGE_MODELS, ...GEMINI_IMAGE_MODELS].some((m) => m.slug === value);
 }
