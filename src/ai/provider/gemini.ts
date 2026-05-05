@@ -106,8 +106,55 @@ export class GeminiProvider implements MasterProvider {
     }
   }
 
-  async proposeWizard(_input: ProposeWizardInput): Promise<ProposeWizardOutput> {
-    throw new Error('GeminiProvider.proposeWizard not implemented yet');
+  async proposeWizard(input: ProposeWizardInput): Promise<ProposeWizardOutput> {
+    const client = getClient();
+    const tool = anthropicToolToGemini(input.toolDefinition);
+    const model = input.model ?? MASTER_MODEL;
+    const response = (await client.models.generateContent({
+      model,
+      contents: [{ role: 'user', parts: [{ text: input.userMessage }] }],
+      config: {
+        systemInstruction: { parts: [{ text: input.systemPrompt }] },
+        tools: [{ functionDeclarations: [tool] }],
+        toolConfig: {
+          functionCallingConfig: {
+            mode: 'ANY',
+            allowedFunctionNames: [input.toolDefinition.name],
+          },
+        },
+        maxOutputTokens: 1024,
+      },
+    })) as GeminiResponse;
+
+    const usage = normalizeGeminiUsage(response.usageMetadata);
+    if (input.userId) {
+      await recordUsage({
+        userId: input.userId,
+        sessionId: input.sessionId ?? null,
+        endpoint: 'wizard',
+        model,
+        usage,
+      });
+    }
+
+    const parts = response.candidates?.[0]?.content?.parts ?? [];
+    for (const part of parts) {
+      if ('functionCall' in part && part.functionCall?.name === input.toolDefinition.name) {
+        const args = part.functionCall.args;
+        let toolInput: Record<string, unknown>;
+        if (typeof args === 'string') {
+          try {
+            toolInput = JSON.parse(args) as Record<string, unknown>;
+          } catch {
+            toolInput = { _raw: args };
+          }
+        } else {
+          toolInput = (args ?? {}) as Record<string, unknown>;
+        }
+        return { toolInput, usage };
+      }
+    }
+    throw new Error(`AI did not call ${input.toolDefinition.name}`);
   }
 }
 

@@ -139,3 +139,68 @@ describe('GeminiProvider.detectLanguage', () => {
     expect(code).toBeNull();
   });
 });
+
+describe('GeminiProvider.proposeWizard', () => {
+  it('forces tool call via toolConfig and returns parsed input', async () => {
+    generateContent.mockResolvedValueOnce({
+      candidates: [
+        {
+          content: {
+            role: 'model',
+            parts: [
+              {
+                functionCall: {
+                  name: 'propose_choice',
+                  args: { step: 'race', value: 'half-elf', reasoning: 'versatile' },
+                },
+              },
+            ],
+          },
+          finishReason: 'STOP',
+        },
+      ],
+      usageMetadata: { promptTokenCount: 50, candidatesTokenCount: 10 },
+    });
+
+    const provider = new GeminiProvider();
+    const out = await provider.proposeWizard({
+      systemPrompt: 'You are a wizard helper.',
+      toolDefinition: {
+        name: 'propose_choice',
+        description: 'propose a value',
+        input_schema: {
+          type: 'object',
+          required: ['step', 'value', 'reasoning'],
+          properties: {
+            step: { type: 'string' },
+            value: {},
+            reasoning: { type: 'string' },
+          },
+        } as never,
+      },
+      userMessage: 'pick a race',
+    });
+    expect(out.toolInput).toEqual({ step: 'race', value: 'half-elf', reasoning: 'versatile' });
+
+    const args = generateContent.mock.calls.at(-1)![0] as {
+      config: { toolConfig?: { functionCallingConfig?: { mode?: string; allowedFunctionNames?: string[] } } };
+    };
+    expect(args.config.toolConfig?.functionCallingConfig?.mode).toBe('ANY');
+    expect(args.config.toolConfig?.functionCallingConfig?.allowedFunctionNames).toEqual(['propose_choice']);
+  });
+
+  it('throws when no functionCall is returned', async () => {
+    generateContent.mockResolvedValueOnce({
+      candidates: [{ content: { role: 'model', parts: [{ text: 'sorry' }] }, finishReason: 'STOP' }],
+      usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 5 },
+    });
+    const provider = new GeminiProvider();
+    await expect(
+      provider.proposeWizard({
+        systemPrompt: 's',
+        toolDefinition: { name: 'tool_x', input_schema: { type: 'object', properties: {} } as never },
+        userMessage: 'm',
+      }),
+    ).rejects.toThrow(/AI did not call tool_x/);
+  });
+});
