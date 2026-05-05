@@ -109,6 +109,17 @@ character did.
 
 The full schemas are exposed by the API. The system filters context-inappropriate tools (e.g. combat tools when out of combat).`;
 
+export const MASTER_MEMORY_TOOL_RULE = `## Memory tools
+
+The codex (a structured store of NPCs, locations, quests, factions, lore facts, named items, and relationships) is the single source of truth for narrative continuity. It is updated automatically after every turn. You do NOT write to the codex directly.
+
+You read the codex in two ways:
+
+1. The **Scene card** below already lists the entities most likely relevant to the current turn (in-scene NPCs, open quests, recently mentioned). Use that first — no tool call needed.
+2. If the chat references an entity (NPC, location, quest, etc.) that is NOT in the Scene card and you need its details (status, description, who's involved, etc.), call \`lookup_codex({ kind, query })\`. Returns up to 5 fuzzy matches.
+
+Hard rule: if the codex has a fact, **do not contradict it**. If you can't find a needed entity via \`lookup_codex\`, narrate carefully — describe only what you can support — rather than inventing details that may conflict with what's already established. The Codex index below tells you what kinds of entities exist, even when their full data isn't on screen.`;
+
 export interface MasterPromptInput {
   srdContext: string;
   /** Curated DM craft guidance from the 5e DMG 2024 (chapters 1-3). Loaded via getMasterHandbook(). */
@@ -131,6 +142,12 @@ export interface MasterPromptInput {
    * and adjudicates privately.
    */
   showDifficultyNumbers?: boolean;
+  /** Concatenated chapter summaries (oldest → newest). Empty string if none. */
+  chapterDigests?: string;
+  /** Compact card of in-scene + open-quest entities. Empty string treated as none. */
+  sceneCard?: string;
+  /** Bare-name codex index per kind, for the master to know what's lookup-able. */
+  codexIndex?: string;
 }
 
 export const MASTER_HIDE_DIFFICULTY_RULE = `## Hide difficulty numbers
@@ -344,10 +361,33 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
     { type: 'text', text: MASTER_REWARDS_MANDATE, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: input.handbook, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: input.worldLore, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: MASTER_MEMORY_TOOL_RULE, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: input.srdContext, cache_control: { type: 'ephemeral' } },
   ];
 
-  // Per-user behaviour rules go AFTER static blocks so the cache hits the static prefix.
+  // Memory injection — chapter digests stable WITHIN a turn (cacheable);
+  // codex index + scene card vary with player input (uncached).
+  if (input.chapterDigests && input.chapterDigests.length > 0) {
+    blocks.push({
+      type: 'text',
+      text: `## Campaign chapter digests\n\n${input.chapterDigests}`,
+      cache_control: { type: 'ephemeral' },
+    });
+  }
+  if (input.codexIndex && input.codexIndex.length > 0) {
+    blocks.push({
+      type: 'text',
+      text: `## Codex index\n\n${input.codexIndex}`,
+    });
+  }
+  if (input.sceneCard && input.sceneCard.length > 0) {
+    blocks.push({
+      type: 'text',
+      text: `## Scene card\n\n${input.sceneCard}`,
+    });
+  }
+
+  // Per-user behaviour rules go AFTER static + memory blocks so the cache hits the static prefix.
   if (input.manualRolls) {
     blocks.push({ type: 'text', text: MASTER_MANUAL_ROLLS_RULE });
   }
