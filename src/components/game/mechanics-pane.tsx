@@ -2,6 +2,7 @@
 import { Eyebrow } from '@/components/ui/eyebrow';
 import { CombatTracker } from './combat-tracker';
 import { XpBar } from './xp-bar';
+import { RebuildMemoryButton } from '@/components/rebuild-memory-button';
 import type { CombatActorRow, SessionStateRow } from '@/sessions/client-types';
 
 export interface MechanicsPaneProps {
@@ -69,6 +70,10 @@ export function MechanicsPane({ sessionId, state, actors, pcCharacterId, pcName,
         <div style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 14, lineHeight: 1.55, color: 'var(--fg-muted)' }}>
           {state.scene || 'No scene set yet.'}
         </div>
+      </section>
+      <section>
+        <Eyebrow style={{ marginBottom: 6 }}>Memoria</Eyebrow>
+        <RebuildMemoryButton sessionId={sessionId} />
       </section>
     </aside>
   );
