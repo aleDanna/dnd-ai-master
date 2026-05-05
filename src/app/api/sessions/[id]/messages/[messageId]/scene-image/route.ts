@@ -3,7 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions, sessionMessages, sessionState } from '@/db/schema';
-import { getUserPreferences } from '@/lib/preferences';
+import { getResolvedPreferences } from '@/lib/preferences';
 import { resolveStyleText } from '@/ai/master/image-style';
 import { generateAndPersist } from '@/sessions/scene-image-job';
 
@@ -53,14 +53,21 @@ export async function POST(
     return NextResponse.json({ error: 'empty-message' }, { status: 400 });
   }
 
-  const prefs = await getUserPreferences(userId);
+  const prefs = await getResolvedPreferences(userId);
   if (!prefs.imageGenerationEnabled) {
     return NextResponse.json({ error: 'image-generation-disabled' }, { status: 403 });
   }
   const styleText = resolveStyleText(prefs);
   const nextVersion = row.currentVersion + 1;
 
-  const result = await generateAndPersist(sessionId, row.messageContent, styleText, nextVersion);
+  const result = await generateAndPersist(
+    sessionId,
+    row.messageContent,
+    styleText,
+    nextVersion,
+    prefs.imageProvider,
+    prefs.imageModel,
+  );
 
   if (!result.ok) {
     return NextResponse.json(
