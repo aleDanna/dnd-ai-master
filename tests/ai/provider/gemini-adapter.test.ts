@@ -141,3 +141,111 @@ describe('gemini-adapter — messages', () => {
     ]);
   });
 });
+
+import {
+  geminiResponseToContentBlocks,
+  geminiFinishReasonToStopReason,
+  normalizeGeminiUsage,
+} from '@/ai/provider/gemini-adapter';
+
+describe('gemini-adapter — response + usage', () => {
+  it('text-only response → text content block', () => {
+    const blocks = geminiResponseToContentBlocks({
+      candidates: [{ content: { role: 'model', parts: [{ text: 'You see a dragon.' }] } }],
+    });
+    expect(blocks).toEqual([{ type: 'text', text: 'You see a dragon.' }]);
+  });
+
+  it('functionCall-only response → tool_use block with synthetic id', () => {
+    const blocks = geminiResponseToContentBlocks({
+      candidates: [
+        {
+          content: {
+            role: 'model',
+            parts: [{ functionCall: { name: 'roll_d20', args: { mod: 5 } } }],
+          },
+        },
+      ],
+    });
+    expect(blocks).toHaveLength(1);
+    const b = blocks[0]!;
+    expect(b.type).toBe('tool_use');
+    if (b.type === 'tool_use') {
+      expect(b.name).toBe('roll_d20');
+      expect(b.input).toEqual({ mod: 5 });
+      expect(typeof b.id).toBe('string');
+      expect(b.id.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('mixed text + functionCall → mixed blocks', () => {
+    const blocks = geminiResponseToContentBlocks({
+      candidates: [
+        {
+          content: {
+            role: 'model',
+            parts: [
+              { text: 'Rolling…' },
+              { functionCall: { name: 'roll_d20', args: {} } },
+            ],
+          },
+        },
+      ],
+    });
+    expect(blocks[0]).toEqual({ type: 'text', text: 'Rolling…' });
+    expect(blocks[1]?.type).toBe('tool_use');
+  });
+
+  it('functionCall with string args → JSON.parse fallback to _raw', () => {
+    const blocks = geminiResponseToContentBlocks({
+      candidates: [
+        {
+          content: {
+            role: 'model',
+            parts: [{ functionCall: { name: 'r', args: '{ not json' as unknown as Record<string, unknown> } }],
+          },
+        },
+      ],
+    });
+    expect(blocks[0]?.type).toBe('tool_use');
+    if (blocks[0]?.type === 'tool_use') expect(blocks[0].input).toEqual({ _raw: '{ not json' });
+  });
+
+  it('finishReason mapping covers STOP/MAX_TOKENS/SAFETY/RECITATION', () => {
+    expect(geminiFinishReasonToStopReason('STOP', false)).toBe('end_turn');
+    expect(geminiFinishReasonToStopReason('STOP', true)).toBe('tool_use');
+    expect(geminiFinishReasonToStopReason('MAX_TOKENS', false)).toBe('max_tokens');
+    expect(geminiFinishReasonToStopReason('SAFETY', false)).toBe('other');
+    expect(geminiFinishReasonToStopReason('RECITATION', false)).toBe('other');
+    expect(geminiFinishReasonToStopReason(undefined, false)).toBe('other');
+  });
+
+  it('usage normalization with all fields present', () => {
+    const out = normalizeGeminiUsage({
+      promptTokenCount: 100,
+      candidatesTokenCount: 25,
+      cachedContentTokenCount: 80,
+    });
+    expect(out).toEqual({
+      inputTokens: 100,
+      outputTokens: 25,
+      cacheReadTokens: 80,
+      cacheCreationTokens: 0,
+    });
+  });
+
+  it('usage normalization with missing fields returns zeros', () => {
+    expect(normalizeGeminiUsage(undefined)).toEqual({
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    });
+    expect(normalizeGeminiUsage({})).toEqual({
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    });
+  });
+});

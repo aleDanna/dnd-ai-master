@@ -131,3 +131,61 @@ export function anthropicMessagesToGemini(messages: Message[]): GeminiContent[] 
   }
   return out;
 }
+
+import type { ContentBlock, NormalizedUsage } from './types';
+
+export interface GeminiUsageMetadata {
+  promptTokenCount?: number;
+  candidatesTokenCount?: number;
+  cachedContentTokenCount?: number;
+}
+
+export interface GeminiResponse {
+  candidates?: {
+    content?: { role?: string; parts?: GeminiPart[] };
+    finishReason?: string;
+  }[];
+  usageMetadata?: GeminiUsageMetadata;
+}
+
+export function geminiResponseToContentBlocks(response: GeminiResponse): ContentBlock[] {
+  const parts = response.candidates?.[0]?.content?.parts ?? [];
+  const blocks: ContentBlock[] = [];
+  for (const part of parts) {
+    if ('text' in part && part.text) {
+      blocks.push({ type: 'text', text: part.text });
+    } else if ('functionCall' in part && part.functionCall) {
+      const { name, args } = part.functionCall;
+      let input: Record<string, unknown>;
+      if (typeof args === 'string') {
+        try {
+          input = JSON.parse(args) as Record<string, unknown>;
+        } catch {
+          input = { _raw: args };
+        }
+      } else {
+        input = (args ?? {}) as Record<string, unknown>;
+      }
+      blocks.push({ type: 'tool_use', id: crypto.randomUUID(), name, input });
+    }
+  }
+  return blocks;
+}
+
+export function geminiFinishReasonToStopReason(
+  reason: string | undefined,
+  hasFunctionCall: boolean,
+): 'end_turn' | 'tool_use' | 'max_tokens' | 'other' {
+  if (reason === 'MAX_TOKENS') return 'max_tokens';
+  if (reason === 'STOP') return hasFunctionCall ? 'tool_use' : 'end_turn';
+  return 'other';
+}
+
+export function normalizeGeminiUsage(usage: GeminiUsageMetadata | undefined): NormalizedUsage {
+  return {
+    inputTokens: usage?.promptTokenCount ?? 0,
+    outputTokens: usage?.candidatesTokenCount ?? 0,
+    cacheReadTokens: usage?.cachedContentTokenCount ?? 0,
+    cacheCreationTokens: 0,
+  };
+}
