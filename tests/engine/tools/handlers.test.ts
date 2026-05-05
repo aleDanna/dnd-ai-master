@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TOOL_HANDLERS, TOOL_DEFINITIONS } from '@/engine';
+import { TOOL_HANDLERS, TOOL_HANDLERS_DB, TOOL_DEFINITIONS } from '@/engine';
 import { buildToolDefinitions } from '@/engine/tools';
 import type { EngineState, Character, CombatActor } from '@/engine';
 
@@ -54,9 +54,10 @@ const wizardState: EngineState = {
 };
 
 describe('TOOL_DEFINITIONS', () => {
-  it('every defined tool has a corresponding handler', () => {
+  it('every defined tool has a corresponding handler (sync or db)', () => {
     for (const def of TOOL_DEFINITIONS) {
-      expect(TOOL_HANDLERS[def.name], `missing handler for ${def.name}`).toBeDefined();
+      const hasHandler = TOOL_HANDLERS[def.name] !== undefined || TOOL_HANDLERS_DB[def.name] !== undefined;
+      expect(hasHandler, `missing handler for ${def.name}`).toBe(true);
     }
   });
 
@@ -65,6 +66,9 @@ describe('TOOL_DEFINITIONS', () => {
     const definedNames = new Set(all.map((d) => d.name));
     for (const name of Object.keys(TOOL_HANDLERS)) {
       expect(definedNames.has(name), `missing definition for handler ${name}`).toBe(true);
+    }
+    for (const name of Object.keys(TOOL_HANDLERS_DB)) {
+      expect(definedNames.has(name), `missing definition for db handler ${name}`).toBe(true);
     }
   });
 });
