@@ -1,4 +1,4 @@
-import { eq, and, ilike, or, desc, sql } from 'drizzle-orm';
+import { eq, and, ilike, or, desc } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { codexEntities } from '@/db/schema';
 import type { ActionResult } from '../types';
@@ -34,7 +34,7 @@ export async function lookupCodex(
         or(ilike(codexEntities.slug, pattern), ilike(codexEntities.name, pattern)),
       ),
     )
-    .orderBy(desc(sql`coalesce(${codexEntities.lastSeenMsgId}::text, '')`))
+    .orderBy(desc(codexEntities.updatedAt))
     .limit(MAX_MATCHES);
 
   let truncated = false;

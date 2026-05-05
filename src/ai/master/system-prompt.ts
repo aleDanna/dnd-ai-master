@@ -374,16 +374,16 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
       cache_control: { type: 'ephemeral' },
     });
   }
-  if (input.codexIndex && input.codexIndex.length > 0) {
-    blocks.push({
-      type: 'text',
-      text: `## Codex index\n\n${input.codexIndex}`,
-    });
-  }
   if (input.sceneCard && input.sceneCard.length > 0) {
     blocks.push({
       type: 'text',
       text: `## Scene card\n\n${input.sceneCard}`,
+    });
+  }
+  if (input.codexIndex && input.codexIndex.length > 0) {
+    blocks.push({
+      type: 'text',
+      text: `## Codex index\n\n${input.codexIndex}`,
     });
   }
 

@@ -187,6 +187,10 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
     void turn.send(text);
   };
 
+  const handleMemoryReady = React.useCallback(() => {
+    setMemoryReady(true);
+  }, []);
+
   // Manual override: force the session out of combat. Used when the master
   // forgot to call end_combat (or the session pre-dates that tool) and the
   // tracker is stuck on "Combat · Round 1" with the fight long over. The
@@ -272,7 +276,7 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, position: 'relative' }}>
           {!memoryReady && (
             <div style={{ padding: '8px 16px', flexShrink: 0 }}>
-              <MemoryStatusBanner sessionId={sessionId} onReady={() => setMemoryReady(true)} />
+              <MemoryStatusBanner sessionId={sessionId} onReady={handleMemoryReady} />
             </div>
           )}
           <NarrativePane

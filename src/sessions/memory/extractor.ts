@@ -1,4 +1,4 @@
-import { eq, and, asc, gt, or, not, like, sql } from 'drizzle-orm';
+import { eq, and, asc, gt, or, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import {
   sessions,
@@ -65,7 +65,7 @@ async function getNonOocMessagesAfter(
       .where(
         and(
           eq(sessionMessages.sessionId, sessionId),
-          not(like(sessionMessages.content, '!%')),
+          sql`left(trim(${sessionMessages.content}), 1) <> '!'`,
         ),
       )
       .orderBy(asc(sessionMessages.createdAt), asc(sessionMessages.id));
@@ -82,7 +82,7 @@ async function getNonOocMessagesAfter(
       .where(
         and(
           eq(sessionMessages.sessionId, sessionId),
-          not(like(sessionMessages.content, '!%')),
+          sql`left(trim(${sessionMessages.content}), 1) <> '!'`,
         ),
       )
       .orderBy(asc(sessionMessages.createdAt), asc(sessionMessages.id));
@@ -100,7 +100,7 @@ async function getNonOocMessagesAfter(
             gt(sessionMessages.id, pivot.id),
           ),
         ),
-        not(like(sessionMessages.content, '!%')),
+        sql`left(trim(${sessionMessages.content}), 1) <> '!'`,
       ),
     )
     .orderBy(asc(sessionMessages.createdAt), asc(sessionMessages.id));

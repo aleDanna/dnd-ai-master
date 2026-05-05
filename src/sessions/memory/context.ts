@@ -129,10 +129,8 @@ export async function loadMemoryContext(sessionId: string, sceneText: string): P
   }
 
   const sorted = Array.from(picked.values()).sort((a, b) => {
-    if (!a.lastSeenMsgId && !b.lastSeenMsgId) return 0;
-    if (!a.lastSeenMsgId) return 1;
-    if (!b.lastSeenMsgId) return -1;
-    return a.lastSeenMsgId === b.lastSeenMsgId ? 0 : a.lastSeenMsgId > b.lastSeenMsgId ? -1 : 1;
+    // Most recently updated first.
+    return b.updatedAt.getTime() - a.updatedAt.getTime();
   });
   const capped = sorted.slice(0, SCENE_CARD_CAP);
 
