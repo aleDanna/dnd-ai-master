@@ -57,6 +57,13 @@
       "when": 1777823791221,
       "tag": "0007_scene_image",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1778004154928,
+      "tag": "0008_keen_archangel",
+      "breakpoints": true
     }
   ]
 }
