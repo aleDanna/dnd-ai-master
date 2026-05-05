@@ -16,7 +16,8 @@ export interface GeminiFunctionDeclaration {
  * `properties.*.*` are descended — sufficient for our 18 engine tools.
  */
 function stripUnsupportedSchemaFields(schema: Record<string, unknown>): Record<string, unknown> {
-  const { additionalProperties: _drop, ...rest } = schema;
+  const rest: Record<string, unknown> = { ...schema };
+  delete rest.additionalProperties;
   if (rest.properties && typeof rest.properties === 'object') {
     const props = rest.properties as Record<string, unknown>;
     const cleaned: Record<string, unknown> = {};
