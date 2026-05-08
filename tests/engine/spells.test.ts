@@ -9,7 +9,7 @@ const wizard: Character = {
   abilities: { STR: 8, DEX: 14, CON: 12, INT: 18, WIS: 12, CHA: 10 },
   proficiencyBonus: 3, hpMax: 28, ac: 12, speed: 30,
   proficiencies: { saves: ['INT', 'WIS'], skills: ['Arcana', 'History'], expertise: [], weapons: [], armor: [], tools: [], languages: ['Common', 'Elvish'] },
-  spellcasting: { ability: 'INT', spellSaveDC: 15, spellAttackBonus: 7, slotsMax: { 1: 4, 2: 3, 3: 2 }, spellsKnown: ['magic-missile', 'fireball', 'healing-word'], spellsPrepared: [] },
+  spellcasting: { ability: 'INT', spellSaveDC: 15, spellAttackBonus: 7, slotsMax: { 1: 4, 2: 3, 3: 2 }, spellsKnown: ['magic-missile', 'fireball', 'healing-word', 'light', 'fire-bolt', 'shield'], spellsPrepared: [] },
   features: [], inventory: [], hitDiceMax: 5, hitDieSize: 6,
 };
 
@@ -67,5 +67,36 @@ describe('castSpell', () => {
     const r = castSpell({ caster: wizard, runtime: wizardRuntime, spellSlug: 'no-such-spell', slotLevel: 1, targets: [] }, makeSeededRng(1));
     expect(r.ok).toBe(false);
     expect(r.error).toBe('not_known');
+  });
+
+  it('cantrip (slotLevel 0) succeeds without consuming a slot', () => {
+    const r = castSpell({ caster: wizard, runtime: wizardRuntime, spellSlug: 'light', slotLevel: 0, targets: [] }, makeSeededRng(1));
+    expect(r.ok).toBe(true);
+    expect(r.mutations.some((m) => m.op === 'use_spell_slot')).toBe(false);
+  });
+
+  it('cantrip ignores empty slotsMax at level 0 (no no_slot error)', () => {
+    const noSlots: Character = {
+      ...wizard,
+      spellcasting: { ...wizard.spellcasting!, slotsMax: {} },
+    };
+    const r = castSpell({ caster: noSlots, runtime: wizardRuntime, spellSlug: 'fire-bolt', slotLevel: 0, targets: [{ id: 'm1' }] }, makeSeededRng(1));
+    expect(r.ok).toBe(true);
+  });
+
+  it('leveled spell without a specialised handler succeeds and consumes a slot', () => {
+    // `shield` has no entry in SPELL_HANDLERS — should still succeed (master narrates,
+    // calls follow-up tools as needed) and consume the slot at the chosen level.
+    const r = castSpell({ caster: wizard, runtime: wizardRuntime, spellSlug: 'shield', slotLevel: 1, targets: [{ id: 'pc1' }] }, makeSeededRng(1));
+    expect(r.ok).toBe(true);
+    expect(r.mutations.some((m) => m.op === 'use_spell_slot')).toBe(true);
+    expect(r.mutations.filter((m) => m.op === 'apply_damage').length).toBe(0);
+  });
+
+  it('still enforces slot availability for leveled casts of unimplemented spells', () => {
+    const exhausted: ActorRuntimeState = { ...wizardRuntime, spellSlotsUsed: { 1: 4 } };
+    const r = castSpell({ caster: wizard, runtime: exhausted, spellSlug: 'shield', slotLevel: 1, targets: [{ id: 'pc1' }] }, makeSeededRng(1));
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('no_slot');
   });
 });

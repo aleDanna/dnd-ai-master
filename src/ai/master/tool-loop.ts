@@ -8,6 +8,7 @@ import type {
   NormalizedUsage,
   SystemBlock,
 } from '@/ai/provider/types';
+import { stripReasoningPreamble } from './reasoning-strip';
 
 export interface ToolLoopInput {
   provider: MasterProvider;
@@ -82,8 +83,12 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
     const toolUses: { id: string; name: string; input: Record<string, unknown> }[] = [];
     for (const block of response.contentBlocks) {
       if (block.type === 'text') {
-        finalText += block.text;
-        emit({ type: 'narrative_delta', text: block.text });
+        const cleaned = stripReasoningPreamble(block.text);
+        block.text = cleaned;
+        if (cleaned) {
+          finalText += cleaned;
+          emit({ type: 'narrative_delta', text: cleaned });
+        }
       } else if (block.type === 'tool_use') {
         toolUses.push({ id: block.id, name: block.name, input: block.input });
       }
@@ -97,14 +102,18 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
       break;
     }
 
-    // Push the assistant turn back into history (Anthropic-shape).
+    // Push the assistant turn back into history (Anthropic-shape). Drop any
+    // text blocks that the reasoning-strip emptied — Anthropic rejects empty
+    // text blocks in assistant turns.
     messages.push({
       role: 'assistant',
-      content: response.contentBlocks.map((b) =>
-        b.type === 'text'
-          ? ({ type: 'text', text: b.text } as never)
-          : ({ type: 'tool_use', id: b.id, name: b.name, input: b.input } as never),
-      ),
+      content: response.contentBlocks
+        .filter((b) => b.type !== 'text' || b.text.length > 0)
+        .map((b) =>
+          b.type === 'text'
+            ? ({ type: 'text', text: b.text } as never)
+            : ({ type: 'tool_use', id: b.id, name: b.name, input: b.input } as never),
+        ),
     });
 
     const toolResults: { type: 'tool_result'; tool_use_id: string; content: string; is_error: boolean }[] = [];

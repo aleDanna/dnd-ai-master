@@ -1,4 +1,4 @@
-import { eq, and, asc, gt, or, sql } from 'drizzle-orm';
+import { eq, and, asc, gt, or, sql, lt, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import {
   sessions,
@@ -30,28 +30,48 @@ function provider(): MasterProvider {
   return _override ?? getMasterProvider();
 }
 
-/** Acquire a per-session advisory lock. Returns true if acquired.
+/** Memory-lock TTL. Each successful acquire/renew sets the expiry this far in
+ * the future; if the holder crashes without releasing, the lock auto-expires. */
+const MEMORY_LOCK_TTL_MS = 10 * 60 * 1000;
+
+/** Try to claim the per-session memory lock. Returns the holder token on
+ * success, or null if another holder still owns a non-expired lock.
  *
- * Lock-key contract: `pg_try_advisory_lock(hashtextextended(sessionId, 0))`.
- * Any other code that needs mutual exclusion against extractMemory (e.g. the
- * rebuild endpoint) MUST use the SAME function — otherwise the keys hash to
- * different buckets and the locks don't contend. We use `hashtextextended`
- * (64-bit) instead of plain `hashtext` (32-bit) for a much smaller collision
- * surface across active sessions. */
-async function tryLock(sessionId: string): Promise<boolean> {
-  const r = await db.execute<{ pg_try_advisory_lock: boolean }>(
-    sql`select pg_try_advisory_lock(hashtextextended(${sessionId}, 0)) as pg_try_advisory_lock`,
-  );
-  // drizzle returns rows on .rows; shape may differ across pg drivers. Be defensive.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const row = (r as any).rows?.[0] ?? (r as any)[0];
-  return row?.pg_try_advisory_lock === true;
+ * We use a row-based lock (a column on `sessions`) instead of Postgres
+ * advisory locks because deployments sit behind PgBouncer in transaction-
+ * pooling mode, where advisory locks live on the underlying server connection
+ * and survive across rotations — leaking permanently. Row locks are
+ * transactional and survive the pooler safely. */
+async function tryAcquireMemoryLock(sessionId: string): Promise<string | null> {
+  const holder = crypto.randomUUID();
+  const expires = new Date(Date.now() + MEMORY_LOCK_TTL_MS);
+  const r = await db
+    .update(sessions)
+    .set({ memoryLockHolder: holder, memoryLockExpiresAt: expires })
+    .where(
+      and(
+        eq(sessions.id, sessionId),
+        or(isNull(sessions.memoryLockHolder), lt(sessions.memoryLockExpiresAt, sql`now()`)),
+      ),
+    );
+  return (r.rowCount ?? 0) > 0 ? holder : null;
 }
 
-async function unlock(sessionId: string): Promise<void> {
-  await db.execute(
-    sql`select pg_advisory_unlock(hashtextextended(${sessionId}, 0))`,
-  );
+/** Extend the lock TTL while holding it. No-op if we no longer own it. */
+async function renewMemoryLock(sessionId: string, holder: string): Promise<boolean> {
+  const expires = new Date(Date.now() + MEMORY_LOCK_TTL_MS);
+  const r = await db
+    .update(sessions)
+    .set({ memoryLockExpiresAt: expires })
+    .where(and(eq(sessions.id, sessionId), eq(sessions.memoryLockHolder, holder)));
+  return (r.rowCount ?? 0) > 0;
+}
+
+async function releaseMemoryLock(sessionId: string, holder: string): Promise<void> {
+  await db
+    .update(sessions)
+    .set({ memoryLockHolder: null, memoryLockExpiresAt: null })
+    .where(and(eq(sessions.id, sessionId), eq(sessions.memoryLockHolder, holder)));
 }
 
 async function getNonOocMessagesAfter(
@@ -185,126 +205,125 @@ function parseModelOutput(text: string): RawPatch | null {
   }
 }
 
-/** Wipe existing memory and rebuild it from scratch by running extractMemory
+/** Wipe existing memory and rebuild it from scratch by running the extractor
  * sequentially until no more chapters can be produced from the message
  * history. Streams progress events. Idempotent: callers can re-trigger after
  * a partial failure.
  *
- * Lock semantics: this function briefly acquires the per-session advisory
- * lock to claim ownership, then unlocks before each extractMemory call (so
- * extractMemory can acquire it itself), then re-acquires after each call.
- * This prevents another concurrent extractor (e.g. a player turn arriving
- * mid-rebuild) from interleaving its own extraction with ours. */
+ * Lock semantics: holds the per-session advisory lock for the entire rebuild.
+ * Concurrent `extractMemory` calls (e.g. a player turn arriving mid-rebuild)
+ * will see `tryLock` fail and skip — desired behavior. */
 export async function* rebuildMemoryStream(
   sessionId: string,
 ): AsyncGenerator<{ event: 'chapter_done' | 'complete' | 'error'; data: unknown }, void, unknown> {
-  const acquired = await tryLock(sessionId);
-  if (!acquired) {
+  const holder = await tryAcquireMemoryLock(sessionId);
+  if (!holder) {
     yield { event: 'error', data: { reason: 'locked' } };
     return;
   }
   try {
-    // Wipe existing memory for this session.
     await db.delete(codexEntities).where(eq(codexEntities.sessionId, sessionId));
     await db.delete(sessionChapters).where(eq(sessionChapters.sessionId, sessionId));
 
-    // Count total non-OOC messages → totalChapters.
     const allMsgs = await getNonOocMessagesAfter(sessionId, null);
     const totalChapters = Math.floor(allMsgs.length / CHAPTER_SIZE);
 
     for (let i = 0; i < totalChapters; i++) {
-      // Release lock so extractMemory can acquire it itself.
-      await unlock(sessionId);
-      await extractMemory(sessionId);
-      // Re-acquire ownership for the next iteration.
-      const re = await tryLock(sessionId);
-      if (!re) {
+      // Renew TTL each iteration so a long rebuild can't time itself out
+      // mid-run. If we lost the lock (another process took it after expiry),
+      // bail out instead of silently overwriting.
+      if (!(await renewMemoryLock(sessionId, holder))) {
         yield { event: 'error', data: { reason: 'lock_lost' } };
         return;
       }
+      await runExtraction(sessionId);
       yield { event: 'chapter_done', data: { index: i, total: totalChapters } };
     }
     yield { event: 'complete', data: { totalChapters } };
   } finally {
-    await unlock(sessionId);
+    await releaseMemoryLock(sessionId, holder);
   }
 }
 
 export async function extractMemory(sessionId: string): Promise<void> {
-  const acquired = await tryLock(sessionId);
-  if (!acquired) return;
+  const holder = await tryAcquireMemoryLock(sessionId);
+  if (!holder) return;
   try {
-    const ctx = await buildContext(sessionId);
-    if (!ctx) return;
-
-    const sys = buildExtractorSystemPrompt(ctx.mode);
-    const language = ctx.language ?? 'unknown';
-
-    const userText = [
-      `## Campaign language\n${language}`,
-      `## Existing codex (compact)\n${formatExistingCodex(ctx.existingCodex)}`,
-      ctx.mode === 'full'
-        ? `## Previous chapters\n${formatPreviousChapters(ctx.previousChapters)}`
-        : null,
-      `## Messages to read\n${formatMessagesForExtractor(ctx.inputMessages)}`,
-      ctx.mode === 'full'
-        ? 'Produce upserts AND chapterSummary. JSON only.'
-        : 'Produce upserts. JSON only.',
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-
-    let response;
-    try {
-      response = await provider().completeMessage({
-        model: process.env.MEMORY_EXTRACTOR_MODEL,
-        systemBlocks: [{ type: 'text', text: sys }],
-        messages: [{ role: 'user', content: userText }],
-        tools: [],
-        maxTokens: 2000,
-        sessionId,
-      });
-    } catch (e) {
-      console.error('extractor.provider_error', e instanceof Error ? e.message : String(e));
-      return;
-    }
-
-    const text = response.contentBlocks
-      .filter((b) => b.type === 'text')
-      .map((b) => (b as { text: string }).text)
-      .join('');
-    const raw = parseModelOutput(text);
-    if (!raw) {
-      console.warn('extractor.bad_json', { sessionId, mode: ctx.mode, sample: text.slice(0, 200) });
-      return;
-    }
-
-    const lastSeenMsgId = ctx.inputMessages[ctx.inputMessages.length - 1]!.id;
-    const patch: MemoryPatch = { upserts: raw.upserts, lastSeenMsgId };
-    if (ctx.mode === 'full') {
-      if (typeof raw.chapterSummary === 'string' && raw.chapterSummary.length > 0) {
-        patch.chapter = {
-          chapterIndex: ctx.nextChapterIndex,
-          firstMsgId: ctx.inputMessages[0]!.id,
-          lastMsgId: lastSeenMsgId,
-          messageCount: ctx.inputMessages.length,
-          summary: raw.chapterSummary,
-        };
-      } else {
-        console.warn('extractor.full_no_summary', {
-          sessionId,
-          chapterIndex: ctx.nextChapterIndex,
-          messagesPending: ctx.inputMessages.length,
-        });
-      }
-    }
-
-    try {
-      await applyPatch(sessionId, patch);
-    } catch (e) {
-      console.error('extractor.apply_failed', e instanceof Error ? e.message : String(e));
-    }
+    await runExtraction(sessionId);
   } finally {
-    await unlock(sessionId);
+    await releaseMemoryLock(sessionId, holder);
+  }
+}
+
+async function runExtraction(sessionId: string): Promise<void> {
+  const ctx = await buildContext(sessionId);
+  if (!ctx) return;
+
+  const sys = buildExtractorSystemPrompt(ctx.mode);
+  const language = ctx.language ?? 'unknown';
+
+  const userText = [
+    `## Campaign language\n${language}`,
+    `## Existing codex (compact)\n${formatExistingCodex(ctx.existingCodex)}`,
+    ctx.mode === 'full'
+      ? `## Previous chapters\n${formatPreviousChapters(ctx.previousChapters)}`
+      : null,
+    `## Messages to read\n${formatMessagesForExtractor(ctx.inputMessages)}`,
+    ctx.mode === 'full'
+      ? 'Produce upserts AND chapterSummary. JSON only.'
+      : 'Produce upserts. JSON only.',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+  let response;
+  try {
+    response = await provider().completeMessage({
+      model: process.env.MEMORY_EXTRACTOR_MODEL,
+      systemBlocks: [{ type: 'text', text: sys }],
+      messages: [{ role: 'user', content: userText }],
+      tools: [],
+      maxTokens: 2000,
+      sessionId,
+    });
+  } catch (e) {
+    console.error('extractor.provider_error', e instanceof Error ? e.message : String(e));
+    return;
+  }
+
+  const text = response.contentBlocks
+    .filter((b) => b.type === 'text')
+    .map((b) => (b as { text: string }).text)
+    .join('');
+  const raw = parseModelOutput(text);
+  if (!raw) {
+    console.warn('extractor.bad_json', { sessionId, mode: ctx.mode, sample: text.slice(0, 200) });
+    return;
+  }
+
+  const lastSeenMsgId = ctx.inputMessages[ctx.inputMessages.length - 1]!.id;
+  const patch: MemoryPatch = { upserts: raw.upserts, lastSeenMsgId };
+  if (ctx.mode === 'full') {
+    if (typeof raw.chapterSummary === 'string' && raw.chapterSummary.length > 0) {
+      patch.chapter = {
+        chapterIndex: ctx.nextChapterIndex,
+        firstMsgId: ctx.inputMessages[0]!.id,
+        lastMsgId: lastSeenMsgId,
+        messageCount: ctx.inputMessages.length,
+        summary: raw.chapterSummary,
+      };
+    } else {
+      console.warn('extractor.full_no_summary', {
+        sessionId,
+        chapterIndex: ctx.nextChapterIndex,
+        messagesPending: ctx.inputMessages.length,
+      });
+    }
+  }
+
+  try {
+    await applyPatch(sessionId, patch);
+  } catch (e) {
+    console.error('extractor.apply_failed', e instanceof Error ? e.message : String(e));
   }
 }

@@ -142,6 +142,7 @@ export type Mutation =
   | { op: 'add_condition'; actorId: string; condition: ConditionInstance }
   | { op: 'remove_condition'; actorId: string; conditionSlug: ConditionSlug }
   | { op: 'use_spell_slot'; actorId: string; level: 1|2|3|4|5|6|7|8|9 }
+  | { op: 'restore_spell_slot'; actorId: string; level: 1|2|3|4|5|6|7|8|9; amount: number }
   | { op: 'use_resource'; actorId: string; featureSlug: string; amount: number }
   | { op: 'restore_resource'; actorId: string; featureSlug: string; amount: number }
   | { op: 'spend_hit_die'; actorId: string }

@@ -112,6 +112,17 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
       await tx.update(sessionStateTable).set({ spellSlotsUsed: used }).where(eq(sessionStateTable.sessionId, sessionId));
       break;
     }
+    case 'restore_spell_slot': {
+      const [s] = await tx.select().from(sessionStateTable).where(eq(sessionStateTable.sessionId, sessionId)).limit(1);
+      if (!s) return;
+      const used = { ...(s.spellSlotsUsed as Record<string, number>) };
+      const cur = used[String(m.level)] ?? 0;
+      const next = Math.max(0, cur - Math.max(0, Math.floor(m.amount)));
+      if (next === 0) delete used[String(m.level)];
+      else used[String(m.level)] = next;
+      await tx.update(sessionStateTable).set({ spellSlotsUsed: used }).where(eq(sessionStateTable.sessionId, sessionId));
+      break;
+    }
     case 'use_resource':
     case 'restore_resource': {
       const [s] = await tx.select().from(sessionStateTable).where(eq(sessionStateTable.sessionId, sessionId)).limit(1);

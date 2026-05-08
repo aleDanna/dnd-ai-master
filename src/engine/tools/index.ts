@@ -106,14 +106,14 @@ const ALWAYS_ON: AnthropicTool[] = [
   },
   {
     name: 'cast_spell',
-    description: 'Cast a spell from the caster\'s known list, consuming a slot.',
+    description: 'Cast a spell from the caster\'s known list. For cantrips pass slotLevel=0 (no slot consumed). For leveled spells pass slotLevel 1-9 (the slot at that level is consumed). When the spell has no built-in mechanical handler the call still succeeds — narrate the effect and call follow-up tools (apply_damage, saving_throw, apply_condition, etc.) for any consequences.',
     input_schema: {
       type: 'object',
       required: ['caster', 'spellSlug', 'slotLevel'],
       properties: {
         caster: ACTOR_ID,
         spellSlug: { type: 'string' },
-        slotLevel: { type: 'integer', minimum: 1, maximum: 9 },
+        slotLevel: { type: 'integer', minimum: 0, maximum: 9, description: '0 for cantrips; 1-9 for leveled spells' },
         targets: { type: 'array', items: { type: 'object', required: ['id'], properties: { id: ACTOR_ID } } },
       },
     } as never,

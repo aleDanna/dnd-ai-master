@@ -2,12 +2,14 @@ import type { ActionResult, ActorRuntimeState, Character, Mutation } from './typ
 import { rollDice } from './dice';
 import { defaultRng, type Rng } from './rand';
 
-type SlotLevel = 1|2|3|4|5|6|7|8|9;
+type LeveledSlot = 1|2|3|4|5|6|7|8|9;
+type SlotLevel = 0 | LeveledSlot;
 
 export interface CastSpellInput {
   caster: Character;
   runtime: ActorRuntimeState;
   spellSlug: string;
+  /** 0 for cantrips (no slot consumed). 1-9 for leveled casts. */
   slotLevel: SlotLevel;
   targets: { id: string }[];
 }
@@ -20,27 +22,34 @@ export function castSpell(input: CastSpellInput, rng: Rng = defaultRng): ActionR
     return { ok: false, error: 'not_known', rolls: [], mutations: [] };
   }
 
-  // Slot availability
-  const max = input.caster.spellcasting.slotsMax[input.slotLevel] ?? 0;
-  const used = input.runtime.spellSlotsUsed?.[input.slotLevel] ?? 0;
-  if (max - used <= 0) {
-    return { ok: false, error: 'no_slot', rolls: [], mutations: [] };
+  const isCantrip = input.slotLevel === 0;
+  if (!isCantrip) {
+    const lvl = input.slotLevel as LeveledSlot;
+    const max = input.caster.spellcasting.slotsMax[lvl] ?? 0;
+    const used = input.runtime.spellSlotsUsed?.[lvl] ?? 0;
+    if (max - used <= 0) {
+      return { ok: false, error: 'no_slot', rolls: [], mutations: [] };
+    }
   }
 
+  const slotMutations: Mutation[] = isCantrip
+    ? []
+    : [{ op: 'use_spell_slot', actorId: input.runtime.actorId, level: input.slotLevel as LeveledSlot }];
+
   const handler = SPELL_HANDLERS[input.spellSlug];
+  // No specialised mechanical handler: succeed as a "narrative cast". The master
+  // is responsible for any follow-up rolls / damage / conditions via separate
+  // tool calls (apply_damage, saving_throw, apply_condition, etc.). Returning
+  // ok here avoids the master having to fake-resolve the cast when an SRD spell
+  // simply doesn't have a hard-coded handler.
   if (!handler) {
-    return { ok: false, error: 'not_implemented', rolls: [], mutations: [] };
+    return { ok: true, data: { effects: [] }, rolls: [], mutations: slotMutations };
   }
 
   const result = handler(input, rng);
   if (!result.ok) return result;
 
-  // Always consume the slot on a successful cast
-  const mutations: Mutation[] = [
-    ...result.mutations,
-    { op: 'use_spell_slot', actorId: input.runtime.actorId, level: input.slotLevel },
-  ];
-  return { ...result, mutations };
+  return { ...result, mutations: [...result.mutations, ...slotMutations] };
 }
 
 type SpellHandler = (input: CastSpellInput, rng: Rng) => ActionResult<{ effects: string[] }>;
@@ -82,9 +91,5 @@ const SPELL_HANDLERS: Record<string, SpellHandler> = {
     };
   },
 
-  'fireball': (_input, _rng) => {
-    // Stub — not needed for first MVP test pass; full impl can come later.
-    return { ok: false, error: 'not_implemented', rolls: [], mutations: [] };
-  },
 };
 

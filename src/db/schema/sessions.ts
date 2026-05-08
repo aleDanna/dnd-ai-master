@@ -15,6 +15,8 @@ export const sessions = pgTable(
     status: sessionStatusEnum('status').notNull().default('active'),
     turnLockHolder: uuid('turn_lock_holder'),
     turnLockExpiresAt: timestamp('turn_lock_expires_at', { withTimezone: true }),
+    memoryLockHolder: uuid('memory_lock_holder'),
+    memoryLockExpiresAt: timestamp('memory_lock_expires_at', { withTimezone: true }),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
