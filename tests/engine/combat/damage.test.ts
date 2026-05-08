@@ -68,3 +68,99 @@ describe('applyDamage', () => {
     expect(r.data?.dead).toBe(true);
   });
 });
+
+// ─── Helpers for death-save tests (PHB §3.17–3.18) ─────────────────────────
+
+function pcAt0Hp(opts: { hpMax?: number } = {}): Character {
+  return {
+    id: 'pc1', name: 'Tharion', level: 1, xp: 0,
+    classSlug: 'fighter', raceSlug: 'human', backgroundSlug: 'soldier',
+    abilities: { STR: 16, DEX: 12, CON: 14, INT: 10, WIS: 12, CHA: 8 },
+    proficiencyBonus: 2, hpMax: opts.hpMax ?? 10, ac: 16, speed: 30,
+    proficiencies: { saves: ['STR', 'CON'], skills: [], expertise: [], weapons: [], armor: [], tools: [], languages: [] },
+    spellcasting: null, features: [], inventory: [], hitDiceMax: 1, hitDieSize: 10,
+  };
+}
+
+function runtimeAt0Hp(opts: Partial<ActorRuntimeState> = {}): ActorRuntimeState {
+  return {
+    actorId: 'pc1',
+    hpCurrent: 0,
+    tempHp: 0,
+    conditions: [],
+    deathSaves: { successes: 0, failures: 0 },
+    ...opts,
+  };
+}
+
+describe('applyDamage — death save fail at 0 HP', () => {
+  it('PC at 0 HP takes damage → +1 death save failure', () => {
+    const target = pcAt0Hp({ hpMax: 10 });
+    const runtime = runtimeAt0Hp({ deathSaves: { successes: 1, failures: 0 } });
+    const result = applyDamage({
+      runtime,
+      target: target as unknown as CombatActor,
+      amount: 5,
+      type: 'piercing',
+      isCrit: false,
+    });
+    const ds = result.mutations.find((m) => m.op === 'death_save');
+    expect(ds).toBeDefined();
+    if (ds && ds.op === 'death_save') {
+      expect(ds.success).toBe(false);
+    }
+    // exactly one failure mutation (not two)
+    expect(result.mutations.filter((m) => m.op === 'death_save').length).toBe(1);
+  });
+
+  it('PC at 0 HP takes critical damage → +2 death save failures', () => {
+    const target = pcAt0Hp({ hpMax: 10 });
+    const runtime = runtimeAt0Hp();
+    const result = applyDamage({
+      runtime,
+      target: target as unknown as CombatActor,
+      amount: 8,
+      type: 'piercing',
+      isCrit: true,
+    });
+    const dsFails = result.mutations.filter(
+      (m) => m.op === 'death_save' && m.success === false,
+    );
+    expect(dsFails.length).toBe(2);
+  });
+
+  it('PC at 0 HP takes damage ≥ hpMax → instant death (no death save mutations)', () => {
+    const target = pcAt0Hp({ hpMax: 10 });
+    const runtime = runtimeAt0Hp();
+    const result = applyDamage({
+      runtime,
+      target: target as unknown as CombatActor,
+      amount: 10,
+      type: 'piercing',
+      isCrit: false,
+    });
+    expect(result.data?.dead).toBe(true);
+    const ds = result.mutations.find((m) => m.op === 'death_save');
+    expect(ds).toBeUndefined();
+    // should still emit set_hp 0 and unconscious condition
+    const setHp = result.mutations.find((m) => m.op === 'set_hp');
+    expect(setHp).toBeDefined();
+    const addCond = result.mutations.find(
+      (m) => m.op === 'add_condition' && m.condition.slug === 'unconscious',
+    );
+    expect(addCond).toBeDefined();
+  });
+
+  it('PC with current HP > 0 takes damage normally (no death_save mutations)', () => {
+    const target = pcAt0Hp({ hpMax: 10 });
+    const runtime: ActorRuntimeState = { ...runtimeAt0Hp(), hpCurrent: 5 };
+    const result = applyDamage({
+      runtime,
+      target: target as unknown as CombatActor,
+      amount: 3,
+      type: 'piercing',
+    });
+    const ds = result.mutations.find((m) => m.op === 'death_save');
+    expect(ds).toBeUndefined();
+  });
+});
