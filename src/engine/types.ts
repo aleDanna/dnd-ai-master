@@ -118,6 +118,12 @@ export interface ActorRuntimeState {
   tempHp: number;
   conditions: ConditionInstance[];
   deathSaves: { successes: number; failures: number };
+  /**
+   * Optional exhaustion track (0..6). Mirrors any 'exhaustion' entry in
+   * `conditions` for use by the effect resolver. Will be fully wired by
+   * later tasks; included here so engine helpers can already consume it.
+   */
+  exhaustionLevel?: number;
   // For PCs only:
   hitDiceRemaining?: number;
   spellSlotsUsed?: Partial<Record<1|2|3|4|5|6|7|8|9, number>>;

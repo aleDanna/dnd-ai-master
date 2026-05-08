@@ -1,7 +1,8 @@
-import type { Ability, ActionResult, Character, Skill } from './types';
+import type { Ability, ActionResult, ActorRuntimeState, Character, Skill } from './types';
 import { abilityModifier, savingThrowBonus, skillBonus, passiveScore } from './modifiers';
 import { rollD20 } from './dice';
 import { defaultRng, type Rng } from './rand';
+import { getEffectsForActor } from './condition-effects';
 
 export interface AbilityCheckInput {
   char: Character;
@@ -10,6 +11,8 @@ export interface AbilityCheckInput {
   dc: number;
   advantage?: boolean;
   disadvantage?: boolean;
+  /** Optional runtime state — when present, the resolver applies condition/exhaustion effects. */
+  runtime?: ActorRuntimeState;
 }
 
 export function abilityCheck(input: AbilityCheckInput, rng: Rng = defaultRng): ActionResult<{ dc: number }> {
@@ -21,7 +24,12 @@ export function abilityCheck(input: AbilityCheckInput, rng: Rng = defaultRng): A
   } else {
     return { ok: false, error: 'abilityCheck: must provide skill or ability', rolls: [], mutations: [] };
   }
-  const roll = rollD20({ advantage: input.advantage, disadvantage: input.disadvantage, modifier }, rng);
+  const fx = getEffectsForActor(input.runtime?.conditions ?? [], {
+    exhaustionLevel: input.runtime?.exhaustionLevel,
+  });
+  const advantage = !!input.advantage;
+  const disadvantage = !!input.disadvantage || fx.abilityCheckDisadvantage;
+  const roll = rollD20({ advantage, disadvantage, modifier }, rng);
   return {
     ok: roll.total >= input.dc,
     data: { dc: input.dc },
@@ -36,11 +44,29 @@ export interface SavingThrowInput {
   dc: number;
   advantage?: boolean;
   disadvantage?: boolean;
+  /** Optional runtime state — when present, the resolver applies condition/exhaustion effects. */
+  runtime?: ActorRuntimeState;
 }
 
-export function savingThrow(input: SavingThrowInput, rng: Rng = defaultRng): ActionResult<{ dc: number }> {
+export function savingThrow(
+  input: SavingThrowInput,
+  rng: Rng = defaultRng,
+): ActionResult<{ dc: number; autoFailed?: boolean }> {
+  const fx = getEffectsForActor(input.runtime?.conditions ?? [], {
+    exhaustionLevel: input.runtime?.exhaustionLevel,
+  });
+  if (fx.saveAutoFail[input.ability]) {
+    return {
+      ok: false,
+      data: { dc: input.dc, autoFailed: true },
+      rolls: [],
+      mutations: [],
+    };
+  }
   const modifier = savingThrowBonus(input.char, input.ability);
-  const roll = rollD20({ advantage: input.advantage, disadvantage: input.disadvantage, modifier }, rng);
+  const advantage = !!input.advantage;
+  const disadvantage = !!input.disadvantage || fx.saveDisadvantage[input.ability];
+  const roll = rollD20({ advantage, disadvantage, modifier }, rng);
   return {
     ok: roll.total >= input.dc,
     data: { dc: input.dc },
