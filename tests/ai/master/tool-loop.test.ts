@@ -132,6 +132,33 @@ describe('runToolLoop', () => {
     expect(seen.at(-1)).toBe('narrative_delta');
   });
 
+  it('strips a leaked THINK reasoning preamble before emitting narrative_delta', async () => {
+    const leaked = [
+      'THINK',
+      'The player is entering the trapdoor. Need a vivid descent.',
+      '',
+      'You descend the slick stone steps. The air thickens with salt and kelp.',
+    ].join('\n');
+    const complete = vi.fn().mockResolvedValueOnce(fakeOutput([{ type: 'text', text: leaked }]));
+    const result = await runToolLoop({
+      provider: fakeProvider(complete),
+      systemBlocks: [{ type: 'text', text: 'sys' }],
+      history: [{ role: 'user', content: 'open the trapdoor' }],
+      state: baseState,
+    });
+    expect(result.finalText).toBe(
+      'You descend the slick stone steps. The air thickens with salt and kelp.',
+    );
+    const delta = result.events.find((e) => e.type === 'narrative_delta');
+    expect(delta?.type).toBe('narrative_delta');
+    if (delta?.type === 'narrative_delta') {
+      expect(delta.text).not.toMatch(/THINK/);
+      expect(delta.text).toBe(
+        'You descend the slick stone steps. The air thickens with salt and kelp.',
+      );
+    }
+  });
+
   it('keeps the turn alive when applyMutations rejects (DB blip / connection drop)', async () => {
     // Master rolls a d20 — the roll itself succeeds, but the persistence
     // step (applyMutations) throws. Before this fix, the throw bubbled up

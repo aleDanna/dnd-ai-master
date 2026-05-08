@@ -102,6 +102,7 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
     conditions: stateRow.conditions,
     inCombat: stateRow.inCombat,
     inventory: character.inventory,
+    spellSlots: buildSpellSlotsView(character.spellcasting as Character['spellcasting'], stateRow.spellSlotsUsed),
   });
 
   return { state, characterMonoSpace, scene: stateRow.scene, language: session.language };
@@ -124,6 +125,26 @@ function toEngineCombatActor(row: CombatActorRow): CombatActor {
     vulnerabilities: c.vulnerabilities ?? [],
     conditionImmunities: c.conditionImmunities ?? [],
   };
+}
+
+/**
+ * Master-facing spell-slot view: `{ "1": "2/4", "2": "0/2" }` (used/max per
+ * level). Returns null when the PC is not a spellcaster so the JSON stays tidy.
+ * The master must consult this before handing out spells — empty `slotsMax`
+ * means no spellcasting; a level whose used == max means that level is spent.
+ */
+function buildSpellSlotsView(
+  spellcasting: Character['spellcasting'],
+  used: Record<string, number>,
+): Record<string, string> | null {
+  if (!spellcasting || !spellcasting.slotsMax) return null;
+  const view: Record<string, string> = {};
+  for (const [lvl, max] of Object.entries(spellcasting.slotsMax)) {
+    if (typeof max !== 'number' || max <= 0) continue;
+    const u = used[lvl] ?? 0;
+    view[lvl] = `${u}/${max}`;
+  }
+  return Object.keys(view).length > 0 ? view : null;
 }
 
 function parseSlotsUsed(raw: Record<string, number>): ActorRuntimeState['spellSlotsUsed'] {

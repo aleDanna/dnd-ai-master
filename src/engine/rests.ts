@@ -67,10 +67,15 @@ export function longRest(input: LongRestInput): ActionResult<{ restored: string[
     { op: 'set_temp_hp', actorId: input.runtime.actorId, amount: 0 },
   ];
 
-  // Restore all spell slots
+  // Restore all spell slots — one mutation per level that has consumed slots.
+  // The applicator decrements `spellSlotsUsed[level]` by `amount`, clamped at 0.
   if (input.runtime.spellSlotsUsed) {
-    // We can't iterate without level-keys; let Plan D's applicator zero them out.
-    // For our mutation list we emit one synthetic op via use_spell_slot? No — easier: loop.
+    for (const [lvlStr, usedCount] of Object.entries(input.runtime.spellSlotsUsed)) {
+      const lvl = Number(lvlStr) as 1|2|3|4|5|6|7|8|9;
+      if (typeof usedCount === 'number' && usedCount > 0) {
+        mutations.push({ op: 'restore_spell_slot', actorId: input.runtime.actorId, level: lvl, amount: usedCount });
+      }
+    }
   }
 
   // Restore up to half max hit dice (rounded down, minimum 1)

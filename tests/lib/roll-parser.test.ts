@@ -386,6 +386,25 @@ describe('parseRollRequests — Italian skill checks (no explicit formula)', () 
     expect(reqs[0]!.label).toBe('Intimidazione (CD 12)');
   });
 
+  it('parses hybrid-language "Roll una prova di Intimidazione" as a check button', () => {
+    // Reproduces a real bug: the master sometimes mixes English ("Roll") with
+    // Italian skill-check syntax. Without explicit tolerance neither the
+    // English nor the Italian pattern matches and no button appears.
+    const reqs = parseRollRequests('Roll una prova di Intimidazione.');
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.formula).toBe('1d20');
+    expect(reqs[0]!.label).toBe('Intimidazione');
+    expect(reqs[0]!.kind).toBe('check');
+  });
+
+  it('parses hybrid-language "Roll un TS Destrezza CD 14" as a save button', () => {
+    const reqs = parseRollRequests('Roll un TS Destrezza CD 14.');
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.formula).toBe('1d20');
+    expect(reqs[0]!.label).toBe('TS DES (CD 14)');
+    expect(reqs[0]!.kind).toBe('save');
+  });
+
   it('parses "tira una prova di Intuizione CD 12" (Insight alias)', () => {
     // Reproduces the user's screenshot: master narrates an Insight check
     // using "Intuizione" rather than the canonical "Intuito". Both are

@@ -126,11 +126,14 @@ export function parseRollRequests(text: string): RollRequest[] {
   // 4. Italian skill / ability check (no explicit formula):
   //    "tira una prova di Intimidazione (CD 12)"  /  "fai una prova di Sopravvivenza"
   //    The DC can appear after the skill ("CD 12") and is optional.
+  //    `roll`/`lancia` are accepted alongside the canonical Italian verbs to
+  //    catch hybrid-language master output ("Roll una prova di Intimidazione")
+  //    that would otherwise slip past both the English and Italian patterns.
   const ITALIAN_SKILL =
     'Acrobazia|Addestrare\\s+Animali|Arcano|Arcana|Atletica|Inganno|Intuito|Intuizione|Intimidazione|Intimidire|Investigazione|Indagine|Indagare|Medicina|Natura|Percezione|Intrattenere|Spettacolo|Persuasione|Religione|Rapidit[àa]\\s+di\\s+Mano|Mano\\s+Lesta|Furtivit[àa]|Sopravvivenza|Storia';
   const ITALIAN_ABILITY = 'Forza|Destrezza|Costituzione|Intelligenza|Saggezza|Carisma';
   const checkReIt = new RegExp(
-    `(?:tira|fai|effettua)\\s+(?:un[ao]?\\s+)?(?:prova|controllo)\\s+(?:di\\s+)?(${ITALIAN_SKILL}|${ITALIAN_ABILITY})(?:[^.!?\\n]{0,30}?\\bCD\\s*(\\d+))?`,
+    `(?:tira|fai|effettua|lancia|roll)\\s+(?:un[ao]?\\s+)?(?:prova|controllo)\\s+(?:di\\s+)?(${ITALIAN_SKILL}|${ITALIAN_ABILITY})(?:[^.!?\\n]{0,30}?\\bCD\\s*(\\d+))?`,
     'gi',
   );
   while ((m = checkReIt.exec(text)) !== null) {
@@ -151,8 +154,9 @@ export function parseRollRequests(text: string): RollRequest[] {
 
   // 5. Italian saving throw:
   //    "tira un TS Destrezza CD 14" / "tira un tiro salvezza di Costituzione (CD 12)"
+  //    Same hybrid-language tolerance as the check pattern above.
   const saveReIt = new RegExp(
-    `(?:tira|fai|effettua)\\s+(?:un[ao]?\\s+)?(?:TS|tiro\\s+(?:di\\s+)?salvezza)\\s+(?:di\\s+)?(${ITALIAN_ABILITY})(?:[^.!?\\n]{0,30}?\\bCD\\s*(\\d+))?`,
+    `(?:tira|fai|effettua|lancia|roll)\\s+(?:un[ao]?\\s+)?(?:TS|tiro\\s+(?:di\\s+)?salvezza)\\s+(?:di\\s+)?(${ITALIAN_ABILITY})(?:[^.!?\\n]{0,30}?\\bCD\\s*(\\d+))?`,
     'gi',
   );
   while ((m = saveReIt.exec(text)) !== null) {

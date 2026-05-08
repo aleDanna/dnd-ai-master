@@ -58,4 +58,39 @@ describe('longRest', () => {
     // restore_hit_dice up to half of hitDiceMax
     expect(r.mutations.some((m) => m.op === 'restore_hit_dice')).toBe(true);
   });
+
+  it('emits one restore_spell_slot per used slot level (carrying the used count)', () => {
+    const wizard: Character = {
+      ...fighter,
+      classSlug: 'wizard',
+      spellcasting: {
+        ability: 'INT',
+        spellSaveDC: 13,
+        spellAttackBonus: 5,
+        slotsMax: { 1: 4, 2: 3, 3: 2 },
+        spellsKnown: [],
+        spellsPrepared: [],
+      },
+    };
+    const wizardRuntime: ActorRuntimeState = {
+      ...fighterRuntime,
+      spellSlotsUsed: { 1: 3, 2: 0, 3: 2 },
+    };
+    const r = longRest({ char: wizard, runtime: wizardRuntime });
+    expect(r.ok).toBe(true);
+    const restores = r.mutations.filter((m) => m.op === 'restore_spell_slot') as Array<
+      { op: 'restore_spell_slot'; level: number; amount: number }
+    >;
+    // Only levels with usedCount > 0 emit a mutation (level 2 is skipped).
+    expect(restores).toHaveLength(2);
+    expect(restores.find((m) => m.level === 1)?.amount).toBe(3);
+    expect(restores.find((m) => m.level === 3)?.amount).toBe(2);
+    expect(restores.find((m) => m.level === 2)).toBeUndefined();
+  });
+
+  it('emits no restore_spell_slot when no slots are used', () => {
+    const wizardFull: ActorRuntimeState = { ...fighterRuntime, spellSlotsUsed: { 1: 0, 2: 0 } };
+    const r = longRest({ char: fighter, runtime: wizardFull });
+    expect(r.mutations.some((m) => m.op === 'restore_spell_slot')).toBe(false);
+  });
 });
