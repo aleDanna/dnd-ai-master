@@ -117,6 +117,52 @@ const ALWAYS_ON: AnthropicTool[] = [
     input_schema: { type: 'object', properties: {} } as never,
   },
   {
+    name: 'take_action',
+    description:
+      "PHB §3.5: take a standard action (dash, disengage, dodge, help, hide, ready, search, use_object). Consumes the actor's action (or bonus action if useBonusAction=true for Rogue Cunning Action). Hide/Search return rollNeeded — follow up with ability_check for the actual roll. Help applies a 'helped' marker on the beneficiary granting advantage on next d20.",
+    input_schema: {
+      type: 'object',
+      required: ['actor', 'kind'],
+      properties: {
+        actor: ACTOR_ID,
+        kind: {
+          type: 'string',
+          enum: [
+            'dash',
+            'disengage',
+            'dodge',
+            'help',
+            'hide',
+            'ready',
+            'search',
+            'use_object',
+          ],
+        },
+        beneficiaryId: {
+          type: 'string',
+          description: 'For help: the actor receiving advantage on next d20.',
+        },
+        trigger: {
+          type: 'string',
+          description: 'For ready: the trigger description.',
+        },
+        readyAction: {
+          type: 'string',
+          description: 'For ready: the planned action (e.g. "Attack with bow").',
+        },
+        dc: {
+          type: 'integer',
+          description: 'For hide/search: the DC the master assigns (default 10).',
+        },
+        useBonusAction: {
+          type: 'boolean',
+          description:
+            'Rogue Cunning Action: dash/disengage/hide as bonus action instead of action.',
+        },
+      },
+    } as never,
+  },
+  {
     name: 'cast_spell',
     description: 'Cast a spell from the caster\'s known list. For cantrips pass slotLevel=0 (no slot consumed). For leveled spells pass slotLevel 1-9 (the slot at that level is consumed). When the spell has no built-in mechanical handler the call still succeeds — narrate the effect and call follow-up tools (apply_damage, saving_throw, apply_condition, etc.) for any consequences.',
     input_schema: {

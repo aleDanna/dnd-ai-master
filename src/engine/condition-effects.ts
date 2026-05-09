@@ -141,6 +141,7 @@ const APPLIERS: Record<Exclude<ConditionSlug, 'exhaustion'>, (f: ConditionEffect
   shielded: () => { /* +AC handled at AC compute */ },
   flying: () => { /* movement mode handled at movement layer */ },
   'mage-armored': () => { /* AC base override handled at AC compute */ },
+  helped: () => { /* PHB §3.5: advantage on next d20 — handled at roll site */ },
 };
 
 function applyExhaustion(f: ConditionEffectFlags, level: number): void {

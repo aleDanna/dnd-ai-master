@@ -5,6 +5,11 @@ import { rollInitiative } from '../combat/initiative';
 import { makeAttack } from '../combat/attack';
 import { applyDamage } from '../combat/damage';
 import { endTurn } from '../combat/turn';
+import {
+  resolveStandardAction,
+  type StandardActionInput,
+  type StandardActionKind,
+} from '../combat/standard-actions';
 import { castSpell } from '../spells';
 import { applyCondition, removeCondition } from '../conditions';
 import { useResource as consumeResource } from '../resources';
@@ -130,6 +135,36 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       rolls: [],
       mutations: [{ op: 'set_combat', combat: null }],
       data: { roundsElapsed: state.combat.round },
+    };
+  },
+
+  take_action: (state, input) => {
+    const actorId = resolveCharacterId(state, input.actor ?? input.actorId);
+    if (!actorId) return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
+    const kind = input.kind as StandardActionKind | undefined;
+    if (!kind) return { ok: false, error: 'missing_kind', rolls: [], mutations: [] };
+    const resolverInput: StandardActionInput = {
+      actorId,
+      kind,
+      beneficiaryId:
+        typeof input.beneficiaryId === 'string' ? input.beneficiaryId : undefined,
+      trigger: typeof input.trigger === 'string' ? input.trigger : undefined,
+      readyAction:
+        typeof input.readyAction === 'string' ? input.readyAction : undefined,
+      dc: typeof input.dc === 'number' ? input.dc : undefined,
+      useBonusAction: input.useBonusAction === true,
+      currentRound: state.combat?.round ?? 0,
+    };
+    const rt = state.runtime[actorId];
+    const result = resolveStandardAction(resolverInput, rt);
+    if (!result.ok) {
+      return { ok: false, error: result.error ?? 'standard_action_failed', rolls: [], mutations: [] };
+    }
+    return {
+      ok: true,
+      data: result.rollNeeded ? { rollNeeded: result.rollNeeded } : {},
+      rolls: [],
+      mutations: result.mutations,
     };
   },
 
