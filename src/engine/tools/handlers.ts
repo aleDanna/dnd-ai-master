@@ -352,6 +352,20 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
     if (!Number.isFinite(dc)) return { ok: false, error: 'invalid_dc', rolls: [], mutations: [] };
     return handleConcentrationCheck({ rng: Math.random }, state, { actorId, dc });
   },
+
+  grant_inspiration: (state, input) => {
+    const ref = input.character ?? input.actor;
+    if (ref == null) return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    const charId = resolveCharacterId(state, ref);
+    return handleGrantInspiration(state, { character: charId });
+  },
+
+  spend_inspiration: (state, input) => {
+    const ref = input.character ?? input.actor;
+    if (ref == null) return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    const charId = resolveCharacterId(state, ref);
+    return handleSpendInspiration(state, { character: charId });
+  },
 };
 
 // ─── Pure death-save / stabilize handlers ──────────────────────────────────
@@ -519,6 +533,60 @@ export function handleConcentrationCheck(
     mutations: [
       { op: 'break_concentration', actorId: input.actorId, reason: 'damage' },
     ],
+  };
+}
+
+/**
+ * PHB §18.1: DM-side Inspiration grant. Idempotent — granting Inspiration
+ * to a PC who already has it is a no-op (returns ok:true with
+ * `granted: false` and no mutation). On a fresh grant, returns ok:true
+ * with `granted: true` and a `grant_inspiration` mutation.
+ */
+export function handleGrantInspiration(
+  state: EngineState,
+  input: { character: string },
+): ActionResult<{ granted: boolean }> {
+  const char = state.characters.find((c) => c.id === input.character);
+  if (!char) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+  if (char.inspiration) {
+    // Already has Inspiration — PHB: "you either have it or you don't"
+    // (no stacking). The grant succeeds in spirit but emits no mutation.
+    return { ok: true, data: { granted: false }, rolls: [], mutations: [] };
+  }
+  return {
+    ok: true,
+    data: { granted: true },
+    rolls: [],
+    mutations: [{ op: 'grant_inspiration', characterId: char.id }],
+  };
+}
+
+/**
+ * PHB §18.1: standalone spend (typically the player declares "I use my
+ * Inspiration" without an associated d20 roll yet, e.g. before initiative).
+ * Most spends should go through the `useInspiration` flag on make_attack /
+ * ability_check / saving_throw — those tools both apply ADV AND emit the
+ * spend in one tool call. This handler is a fallback for narrative spends
+ * and for tests/debugging.
+ */
+export function handleSpendInspiration(
+  state: EngineState,
+  input: { character: string },
+): ActionResult<{ spent: boolean }> {
+  const char = state.characters.find((c) => c.id === input.character);
+  if (!char) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+  if (!char.inspiration) {
+    return { ok: false, error: 'no_inspiration', rolls: [], mutations: [] };
+  }
+  return {
+    ok: true,
+    data: { spent: true },
+    rolls: [],
+    mutations: [{ op: 'spend_inspiration', characterId: char.id }],
   };
 }
 

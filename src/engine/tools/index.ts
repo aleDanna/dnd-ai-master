@@ -405,6 +405,30 @@ const ALWAYS_ON: AnthropicTool[] = [
     } as never,
   },
   {
+    name: 'grant_inspiration',
+    description:
+      "PHB §18.1: DM awards Inspiration to a PC for great roleplaying, a memorable accomplishment, or a heroic moment in the story. Inspiration is a single boolean — \"you either have it or you don't\" (no stacking). Idempotent: granting Inspiration to a PC who already has it is a no-op (returns granted:false). The PC then has Inspiration available to spend on a future d20 roll for ADV (use the useInspiration flag on make_attack / ability_check / saving_throw, or this tool's sibling spend_inspiration).",
+    input_schema: {
+      type: 'object',
+      required: ['character'],
+      properties: {
+        character: ACTOR_ID,
+      },
+    } as never,
+  },
+  {
+    name: 'spend_inspiration',
+    description:
+      "PHB §18.1: spend the PC's Inspiration as a standalone act (e.g. the player declares \"I use my Inspiration\" outside the context of a specific d20 tool call). Most spends should go through the useInspiration flag on make_attack / ability_check / saving_throw, which both applies ADV AND consumes the resource. This standalone tool is for narrative or pre-roll spends. Errors with no_inspiration if the PC doesn't currently have Inspiration.",
+    input_schema: {
+      type: 'object',
+      required: ['character'],
+      properties: {
+        character: ACTOR_ID,
+      },
+    } as never,
+  },
+  {
     name: 'lookup_codex',
     description:
       "Look up a campaign-codex entity by kind + name/slug. Use when an NPC, location, quest, faction, lore fact, named item, or relationship is referenced in chat and is NOT already visible in the Scene card. The codex is the single source of truth for narrative continuity — prefer it over re-inventing details. Returns up to 5 matches; returns an empty array when nothing matches.",
