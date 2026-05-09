@@ -65,6 +65,59 @@ export interface Character {
   attunedItems?: string[];
   hitDiceMax: number;
   hitDieSize: number;             // 6 | 8 | 10 | 12
+  /**
+   * PHB §6.4 — special senses (darkvision, blindsight, tremorsense,
+   * truesight) and an optional passive Perception override. Optional so
+   * existing snapshots without this column continue to typecheck; the
+   * applicator/snapshot default it to absent.
+   */
+  senses?: Senses;
+}
+
+// ─── Exploration: travel pace, light, senses, marching order (PHB §6) ──────
+
+/** PHB §6.1 travel pace — Fast/Normal/Slow. */
+export type TravelPace = 'fast' | 'normal' | 'slow';
+
+/** PHB §6.4 ambient light levels for the current area. */
+export type LightLevel = 'bright' | 'dim' | 'darkness';
+
+/**
+ * PHB §6.4 special senses + optional passive Perception override.
+ * All fields optional: a creature with no special senses simply has none.
+ * Range values are in feet.
+ */
+export interface Senses {
+  darkvisionFt?: number;
+  blindsightFt?: number;
+  tremorsenseFt?: number;
+  truesightFt?: number;
+  /** Optional override; otherwise derived from skill. */
+  passivePerception?: number;
+}
+
+/**
+ * PHB §6.2 marching order — three ordered ranks. Each rank holds the
+ * actor IDs (PC + companions/NPCs) currently in that position. Used
+ * narratively for ambushes/area effects; the engine does not enforce
+ * positional rules here.
+ */
+export interface MarchingOrder {
+  front: string[];
+  middle: string[];
+  back: string[];
+}
+
+/**
+ * Engine-side travel state. Persisted on session_state.travel.
+ * All fields optional so a fresh session has no travel context until
+ * the master sets one (defaults to "exploration without explicit
+ * travel" — bright light, no specific pace, no marching order).
+ */
+export interface TravelState {
+  pace?: TravelPace;
+  lightLevel?: LightLevel;
+  marchingOrder?: MarchingOrder;
 }
 
 export interface SpellcastingState {
@@ -162,6 +215,12 @@ export interface CombatActor {
   immunities: DamageType[];
   vulnerabilities: DamageType[];
   conditionImmunities: ConditionSlug[];
+  /**
+   * PHB §6.4 — special senses (darkvision, blindsight, tremorsense,
+   * truesight). Optional: most baseline humanoids have none and rely
+   * on normal sight.
+   */
+  senses?: Senses;
 }
 
 // ─── Engine state (runtime-only — Plan D will persist this) ────────────────
@@ -260,6 +319,13 @@ export interface EngineState {
   runtime: Record<string, ActorRuntimeState>;  // keyed by actor id
   combat: CombatState | null;
   scene: string;                  // short narrative summary
+  /**
+   * PHB §6 — exploration/travel state: pace, ambient light level, marching
+   * order. Optional so existing snapshots stay backward-compatible; the
+   * master sets fields explicitly when the party transitions to overland
+   * travel or when light conditions change.
+   */
+  travel?: TravelState;
 }
 
 // ─── Mutations (declarative ops to apply to state) ─────────────────────────
@@ -313,7 +379,20 @@ export type Mutation =
   | { op: 'attune'; characterId: string; itemSlug: string }
   // PHB §10.1 — break attunement to a magic item. Idempotent (no-op if not
   // currently attuned); removes the slug from `characters.attuned_items`.
-  | { op: 'unattune'; characterId: string; itemSlug: string };
+  | { op: 'unattune'; characterId: string; itemSlug: string }
+  // PHB §6.1 — set the party's travel pace (Fast/Normal/Slow). Persisted
+  // on session_state.travel.pace; merges with any existing travel object.
+  | { op: 'set_travel_pace'; pace: TravelPace }
+  // PHB §6.4 — set the ambient light level for the current scene. Used by
+  // check_vision to determine sight-based perception effects.
+  | { op: 'set_light_level'; lightLevel: LightLevel }
+  // PHB §6.2 — set the party's marching order (front/middle/back ranks).
+  // Narrative-only; the engine doesn't enforce positional rules here.
+  | { op: 'set_marching_order'; order: MarchingOrder }
+  // PHB §6.4 — set special senses on a PC or combat actor (darkvision,
+  // blindsight, tremorsense, truesight, optional passive Perception
+  // override). Branches on actor type in the applicator.
+  | { op: 'set_senses'; actorId: string; senses: Senses };
 
 // ─── Action results ────────────────────────────────────────────────────────
 
