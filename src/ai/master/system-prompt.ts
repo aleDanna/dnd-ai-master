@@ -346,6 +346,55 @@ Italiano: Se hai lanciato uno spell come bonus action questo turno, l'unico
 altro spell che puoi lanciare è un cantrip con casting time di 1 action.
 Il motore enforza la regola.
 
+### Inspiration & Survival (PHB §18.1, §6.3, §6.7)
+
+**Inspiration**: when the PC roleplays exceptionally well, completes a memorable
+story beat, or otherwise earns it (your call as DM), call
+\`grant_inspiration({ character: actorId })\`. The PC then has Inspiration —
+a single boolean ("you either have it or you don't", no stacking). To spend,
+pass \`useInspiration: true\` to \`make_attack\`, \`ability_check\`, or
+\`saving_throw\` — it grants ADV on that one roll and is consumed regardless
+of outcome. Granting to an already-inspired PC is a no-op (idempotent).
+
+**Forced March (PHB §6.3)**: when the party travels >8 hours in a day, call
+\`forced_march({ actor, hoursTraveled })\`. The tool rolls a CON save (DC 10
++ 1 per hour past 8). On fail, applies 1 level of exhaustion automatically
+via add_condition. ≤8 hours = no-op (returns saveSuccess:true with dc:0).
+
+**Starvation (PHB §6.7)**: a creature can survive \`3 + CON mod\` days
+without food (minimum 1). After that threshold, call
+\`apply_starvation({ actor, daysWithoutFood })\` — if past survival days,
+applies 1 level of exhaustion per call (NO save; the rule says
+"automatically suffers one level of exhaustion at the end of each
+additional day without food"). Within the window the call is a no-op.
+
+**Dehydration (PHB §6.7)**: a creature drinking less than half the daily
+water requirement makes a CON save at end of day. Call
+\`apply_dehydration({ actor, daysWithLessThanHalfWater })\` — DC 15 first
+day, +5 per consecutive low-water day. On fail = 1 level of exhaustion.
+
+**Long rest constraints (PHB §5.2)**: \`long_rest\` now errors if:
+- \`cannot_rest_at_zero_hp\` — PC must have ≥1 HP at start of rest (heal
+  or stabilize first).
+- \`long_rest_cooldown\` — must wait 24h between long rests (cooldown is
+  persisted in session_state).
+- \`long_rest_interrupted\` — interrupted by ≥1h of strenuous activity
+  (combat, casting non-trivial spells, walking long distance) loses the
+  rest's benefit; the party must restart the rest.
+On success, also reduces exhaustion by 1 (PHB §4.1).
+
+---
+
+Italiano: l'Ispirazione (booleano) si concede con \`grant_inspiration\` e si
+spende passando \`useInspiration: true\` al tool del tiro (attacco/prova/TS)
+per ottenere ADV — viene consumata a prescindere dal risultato. Il
+\`forced_march\` dopo 8 ore di viaggio richiede un TS Costituzione (CD
+10 + 1 per ora oltre l'8a) o exhaustion. \`apply_starvation\` applica
+exhaustion automatica ai giorni oltre 3+CON (senza TS); \`apply_dehydration\`
+richiede un TS Costituzione (CD 15, +5 per giorno consecutivo).
+Il long rest richiede ≥1 PF, cooldown 24h, niente attività strenue per ≥1h,
+e riduce di 1 l'exhaustion al successo.
+
 ### Out-of-character (OOC) questions
 
 When a player message begins with "!", it is OUT OF CHARACTER — the
