@@ -429,6 +429,57 @@ const ALWAYS_ON: AnthropicTool[] = [
     } as never,
   },
   {
+    name: 'forced_march',
+    description:
+      "PHB §6.3: when a creature travels for more than 8 hours in a day, it makes a CON saving throw at the end of every additional hour or gains 1 level of exhaustion. The DC is 10 + 1 for each hour past 8. The tool rolls the save (1d20 + CON modifier + proficiency bonus when proficient in CON saves) and emits add_condition('exhaustion') on failure. ≤8 hours = no-op (returns saveSuccess:true with dc:0).",
+    input_schema: {
+      type: 'object',
+      required: ['actor', 'hoursTraveled'],
+      properties: {
+        actor: ACTOR_ID,
+        hoursTraveled: {
+          type: 'integer',
+          minimum: 0,
+          description: 'Total hours of travel that day (including the first 8 free hours).',
+        },
+      },
+    } as never,
+  },
+  {
+    name: 'apply_starvation',
+    description:
+      "PHB §6.7: a character can survive without food for 3 + CON modifier days (minimum 1). After that threshold, every additional day automatically applies 1 level of exhaustion (NO saving throw). The tool computes the survival threshold from the PC's CON, and emits add_condition('exhaustion') only if daysWithoutFood is past the threshold. Caller is responsible for tracking the running day count.",
+    input_schema: {
+      type: 'object',
+      required: ['actor', 'daysWithoutFood'],
+      properties: {
+        actor: ACTOR_ID,
+        daysWithoutFood: {
+          type: 'integer',
+          minimum: 0,
+          description: 'Cumulative days without food in this bout (1 = end of day 1, 2 = end of day 2, …).',
+        },
+      },
+    } as never,
+  },
+  {
+    name: 'apply_dehydration',
+    description:
+      "PHB §6.7: a creature drinking less than half the daily water requirement must make a CON saving throw at the end of the day or gain 1 level of exhaustion. The DC is 15 on the first day and increases by 5 per consecutive low-water day. The tool rolls the save (1d20 + CON modifier + proficiency bonus when proficient in CON saves) and emits add_condition('exhaustion') on failure. daysWithLessThanHalfWater < 1 = no-op.",
+    input_schema: {
+      type: 'object',
+      required: ['actor', 'daysWithLessThanHalfWater'],
+      properties: {
+        actor: ACTOR_ID,
+        daysWithLessThanHalfWater: {
+          type: 'integer',
+          minimum: 0,
+          description: 'Number of consecutive days with less than half the daily water requirement.',
+        },
+      },
+    } as never,
+  },
+  {
     name: 'lookup_codex',
     description:
       "Look up a campaign-codex entity by kind + name/slug. Use when an NPC, location, quest, faction, lore fact, named item, or relationship is referenced in chat and is NOT already visible in the Scene card. The codex is the single source of truth for narrative continuity — prefer it over re-inventing details. Returns up to 5 matches; returns an empty array when nothing matches.",

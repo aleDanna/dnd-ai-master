@@ -17,6 +17,12 @@ import { useResource as consumeResource } from '../resources';
 import { shortRest, longRest } from '../rests';
 import { equip, unequip, recomputeAC } from '../equipment';
 import { levelUp } from '../levelup';
+import {
+  dehydrationSaveDC,
+  forcedMarchDC,
+  starvationSurvivalDays,
+} from '../survival';
+import { abilityModifier } from '../modifiers';
 
 // Each handler receives the raw Anthropic tool input (an object literal),
 // resolves the relevant entities from EngineState, and dispatches to the
@@ -366,6 +372,54 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
     const charId = resolveCharacterId(state, ref);
     return handleSpendInspiration(state, { character: charId });
   },
+
+  forced_march: (state, input) => {
+    const ref = input.actor ?? input.actorId ?? input.character;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const charId = resolveCharacterId(state, ref);
+    const hoursTraveledRaw = input.hoursTraveled;
+    if (typeof hoursTraveledRaw !== 'number' || !Number.isFinite(hoursTraveledRaw)) {
+      return { ok: false, error: 'invalid_hours', rolls: [], mutations: [] };
+    }
+    return handleForcedMarch({ rng: Math.random }, state, {
+      actor: charId,
+      hoursTraveled: hoursTraveledRaw,
+    });
+  },
+
+  apply_starvation: (state, input) => {
+    const ref = input.actor ?? input.actorId ?? input.character;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const charId = resolveCharacterId(state, ref);
+    const daysRaw = input.daysWithoutFood;
+    if (typeof daysRaw !== 'number' || !Number.isFinite(daysRaw)) {
+      return { ok: false, error: 'invalid_days', rolls: [], mutations: [] };
+    }
+    return handleApplyStarvation(state, {
+      actor: charId,
+      daysWithoutFood: daysRaw,
+    });
+  },
+
+  apply_dehydration: (state, input) => {
+    const ref = input.actor ?? input.actorId ?? input.character;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const charId = resolveCharacterId(state, ref);
+    const daysRaw = input.daysWithLessThanHalfWater;
+    if (typeof daysRaw !== 'number' || !Number.isFinite(daysRaw)) {
+      return { ok: false, error: 'invalid_days', rolls: [], mutations: [] };
+    }
+    return handleApplyDehydration({ rng: Math.random }, state, {
+      actor: charId,
+      daysWithLessThanHalfWater: daysRaw,
+    });
+  },
 };
 
 // ─── Pure death-save / stabilize handlers ──────────────────────────────────
@@ -587,6 +641,233 @@ export function handleSpendInspiration(
     data: { spent: true },
     rolls: [],
     mutations: [{ op: 'spend_inspiration', characterId: char.id }],
+  };
+}
+
+/**
+ * PHB §6.3: forced march. After 8 hours of travel in a day, the PC must roll
+ * a CON save at the end of every additional hour (DC = 10 + 1 per hour past
+ * 8). On failure, 1 level of exhaustion is applied (`add_condition` →
+ * applicator stacks levels). On success, no mutation. ≤8 hours = no save.
+ */
+export function handleForcedMarch(
+  ctx: { rng: () => number },
+  state: EngineState,
+  input: { actor: string; hoursTraveled: number },
+): ActionResult<{
+  saveRoll: number;
+  saveTotal: number;
+  saveSuccess: boolean;
+  exhaustionApplied: boolean;
+  dc: number;
+}> {
+  const char = state.characters.find((c) => c.id === input.actor);
+  if (!char) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+
+  const dc = forcedMarchDC(input.hoursTraveled);
+  if (dc === 0) {
+    return {
+      ok: true,
+      data: { saveRoll: 0, saveTotal: 0, saveSuccess: true, exhaustionApplied: false, dc: 0 },
+      rolls: [],
+      mutations: [],
+    };
+  }
+
+  const conMod = abilityModifier(char.abilities.CON);
+  const profBonus = char.proficiencies.saves.includes('CON') ? char.proficiencyBonus : 0;
+  const roll = Math.floor(ctx.rng() * 20) + 1;
+  const total = roll + conMod + profBonus;
+  const success = total >= dc;
+
+  const formulaRoll: DiceRoll = {
+    formula: '1d20+CON',
+    rolls: [roll],
+    modifier: conMod + profBonus,
+    total,
+    meta: { kind: 'save', subtype: 'forced_march', dc },
+  };
+
+  if (success) {
+    return {
+      ok: true,
+      data: {
+        saveRoll: roll,
+        saveTotal: total,
+        saveSuccess: true,
+        exhaustionApplied: false,
+        dc,
+      },
+      rolls: [formulaRoll],
+      mutations: [],
+    };
+  }
+
+  return {
+    ok: true,
+    data: {
+      saveRoll: roll,
+      saveTotal: total,
+      saveSuccess: false,
+      exhaustionApplied: true,
+      dc,
+    },
+    rolls: [formulaRoll],
+    mutations: [
+      {
+        op: 'add_condition',
+        actorId: char.id,
+        condition: {
+          slug: 'exhaustion',
+          source: 'forced march',
+          durationRounds: 'until_removed',
+          appliedRound: 0,
+        },
+      },
+    ],
+  };
+}
+
+/**
+ * PHB §6.7: starvation. A creature can survive without food for
+ * `3 + CON modifier` days (minimum 1). After that threshold, every
+ * additional day automatically applies 1 level of exhaustion (no save —
+ * the rule says "after that, the character automatically suffers one level
+ * of exhaustion at the end of each additional day without food").
+ *
+ * Within the survival window: no-op. Past the window: emit an
+ * `add_condition` exhaustion mutation. Caller passes `daysWithoutFood`
+ * (cumulative count for the current bout); the handler computes survival
+ * threshold from CON and decides accordingly.
+ */
+export function handleApplyStarvation(
+  state: EngineState,
+  input: { actor: string; daysWithoutFood: number },
+): ActionResult<{ exhaustionApplied: boolean; survivalDays: number }> {
+  const char = state.characters.find((c) => c.id === input.actor);
+  if (!char) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+
+  const conMod = abilityModifier(char.abilities.CON);
+  const survivalDays = starvationSurvivalDays(conMod);
+
+  if (input.daysWithoutFood <= survivalDays) {
+    return {
+      ok: true,
+      data: { exhaustionApplied: false, survivalDays },
+      rolls: [],
+      mutations: [],
+    };
+  }
+
+  return {
+    ok: true,
+    data: { exhaustionApplied: true, survivalDays },
+    rolls: [],
+    mutations: [
+      {
+        op: 'add_condition',
+        actorId: char.id,
+        condition: {
+          slug: 'exhaustion',
+          source: 'starvation',
+          durationRounds: 'until_removed',
+          appliedRound: 0,
+        },
+      },
+    ],
+  };
+}
+
+/**
+ * PHB §6.7: dehydration. A creature with less than half the daily water
+ * requirement must succeed on a CON save at the end of the day or gain
+ * 1 level of exhaustion. DC is 15 on the first day and increases by 5
+ * for each consecutive day with less than half water.
+ *
+ * `daysWithLessThanHalfWater < 1` is treated as a no-op (the day hasn't
+ * triggered the rule yet — caller's responsibility to count).
+ */
+export function handleApplyDehydration(
+  ctx: { rng: () => number },
+  state: EngineState,
+  input: { actor: string; daysWithLessThanHalfWater: number },
+): ActionResult<{
+  saveRoll?: number;
+  saveTotal?: number;
+  saveSuccess?: boolean;
+  exhaustionApplied: boolean;
+  dc: number;
+}> {
+  const char = state.characters.find((c) => c.id === input.actor);
+  if (!char) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+
+  if (input.daysWithLessThanHalfWater < 1) {
+    return {
+      ok: true,
+      data: { exhaustionApplied: false, dc: 0 },
+      rolls: [],
+      mutations: [],
+    };
+  }
+
+  const dc = dehydrationSaveDC(input.daysWithLessThanHalfWater);
+  const conMod = abilityModifier(char.abilities.CON);
+  const profBonus = char.proficiencies.saves.includes('CON') ? char.proficiencyBonus : 0;
+  const roll = Math.floor(ctx.rng() * 20) + 1;
+  const total = roll + conMod + profBonus;
+  const success = total >= dc;
+
+  const formulaRoll: DiceRoll = {
+    formula: '1d20+CON',
+    rolls: [roll],
+    modifier: conMod + profBonus,
+    total,
+    meta: { kind: 'save', subtype: 'dehydration', dc },
+  };
+
+  if (success) {
+    return {
+      ok: true,
+      data: {
+        saveRoll: roll,
+        saveTotal: total,
+        saveSuccess: true,
+        exhaustionApplied: false,
+        dc,
+      },
+      rolls: [formulaRoll],
+      mutations: [],
+    };
+  }
+
+  return {
+    ok: true,
+    data: {
+      saveRoll: roll,
+      saveTotal: total,
+      saveSuccess: false,
+      exhaustionApplied: true,
+      dc,
+    },
+    rolls: [formulaRoll],
+    mutations: [
+      {
+        op: 'add_condition',
+        actorId: char.id,
+        condition: {
+          slug: 'exhaustion',
+          source: 'dehydration',
+          durationRounds: 'until_removed',
+          appliedRound: 0,
+        },
+      },
+    ],
   };
 }
 
