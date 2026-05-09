@@ -129,6 +129,7 @@ export function castSpell(input: CastSpellInput, rng: RngArg = defaultRng): Acti
     slotLevel: input.slotLevel,
     targets: input.targets,
     rng: uniform,
+    currentRound: input.currentRound ?? 0,
   };
   const handlerResult = handler(ctx, binding);
   if (!handlerResult.ok) return handlerResult;

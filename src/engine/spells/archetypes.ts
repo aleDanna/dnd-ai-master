@@ -43,6 +43,11 @@ export interface ArchetypeContext {
   targets: { id: string; ac?: number }[];
   /** Uniform 0..1 RNG. Pure handlers; tests inject deterministic functions. */
   rng: () => number;
+  /**
+   * Current combat round, used to stamp `appliedRound` on conditions / buffs
+   * emitted by handlers. Defaults to 0 if not supplied (out-of-combat casts).
+   */
+  currentRound?: number;
 }
 
 export type ArchetypeHandler = (
@@ -193,7 +198,7 @@ function handleSaveCondition(
       slug: binding.condition!.slug,
       source: ctx.spellSlug,
       durationRounds: binding.condition!.durationRounds,
-      appliedRound: 0,
+      appliedRound: ctx.currentRound ?? 0,
     },
   }));
   return {
@@ -250,7 +255,7 @@ function handleBuff(
       slug: binding.condition!.slug,
       source: ctx.spellSlug,
       durationRounds: binding.condition!.durationRounds,
-      appliedRound: 0,
+      appliedRound: ctx.currentRound ?? 0,
     },
   }));
   return {

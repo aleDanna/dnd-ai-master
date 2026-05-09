@@ -114,6 +114,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       amount: Number(input.amount),
       type: input.type as never,
       isCrit: input.isCrit === true,
+      currentRound: state.combat?.round ?? 0,
     });
   },
 

@@ -8,6 +8,12 @@ export interface ApplyDamageInput {
   type: DamageType;
   /** True when the damage source is a critical hit (PHB §3.18 → 2 fails at 0 HP). */
   isCrit?: boolean;
+  /**
+   * Current combat round, used to stamp `appliedRound` on the unconscious
+   * condition emitted by the §3.17 massive-damage branch. Defaults to 0 if
+   * not supplied (out-of-combat damage).
+   */
+  currentRound?: number;
 }
 
 function isPc(target: CombatActor | Character): target is Character {
@@ -72,7 +78,7 @@ export function applyDamage(input: ApplyDamageInput): ActionResult<{ newHp: numb
             slug: 'unconscious',
             source: 'massive damage',
             durationRounds: 'until_removed',
-            appliedRound: 0,
+            appliedRound: input.currentRound ?? 0,
           },
         },
       ];
