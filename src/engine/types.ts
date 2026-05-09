@@ -19,7 +19,9 @@ export type DamageType =
 export type ConditionSlug =
   | 'blinded' | 'charmed' | 'deafened' | 'frightened' | 'grappled'
   | 'incapacitated' | 'invisible' | 'paralyzed' | 'petrified' | 'poisoned'
-  | 'prone' | 'restrained' | 'stunned' | 'unconscious' | 'exhaustion';
+  | 'prone' | 'restrained' | 'stunned' | 'unconscious' | 'exhaustion'
+  // Mechanical buff markers (not strict SRD conditions, but tracked as condition-like state)
+  | 'blessed' | 'baned' | 'shielded' | 'flying' | 'mage-armored';
 
 export interface Character {
   id: string;

@@ -134,6 +134,13 @@ const APPLIERS: Record<Exclude<ConditionSlug, 'exhaustion'>, (f: ConditionEffect
     f.incomingAttackAdvantage = true;
     f.incomingMeleeWithin5ftAutoCrit = true;
   },
+  // Mechanical buff markers — tracked as condition-like state; effects (e.g. bless +1d4)
+  // are resolved in narrative/roll-resolution layers, not in the static flag table here.
+  blessed: () => { /* +1d4 attack/save handled at roll site */ },
+  baned: () => { /* -1d4 attack/save handled at roll site */ },
+  shielded: () => { /* +AC handled at AC compute */ },
+  flying: () => { /* movement mode handled at movement layer */ },
+  'mage-armored': () => { /* AC base override handled at AC compute */ },
 };
 
 function applyExhaustion(f: ConditionEffectFlags, level: number): void {
