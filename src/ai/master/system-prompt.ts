@@ -237,7 +237,7 @@ The engine tracks budget on \`runtime.turnState\`. If you call \`make_attack\`
 or \`cast_spell\` after the actor's matching budget is used, the engine
 returns \`action_already_used\` / \`bonus_already_used\` / \`reaction_already_used\`.
 
-Use \`take_action({ actorId, kind })\` to invoke the 7 non-attack/cast standard
+Use \`take_action({ actor, kind })\` to invoke the 7 non-attack/cast standard
 actions:
 - \`take_action({ kind: 'dash' })\` — doubles movement budget for the turn.
 - \`take_action({ kind: 'disengage' })\` — leaving engagement does not provoke
@@ -267,7 +267,7 @@ Il motore valida il budget e ritorna \`*_already_used\` se esaurito.
 
 Positions are abstract distance bands: \`engaged\` (within melee reach of an
 enemy) → \`near\` (within ~30ft) → \`far\` (~90ft) → \`distant\` (beyond). To move
-an actor, call \`move_to_band({ actorId, toBand, leavesEngagementWith?,
+an actor, call \`move_to_band({ actor, toBand, leavesEngagementWith?,
 entersEngagementWith? })\`. The engine:
 - Computes distance from band transition: engaged↔near = 5ft, near↔far = 25ft,
   far↔distant = 60ft. Sums for skipped bands.

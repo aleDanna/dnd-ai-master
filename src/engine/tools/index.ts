@@ -168,9 +168,9 @@ const ALWAYS_ON: AnthropicTool[] = [
       "PHB §3.8: move from current band to a new one. Distance bands: engaged (5ft of an enemy) → near → far → distant. Distances: 5/25/60ft between consecutive bands. Auto-detects opportunity attacks for engagement-leaving (unless actor used Disengage this turn). Consumes movement budget (doubled if Dashed). Returns insufficient_movement if budget exceeded.",
     input_schema: {
       type: 'object',
-      required: ['actorId', 'toBand'],
+      required: ['actor', 'toBand'],
       properties: {
-        actorId: { type: 'string' },
+        actor: ACTOR_ID,
         toBand: { type: 'string', enum: ['engaged', 'near', 'far', 'distant'] },
         leavesEngagementWith: {
           type: 'array',
