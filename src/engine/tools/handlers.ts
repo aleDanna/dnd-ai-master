@@ -132,19 +132,9 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
     };
   },
 
-  cast_spell: (state, input) => {
-    const casterId = resolveCharacterId(state, input.caster);
-    const caster = state.characters.find((c) => c.id === casterId);
-    const runtime = state.runtime[casterId];
-    if (!caster || !runtime) return { ok: false, error: 'unknown_caster', rolls: [], mutations: [] };
-    return castSpell({
-      caster,
-      runtime,
-      spellSlug: String(input.spellSlug),
-      slotLevel: Number(input.slotLevel) as 0|1|2|3|4|5|6|7|8|9,
-      targets: ((input.targets as { id: string }[]) ?? []).map((t) => ({ id: String(t.id) })),
-    });
-  },
+  // cast_spell moved to TOOL_HANDLERS_DB so it can fetch spellMeta from the
+  // SRD when invoked with asRitual=true (PHB §8.13). See cast_spell handler
+  // in TOOL_HANDLERS_DB below.
 
   apply_condition: (state, input) => {
     const targetId = String(input.actor);
@@ -478,6 +468,7 @@ function resolveCharacterId(state: EngineState, actorRef: unknown): string {
 }
 
 import { lookupCodex } from './lookup-codex';
+import { lookupSpellMeta } from '@/srd/lookup';
 
 export interface DbToolCtx {
   sessionId: string;
@@ -485,9 +476,42 @@ export interface DbToolCtx {
 
 export type DbToolHandler = (
   ctx: DbToolCtx,
+  state: EngineState,
   input: Record<string, unknown>,
 ) => Promise<import('../types').ActionResult>;
 
 export const TOOL_HANDLERS_DB: Record<string, DbToolHandler> = {
-  lookup_codex: (ctx, input) => lookupCodex(ctx, input),
+  // lookup_codex doesn't need state, ignore the second arg.
+  lookup_codex: (ctx, _state, input) => lookupCodex(ctx, input),
+
+  cast_spell: async (_ctx, state, input) => {
+    const casterId = resolveCharacterId(state, input.caster);
+    const caster = state.characters.find((c) => c.id === casterId);
+    const runtime = state.runtime[casterId];
+    if (!caster || !runtime) {
+      return { ok: false, error: 'unknown_caster', rolls: [], mutations: [] };
+    }
+
+    const spellSlug = String(input.spellSlug);
+    const slotLevel = Number(input.slotLevel) as 0|1|2|3|4|5|6|7|8|9;
+    const targets = ((input.targets as { id: string }[]) ?? []).map((t) => ({ id: String(t.id) }));
+    const asRitual = input.asRitual === true;
+
+    // Fetch spellMeta from the SRD only when actually needed (asRitual cast).
+    // For normal casts, spellMeta isn't required by castSpell — the engine's
+    // own bindings carry the concentration flag. This keeps the common path
+    // free of an extra DB round-trip.
+    const spellMeta = asRitual ? await lookupSpellMeta(spellSlug) : undefined;
+
+    return castSpell({
+      caster,
+      runtime,
+      spellSlug,
+      slotLevel,
+      targets,
+      currentRound: state.combat?.round ?? 0,
+      asRitual,
+      spellMeta,
+    });
+  },
 };

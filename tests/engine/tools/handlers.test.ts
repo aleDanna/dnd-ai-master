@@ -1,7 +1,20 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { TOOL_HANDLERS, TOOL_HANDLERS_DB, TOOL_DEFINITIONS } from '@/engine';
 import { buildToolDefinitions } from '@/engine/tools';
 import type { EngineState, Character, CombatActor } from '@/engine';
+
+// Mock lookupSpellMeta — the cast_spell DB handler calls it when asRitual=true.
+// Default to "not a ritual" for the existing slot/no-slot tests; ritual-specific
+// tests override with vi.mocked(...).mockResolvedValueOnce(...).
+vi.mock('@/srd/lookup', async () => {
+  const actual = await vi.importActual<typeof import('@/srd/lookup')>('@/srd/lookup');
+  return {
+    ...actual,
+    lookupSpellMeta: vi.fn(async (_slug: string) => ({ ritual: false, concentration: false })),
+  };
+});
+
+const DB_CTX = { sessionId: 'test-session' };
 
 const fighter: Character = {
   id: 'pc1', name: 'Tharion', level: 5, xp: 0,
@@ -146,8 +159,8 @@ describe('TOOL_HANDLERS — happy paths', () => {
     expect(r.ok).toBe(true);
   });
 
-  it('cast_spell consumes slot and produces mutations', () => {
-    const r = TOOL_HANDLERS['cast_spell']!(wizardState, {
+  it('cast_spell consumes slot and produces mutations', async () => {
+    const r = await TOOL_HANDLERS_DB['cast_spell']!(DB_CTX, wizardState, {
       caster: 'player_character', spellSlug: 'magic-missile', slotLevel: 1,
       targets: [{ id: 'm1' }, { id: 'm1' }, { id: 'm1' }],
     });
@@ -155,8 +168,8 @@ describe('TOOL_HANDLERS — happy paths', () => {
     expect(r.mutations.some((m) => m.op === 'use_spell_slot')).toBe(true);
   });
 
-  it('cast_spell with empty targets array works', () => {
-    const r = TOOL_HANDLERS['cast_spell']!(wizardState, {
+  it('cast_spell with empty targets array works', async () => {
+    const r = await TOOL_HANDLERS_DB['cast_spell']!(DB_CTX, wizardState, {
       caster: 'player_character', spellSlug: 'magic-missile', slotLevel: 1,
     });
     // Should still attempt cast, either ok or error; just make sure handler executes the no-targets branch
@@ -336,8 +349,8 @@ describe('TOOL_HANDLERS — error branches', () => {
     expect(r.error).toBe('not_in_combat');
   });
 
-  it('cast_spell unknown caster returns error', () => {
-    const r = TOOL_HANDLERS['cast_spell']!(wizardState, {
+  it('cast_spell unknown caster returns error', async () => {
+    const r = await TOOL_HANDLERS_DB['cast_spell']!(DB_CTX, wizardState, {
       caster: 'nonexistent', spellSlug: 'magic-missile', slotLevel: 1, targets: [],
     });
     expect(r.ok).toBe(false);

@@ -127,6 +127,11 @@ const ALWAYS_ON: AnthropicTool[] = [
         spellSlug: { type: 'string' },
         slotLevel: { type: 'integer', minimum: 0, maximum: 9, description: '0 for cantrips; 1-9 for leveled spells' },
         targets: { type: 'array', items: { type: 'object', required: ['id'], properties: { id: ACTOR_ID } } },
+        asRitual: {
+          type: 'boolean',
+          description:
+            "PHB §8.13: cast the spell as a ritual (10 minutes longer, no slot consumed). Only valid for spells with the ritual tag — the call errors out if the spell isn't a ritual. Defaults to false.",
+        },
       },
     } as never,
   },

@@ -10,6 +10,24 @@ export async function lookupSpell(slug: string) {
   return rows[0] ?? null;
 }
 
+/**
+ * Fetch ritual + concentration flags for a spell. Returns undefined if the
+ * spell isn't in the SRD table. Used by the cast_spell tool to validate
+ * `asRitual` casts (PHB §8.13: only spells with the ritual tag are eligible).
+ */
+export async function lookupSpellMeta(
+  slug: string,
+): Promise<{ ritual: boolean; concentration: boolean } | undefined> {
+  const rows = await db
+    .select({ ritual: srdSpell.ritual, concentration: srdSpell.concentration })
+    .from(srdSpell)
+    .where(eq(srdSpell.slug, slug))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return undefined;
+  return { ritual: !!row.ritual, concentration: !!row.concentration };
+}
+
 export async function lookupMonster(slug: string) {
   const rows = await db.select().from(srdMonster).where(eq(srdMonster.slug, slug)).limit(1);
   return rows[0] ?? null;
