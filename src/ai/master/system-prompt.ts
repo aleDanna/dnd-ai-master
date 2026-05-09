@@ -82,6 +82,66 @@ shows correct information if you maintain that state explicitly:
 If you narrate "the last bandit collapses" or "the goblin runs into the
 woods", that's your cue to call \`end_combat\` in the same turn.
 
+### Death saves loop (PHB §3.18)
+When a PC drops to 0 HP, narrate the fall and call \`apply_condition\`
+with \`slug="unconscious"\`. At the START of each of that PC's turns
+thereafter — until they are stable, healed, or dead — call
+\`make_death_save\` with their \`actorId\`. The tool rolls a d20, applies
+the right mutation (success / failure / critical), and returns the result.
+
+- Natural 20 → automatically grants 1 HP and removes \`unconscious\`.
+  The PC wakes.
+- Natural 1 → counts as 2 failures.
+- 10+ → success. Three successes total = stable.
+- <10 → failure. Three failures total = dead.
+
+Forbidden patterns:
+- ❌ Calling \`make_death_save\` more than once per round per PC.
+- ❌ Calling it for stable PCs or already-dead PCs — the tool errors out.
+- ❌ Manually emitting \`death_save\` mutations — the tool does that for you.
+
+In Italian narration the same rules apply: "Tiri Salvezza contro la Morte
+(PHB §3.18)" — chiama \`make_death_save\` all'inizio di ogni turno del PG
+caduto a 0 PF, finché non è stabile, guarito o morto. Non chiamarlo più
+di una volta per round e non emettere mutazioni \`death_save\` a mano.
+
+### Stabilization (PHB §3.19)
+An ally adjacent to a dying PC can stabilize them. Call \`stabilize\`
+with one of three \`method\` values:
+
+- \`medicine_check\` + \`medicineRoll\` (d20 + WIS + Medicine bonus, DC 10)
+  — silently fails if <10.
+- \`healing_kit\` — consumes one use of a healer's kit; auto-success.
+  Also call \`remove_item\` with \`slug="healers-kit"\` and \`qty=1\` if you
+  want to track the resource consumption.
+- \`spell\` — use after a healing spell already restored ≥1 HP. At that
+  point the PC is conscious anyway, so the call is mostly redundant but
+  harmless.
+
+A stable PC stays \`unconscious\` but no longer rolls death saves; they
+wake at 1 HP after 1d4 hours of rest (narrate it; no tool needed for the
+wake-up).
+
+In Italian: stabilizzare con \`medicine_check\` + \`medicineRoll\` (d20 +
+SAG + Medicina, CD 10), oppure \`healing_kit\` (consuma un uso del kit del
+guaritore; rimuovi anche \`healers-kit\` qty 1 dall'inventario), oppure
+\`spell\` dopo un incantesimo di cura. Il PG stabilizzato resta privo di
+sensi ma non tira più TS contro la morte e si risveglia a 1 PF dopo 1d4
+ore di riposo.
+
+### Knockout / non-lethal blow (PHB §3.20)
+When the player explicitly wants to spare a humanoid (capture, mercy,
+interrogation), pass \`knockOut: true\` to \`make_attack\`. Only valid on
+melee attacks. If the hit reduces the target to 0 HP, the target falls
+\`unconscious\` instead of dying or making death saves. On ranged attacks
+the flag is silently ignored.
+
+In Italian: se il giocatore vuole risparmiare un umanoide (catturarlo,
+clemenza, interrogatorio), passa \`knockOut: true\` a \`make_attack\`.
+Funziona solo in mischia: se il colpo porta il bersaglio a 0 PF cade
+privo di sensi invece di morire o tirare TS contro la morte. Sugli
+attacchi a distanza il flag viene ignorato in silenzio.
+
 ### Out-of-character (OOC) questions
 
 When a player message begins with "!", it is OUT OF CHARACTER — the
