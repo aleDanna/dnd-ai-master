@@ -1,6 +1,7 @@
 import { pgTable, uuid, integer, jsonb, boolean, text } from 'drizzle-orm/pg-core';
 import { bytea } from '../types';
 import { sessions } from './sessions';
+import type { TurnState, Position } from '@/engine/types';
 
 export const sessionState = pgTable('session_state', {
   sessionId: uuid('session_id')
@@ -16,6 +17,8 @@ export const sessionState = pgTable('session_state', {
   flags: jsonb('flags').$type<{ stable?: boolean; dead?: boolean }>().notNull().default({}),
   exhaustionLevel: integer('exhaustion_level').notNull().default(0),
   concentratingOn: jsonb('concentrating_on').$type<{ spellSlug: string; slotLevel: number; startedRound: number } | null>().default(null),
+  turnState: jsonb('turn_state').$type<TurnState | null>().default(null),
+  position: jsonb('position').$type<Position | null>().default(null),
   inCombat: boolean('in_combat').notNull().default(false),
   combat: jsonb('combat').$type<{ round: number; turnOrder: { actorId: string; initiative: number }[]; currentIdx: number } | null>(),
   scene: text('scene').notNull().default(''),

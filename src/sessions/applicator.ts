@@ -8,7 +8,8 @@ import {
   characters as charactersTable,
   type DiceLogInsert,
 } from '@/db/schema';
-import type { ConditionInstance, DiceRoll, Mutation } from '@/engine/types';
+import type { ConditionInstance, DiceRoll, Mutation, TurnState } from '@/engine/types';
+import { newTurnState, consumeAction, spendMovement } from '@/engine/combat/turn-state';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -418,6 +419,148 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
       // concentration_check tool rolls the CON save and emits a
       // `break_concentration` mutation on a failure; this case is a marker
       // for traceability and intentionally has no DB side effect.
+      break;
+    }
+    case 'start_turn': {
+      // Reset the actor's per-turn action economy budget to a fresh state
+      // (PHB §9: at the start of each turn, the actor regains their action,
+      // bonus action, reaction, movement, and free interactions).
+      const fresh = newTurnState();
+      const isPc = m.actorId === ctx.characterId;
+      if (isPc) {
+        await tx
+          .update(sessionStateTable)
+          .set({ turnState: fresh })
+          .where(eq(sessionStateTable.sessionId, sessionId));
+      } else {
+        await tx
+          .update(combatActorsTable)
+          .set({ turnState: fresh })
+          .where(and(eq(combatActorsTable.sessionId, sessionId), eq(combatActorsTable.id, m.actorId)));
+      }
+      break;
+    }
+    case 'consume_action': {
+      const isPc = m.actorId === ctx.characterId;
+      if (isPc) {
+        const [s] = await tx.select().from(sessionStateTable).where(eq(sessionStateTable.sessionId, sessionId)).limit(1);
+        if (!s) break;
+        const current = (s.turnState as TurnState | null) ?? newTurnState();
+        const updated = consumeAction(current, m.kind);
+        await tx
+          .update(sessionStateTable)
+          .set({ turnState: updated })
+          .where(eq(sessionStateTable.sessionId, sessionId));
+      } else {
+        const [a] = await tx.select().from(combatActorsTable).where(and(eq(combatActorsTable.sessionId, sessionId), eq(combatActorsTable.id, m.actorId))).limit(1);
+        if (!a) break;
+        const current = (a.turnState as TurnState | null) ?? newTurnState();
+        const updated = consumeAction(current, m.kind);
+        await tx
+          .update(combatActorsTable)
+          .set({ turnState: updated })
+          .where(and(eq(combatActorsTable.sessionId, sessionId), eq(combatActorsTable.id, m.actorId)));
+      }
+      break;
+    }
+    case 'consume_movement': {
+      const isPc = m.actorId === ctx.characterId;
+      if (isPc) {
+        const [s] = await tx.select().from(sessionStateTable).where(eq(sessionStateTable.sessionId, sessionId)).limit(1);
+        if (!s) break;
+        const current = (s.turnState as TurnState | null) ?? newTurnState();
+        const updated = spendMovement(current, m.feet);
+        await tx
+          .update(sessionStateTable)
+          .set({ turnState: updated })
+          .where(eq(sessionStateTable.sessionId, sessionId));
+      } else {
+        const [a] = await tx.select().from(combatActorsTable).where(and(eq(combatActorsTable.sessionId, sessionId), eq(combatActorsTable.id, m.actorId))).limit(1);
+        if (!a) break;
+        const current = (a.turnState as TurnState | null) ?? newTurnState();
+        const updated = spendMovement(current, m.feet);
+        await tx
+          .update(combatActorsTable)
+          .set({ turnState: updated })
+          .where(and(eq(combatActorsTable.sessionId, sessionId), eq(combatActorsTable.id, m.actorId)));
+      }
+      break;
+    }
+    case 'take_dodge':
+    case 'take_disengage':
+    case 'take_dash': {
+      // Each of these flips a single boolean flag on turnState. We share the
+      // load + write pattern; only the field name differs (mapped below).
+      const flagMap: Record<typeof m.op, 'dodging' | 'disengaged' | 'dashed'> = {
+        take_dodge: 'dodging',
+        take_disengage: 'disengaged',
+        take_dash: 'dashed',
+      };
+      const flag = flagMap[m.op];
+      const isPc = m.actorId === ctx.characterId;
+      if (isPc) {
+        const [s] = await tx.select().from(sessionStateTable).where(eq(sessionStateTable.sessionId, sessionId)).limit(1);
+        if (!s) break;
+        const current = (s.turnState as TurnState | null) ?? newTurnState();
+        const updated: TurnState = { ...current, [flag]: true };
+        await tx
+          .update(sessionStateTable)
+          .set({ turnState: updated })
+          .where(eq(sessionStateTable.sessionId, sessionId));
+      } else {
+        const [a] = await tx.select().from(combatActorsTable).where(and(eq(combatActorsTable.sessionId, sessionId), eq(combatActorsTable.id, m.actorId))).limit(1);
+        if (!a) break;
+        const current = (a.turnState as TurnState | null) ?? newTurnState();
+        const updated: TurnState = { ...current, [flag]: true };
+        await tx
+          .update(combatActorsTable)
+          .set({ turnState: updated })
+          .where(and(eq(combatActorsTable.sessionId, sessionId), eq(combatActorsTable.id, m.actorId)));
+      }
+      break;
+    }
+    case 'set_readied': {
+      const isPc = m.actorId === ctx.characterId;
+      if (isPc) {
+        const [s] = await tx.select().from(sessionStateTable).where(eq(sessionStateTable.sessionId, sessionId)).limit(1);
+        if (!s) break;
+        const current = (s.turnState as TurnState | null) ?? newTurnState();
+        const updated: TurnState = { ...current, readied: { trigger: m.trigger, action: m.action } };
+        await tx
+          .update(sessionStateTable)
+          .set({ turnState: updated })
+          .where(eq(sessionStateTable.sessionId, sessionId));
+      } else {
+        const [a] = await tx.select().from(combatActorsTable).where(and(eq(combatActorsTable.sessionId, sessionId), eq(combatActorsTable.id, m.actorId))).limit(1);
+        if (!a) break;
+        const current = (a.turnState as TurnState | null) ?? newTurnState();
+        const updated: TurnState = { ...current, readied: { trigger: m.trigger, action: m.action } };
+        await tx
+          .update(combatActorsTable)
+          .set({ turnState: updated })
+          .where(and(eq(combatActorsTable.sessionId, sessionId), eq(combatActorsTable.id, m.actorId)));
+      }
+      break;
+    }
+    case 'set_position': {
+      const isPc = m.actorId === ctx.characterId;
+      if (isPc) {
+        await tx
+          .update(sessionStateTable)
+          .set({ position: m.position })
+          .where(eq(sessionStateTable.sessionId, sessionId));
+      } else {
+        await tx
+          .update(combatActorsTable)
+          .set({ position: m.position })
+          .where(and(eq(combatActorsTable.sessionId, sessionId), eq(combatActorsTable.id, m.actorId)));
+      }
+      break;
+    }
+    case 'opportunity_attack_triggered': {
+      // No-op: this is a marker in the mutation log for the AI Master to
+      // act on (e.g. by emitting a follow-up attack roll). The applicator
+      // intentionally does not mutate state for this op.
       break;
     }
   }

@@ -487,4 +487,168 @@ describe('applyMutations', () => {
       expect(s!.concentratingOn).toBeNull();
     });
   });
+
+  describe('applicator — action economy mutations', () => {
+    // Helper: clear/seed turnState + position so each test starts at a known state.
+    async function resetTurnState(turnState: unknown = null, position: unknown = null) {
+      await db
+        .update(sessionState)
+        .set({
+          // Drizzle types this strictly; cast through unknown to allow null seeds in tests.
+          turnState: turnState as ReturnType<typeof Object> | null as never,
+          position: position as ReturnType<typeof Object> | null as never,
+        })
+        .where(eq(sessionState.sessionId, SESSION_ID));
+    }
+
+    it('start_turn resets turnState to fresh', async () => {
+      // Seed a "dirty" turnState
+      await resetTurnState({
+        actionUsed: true,
+        bonusUsed: true,
+        reactionUsed: false,
+        movementSpentFt: 30,
+        freeInteractionsUsed: 1,
+        dodging: true,
+        disengaged: false,
+        dashed: true,
+        readied: { trigger: 'enemy moves', action: 'shoot bow' },
+      });
+      await applyMutations(SESSION_ID, [
+        { op: 'start_turn', actorId: PC_ID },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.turnState).toEqual({
+        actionUsed: false,
+        bonusUsed: false,
+        reactionUsed: false,
+        movementSpentFt: 0,
+        freeInteractionsUsed: 0,
+        dodging: false,
+        disengaged: false,
+        dashed: false,
+      });
+    });
+
+    it('consume_action(action) marks actionUsed=true', async () => {
+      await resetTurnState();
+      await applyMutations(SESSION_ID, [
+        { op: 'consume_action', actorId: PC_ID, kind: 'action' },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.turnState).toMatchObject({
+        actionUsed: true,
+        bonusUsed: false,
+        reactionUsed: false,
+      });
+    });
+
+    it('consume_action(bonus) marks bonusUsed=true; not action', async () => {
+      await resetTurnState();
+      await applyMutations(SESSION_ID, [
+        { op: 'consume_action', actorId: PC_ID, kind: 'bonus' },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.turnState).toMatchObject({
+        actionUsed: false,
+        bonusUsed: true,
+        reactionUsed: false,
+      });
+    });
+
+    it('consume_action(reaction) marks reactionUsed=true', async () => {
+      await resetTurnState();
+      await applyMutations(SESSION_ID, [
+        { op: 'consume_action', actorId: PC_ID, kind: 'reaction' },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.turnState).toMatchObject({
+        actionUsed: false,
+        bonusUsed: false,
+        reactionUsed: true,
+      });
+    });
+
+    it('consume_movement increments movementSpentFt', async () => {
+      await resetTurnState();
+      await applyMutations(SESSION_ID, [
+        { op: 'consume_movement', actorId: PC_ID, feet: 15 },
+      ], []);
+      let [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect((s!.turnState as { movementSpentFt: number } | null)?.movementSpentFt).toBe(15);
+      await applyMutations(SESSION_ID, [
+        { op: 'consume_movement', actorId: PC_ID, feet: 10 },
+      ], []);
+      [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect((s!.turnState as { movementSpentFt: number } | null)?.movementSpentFt).toBe(25);
+    });
+
+    it('take_dodge sets dodging=true', async () => {
+      await resetTurnState();
+      await applyMutations(SESSION_ID, [
+        { op: 'take_dodge', actorId: PC_ID },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect((s!.turnState as { dodging: boolean } | null)?.dodging).toBe(true);
+    });
+
+    it('take_disengage sets disengaged=true', async () => {
+      await resetTurnState();
+      await applyMutations(SESSION_ID, [
+        { op: 'take_disengage', actorId: PC_ID },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect((s!.turnState as { disengaged: boolean } | null)?.disengaged).toBe(true);
+    });
+
+    it('take_dash sets dashed=true', async () => {
+      await resetTurnState();
+      await applyMutations(SESSION_ID, [
+        { op: 'take_dash', actorId: PC_ID, extraSpeedFt: 30 },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect((s!.turnState as { dashed: boolean } | null)?.dashed).toBe(true);
+    });
+
+    it('set_readied stores trigger + action', async () => {
+      await resetTurnState();
+      await applyMutations(SESSION_ID, [
+        { op: 'set_readied', actorId: PC_ID, trigger: 'enemy enters', action: 'Attack with bow' },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect((s!.turnState as { readied?: { trigger: string; action: string } } | null)?.readied).toEqual({
+        trigger: 'enemy enters',
+        action: 'Attack with bow',
+      });
+    });
+
+    it('set_position writes the position object', async () => {
+      await resetTurnState();
+      await applyMutations(SESSION_ID, [
+        { op: 'set_position', actorId: PC_ID, position: { band: 'far', engagedWith: [] } },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.position).toEqual({ band: 'far', engagedWith: [] });
+    });
+
+    it('opportunity_attack_triggered is a no-op signal (no state change)', async () => {
+      await resetTurnState({
+        actionUsed: false,
+        bonusUsed: false,
+        reactionUsed: false,
+        movementSpentFt: 0,
+        freeInteractionsUsed: 0,
+        dodging: false,
+        disengaged: false,
+        dashed: false,
+      }, { band: 'engaged', engagedWith: [MONSTER_ID] });
+      const [before] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      await applyMutations(SESSION_ID, [
+        { op: 'opportunity_attack_triggered', attackerId: MONSTER_ID, targetId: PC_ID },
+      ], []);
+      const [after] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(after!.turnState).toEqual(before!.turnState);
+      expect(after!.position).toEqual(before!.position);
+    });
+  });
 });

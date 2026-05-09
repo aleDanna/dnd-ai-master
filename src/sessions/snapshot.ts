@@ -65,6 +65,8 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
     spellSlotsUsed: parseSlotsUsed(stateRow.spellSlotsUsed),
     resourcesUsed: stateRow.resourcesUsed,
     concentratingOn: hydrateConcentration(stateRow.concentratingOn),
+    turnState: stateRow.turnState ?? undefined,
+    position: stateRow.position ?? undefined,
   };
   for (const a of actorRows) {
     runtime[a.id] = {
@@ -73,6 +75,8 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
       tempHp: 0,
       deathSaves: { successes: 0, failures: 0 },
       conditions: a.conditions as ActorRuntimeState['conditions'],
+      turnState: a.turnState ?? undefined,
+      position: a.position ?? undefined,
     };
   }
 
