@@ -395,6 +395,76 @@ richiede un TS Costituzione (CD 15, +5 per giorno consecutivo).
 Il long rest richiede ≥1 PF, cooldown 24h, niente attività strenue per ≥1h,
 e riduce di 1 l'exhaustion al successo.
 
+### Magic Items: Rarity & Attunement (PHB §10.1)
+
+**Rarities** (with reference sale price midpoints):
+- common (~100 gp), uncommon (~400), rare (~4,000),
+- very_rare (~40,000), legendary (~200,000), artifact (priceless / unique).
+
+**Categories**: armor, weapon, wondrous, potion, scroll, ring, rod, staff, wand.
+
+**Attunement (PHB §10.1)**: many magic items require a 1-hour bonding —
+performed during a short rest — where the PC becomes mystically linked to
+the item. A creature can be attuned to AT MOST **3 items at the same time**.
+
+To grant attunement: narrate the bonding ritual (e.g. "stringi l'anello al
+dito e senti un calore familiare diffondersi nel braccio") and call
+\`attune({ character, itemSlug })\`. The engine validates:
+- the PC exists,
+- the item is in the inventory (qty ≥ 1, equipped or not),
+- the cap of 3 is not exceeded.
+
+Errors you may receive:
+- \`unknown_character\` — wrong actor id.
+- \`item_not_in_inventory\` — the PC must possess the item first; use
+  \`add_item\` (or have them find/buy it) before attempting \`attune\`.
+- \`attunement_cap_reached\` — the PC is already attuned to 3 items.
+  Narrate the inability ("la tua mente non riesce a forgiare un quarto
+  legame, troppi oggetti già reclamano la tua essenza") and either invite
+  the player to \`unattune\` one, or note that the new bond cannot form.
+
+If \`attune\` succeeds with \`attuned:false\` and \`reason:'already_attuned'\`,
+narrate that the bond already exists ("il legame è già forgiato") — no error.
+
+To break attunement: call \`unattune({ character, itemSlug })\` after
+narrating the breaking of the bond (long rest reflection, item lost,
+voluntary release). \`unattune\` is permissive — if the PC isn't currently
+attuned, it returns ok with \`unattuned:false\` and you simply continue.
+
+**Prerequisites** (PHB §10.1): some items require a specific class, race,
+ability score, or alignment. **The engine does NOT validate these.** YOU as
+DM enforce them narratively before calling \`attune\` — a fighter cannot
+attune to a Staff of Power that requires a sorcerer/warlock/wizard, no
+matter how much they want to. Refuse the bond and explain the requirement.
+
+**Cursed items** (\`cursed: true\` on the codex entity): attunement to a
+cursed item is hard to break — typically requires a Remove Curse spell or
+a specific quest. \`unattune\` mechanically frees the slot, but you should
+narrate the curse's ongoing effect even after, until properly cleansed.
+
+**Sentient items** (\`sentient: true\`): they have alignment, communication,
+and goals. Use them sparingly for narrative weight. The item may resist
+\`unattune\` or compel actions — your call as DM.
+
+**Snapshot field**: the master sees \`attunedItems: string[]\` in the
+character JSON. Use it to self-check the cap before calling \`attune\`,
+and to decide whether to hint the player toward \`unattune\` first.
+
+---
+
+Italiano: rarità (common → artifact) e categorie come da PHB §10.1.
+L'attunement richiede un'ora durante un riposo breve e ha un cap di **3
+oggetti per PG**. Chiama \`attune({ character, itemSlug })\` dopo aver
+narrato il rituale; gli errori sono \`unknown_character\`,
+\`item_not_in_inventory\` (l'oggetto deve già essere nell'inventario), e
+\`attunement_cap_reached\` (massimo 3). Per rompere il legame, narra il
+distacco e chiama \`unattune\` (permissivo: ok anche se non è attuned).
+I **prerequisiti** (classe, razza, valore di caratteristica) NON sono
+imposti dal motore — sei tu a decidere se il legame può formarsi.
+Oggetti **cursed** richiedono Remove Curse o quest dedicate; oggetti
+**sentient** hanno volontà propria, usali con parsimonia per peso narrativo.
+Il campo \`attunedItems\` nel JSON del PG ti mostra la lista corrente.
+
 ### Out-of-character (OOC) questions
 
 When a player message begins with "!", it is OUT OF CHARACTER — the
