@@ -1,0 +1,1 @@
+ALTER TABLE "session_state" ADD COLUMN "concentrating_on" jsonb DEFAULT 'null'::jsonb;

@@ -15,6 +15,7 @@ export const sessionState = pgTable('session_state', {
   deathSaves: jsonb('death_saves').$type<{ successes: number; failures: number }>().notNull().default({ successes: 0, failures: 0 }),
   flags: jsonb('flags').$type<{ stable?: boolean; dead?: boolean }>().notNull().default({}),
   exhaustionLevel: integer('exhaustion_level').notNull().default(0),
+  concentratingOn: jsonb('concentrating_on').$type<{ spellSlug: string; slotLevel: number; startedRound: number } | null>().default(null),
   inCombat: boolean('in_combat').notNull().default(false),
   combat: jsonb('combat').$type<{ round: number; turnOrder: { actorId: string; initiative: number }[]; currentIdx: number } | null>(),
   scene: text('scene').notNull().default(''),

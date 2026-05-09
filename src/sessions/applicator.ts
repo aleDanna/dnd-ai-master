@@ -385,6 +385,41 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
         .where(eq(sessionStateTable.sessionId, sessionId));
       break;
     }
+    case 'set_concentration': {
+      // PHB §8.8: at most one concentration spell per caster. Monsters/NPCs
+      // are not tracked in session_state — we only record concentration for
+      // the PC, so non-PC actorIds are no-ops. Replacing an existing entry
+      // is intentional: a fresh concentration cast supersedes the prior one.
+      if (m.actorId !== ctx.characterId) break;
+      await tx
+        .update(sessionStateTable)
+        .set({
+          concentratingOn: {
+            spellSlug: m.spellSlug,
+            slotLevel: m.slotLevel,
+            startedRound: m.startedRound,
+          },
+        })
+        .where(eq(sessionStateTable.sessionId, sessionId));
+      break;
+    }
+    case 'break_concentration': {
+      // Null out the column. Setting NULL when already NULL is a harmless
+      // no-op at the SQL level, so we don't pre-check.
+      if (m.actorId !== ctx.characterId) break;
+      await tx
+        .update(sessionStateTable)
+        .set({ concentratingOn: null })
+        .where(eq(sessionStateTable.sessionId, sessionId));
+      break;
+    }
+    case 'concentration_check': {
+      // The applicator does not resolve concentration checks. The
+      // concentration_check tool rolls the CON save and emits a
+      // `break_concentration` mutation on a failure; this case is a marker
+      // for traceability and intentionally has no DB side effect.
+      break;
+    }
   }
 }
 

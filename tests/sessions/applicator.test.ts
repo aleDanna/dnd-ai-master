@@ -408,4 +408,83 @@ describe('applyMutations', () => {
       expect(conds.some((c) => c.slug === 'exhaustion')).toBe(true);
     });
   });
+
+  describe('applicator — concentration mutations', () => {
+    // Helper: clear the concentratingOn column so each test starts at NULL.
+    async function resetConcentration() {
+      await db
+        .update(sessionState)
+        .set({ concentratingOn: null })
+        .where(eq(sessionState.sessionId, SESSION_ID));
+    }
+
+    it('set_concentration writes concentratingOn to session_state', async () => {
+      await resetConcentration();
+      await applyMutations(SESSION_ID, [
+        { op: 'set_concentration', actorId: PC_ID, spellSlug: 'bless', slotLevel: 1, startedRound: 3 },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.concentratingOn).toEqual({ spellSlug: 'bless', slotLevel: 1, startedRound: 3 });
+    });
+
+    it('break_concentration clears concentratingOn', async () => {
+      await resetConcentration();
+      // First set concentration
+      await applyMutations(SESSION_ID, [
+        { op: 'set_concentration', actorId: PC_ID, spellSlug: 'bless', slotLevel: 1, startedRound: 0 },
+      ], []);
+      // Then break it
+      await applyMutations(SESSION_ID, [
+        { op: 'break_concentration', actorId: PC_ID, reason: 'damage' },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.concentratingOn).toBeNull();
+    });
+
+    it('break_concentration when not concentrating is a no-op', async () => {
+      await resetConcentration();
+      await applyMutations(SESSION_ID, [
+        { op: 'break_concentration', actorId: PC_ID, reason: 'damage' },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.concentratingOn).toBeNull();
+    });
+
+    it('set_concentration replaces previous concentratingOn', async () => {
+      await resetConcentration();
+      await applyMutations(SESSION_ID, [
+        { op: 'set_concentration', actorId: PC_ID, spellSlug: 'bless', slotLevel: 1, startedRound: 0 },
+      ], []);
+      await applyMutations(SESSION_ID, [
+        { op: 'set_concentration', actorId: PC_ID, spellSlug: 'hold-person', slotLevel: 2, startedRound: 5 },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.concentratingOn).toEqual({ spellSlug: 'hold-person', slotLevel: 2, startedRound: 5 });
+    });
+
+    it('concentration_check mutation is a no-op (handled by tool, not applicator)', async () => {
+      await resetConcentration();
+      await applyMutations(SESSION_ID, [
+        { op: 'set_concentration', actorId: PC_ID, spellSlug: 'bless', slotLevel: 1, startedRound: 0 },
+      ], []);
+      const [before] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      await applyMutations(SESSION_ID, [
+        { op: 'concentration_check', actorId: PC_ID, dc: 10, spellSlug: 'bless' },
+      ], []);
+      const [after] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      // concentratingOn stays exactly as it was — the applicator does not
+      // resolve checks; the concentration_check tool will (and may emit
+      // break_concentration on a failed save).
+      expect(after!.concentratingOn).toEqual(before!.concentratingOn);
+    });
+
+    it('set_concentration on a non-PC actorId is a no-op (monsters not tracked)', async () => {
+      await resetConcentration();
+      await applyMutations(SESSION_ID, [
+        { op: 'set_concentration', actorId: MONSTER_ID, spellSlug: 'bless', slotLevel: 1, startedRound: 0 },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.concentratingOn).toBeNull();
+    });
+  });
 });

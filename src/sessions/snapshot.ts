@@ -8,7 +8,7 @@ import {
   type SessionState,
   type CombatActor as CombatActorRow,
 } from '@/db/schema';
-import type { Character, CombatActor, EngineState, ActorRuntimeState } from '@/engine/types';
+import type { Character, CombatActor, ConcentrationState, EngineState, ActorRuntimeState } from '@/engine/types';
 import type { SnapshotForModel } from './types';
 
 export async function buildSnapshot(sessionId: string, userId: string): Promise<SnapshotForModel> {
@@ -64,6 +64,7 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
     hitDiceRemaining: stateRow.hitDiceRemaining,
     spellSlotsUsed: parseSlotsUsed(stateRow.spellSlotsUsed),
     resourcesUsed: stateRow.resourcesUsed,
+    concentratingOn: hydrateConcentration(stateRow.concentratingOn),
   };
   for (const a of actorRows) {
     runtime[a.id] = {
@@ -147,6 +148,22 @@ function buildSpellSlotsView(
     view[lvl] = `${u}/${max}`;
   }
   return Object.keys(view).length > 0 ? view : null;
+}
+
+/**
+ * Convert the DB jsonb shape `{ spellSlug, slotLevel: number, startedRound } |
+ * null` into the engine's `ConcentrationState` (slotLevel narrowed to 0..9).
+ * Returns `undefined` when the column is null so the optional field reads as
+ * absent on the runtime entry. Out-of-range slotLevels are clamped into 0..9
+ * defensively — historic rows shouldn't trigger this, but the engine type
+ * relies on it.
+ */
+function hydrateConcentration(
+  raw: { spellSlug: string; slotLevel: number; startedRound: number } | null,
+): ConcentrationState | undefined {
+  if (!raw) return undefined;
+  const lvl = Math.max(0, Math.min(9, Math.floor(raw.slotLevel))) as ConcentrationState['slotLevel'];
+  return { spellSlug: raw.spellSlug, slotLevel: lvl, startedRound: raw.startedRound };
 }
 
 function parseSlotsUsed(raw: Record<string, number>): ActorRuntimeState['spellSlotsUsed'] {
