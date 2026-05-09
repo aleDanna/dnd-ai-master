@@ -291,6 +291,15 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
         : undefined;
     return handleStabilize({ rng: Math.random }, state, { actorId, method, medicineRoll });
   },
+
+  concentration_check: (state, input) => {
+    const ref = input.actorId ?? input.actor;
+    if (ref == null) return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
+    const actorId = resolveCharacterId(state, ref);
+    const dc = Number(input.dc);
+    if (!Number.isFinite(dc)) return { ok: false, error: 'invalid_dc', rolls: [], mutations: [] };
+    return handleConcentrationCheck({ rng: Math.random }, state, { actorId, dc });
+  },
 };
 
 // ─── Pure death-save / stabilize handlers ──────────────────────────────────
@@ -398,6 +407,67 @@ export function handleStabilize(
     { op: 'set_stable', actorId: input.actorId, stable: true },
   ];
   return { ok: true, data: { stabilized: true }, rolls: [], mutations: muts };
+}
+
+/**
+ * PHB §8.8: when a concentrating creature takes damage, they roll a CON save
+ * (DC = max(10, ⌊damage/2⌋)) to maintain concentration. The DC is supplied by
+ * the caller (apply_damage emits the precomputed value via the
+ * concentration_check mutation). On failure we emit `break_concentration` with
+ * reason='damage'; the applicator will clear `runtime.concentratingOn` on the
+ * next turn.
+ *
+ * Pure: no DB access. The handler errors out if the actor isn't a known PC,
+ * isn't concentrating, or the input is malformed (idempotency guard — the AI
+ * Master should call this exactly once per concentration_check mutation).
+ */
+export function handleConcentrationCheck(
+  ctx: { rng: () => number },
+  state: EngineState,
+  input: { actorId: string; dc: number },
+): ActionResult<{ roll: number; total: number; success: boolean }> {
+  const rt = state.runtime[input.actorId];
+  if (!rt) return { ok: false, error: 'unknown actor', rolls: [], mutations: [] };
+  if (!rt.concentratingOn) {
+    return { ok: false, error: 'actor not concentrating', rolls: [], mutations: [] };
+  }
+  const character = state.characters.find((c) => c.id === input.actorId);
+  if (!character) {
+    return { ok: false, error: 'concentration_check is PC-only', rolls: [], mutations: [] };
+  }
+
+  const conMod = Math.floor((character.abilities.CON - 10) / 2);
+  const profBonus = character.proficiencies.saves.includes('CON')
+    ? character.proficiencyBonus
+    : 0;
+  const roll = Math.floor(ctx.rng() * 20) + 1;
+  const total = roll + conMod + profBonus;
+  const success = total >= input.dc;
+
+  const formulaRoll: DiceRoll = {
+    formula: '1d20+CON',
+    rolls: [roll],
+    modifier: conMod + profBonus,
+    total,
+    meta: { kind: 'concentration_save' },
+  };
+
+  if (success) {
+    return {
+      ok: true,
+      data: { roll, total, success: true },
+      rolls: [formulaRoll],
+      mutations: [],
+    };
+  }
+  return {
+    ok: true,
+    data: { roll, total, success: false },
+    rolls: [formulaRoll],
+    mutations: [
+      { op: 'break_concentration', actorId: input.actorId, reason: 'damage' },
+    ],
+  };
 }
 
 function resolveCharacterId(state: EngineState, actorRef: unknown): string {

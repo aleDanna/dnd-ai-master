@@ -284,6 +284,23 @@ const ALWAYS_ON: AnthropicTool[] = [
     } as never,
   },
   {
+    name: 'concentration_check',
+    description:
+      "PHB §8.8: when a concentrating PC takes damage they must succeed on a CON save (DC = max(10, ⌊damage/2⌋)) or lose concentration. Use this tool ONLY in response to a concentration_check mutation emitted by apply_damage. The handler rolls 1d20 + CON modifier + proficiency bonus (if proficient in CON saves); on failure it emits break_concentration with reason='damage'. Errors if the actor is not concentrating.",
+    input_schema: {
+      type: 'object',
+      required: ['actorId', 'dc'],
+      properties: {
+        actorId: { type: 'string', description: 'ID of the concentrating PC.' },
+        dc: {
+          type: 'integer',
+          description:
+            "DC from the concentration_check mutation (already computed by apply_damage as max(10, ⌊damage/2⌋)).",
+        },
+      },
+    } as never,
+  },
+  {
     name: 'lookup_codex',
     description:
       "Look up a campaign-codex entity by kind + name/slug. Use when an NPC, location, quest, faction, lore fact, named item, or relationship is referenced in chat and is NOT already visible in the Scene card. The codex is the single source of truth for narrative continuity — prefer it over re-inventing details. Returns up to 5 matches; returns an empty array when nothing matches.",
