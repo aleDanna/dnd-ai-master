@@ -1,13 +1,21 @@
 import type {
   ActionResult,
   DiceRoll,
+  EngagementProfile,
   EngineState,
   LightLevel,
   MarchingOrder,
   Mutation,
+  NPCBeats,
   Senses,
+  TonalFrame,
   TravelPace,
 } from '../types';
+import {
+  isValidTonalFrame,
+  isValidEngagementProfile,
+  isValidNPCAttitude,
+} from '../npc-tonal';
 import {
   fallingDamageFormula,
   lightEffects,
@@ -531,6 +539,23 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       actor: String(ref),
       secondsWithoutAir,
     });
+  },
+
+  set_tonal_frame: (_state, input) => {
+    return handleSetTonalFrame({ frame: input.frame as TonalFrame });
+  },
+
+  set_engagement_profile: (_state, input) => {
+    const profiles = Array.isArray(input.profiles)
+      ? (input.profiles as unknown[]).map((p) => String(p))
+      : [];
+    return handleSetEngagementProfile({ profiles });
+  },
+
+  update_npc_beats: (_state, input) => {
+    const npcSlug = String(input.npcSlug ?? '').trim();
+    const beats = (input.beats as Partial<NPCBeats> | undefined) ?? {};
+    return handleUpdateNPCBeats({ npcSlug, beats });
   },
 };
 
@@ -1420,6 +1445,98 @@ function resolveCharacterId(state: EngineState, actorRef: unknown): string {
     return state.characters[0]!.id;
   }
   return String(actorRef);
+}
+
+// ─── NPC Three-Beat / Tonal Frame / Engagement Profile (Phase 7) ──────────
+
+/**
+ * Master World Lore §5.1: pin the campaign's tonal frame. The frame
+ * shapes narration style, NPC speech register, combat consequences, and
+ * magic flavor for every subsequent turn. The system prompt's dynamic
+ * block surfaces `TONAL_FRAME_GUIDANCE[frame]` once this is set.
+ *
+ * Errors with `invalid_tonal_frame` if the value isn't one of the 8
+ * canonical frames.
+ */
+export function handleSetTonalFrame(
+  input: { frame: TonalFrame },
+): ActionResult<{ frame: TonalFrame }> {
+  if (typeof input.frame !== 'string' || !isValidTonalFrame(input.frame)) {
+    return { ok: false, error: 'invalid_tonal_frame', rolls: [], mutations: [] };
+  }
+  return {
+    ok: true,
+    data: { frame: input.frame },
+    rolls: [],
+    mutations: [{ op: 'set_tonal_frame', frame: input.frame }],
+  };
+}
+
+/**
+ * Master Handbook §2.1: register the player's engagement profile(s) the
+ * master has detected from the first few turns. Multiple values are
+ * legal — a single player can be both an explorer and a storyteller.
+ * Empty array clears the hint.
+ *
+ * Errors with `invalid_engagement_profile` if ANY entry isn't one of
+ * the 7 canonical profiles. The handler does NOT silently drop bad
+ * entries — the AI Master must call again with a fully-valid array.
+ */
+export function handleSetEngagementProfile(
+  input: { profiles: string[] },
+): ActionResult<{ profiles: EngagementProfile[] }> {
+  if (!Array.isArray(input.profiles)) {
+    return { ok: false, error: 'invalid_engagement_profile', rolls: [], mutations: [] };
+  }
+  for (const profile of input.profiles) {
+    if (typeof profile !== 'string' || !isValidEngagementProfile(profile)) {
+      return { ok: false, error: 'invalid_engagement_profile', rolls: [], mutations: [] };
+    }
+  }
+  // Cast is safe — every entry passed isValidEngagementProfile above.
+  const profiles = input.profiles as EngagementProfile[];
+  return {
+    ok: true,
+    data: { profiles },
+    rolls: [],
+    mutations: [{ op: 'set_engagement_profile', profiles }],
+  };
+}
+
+/**
+ * Master Handbook §11.1: partial update of an NPC codex entry's
+ * Want/Fear/Quirk/Attitude. The applicator merges with existing values —
+ * fields not present in `beats` stay untouched. The npcSlug must point to
+ * an existing codex_entities row (kind='npc'); the engine itself does NOT
+ * verify existence (the applicator's UPDATE matches by (sessionId, kind,
+ * slug) and is a silent no-op if no match).
+ *
+ * Errors:
+ * - `missing_npc_slug` — empty/whitespace slug.
+ * - `invalid_attitude` — attitude is provided but not friendly/indifferent/hostile.
+ */
+export function handleUpdateNPCBeats(
+  input: { npcSlug: string; beats: Partial<NPCBeats> },
+): ActionResult<{ npcSlug: string; beats: Partial<NPCBeats> }> {
+  if (typeof input.npcSlug !== 'string' || !input.npcSlug.trim()) {
+    return { ok: false, error: 'missing_npc_slug', rolls: [], mutations: [] };
+  }
+  const beats = input.beats ?? {};
+  if (beats.attitude != null && !isValidNPCAttitude(beats.attitude)) {
+    return { ok: false, error: 'invalid_attitude', rolls: [], mutations: [] };
+  }
+  // Filter the patch to legal fields and trim string values defensively.
+  const cleaned: NPCBeats = {};
+  if (typeof beats.want === 'string') cleaned.want = beats.want;
+  if (typeof beats.fear === 'string') cleaned.fear = beats.fear;
+  if (typeof beats.quirk === 'string') cleaned.quirk = beats.quirk;
+  if (beats.attitude != null) cleaned.attitude = beats.attitude;
+  return {
+    ok: true,
+    data: { npcSlug: input.npcSlug, beats: cleaned },
+    rolls: [],
+    mutations: [{ op: 'update_npc_beats', npcSlug: input.npcSlug, beats: cleaned }],
+  };
 }
 
 import { lookupCodex } from './lookup-codex';

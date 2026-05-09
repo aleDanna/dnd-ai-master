@@ -1,6 +1,7 @@
 import type { AnthropicTool } from '../types';
 import type { UserPreferences } from '@/db/schema/users';
 import { ABILITY_ENUM, SKILL_ENUM, DAMAGE_TYPE_ENUM, CONDITION_ENUM, ACTOR_ID } from './schemas';
+import { TONAL_FRAMES, ENGAGEMENT_PROFILES, NPC_ATTITUDES } from '../npc-tonal';
 
 const ALWAYS_ON: AnthropicTool[] = [
   {
@@ -634,6 +635,58 @@ const ALWAYS_ON: AnthropicTool[] = [
         query: {
           type: 'string',
           description: 'Name or slug to look up. Case-insensitive substring match on slug AND name.',
+        },
+      },
+    } as never,
+  },
+  {
+    name: 'set_tonal_frame',
+    description:
+      "Master World Lore §5.1: pin the campaign's tonal frame. Affects narration style, NPC speech register, combat consequences, magic flavor. 8 frames: high_heroic (LotR triumph), sword_sorcery (Conan/Elric grit), dark (Berserk/Bloodborne futility), mythic (Greek/Witcher cosmic stakes), cosmic_horror (Lovecraft dread), swashbuckling (Princess Bride banter), wuxia (martial schools, ki), steampunk (Eberron magitech). Errors with invalid_tonal_frame for unknown values.",
+    input_schema: {
+      type: 'object',
+      required: ['frame'],
+      properties: {
+        frame: { type: 'string', enum: TONAL_FRAMES as readonly string[] },
+      },
+    } as never,
+  },
+  {
+    name: 'set_engagement_profile',
+    description:
+      "Master Handbook §2.1: register the player's engagement profile(s) detected from their first few turns. Up to multiple values: acting, fighting, instigating, optimizing, problem_solving, storytelling, exploring. Replaces any previous value (call with the FULL up-to-date list). Empty array clears the hint. Errors with invalid_engagement_profile if any entry isn't one of the 7 known profiles.",
+    input_schema: {
+      type: 'object',
+      required: ['profiles'],
+      properties: {
+        profiles: {
+          type: 'array',
+          items: { type: 'string', enum: ENGAGEMENT_PROFILES as readonly string[] },
+        },
+      },
+    } as never,
+  },
+  {
+    name: 'update_npc_beats',
+    description:
+      "Master Handbook §11.1: every NPC needs three beats — Want, Fear, Quirk — plus an Attitude (friendly/indifferent/hostile). Call this whenever you introduce a new NPC or refine their motivations as the story evolves. PARTIAL updates merge with existing values: pass only the fields you want to change. Errors: missing_npc_slug (empty slug), invalid_attitude (attitude not in the 3 known values).",
+    input_schema: {
+      type: 'object',
+      required: ['npcSlug', 'beats'],
+      properties: {
+        npcSlug: {
+          type: 'string',
+          description:
+            'Slug of the existing NPC codex entry (kind=npc) to update. Match must already exist; the patch is a no-op otherwise.',
+        },
+        beats: {
+          type: 'object',
+          properties: {
+            want: { type: 'string', description: 'What does this NPC want from this scene? (a coin, a favor, to be left alone, to test the PC)' },
+            fear: { type: 'string', description: 'What would make them flee or escalate?' },
+            quirk: { type: 'string', description: 'One memorable detail (smells of fish, cracks knuckles, never makes eye contact, laughs at wrong moments).' },
+            attitude: { type: 'string', enum: NPC_ATTITUDES as readonly string[] },
+          },
         },
       },
     } as never,
