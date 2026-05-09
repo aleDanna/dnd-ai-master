@@ -23,6 +23,7 @@ import {
   starvationSurvivalDays,
 } from '../survival';
 import { abilityModifier } from '../modifiers';
+import { MAX_ATTUNED } from '../items';
 
 // Each handler receives the raw Anthropic tool input (an object literal),
 // resolves the relevant entities from EngineState, and dispatches to the
@@ -419,6 +420,32 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       actor: charId,
       daysWithLessThanHalfWater: daysRaw,
     });
+  },
+
+  attune: (state, input) => {
+    const ref = input.character ?? input.actor;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const charId = resolveCharacterId(state, ref);
+    const slug = String(input.itemSlug ?? '').trim().toLowerCase();
+    if (!slug) {
+      return { ok: false, error: 'invalid_slug', rolls: [], mutations: [] };
+    }
+    return handleAttune(state, { character: charId, itemSlug: slug });
+  },
+
+  unattune: (state, input) => {
+    const ref = input.character ?? input.actor;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const charId = resolveCharacterId(state, ref);
+    const slug = String(input.itemSlug ?? '').trim().toLowerCase();
+    if (!slug) {
+      return { ok: false, error: 'invalid_slug', rolls: [], mutations: [] };
+    }
+    return handleUnattune(state, { character: charId, itemSlug: slug });
   },
 };
 
@@ -867,6 +894,103 @@ export function handleApplyDehydration(
           appliedRound: 0,
         },
       },
+    ],
+  };
+}
+
+/**
+ * PHB §10.1: attune the PC to a magic item already in their inventory. The
+ * engine validates:
+ *   - The character exists (`unknown_character`).
+ *   - The item is in `inventory` with qty ≥ 1 (`item_not_in_inventory`).
+ *   - The PC is not already attuned to it (returns ok with `attuned:false`
+ *     and `reason:'already_attuned'`; idempotent, no mutation).
+ *   - The cap of 3 (`MAX_ATTUNED`) is not exceeded (`attunement_cap_reached`).
+ *
+ * The 1-hour bonding ritual itself is narrative — the master narrates the
+ * rest and emits this tool call. Prerequisites (class, ability score, race)
+ * are NOT enforced by the engine; the master is responsible per plan Task 4.
+ */
+export function handleAttune(
+  state: EngineState,
+  input: { character: string; itemSlug: string },
+): ActionResult<{ attuned: boolean; reason?: string }> {
+  const char = state.characters.find((c) => c.id === input.character);
+  if (!char) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+
+  const currentAttuned = char.attunedItems ?? [];
+
+  if (currentAttuned.includes(input.itemSlug)) {
+    // Already attuned — return success with attuned:false so the master can
+    // narrate "il legame è già forgiato" without a phantom error.
+    return {
+      ok: true,
+      data: { attuned: false, reason: 'already_attuned' },
+      rolls: [],
+      mutations: [],
+    };
+  }
+
+  if (currentAttuned.length >= MAX_ATTUNED) {
+    return {
+      ok: false,
+      error: 'attunement_cap_reached',
+      rolls: [],
+      mutations: [],
+    };
+  }
+
+  // Must own the item (qty ≥ 1) before attuning. Equipped state is irrelevant.
+  const owned = char.inventory.some(
+    (i) => i.slug === input.itemSlug && i.qty >= 1,
+  );
+  if (!owned) {
+    return {
+      ok: false,
+      error: 'item_not_in_inventory',
+      rolls: [],
+      mutations: [],
+    };
+  }
+
+  return {
+    ok: true,
+    data: { attuned: true },
+    rolls: [],
+    mutations: [
+      { op: 'attune', characterId: char.id, itemSlug: input.itemSlug },
+    ],
+  };
+}
+
+/**
+ * PHB §10.1: break attunement to a magic item. More permissive than `attune`
+ * — if the PC is not currently attuned, returns ok with `unattuned:false`
+ * (no error). Used for voluntary unattunement during a long rest, item lost,
+ * or when the master wants to cleanly drop a slot.
+ */
+export function handleUnattune(
+  state: EngineState,
+  input: { character: string; itemSlug: string },
+): ActionResult<{ unattuned: boolean }> {
+  const char = state.characters.find((c) => c.id === input.character);
+  if (!char) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+
+  const currentAttuned = char.attunedItems ?? [];
+  if (!currentAttuned.includes(input.itemSlug)) {
+    return { ok: true, data: { unattuned: false }, rolls: [], mutations: [] };
+  }
+
+  return {
+    ok: true,
+    data: { unattuned: true },
+    rolls: [],
+    mutations: [
+      { op: 'unattune', characterId: char.id, itemSlug: input.itemSlug },
     ],
   };
 }

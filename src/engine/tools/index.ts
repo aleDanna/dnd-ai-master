@@ -480,6 +480,36 @@ const ALWAYS_ON: AnthropicTool[] = [
     } as never,
   },
   {
+    name: 'attune',
+    description:
+      "PHB §10.1: attune the PC to a magic item they already possess. The bonding takes 1 hour during a short rest — narrate the ritual, then call this tool to record the bond. Errors: unknown_character, item_not_in_inventory (the PC must possess the item, qty ≥ 1, equipped or not), attunement_cap_reached (each PC can be attuned to AT MOST 3 items at once — the player must unattune one first). Idempotent: calling attune on an already-attuned item returns ok with attuned:false (reason:already_attuned), no mutation. The engine does NOT enforce attunement prerequisites (class, race, ability score) — that is the master's responsibility per the item's description.",
+    input_schema: {
+      type: 'object',
+      required: ['character', 'itemSlug'],
+      properties: {
+        character: ACTOR_ID,
+        itemSlug: {
+          type: 'string',
+          description:
+            'Inventory slug of the item being attuned (e.g. "cloak-of-protection"). Must match an entry in the PC inventory with qty ≥ 1.',
+        },
+      },
+    } as never,
+  },
+  {
+    name: 'unattune',
+    description:
+      "PHB §10.1: break attunement to a magic item. The PC may unattune voluntarily during a long rest, when the item is lost or destroyed, or when they want to free an attunement slot to bond with a new item. Permissive: if the PC isn't currently attuned to the slug the call returns ok with unattuned:false (no error). Cursed-item attunement is hard to break narratively — but mechanically this tool always frees the slot. Use it after the master narrates the breaking of the bond.",
+    input_schema: {
+      type: 'object',
+      required: ['character', 'itemSlug'],
+      properties: {
+        character: ACTOR_ID,
+        itemSlug: { type: 'string' },
+      },
+    } as never,
+  },
+  {
     name: 'lookup_codex',
     description:
       "Look up a campaign-codex entity by kind + name/slug. Use when an NPC, location, quest, faction, lore fact, named item, or relationship is referenced in chat and is NOT already visible in the Scene card. The codex is the single source of truth for narrative continuity — prefer it over re-inventing details. Returns up to 5 matches; returns an empty array when nothing matches.",
