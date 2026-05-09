@@ -10,6 +10,7 @@ import {
   type StandardActionInput,
   type StandardActionKind,
 } from '../combat/standard-actions';
+import { resolveMove } from '../combat/movement';
 import { castSpell } from '../spells';
 import { applyCondition, removeCondition } from '../conditions';
 import { useResource as consumeResource } from '../resources';
@@ -166,6 +167,32 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       rolls: [],
       mutations: result.mutations,
     };
+  },
+
+  move_to_band: (state, input) => {
+    const actorId = resolveCharacterId(state, input.actor ?? input.actorId);
+    if (!actorId) return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
+    const toBand = input.toBand as 'engaged' | 'near' | 'far' | 'distant' | undefined;
+    if (!toBand) return { ok: false, error: 'missing_to_band', rolls: [], mutations: [] };
+    const leavesEngagementWith = Array.isArray(input.leavesEngagementWith)
+      ? (input.leavesEngagementWith as unknown[]).map((id) => String(id))
+      : undefined;
+    const entersEngagementWith = Array.isArray(input.entersEngagementWith)
+      ? (input.entersEngagementWith as unknown[]).map((id) => String(id))
+      : undefined;
+    const rt = state.runtime[actorId];
+    // Determine speed: PC has speed on Character; monsters default to 30ft.
+    const character = state.characters.find((c) => c.id === actorId);
+    const speed = character?.speed ?? 30;
+    const result = resolveMove(
+      { actorId, toBand, leavesEngagementWith, entersEngagementWith },
+      rt,
+      speed,
+    );
+    if (!result.ok) {
+      return { ok: false, error: result.error ?? 'move_failed', rolls: [], mutations: [] };
+    }
+    return { ok: true, data: {}, rolls: [], mutations: result.mutations };
   },
 
   // cast_spell moved to TOOL_HANDLERS_DB so it can fetch spellMeta from the

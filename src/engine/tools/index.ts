@@ -163,6 +163,29 @@ const ALWAYS_ON: AnthropicTool[] = [
     } as never,
   },
   {
+    name: 'move_to_band',
+    description:
+      "PHB §3.8: move from current band to a new one. Distance bands: engaged (5ft of an enemy) → near → far → distant. Distances: 5/25/60ft between consecutive bands. Auto-detects opportunity attacks for engagement-leaving (unless actor used Disengage this turn). Consumes movement budget (doubled if Dashed). Returns insufficient_movement if budget exceeded.",
+    input_schema: {
+      type: 'object',
+      required: ['actorId', 'toBand'],
+      properties: {
+        actorId: { type: 'string' },
+        toBand: { type: 'string', enum: ['engaged', 'near', 'far', 'distant'] },
+        leavesEngagementWith: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Enemy IDs whose engagement we leave (triggers OA unless Disengaged)',
+        },
+        entersEngagementWith: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Enemy IDs whose engagement we enter (no OA on us)',
+        },
+      },
+    } as never,
+  },
+  {
     name: 'cast_spell',
     description: 'Cast a spell from the caster\'s known list. For cantrips pass slotLevel=0 (no slot consumed). For leveled spells pass slotLevel 1-9 (the slot at that level is consumed). When the spell has no built-in mechanical handler the call still succeeds — narrate the effect and call follow-up tools (apply_damage, saving_throw, apply_condition, etc.) for any consequences.',
     input_schema: {
