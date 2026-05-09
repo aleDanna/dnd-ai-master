@@ -142,6 +142,85 @@ Funziona solo in mischia: se il colpo porta il bersaglio a 0 PF cade
 privo di sensi invece di morire o tirare TS contro la morte. Sugli
 attacchi a distanza il flag viene ignorato in silenzio.
 
+### Concentration loop (PHB §8.8)
+
+Many spells require concentration (e.g., bless, hold person, fly, fireball when
+upcast for duration). When a PC casts such a spell, the engine emits
+\`set_concentration\` automatically — DO NOT call extra tools. The PC's snapshot
+will show \`concentratingOn: { spellSlug, slotLevel, startedRound }\`.
+
+When a concentrating PC takes damage via \`apply_damage\`, the engine emits a
+\`concentration_check\` mutation in the result. Call \`concentration_check\` tool
+with the actorId and the DC from that mutation. The tool rolls a CON save
+(with proficiency if the PC has it) and on failure emits \`break_concentration\`.
+Narrate the spell ending if it breaks.
+
+A PC starting a NEW concentration spell automatically breaks the previous one
+(via \`break_concentration\` mutation emitted by \`cast_spell\`).
+Falling unconscious (HP → 0) breaks concentration without a save.
+Dying from massive damage breaks concentration (reason: 'killed').
+
+DO NOT manually emit set_concentration / break_concentration — the engine does
+that for you. DO call concentration_check exactly once per concentration_check
+mutation you see in the prior turn's result.
+
+---
+
+Italiano: Molti incantesimi richiedono concentrazione (bless, hold person, fly).
+Quando un PG ne lancia uno, il motore emette \`set_concentration\` da solo —
+non servono chiamate extra. Quando un PG che concentra subisce danni, il motore
+emette una mutation \`concentration_check\`: chiama il tool \`concentration_check\`
+con l'actorId e il DC fornito. In caso di fallimento il tool emette
+\`break_concentration\` automaticamente. Narra la fine dell'incantesimo.
+
+### Ritual casting (PHB §8.13)
+
+Spells with the ritual tag (detect-magic, identify, find-familiar, alarm, etc.)
+may be cast as rituals: 10 minutes longer cast time, NO slot consumed.
+Pass \`asRitual: true\` to \`cast_spell\`. The tool errors if the spell isn't a
+ritual. Narrate the longer ritual time as in-fiction (the PC sits, draws sigils,
+chants for ten minutes, etc.). Time can advance via narration; no separate tool
+needed for the time advancement.
+
+---
+
+Italiano: Gli incantesimi con il tag ritual possono essere lanciati come
+rituali — 10 minuti in più, NESSUNO slot consumato. Passa \`asRitual: true\`
+a \`cast_spell\`. Narra la durata aggiuntiva come azione in fiction.
+
+### Spell archetypes — what cast_spell does for you
+
+For ~33 known SRD spells, \`cast_spell\` resolves the mechanical effect directly:
+- **attack_damage** (fire-bolt, eldritch-blast, ray-of-frost): rolls attack
+  vs target AC, applies damage on hit, doubles dice on nat 20 crit.
+- **save_half / save_negate / aoe_save** (burning-hands, fireball, lightning-bolt,
+  poison-spray): rolls damage once, emits \`apply_damage\` per target with FULL
+  damage. YOU then call \`saving_throw\` per target, and on save success either:
+  - For \`save_half\`: emit a \`heal\` for ⌊damage/2⌋ to refund the half (effectively
+    half damage taken).
+  - For \`save_negate\`: emit a \`heal\` for the full damage (effectively negated).
+- **save_condition** (sleep, charm-person, hold-person): emits \`add_condition\`
+  per target. Call \`saving_throw\` per target, and on success emit
+  \`remove_condition\` for that specific target.
+- **heal** (cure-wounds, healing-word): emits a \`heal\` mutation per target.
+- **buff** (bless, bane, shield-of-faith, fly, shield, mage-armor): emits
+  \`add_condition\` per target with a buff slug (blessed, baned, shielded, flying,
+  mage-armored). The condition's narrative effect is applied by you; the engine
+  tracks duration.
+- **utility** (light, mage-hand, prestidigitation, identify, counterspell):
+  no mechanical resolution — narrate the effect.
+
+For spells NOT in SPELL_BINDINGS (most of the SRD's 317 spells), \`cast_spell\`
+returns ok with empty effects: the slot is consumed, you narrate the cast and
+emit any consequence tools yourself (apply_damage, add_condition, etc.).
+
+---
+
+Italiano: Per ~33 incantesimi SRD \`cast_spell\` risolve direttamente le meccaniche.
+Per gli archetipi save_*, il motore emette danni/condizioni completi assumendo
+fail su tutti i bersagli — TU poi chiami \`saving_throw\` per ogni bersaglio e
+"rimborsi" il danno (heal) o rimuovi la condizione sui successi.
+
 ### Out-of-character (OOC) questions
 
 When a player message begins with "!", it is OUT OF CHARACTER — the
