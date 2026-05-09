@@ -56,6 +56,13 @@ export interface Character {
   spellcasting: SpellcastingState | null;
   features: FeatureInstance[];   // race/class/bg/feat features w/ uses-left
   inventory: InventoryItem[];
+  /**
+   * PHB §10.1 — slugs of items currently attuned. A creature can be attuned
+   * to AT MOST 3 items at any one time (`MAX_ATTUNED` in `engine/items.ts`).
+   * Optional so legacy snapshots without this column still typecheck; the
+   * snapshot/applicator default it to `[]`.
+   */
+  attunedItems?: string[];
   hitDiceMax: number;
   hitDieSize: number;             // 6 | 8 | 10 | 12
 }
@@ -80,6 +87,63 @@ export interface InventoryItem {
   slug: string;
   qty: number;
   equipped: boolean;
+}
+
+// ─── Magic items: rarity, category, attunement (PHB §10.1) ────────────────
+
+/**
+ * PHB §10.1 magic-item rarity ladder. The order of the literals matters —
+ * `RARITY_ORDER` in `src/engine/items.ts` mirrors it for `rarityTier`.
+ */
+export type Rarity =
+  | 'common'
+  | 'uncommon'
+  | 'rare'
+  | 'very_rare'
+  | 'legendary'
+  | 'artifact';
+
+/**
+ * PHB §10.1 magic-item categories. Determines how the item is worn / used —
+ * the engine uses this only for narrative grouping; the master is responsible
+ * for enforcing per-category attunement effects (e.g. a single ring at a time).
+ */
+export type ItemCategory =
+  | 'armor'
+  | 'weapon'
+  | 'wondrous'
+  | 'potion'
+  | 'scroll'
+  | 'ring'
+  | 'rod'
+  | 'staff'
+  | 'wand';
+
+/**
+ * Codex-side metadata for a named magic item. All fields optional so existing
+ * named_items continue to validate as legal Phase 1-4 data; Phase 5 introduces
+ * the columns and the typed view sits on top of them.
+ */
+export interface ItemMeta {
+  rarity?: Rarity;
+  /** PHB §10.1 broad category (used for filtering and narrative grouping). */
+  category?: ItemCategory;
+  /**
+   * True if the PC must spend a 1-hour bonding (during a short rest) to gain
+   * the item's benefits. The engine doesn't enforce the rest itself — calling
+   * `attune` is a narrative-driven event.
+   */
+  attunementRequired?: boolean;
+  /**
+   * Free-text prerequisite. The master is responsible for verifying it
+   * before calling `attune`; the engine only validates the cap and inventory
+   * possession.
+   */
+  attunementPrereq?: string;
+  /** Marker for cursed items (Remove Curse / specific quest to break). */
+  cursed?: boolean;
+  /** Marker for sentient items (PHB §10.4 — alignment, language, goals). */
+  sentient?: boolean;
 }
 
 // ─── Combat actor (NPCs, monsters, hostile or allied) ──────────────────────
@@ -242,7 +306,14 @@ export type Mutation =
   // Spend Inspiration to grant ADV on next d20; consumed on first roll.
   | { op: 'spend_inspiration'; characterId: string }
   // PHB §5.2 — stamps the timestamp of the most recent successful long rest.
-  | { op: 'set_long_rest_at'; epochMs: number };
+  | { op: 'set_long_rest_at'; epochMs: number }
+  // PHB §10.1 — attune the PC to a magic item (already in inventory). The
+  // engine validates max 3 per PC and inventory possession; the applicator
+  // appends the slug to `characters.attuned_items` (no-op if already present).
+  | { op: 'attune'; characterId: string; itemSlug: string }
+  // PHB §10.1 — break attunement to a magic item. Idempotent (no-op if not
+  // currently attuned); removes the slug from `characters.attuned_items`.
+  | { op: 'unattune'; characterId: string; itemSlug: string };
 
 // ─── Action results ────────────────────────────────────────────────────────
 
