@@ -160,7 +160,7 @@ export interface EngineState {
 
 export type Mutation =
   | { op: 'set_hp'; actorId: string; hpCurrent: number }
-  | { op: 'apply_damage'; actorId: string; amount: number; type: DamageType }
+  | { op: 'apply_damage'; actorId: string; amount: number; type: DamageType; isCrit?: boolean }
   | { op: 'heal'; actorId: string; amount: number }
   | { op: 'set_temp_hp'; actorId: string; amount: number }
   | { op: 'add_condition'; actorId: string; condition: ConditionInstance }
