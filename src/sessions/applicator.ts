@@ -65,11 +65,28 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
     case 'heal': {
       const isPc = m.actorId === ctx.characterId;
       if (isPc) {
-        const cur = await getPcHp(tx, sessionId);
+        const [s] = await tx.select().from(sessionStateTable).where(eq(sessionStateTable.sessionId, sessionId)).limit(1);
+        const cur = s?.hpCurrent ?? 0;
         const next = m.op === 'set_hp' ? m.hpCurrent
                    : m.op === 'apply_damage' ? Math.max(0, cur - m.amount)
                    : Math.min(ctx.hpMax, cur + m.amount);
-        await tx.update(sessionStateTable).set({ hpCurrent: next }).where(eq(sessionStateTable.sessionId, sessionId));
+        // PHB §3.21: healing a creature at 0 HP wakes them — reset death
+        // saves, drop the unconscious condition, clear any `stable` flag.
+        if (m.op === 'heal' && s && cur === 0 && next > 0) {
+          const conds = (s.conditions as ConditionInstance[]).filter((c) => c.slug !== 'unconscious');
+          const flags = { ...((s.flags ?? {}) as { stable?: boolean; dead?: boolean }), stable: false };
+          await tx
+            .update(sessionStateTable)
+            .set({
+              hpCurrent: next,
+              deathSaves: { successes: 0, failures: 0 },
+              conditions: conds,
+              flags,
+            })
+            .where(eq(sessionStateTable.sessionId, sessionId));
+        } else {
+          await tx.update(sessionStateTable).set({ hpCurrent: next }).where(eq(sessionStateTable.sessionId, sessionId));
+        }
       } else {
         const [actor] = await tx.select().from(combatActorsTable).where(and(eq(combatActorsTable.sessionId, sessionId), eq(combatActorsTable.id, m.actorId))).limit(1);
         if (!actor) return;
@@ -368,9 +385,4 @@ function mergeInventoryRemove(inv: unknown, slug: string, qty: number): InvRow[]
   return safe
     .map((it) => (it.slug === slug ? { ...it, qty: it.qty - safeQty } : it))
     .filter((it) => it.qty > 0);
-}
-
-async function getPcHp(tx: Tx, sessionId: string): Promise<number> {
-  const [s] = await tx.select().from(sessionStateTable).where(eq(sessionStateTable.sessionId, sessionId)).limit(1);
-  return s?.hpCurrent ?? 0;
 }
