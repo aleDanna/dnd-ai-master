@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, jsonb, pgEnum, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, jsonb, pgEnum, timestamp, index, uniqueIndex, varchar, boolean } from 'drizzle-orm/pg-core';
 import { sessions } from './sessions';
 import { sessionMessages } from './session-messages';
 
@@ -54,6 +54,18 @@ export const codexEntities = pgTable(
     slug: text('slug').notNull(),
     name: text('name').notNull(),
     data: jsonb('data').$type<CodexData>().notNull(),
+    /**
+     * PHB §10.1 magic-item metadata (named_item rows only). Other kinds
+     * leave these NULL/false. We use separate columns rather than embedding
+     * in `data` so we can index/filter on rarity later (e.g. listing all
+     * legendary items in a session).
+     */
+    rarity: varchar('rarity', { length: 16 }),
+    category: varchar('category', { length: 16 }),
+    attunementRequired: boolean('attunement_required').notNull().default(false),
+    attunementPrereq: text('attunement_prereq'),
+    cursed: boolean('cursed').notNull().default(false),
+    sentient: boolean('sentient').notNull().default(false),
     lastSeenMsgId: uuid('last_seen_msg_id').references(() => sessionMessages.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

@@ -46,6 +46,10 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
       spellcasting: character.spellcasting as Character['spellcasting'],
       features: character.features as Character['features'],
       inventory: character.inventory,
+      // PHB §10.1: hydrate from the persisted column. The DB default is `[]`
+      // but historic rows pre-migration may surface as null/undefined; the
+      // `??` keeps the engine-side type non-nullable.
+      attunedItems: Array.isArray(character.attunedItems) ? character.attunedItems : [],
       hitDiceMax: character.hitDiceMax,
       hitDieSize: character.hitDieSize,
     },
@@ -110,6 +114,9 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
     conditions: stateRow.conditions,
     inCombat: stateRow.inCombat,
     inventory: character.inventory,
+    // PHB §10.1: master sees the current attunement list so it can self-check
+    // the cap (max 3) before calling `attune`.
+    attunedItems: Array.isArray(character.attunedItems) ? character.attunedItems : [],
     spellSlots: buildSpellSlotsView(character.spellcasting as Character['spellcasting'], stateRow.spellSlotsUsed),
   });
 

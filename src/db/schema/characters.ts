@@ -52,6 +52,12 @@ export const characters = pgTable(
      * The DM grants it; the PC spends it for ADV on one d20 roll.
      */
     inspiration: boolean('inspiration').notNull().default(false),
+    /**
+     * PHB §10.1 attunement: slugs of magic items the PC is currently bonded
+     * to. Capped at MAX_ATTUNED (3) by the engine; the DB column does not
+     * enforce the cap so historic over-counts (if any) survive a migration.
+     */
+    attunedItems: jsonb('attuned_items').$type<string[]>().notNull().default([]),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

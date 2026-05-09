@@ -625,6 +625,43 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
         .where(eq(sessionStateTable.sessionId, sessionId));
       break;
     }
+    case 'attune': {
+      // PHB §10.1: append the slug to characters.attuned_items if not already
+      // present. The cap (3) is enforced by the tool layer before emitting
+      // this mutation; the applicator stays permissive so a re-applied event
+      // log replays cleanly even if the cap was relaxed in the meantime.
+      const [c] = await tx
+        .select({ attunedItems: charactersTable.attunedItems })
+        .from(charactersTable)
+        .where(eq(charactersTable.id, m.characterId))
+        .limit(1);
+      if (!c) break;
+      const cur = Array.isArray(c.attunedItems) ? c.attunedItems : [];
+      if (cur.includes(m.itemSlug)) break;
+      await tx
+        .update(charactersTable)
+        .set({ attunedItems: [...cur, m.itemSlug], updatedAt: new Date() })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
+    case 'unattune': {
+      // PHB §10.1: remove the slug from characters.attuned_items. Idempotent
+      // — if the slug isn't present, the row is left untouched.
+      const [c] = await tx
+        .select({ attunedItems: charactersTable.attunedItems })
+        .from(charactersTable)
+        .where(eq(charactersTable.id, m.characterId))
+        .limit(1);
+      if (!c) break;
+      const cur = Array.isArray(c.attunedItems) ? c.attunedItems : [];
+      if (!cur.includes(m.itemSlug)) break;
+      const next = cur.filter((s) => s !== m.itemSlug);
+      await tx
+        .update(charactersTable)
+        .set({ attunedItems: next, updatedAt: new Date() })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
   }
 }
 

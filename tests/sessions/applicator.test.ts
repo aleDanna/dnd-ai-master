@@ -490,6 +490,69 @@ describe('applyMutations', () => {
     });
   });
 
+  describe('applicator — attunement (PHB §10.1)', () => {
+    // Helper: reset attunedItems to a known list before each test.
+    async function resetAttuned(items: string[] = []) {
+      await db
+        .update(characters)
+        .set({ attunedItems: items })
+        .where(eq(characters.id, PC_ID));
+    }
+
+    async function readAttuned(): Promise<string[]> {
+      const [c] = await db
+        .select({ attunedItems: characters.attunedItems })
+        .from(characters)
+        .where(eq(characters.id, PC_ID))
+        .limit(1);
+      return (c?.attunedItems ?? []) as string[];
+    }
+
+    it('attune appends the slug when not already present', async () => {
+      await resetAttuned([]);
+      await applyMutations(SESSION_ID, [
+        { op: 'attune', characterId: PC_ID, itemSlug: 'cloak-of-protection' },
+      ], []);
+      expect(await readAttuned()).toEqual(['cloak-of-protection']);
+    });
+
+    it('attune is a no-op when the slug is already attuned', async () => {
+      await resetAttuned(['cloak-of-protection']);
+      await applyMutations(SESSION_ID, [
+        { op: 'attune', characterId: PC_ID, itemSlug: 'cloak-of-protection' },
+      ], []);
+      expect(await readAttuned()).toEqual(['cloak-of-protection']);
+    });
+
+    it('attune preserves existing entries when adding a new one', async () => {
+      await resetAttuned(['cloak-of-protection', 'ring-of-protection']);
+      await applyMutations(SESSION_ID, [
+        { op: 'attune', characterId: PC_ID, itemSlug: 'amulet-of-health' },
+      ], []);
+      expect(await readAttuned()).toEqual([
+        'cloak-of-protection',
+        'ring-of-protection',
+        'amulet-of-health',
+      ]);
+    });
+
+    it('unattune removes the slug from the list', async () => {
+      await resetAttuned(['cloak-of-protection', 'ring-of-protection']);
+      await applyMutations(SESSION_ID, [
+        { op: 'unattune', characterId: PC_ID, itemSlug: 'cloak-of-protection' },
+      ], []);
+      expect(await readAttuned()).toEqual(['ring-of-protection']);
+    });
+
+    it('unattune is a no-op when the slug is not attuned', async () => {
+      await resetAttuned(['cloak-of-protection']);
+      await applyMutations(SESSION_ID, [
+        { op: 'unattune', characterId: PC_ID, itemSlug: 'amulet-of-health' },
+      ], []);
+      expect(await readAttuned()).toEqual(['cloak-of-protection']);
+    });
+  });
+
   describe('applicator — concentration mutations', () => {
     // Helper: clear the concentratingOn column so each test starts at NULL.
     async function resetConcentration() {
