@@ -59,6 +59,19 @@ export function castSpell(input: CastSpellInput, rng: RngArg = defaultRng): Acti
     }
   }
 
+  const binding = bindingFor(input.spellSlug);
+
+  // MIN-SLOT GUARD: reject casts that supply a slot level below the binding's
+  // minimum. Without this guard a caller could pass slotLevel=0 for a leveled
+  // spell (cure-wounds, fireball, hold-person…) and the engine would skip the
+  // slot consumption while still emitting the full effect mutations. Unbound
+  // spells (no binding) keep the legacy "narrative cast" path — minSlot
+  // defaults to 0, so any slot level is accepted.
+  const minSlot = binding?.minSlot ?? 0;
+  if (input.slotLevel < minSlot) {
+    return { ok: false, error: 'slot_too_low', rolls: [], mutations: [] };
+  }
+
   // SLOT CHECK (skipped for cantrip OR ritual cast).
   if (!isCantrip && !input.asRitual) {
     const lvl = input.slotLevel as LeveledSlot;
@@ -72,8 +85,6 @@ export function castSpell(input: CastSpellInput, rng: RngArg = defaultRng): Acti
   const slotMutations: Mutation[] = (isCantrip || input.asRitual)
     ? []
     : [{ op: 'use_spell_slot', actorId: input.runtime.actorId, level: input.slotLevel as LeveledSlot }];
-
-  const binding = bindingFor(input.spellSlug);
 
   // CONCENTRATION mutations (only if the spell binding flags it).
   const concMutations: Mutation[] = binding?.concentration
