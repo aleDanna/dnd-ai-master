@@ -36,6 +36,14 @@ export interface MakeAttackInput {
   knockOut?: boolean;
   /** PHB §3.9: an opportunity attack consumes the attacker's reaction, not their action. */
   useReaction?: boolean;
+  /**
+   * PHB §10 Extra Attack / monster Multiattack: when true, this attack is a
+   * follow-up of an Attack action already started this turn. Skips the action
+   * budget check and the `consume_action` emission. The Master is responsible
+   * for enforcing the per-class attack-count limit (Fighter L5: 2, L11: 3,
+   * L20: 4; Barbarian/Paladin/Ranger L5: 2; monster Multiattack varies).
+   */
+  isExtraAttack?: boolean;
 }
 
 export interface MakeAttackResultData {
@@ -66,10 +74,17 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
   }
 
   // Action-economy budget check (PHB §3.9). Skipped if attacker has no turnState
-  // (backward compat for callers that don't yet track action economy).
+  // (backward compat for callers that don't yet track action economy). Also
+  // skipped when this is an Extra Attack / Multiattack follow-up: PHB §10 says
+  // a single Attack action grants multiple swings, so the budget was already
+  // paid by the first attack of the turn.
   const attackerTurnState = input.attackerRuntime?.turnState;
   const actionKind: 'action' | 'reaction' = input.useReaction ? 'reaction' : 'action';
-  if (attackerTurnState && !canConsumeAction(attackerTurnState, actionKind)) {
+  if (
+    !input.isExtraAttack &&
+    attackerTurnState &&
+    !canConsumeAction(attackerTurnState, actionKind)
+  ) {
     return {
       ok: false,
       error: actionKind === 'reaction' ? 'reaction_already_used' : 'action_already_used',
@@ -78,10 +93,12 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
     };
   }
 
-  // Build a consume_action mutation when (and only when) the attacker tracks turnState.
-  const consumeActionMut: Mutation | null = attackerTurnState
-    ? { op: 'consume_action', actorId: input.attacker.id, kind: actionKind }
-    : null;
+  // Build a consume_action mutation when (and only when) the attacker tracks
+  // turnState AND this is not an Extra Attack follow-up.
+  const consumeActionMut: Mutation | null =
+    !input.isExtraAttack && attackerTurnState
+      ? { op: 'consume_action', actorId: input.attacker.id, kind: actionKind }
+      : null;
 
   // PHB §3.5 Help: a 'helped' beneficiary gets ADV on the next d20 (consumed
   // on first use, regardless of hit/miss). Detect on the attacker, and
