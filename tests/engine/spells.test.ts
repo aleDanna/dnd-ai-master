@@ -118,7 +118,7 @@ describe('castSpell', () => {
       ...wizard,
       spellcasting: { ...wizard.spellcasting!, slotsMax: {} },
     };
-    const r = castSpell({ caster: noSlots, runtime: wizardRuntime, spellSlug: 'fire-bolt', slotLevel: 0, targets: [{ id: 'm1' }] }, makeSeededRng(1));
+    const r = castSpell({ caster: noSlots, runtime: wizardRuntime, spellSlug: 'fire-bolt', slotLevel: 0, targets: [{ id: 'm1', ac: 10 }] }, makeSeededRng(1));
     expect(r.ok).toBe(true);
   });
 

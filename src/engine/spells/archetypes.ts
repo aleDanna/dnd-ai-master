@@ -82,6 +82,14 @@ function handleAttackDamage(
     return { ok: false, error: 'attack_damage requires exactly 1 target', rolls: [], mutations: [] };
   }
   const target = ctx.targets[0]!;
+  if (target.ac == null) {
+    return {
+      ok: false,
+      error: `attack_damage requires target.ac (target ${target.id} missing)`,
+      rolls: [],
+      mutations: [],
+    };
+  }
   const diceRng = adaptRng(ctx.rng);
 
   const attackRoll = Math.floor(ctx.rng() * 20) + 1;
@@ -89,7 +97,7 @@ function handleAttackDamage(
   const isCrit = attackRoll === 20;
   const isMiss = attackRoll === 1;
 
-  const hit = !isMiss && (isCrit || (target.ac != null && attackTotal >= target.ac));
+  const hit = !isMiss && (isCrit || attackTotal >= target.ac);
 
   if (!hit) {
     return {
