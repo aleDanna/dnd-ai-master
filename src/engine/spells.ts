@@ -4,6 +4,7 @@ import { defaultRng, createRng, type Rng } from './rand';
 import { bindingFor } from './spells/spell-data';
 import { ARCHETYPE_HANDLERS } from './spells/archetypes';
 import { startConcentrationMutations } from './spells/concentration';
+import { canConsumeAction } from './combat/turn-state';
 
 type LeveledSlot = 1|2|3|4|5|6|7|8|9;
 type SlotLevel = 0 | LeveledSlot;
@@ -19,8 +20,31 @@ export interface CastSpellInput {
   currentRound?: number;
   /** If true, cast as a ritual: spell must support ritual; no slot consumed. */
   asRitual?: boolean;
-  /** Optional spell metadata (ritual/concentration) — required when asRitual=true. */
-  spellMeta?: { ritual?: boolean; concentration?: boolean };
+  /**
+   * Optional spell metadata. `castingTime` (e.g. '1 action', '1 bonus action',
+   * '1 reaction', '1 minute') drives action-economy budget consumption and
+   * PHB §8.5 enforcement when present. Defaults to a '1 action' assumption.
+   */
+  spellMeta?: { ritual?: boolean; concentration?: boolean; castingTime?: string };
+}
+
+/**
+ * Map a spell's casting-time string (as stored in the SRD) to the action-economy
+ * kind it consumes. Returns `null` for casting times longer than a single combat
+ * action (1 minute, 10 minutes, 1 hour, etc.) — those are out-of-combat-only and
+ * should NOT consume an in-combat action slot.
+ *
+ * NB: ritual casts (10-minute extension) always supply their own non-action
+ * casting time; the asRitual branch in castSpell takes precedence.
+ */
+function actionKindFromCastingTime(castingTime: string | undefined): 'action' | 'bonus' | 'reaction' | null {
+  if (!castingTime) return 'action';  // default: assume 1-action spell
+  const ct = castingTime.toLowerCase();
+  if (ct.includes('bonus action')) return 'bonus';
+  if (ct.includes('reaction')) return 'reaction';
+  if (ct.includes('action')) return 'action';
+  // longer cast times (1 minute, 10 minutes, 1 hour, …) → out-of-combat
+  return null;
 }
 
 /**
@@ -72,6 +96,41 @@ export function castSpell(input: CastSpellInput, rng: RngArg = defaultRng): Acti
     return { ok: false, error: 'slot_too_low', rolls: [], mutations: [] };
   }
 
+  // ACTION ECONOMY (PHB §3.9 + §8.5). Check BEFORE slot consumption so we don't
+  // burn a slot on a refused cast. Skipped if:
+  //   - the actor has no turnState (out-of-combat / backward compat), or
+  //   - the casting time is longer than a single combat action (1 min, etc.),
+  //   - the cast is a ritual (asRitual already implies a 10-min ritual cast).
+  const ts = input.runtime.turnState;
+  const actionKind = input.asRitual
+    ? null
+    : actionKindFromCastingTime(input.spellMeta?.castingTime);
+
+  if (ts && actionKind) {
+    // Budget guard: actor must still have the relevant slot free.
+    if (!canConsumeAction(ts, actionKind)) {
+      return {
+        ok: false,
+        error: `${actionKind}_already_used`,
+        rolls: [],
+        mutations: [],
+      };
+    }
+    // PHB §8.5: if a bonus-action spell has been cast this turn, the only OTHER
+    // spell allowed during the same turn is a cantrip with a 1-action casting
+    // time. We enforce only the forward direction (bonus→other); the reverse
+    // (action→bonus) would over-restrict because actionUsed is also set by
+    // weapon attacks, dash, dodge, etc. — not just by spells.
+    if (ts.bonusUsed && actionKind === 'action' && !isCantrip) {
+      return {
+        ok: false,
+        error: 'bonus_action_spell_rule',
+        rolls: [],
+        mutations: [],
+      };
+    }
+  }
+
   // SLOT CHECK (skipped for cantrip OR ritual cast).
   if (!isCantrip && !input.asRitual) {
     const lvl = input.slotLevel as LeveledSlot;
@@ -85,6 +144,13 @@ export function castSpell(input: CastSpellInput, rng: RngArg = defaultRng): Acti
   const slotMutations: Mutation[] = (isCantrip || input.asRitual)
     ? []
     : [{ op: 'use_spell_slot', actorId: input.runtime.actorId, level: input.slotLevel as LeveledSlot }];
+
+  // Action-consumption mutation. Emitted only when the actor tracks turnState
+  // AND the casting time fits within a single combat turn. Ritual casts skip
+  // this entirely (10-minute extension is out-of-combat by definition).
+  const actionMutations: Mutation[] = (ts && actionKind)
+    ? [{ op: 'consume_action', actorId: input.runtime.actorId, kind: actionKind }]
+    : [];
 
   // CONCENTRATION mutations (only if the spell binding flags it).
   const concMutations: Mutation[] = binding?.concentration
@@ -107,13 +173,13 @@ export function castSpell(input: CastSpellInput, rng: RngArg = defaultRng): Acti
       ok: true,
       data: { effects },
       rolls: [],
-      mutations: [...slotMutations, ...concMutations],
+      mutations: [...slotMutations, ...concMutations, ...actionMutations],
     };
   }
 
   // Magic missile keeps its bespoke handler: auto-hit, multi-dart per slot.
   if (input.spellSlug === 'magic-missile') {
-    return castMagicMissile(input, engineRng, slotMutations, concMutations);
+    return castMagicMissile(input, engineRng, slotMutations, concMutations, actionMutations);
   }
 
   const handler = ARCHETYPE_HANDLERS[binding.archetype];
@@ -144,7 +210,7 @@ export function castSpell(input: CastSpellInput, rng: RngArg = defaultRng): Acti
     ok: true,
     data: { effects: allEffects },
     rolls: handlerResult.rolls,
-    mutations: [...handlerResult.mutations, ...slotMutations, ...concMutations],
+    mutations: [...handlerResult.mutations, ...slotMutations, ...concMutations, ...actionMutations],
   };
 }
 
@@ -153,6 +219,7 @@ function castMagicMissile(
   rng: Rng,
   slotMutations: Mutation[],
   concMutations: Mutation[],
+  actionMutations: Mutation[],
 ): ActionResult<{ effects: string[] }> {
   const dartCount = 2 + input.slotLevel;
   if (input.targets.length < 1 || input.targets.length > dartCount) {
@@ -170,6 +237,6 @@ function castMagicMissile(
     ok: true,
     data: { effects: ['force-damage'] },
     rolls,
-    mutations: [...mutations, ...slotMutations, ...concMutations],
+    mutations: [...mutations, ...slotMutations, ...concMutations, ...actionMutations],
   };
 }

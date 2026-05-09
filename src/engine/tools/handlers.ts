@@ -560,11 +560,11 @@ export const TOOL_HANDLERS_DB: Record<string, DbToolHandler> = {
     const targets = ((input.targets as { id: string }[]) ?? []).map((t) => ({ id: String(t.id) }));
     const asRitual = input.asRitual === true;
 
-    // Fetch spellMeta from the SRD only when actually needed (asRitual cast).
-    // For normal casts, spellMeta isn't required by castSpell — the engine's
-    // own bindings carry the concentration flag. This keeps the common path
-    // free of an extra DB round-trip.
-    const spellMeta = asRitual ? await lookupSpellMeta(spellSlug) : undefined;
+    // Always fetch spellMeta from the SRD: castSpell now uses `castingTime` to
+    // drive action-economy consumption (PHB §3.9 + §8.5), in addition to the
+    // ritual flag check for `asRitual` casts. Falls back to `undefined` if the
+    // spell isn't in the SRD — castSpell will assume '1 action' in that case.
+    const spellMeta = await lookupSpellMeta(spellSlug);
 
     return castSpell({
       caster,

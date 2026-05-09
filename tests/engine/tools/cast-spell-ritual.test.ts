@@ -101,7 +101,7 @@ describe('tool cast_spell — asRitual', () => {
 
   it('asRitual: true on detect-magic skips slot consumption', async () => {
     // detect-magic is a ritual spell (PHB §10.69).
-    vi.mocked(lookupSpellMeta).mockResolvedValueOnce({ ritual: true, concentration: false });
+    vi.mocked(lookupSpellMeta).mockResolvedValueOnce({ ritual: true, concentration: false, castingTime: '1 action' });
 
     const r = await TOOL_HANDLERS_DB['cast_spell']!(DB_CTX, wizardState, {
       caster: 'player_character',
@@ -120,7 +120,7 @@ describe('tool cast_spell — asRitual', () => {
 
   it('asRitual: true on fire-bolt errors out', async () => {
     // fire-bolt is a cantrip with no ritual tag.
-    vi.mocked(lookupSpellMeta).mockResolvedValueOnce({ ritual: false, concentration: false });
+    vi.mocked(lookupSpellMeta).mockResolvedValueOnce({ ritual: false, concentration: false, castingTime: '1 action' });
 
     const r = await TOOL_HANDLERS_DB['cast_spell']!(DB_CTX, wizardState, {
       caster: 'player_character',
@@ -133,7 +133,11 @@ describe('tool cast_spell — asRitual', () => {
     expect(r.error).toMatch(/ritual/i);
   });
 
-  it('asRitual: false on magic-missile consumes slot normally (no DB lookup)', async () => {
+  it('asRitual: false on magic-missile consumes slot normally', async () => {
+    // Action-economy now ALWAYS needs castingTime → spellMeta is fetched on
+    // every cast. Provide a normal-action mock so the resolver succeeds.
+    vi.mocked(lookupSpellMeta).mockResolvedValueOnce({ ritual: false, concentration: false, castingTime: '1 action' });
+
     const r = await TOOL_HANDLERS_DB['cast_spell']!(DB_CTX, wizardState, {
       caster: 'player_character',
       spellSlug: 'magic-missile',
@@ -144,8 +148,8 @@ describe('tool cast_spell — asRitual', () => {
 
     expect(r.ok).toBe(true);
     expect(r.mutations.some((m) => m.op === 'use_spell_slot')).toBe(true);
-    // Sanity: lookupSpellMeta should NOT have been called when asRitual is false.
-    expect(vi.mocked(lookupSpellMeta)).not.toHaveBeenCalled();
+    // Sanity: spellMeta is now always fetched (action economy needs castingTime).
+    expect(vi.mocked(lookupSpellMeta)).toHaveBeenCalledWith('magic-missile');
   });
 
   it('asRitual: true but spell missing from SRD errors out', async () => {

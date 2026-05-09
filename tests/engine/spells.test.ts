@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { castSpell } from '@/engine/spells';
 import { makeSeededRng } from '@/engine/rand';
-import type { Character, CombatActor, ActorRuntimeState, ConcentrationState } from '@/engine/types';
+import { newTurnState } from '@/engine/combat/turn-state';
+import type { Character, CombatActor, ActorRuntimeState, ConcentrationState, TurnState } from '@/engine/types';
 
 function pcCaster(overrides: { spellsKnown?: string[] } = {}): Character {
   return {
@@ -27,6 +28,7 @@ function runtimeFor(
   overrides: {
     spellSlotsUsed?: Partial<Record<1|2|3|4|5|6|7|8|9, number>>;
     concentratingOn?: ConcentrationState;
+    turnState?: TurnState;
   } = {},
 ): ActorRuntimeState {
   return {
@@ -38,6 +40,7 @@ function runtimeFor(
     spellSlotsUsed: overrides.spellSlotsUsed ?? {},
     resourcesUsed: {},
     ...(overrides.concentratingOn ? { concentratingOn: overrides.concentratingOn } : {}),
+    ...(overrides.turnState ? { turnState: overrides.turnState } : {}),
   };
 }
 
@@ -280,5 +283,141 @@ describe('castSpell — ritual', () => {
     }, () => 0.5);
     const slotMut = result.mutations.find((m) => m.op === 'use_spell_slot');
     expect(slotMut).toBeDefined();
+  });
+});
+
+describe('castSpell — action economy integration', () => {
+  it('casting fire-bolt (1 action) emits consume_action(action)', () => {
+    const c = pcCaster({ spellsKnown: ['fire-bolt'] });
+    const r = castSpell({
+      caster: c,
+      runtime: runtimeFor(c, { turnState: newTurnState() }),
+      spellSlug: 'fire-bolt',
+      slotLevel: 0,
+      targets: [{ id: 'm1', ac: 10 }],
+      spellMeta: { castingTime: '1 action' },
+    }, () => 0.5);
+    expect(r.ok).toBe(true);
+    const consume = r.mutations.find((m) => m.op === 'consume_action');
+    expect(consume).toMatchObject({ kind: 'action' });
+  });
+
+  it('casting healing-word (1 bonus action) emits consume_action(bonus)', () => {
+    const c = pcCaster({ spellsKnown: ['healing-word'] });
+    const r = castSpell({
+      caster: c,
+      runtime: runtimeFor(c, { spellSlotsUsed: { 1: 0 }, turnState: newTurnState() }),
+      spellSlug: 'healing-word',
+      slotLevel: 1,
+      targets: [{ id: 'pc1' }],
+      spellMeta: { castingTime: '1 bonus action' },
+    }, () => 0.5);
+    expect(r.ok).toBe(true);
+    const consume = r.mutations.find((m) => m.op === 'consume_action');
+    expect(consume).toMatchObject({ kind: 'bonus' });
+  });
+
+  it('casting shield (1 reaction) emits consume_action(reaction)', () => {
+    const c = pcCaster({ spellsKnown: ['shield'] });
+    const r = castSpell({
+      caster: c,
+      runtime: runtimeFor(c, { spellSlotsUsed: { 1: 0 }, turnState: newTurnState() }),
+      spellSlug: 'shield',
+      slotLevel: 1,
+      targets: [{ id: 'pc1' }],
+      spellMeta: { castingTime: '1 reaction' },
+    }, () => 0.5);
+    expect(r.ok).toBe(true);
+    const consume = r.mutations.find((m) => m.op === 'consume_action');
+    expect(consume).toMatchObject({ kind: 'reaction' });
+  });
+
+  it('casting alarm (1 minute) → no consume_action mutation (out of combat)', () => {
+    const c = pcCaster({ spellsKnown: ['alarm'] });
+    const r = castSpell({
+      caster: c,
+      runtime: runtimeFor(c, { spellSlotsUsed: { 1: 0 }, turnState: newTurnState() }),
+      spellSlug: 'alarm',
+      slotLevel: 1,
+      targets: [],
+      spellMeta: { castingTime: '1 minute' },
+    }, () => 0.5);
+    expect(r.ok).toBe(true);
+    const consume = r.mutations.find((m) => m.op === 'consume_action');
+    expect(consume).toBeUndefined();
+  });
+
+  it('no turnState → no consume_action mutation (out of combat / backward compat)', () => {
+    const c = pcCaster({ spellsKnown: ['fire-bolt'] });
+    const r = castSpell({
+      caster: c,
+      runtime: runtimeFor(c),
+      spellSlug: 'fire-bolt',
+      slotLevel: 0,
+      targets: [{ id: 'm1', ac: 10 }],
+      spellMeta: { castingTime: '1 action' },
+    }, () => 0.5);
+    expect(r.ok).toBe(true);
+    const consume = r.mutations.find((m) => m.op === 'consume_action');
+    expect(consume).toBeUndefined();
+  });
+
+  it('errors action_already_used when action consumed and trying 1-action spell', () => {
+    const c = pcCaster({ spellsKnown: ['fire-bolt'] });
+    const runtime = runtimeFor(c, { turnState: { ...newTurnState(), actionUsed: true } });
+    const r = castSpell({
+      caster: c, runtime, spellSlug: 'fire-bolt', slotLevel: 0,
+      targets: [{ id: 'm1', ac: 10 }],
+      spellMeta: { castingTime: '1 action' },
+    }, () => 0.5);
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('action_already_used');
+  });
+
+  it('errors bonus_already_used when bonus consumed and trying bonus-action spell', () => {
+    const c = pcCaster({ spellsKnown: ['healing-word'] });
+    const runtime = runtimeFor(c, {
+      spellSlotsUsed: { 1: 0 },
+      turnState: { ...newTurnState(), bonusUsed: true },
+    });
+    const r = castSpell({
+      caster: c, runtime, spellSlug: 'healing-word', slotLevel: 1, targets: [{ id: 'pc1' }],
+      spellMeta: { castingTime: '1 bonus action' },
+    }, () => 0.5);
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('bonus_already_used');
+  });
+
+  it('PHB §8.5: bonus-action spell already cast → next leveled spell errors', () => {
+    // Step 1: cast healing-word (bonus action); should succeed
+    const c = pcCaster({ spellsKnown: ['healing-word', 'cure-wounds'] });
+    let runtime = runtimeFor(c, { spellSlotsUsed: { 1: 0 }, turnState: newTurnState() });
+    const r1 = castSpell({
+      caster: c, runtime, spellSlug: 'healing-word', slotLevel: 1, targets: [{ id: 'pc1' }],
+      spellMeta: { castingTime: '1 bonus action' },
+    }, () => 0.5);
+    expect(r1.ok).toBe(true);
+
+    // Now simulate that the bonus_used flag is set (the applicator would have set it)
+    runtime = { ...runtime, turnState: { ...newTurnState(), bonusUsed: true } };
+
+    // Step 2: try to cast cure-wounds (1 action, leveled) → bonus_action_spell_rule
+    const r2 = castSpell({
+      caster: c, runtime, spellSlug: 'cure-wounds', slotLevel: 1, targets: [{ id: 'pc1' }],
+      spellMeta: { castingTime: '1 action' },
+    }, () => 0.5);
+    expect(r2.ok).toBe(false);
+    expect(r2.error).toBe('bonus_action_spell_rule');
+  });
+
+  it('PHB §8.5: bonus-action spell already cast → cantrip with 1 action casting time IS allowed', () => {
+    const c = pcCaster({ spellsKnown: ['fire-bolt'] });
+    const runtime = runtimeFor(c, { turnState: { ...newTurnState(), bonusUsed: true } });
+    const r = castSpell({
+      caster: c, runtime, spellSlug: 'fire-bolt', slotLevel: 0,
+      targets: [{ id: 'm1', ac: 10 }],
+      spellMeta: { castingTime: '1 action' },
+    }, () => 0.5);
+    expect(r.ok).toBe(true);  // cantrip exception
   });
 });
