@@ -114,6 +114,29 @@ export interface ResourceUsage {
   [featureSlug: string]: number;
 }
 
+export interface TurnState {
+  actionUsed: boolean;
+  bonusUsed: boolean;
+  reactionUsed: boolean;
+  movementSpentFt: number;
+  freeInteractionsUsed: number;
+  /** Until next turn: incoming attacks have DIS (if can see attacker), DEX saves ADV. */
+  dodging: boolean;
+  /** This turn: leaving engagement does not provoke OA. */
+  disengaged: boolean;
+  /** This turn: effective movement budget is doubled. */
+  dashed: boolean;
+  /** Stored Ready action: trigger description + planned action. Cleared on next start_turn. */
+  readied?: { trigger: string; action: string };
+}
+
+export interface Position {
+  /** Abstract distance band from the action focus. */
+  band: 'engaged' | 'near' | 'far' | 'distant';
+  /** IDs of hostile actors currently within melee reach (engagement). */
+  engagedWith: string[];
+}
+
 export interface CombatState {
   round: number;
   turnOrder: { actorId: string; initiative: number }[];
@@ -148,6 +171,16 @@ export interface ActorRuntimeState {
   hitDiceRemaining?: number;
   spellSlotsUsed?: Partial<Record<1|2|3|4|5|6|7|8|9, number>>;
   resourcesUsed?: ResourceUsage;
+  /**
+   * Per-turn action economy budget. Reset by `start_turn` mutation. Optional
+   * for backward compat with Phase 1+2 actors that don't track action economy.
+   */
+  turnState?: TurnState;
+  /**
+   * Abstract distance band + engagement list. Optional for backward compat
+   * with Phase 1+2 actors that don't have explicit positioning.
+   */
+  position?: Position;
 }
 
 export interface EngineState {
@@ -187,7 +220,16 @@ export type Mutation =
   | { op: 'concentration_check'; actorId: string; dc: number; spellSlug: string }
   | { op: 'set_combat'; combat: CombatState | null }
   | { op: 'advance_turn' }
-  | { op: 'set_scene'; scene: string };
+  | { op: 'set_scene'; scene: string }
+  | { op: 'start_turn'; actorId: string }
+  | { op: 'consume_action'; actorId: string; kind: 'action' | 'bonus' | 'reaction' }
+  | { op: 'consume_movement'; actorId: string; feet: number }
+  | { op: 'take_dodge'; actorId: string }
+  | { op: 'take_disengage'; actorId: string }
+  | { op: 'take_dash'; actorId: string; extraSpeedFt: number }
+  | { op: 'set_readied'; actorId: string; trigger: string; action: string }
+  | { op: 'set_position'; actorId: string; position: Position }
+  | { op: 'opportunity_attack_triggered'; attackerId: string; targetId: string };
 
 // ─── Action results ────────────────────────────────────────────────────────
 
