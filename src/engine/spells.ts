@@ -1,6 +1,9 @@
 import type { ActionResult, ActorRuntimeState, Character, Mutation } from './types';
 import { rollDice } from './dice';
-import { defaultRng, type Rng } from './rand';
+import { defaultRng, createRng, type Rng } from './rand';
+import { bindingFor } from './spells/spell-data';
+import { ARCHETYPE_HANDLERS } from './spells/archetypes';
+import { startConcentrationMutations } from './spells/concentration';
 
 type LeveledSlot = 1|2|3|4|5|6|7|8|9;
 type SlotLevel = 0 | LeveledSlot;
@@ -11,10 +14,35 @@ export interface CastSpellInput {
   spellSlug: string;
   /** 0 for cantrips (no slot consumed). 1-9 for leveled casts. */
   slotLevel: SlotLevel;
-  targets: { id: string }[];
+  targets: { id: string; ac?: number }[];
+  /** Current combat round (for concentration tracking). Defaults to 0. */
+  currentRound?: number;
+  /** If true, cast as a ritual: spell must support ritual; no slot consumed. */
+  asRitual?: boolean;
+  /** Optional spell metadata (ritual/concentration) — required when asRitual=true. */
+  spellMeta?: { ritual?: boolean; concentration?: boolean };
 }
 
-export function castSpell(input: CastSpellInput, rng: Rng = defaultRng): ActionResult<{ effects: string[] }> {
+/**
+ * Accept either the engine's `Rng` (object with `intInclusive`) for backwards
+ * compatibility with seeded test helpers, OR a uniform `() => number` so tests
+ * can pass `() => 0.5` directly. Internally we normalise to both forms — the
+ * archetype handlers consume `() => number`, the legacy magic-missile path
+ * consumes `Rng`.
+ */
+type RngArg = Rng | (() => number);
+
+function normaliseRng(rng: RngArg): { engine: Rng; uniform: () => number } {
+  if (typeof rng === 'function') {
+    return { engine: createRng(rng), uniform: rng };
+  }
+  // Synthesise a uniform 0..1 from an `Rng` so we can drive archetype handlers
+  // deterministically when callers pass a seeded `Rng`.
+  const uniform = () => rng.intInclusive(0, 0xFFFFFFFF) / 0x100000000;
+  return { engine: rng, uniform };
+}
+
+export function castSpell(input: CastSpellInput, rng: RngArg = defaultRng): ActionResult<{ effects: string[] }> {
   if (!input.caster.spellcasting) {
     return { ok: false, error: 'not_caster', rolls: [], mutations: [] };
   }
@@ -23,7 +51,16 @@ export function castSpell(input: CastSpellInput, rng: Rng = defaultRng): ActionR
   }
 
   const isCantrip = input.slotLevel === 0;
-  if (!isCantrip) {
+
+  // RITUAL CHECK: if asRitual, the spell must support ritual casting.
+  if (input.asRitual) {
+    if (!input.spellMeta?.ritual) {
+      return { ok: false, error: 'spell is not a ritual', rolls: [], mutations: [] };
+    }
+  }
+
+  // SLOT CHECK (skipped for cantrip OR ritual cast).
+  if (!isCantrip && !input.asRitual) {
     const lvl = input.slotLevel as LeveledSlot;
     const max = input.caster.spellcasting.slotsMax[lvl] ?? 0;
     const used = input.runtime.spellSlotsUsed?.[lvl] ?? 0;
@@ -32,64 +69,94 @@ export function castSpell(input: CastSpellInput, rng: Rng = defaultRng): ActionR
     }
   }
 
-  const slotMutations: Mutation[] = isCantrip
+  const slotMutations: Mutation[] = (isCantrip || input.asRitual)
     ? []
     : [{ op: 'use_spell_slot', actorId: input.runtime.actorId, level: input.slotLevel as LeveledSlot }];
 
-  const handler = SPELL_HANDLERS[input.spellSlug];
-  // No specialised mechanical handler: succeed as a "narrative cast". The master
-  // is responsible for any follow-up rolls / damage / conditions via separate
-  // tool calls (apply_damage, saving_throw, apply_condition, etc.). Returning
-  // ok here avoids the master having to fake-resolve the cast when an SRD spell
-  // simply doesn't have a hard-coded handler.
-  if (!handler) {
-    return { ok: true, data: { effects: [] }, rolls: [], mutations: slotMutations };
-  }
+  const binding = bindingFor(input.spellSlug);
 
-  const result = handler(input, rng);
-  if (!result.ok) return result;
+  // CONCENTRATION mutations (only if the spell binding flags it).
+  const concMutations: Mutation[] = binding?.concentration
+    ? startConcentrationMutations({
+        actorId: input.runtime.actorId,
+        spellSlug: input.spellSlug,
+        slotLevel: input.slotLevel,
+        startedRound: input.currentRound ?? 0,
+        currentlyConcentratingOn: input.runtime.concentratingOn,
+      })
+    : [];
 
-  return { ...result, mutations: [...result.mutations, ...slotMutations] };
-}
+  const { engine: engineRng, uniform } = normaliseRng(rng);
 
-type SpellHandler = (input: CastSpellInput, rng: Rng) => ActionResult<{ effects: string[] }>;
-
-const SPELL_HANDLERS: Record<string, SpellHandler> = {
-  'magic-missile': (input, rng) => {
-    const dartCount = 2 + input.slotLevel;
-    if (input.targets.length < 1 || input.targets.length > dartCount) {
-      return { ok: false, error: 'bad_targets', rolls: [], mutations: [] };
-    }
-    const rolls = [];
-    const mutations: Mutation[] = [];
-    for (let i = 0; i < dartCount; i++) {
-      const r = rollDice('1d4+1', rng);
-      rolls.push(r);
-      const tgt = input.targets[i] ?? input.targets[input.targets.length - 1]!;
-      mutations.push({ op: 'apply_damage', actorId: tgt.id, amount: r.total, type: 'force' });
-    }
-    return { ok: true, data: { effects: ['force-damage'] }, rolls, mutations };
-  },
-
-  'healing-word': (input, rng) => {
-    if (input.targets.length !== 1) {
-      return { ok: false, error: 'bad_targets', rolls: [], mutations: [] };
-    }
-    const target = input.targets[0]!;
-    const dice = `1d4`;
-    const r = rollDice(dice, rng);
-    // +spellcasting modifier
-    const ability = input.caster.spellcasting!.ability;
-    const mod = Math.floor((input.caster.abilities[ability] - 10) / 2);
-    const upcast = (input.slotLevel - 1) > 0 ? Array.from({ length: input.slotLevel - 1 }, () => rollDice('1d4', rng)) : [];
-    const total = r.total + mod + upcast.reduce((s, x) => s + x.total, 0);
+  // No binding → narrative cast (legacy behaviour). Slot is still consumed (or
+  // skipped for ritual). The Master narrates / drives downstream tools.
+  if (!binding) {
+    const effects = input.asRitual ? ['ritual', 'narrative'] : ['narrative'];
     return {
       ok: true,
-      data: { effects: ['heal'] },
-      rolls: [r, ...upcast],
-      mutations: [{ op: 'heal', actorId: target.id, amount: total }],
+      data: { effects },
+      rolls: [],
+      mutations: [...slotMutations, ...concMutations],
     };
-  },
+  }
 
-};
+  // Magic missile keeps its bespoke handler: auto-hit, multi-dart per slot.
+  if (input.spellSlug === 'magic-missile') {
+    return castMagicMissile(input, engineRng, slotMutations, concMutations);
+  }
 
+  const handler = ARCHETYPE_HANDLERS[binding.archetype];
+  const ability = input.caster.spellcasting.ability;
+  const ctx = {
+    caster: {
+      id: input.runtime.actorId,
+      spellAttackBonus: input.caster.spellcasting.spellAttackBonus,
+      spellSaveDC: input.caster.spellcasting.spellSaveDC,
+      spellMod: Math.floor((input.caster.abilities[ability] - 10) / 2),
+    },
+    spellSlug: input.spellSlug,
+    slotLevel: input.slotLevel,
+    targets: input.targets,
+    rng: uniform,
+  };
+  const handlerResult = handler(ctx, binding);
+  if (!handlerResult.ok) return handlerResult;
+
+  const allEffects = [
+    ...(handlerResult.data?.effects ?? []),
+    ...(input.asRitual ? ['ritual'] : []),
+  ];
+
+  return {
+    ok: true,
+    data: { effects: allEffects },
+    rolls: handlerResult.rolls,
+    mutations: [...handlerResult.mutations, ...slotMutations, ...concMutations],
+  };
+}
+
+function castMagicMissile(
+  input: CastSpellInput,
+  rng: Rng,
+  slotMutations: Mutation[],
+  concMutations: Mutation[],
+): ActionResult<{ effects: string[] }> {
+  const dartCount = 2 + input.slotLevel;
+  if (input.targets.length < 1 || input.targets.length > dartCount) {
+    return { ok: false, error: 'bad_targets', rolls: [], mutations: [] };
+  }
+  const rolls = [];
+  const mutations: Mutation[] = [];
+  for (let i = 0; i < dartCount; i++) {
+    const r = rollDice('1d4+1', rng);
+    rolls.push(r);
+    const tgt = input.targets[i] ?? input.targets[input.targets.length - 1]!;
+    mutations.push({ op: 'apply_damage', actorId: tgt.id, amount: r.total, type: 'force' });
+  }
+  return {
+    ok: true,
+    data: { effects: ['force-damage'] },
+    rolls,
+    mutations: [...mutations, ...slotMutations, ...concMutations],
+  };
+}
