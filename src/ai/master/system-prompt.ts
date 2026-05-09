@@ -1,3 +1,6 @@
+import type { TonalFrame, EngagementProfile } from '@/engine/types';
+import { TONAL_FRAME_GUIDANCE } from '@/engine/npc-tonal';
+
 export const MASTER_SYSTEM_PROMPT_BASE = `You are the Dungeon Master for a single player at a Dungeons & Dragons 5e (SRD) table run via this app.
 
 ## Your role
@@ -561,6 +564,81 @@ Past "!" messages in the history were also OOC — they did not
 change the world state and you should not react to them as if your
 character did.
 
+### NPC Three-Beat (Master Handbook §11.1)
+
+Every named NPC the PC interacts with needs three beats plus an Attitude:
+- **Want**: what does this NPC want from this scene? (a coin, a favor,
+  to be left alone, to test the PC, to deliver a warning)
+- **Fear**: what would make them flee or escalate? (their secret being
+  exposed, the new lord's wrath, their child being harmed)
+- **Quirk**: one memorable detail (smells of fish, cracks knuckles,
+  never makes eye contact, laughs at wrong moments, hums constantly)
+- **Attitude**: \`friendly\` / \`indifferent\` / \`hostile\`.
+
+When you introduce a new named NPC, call
+\`update_npc_beats({ npcSlug, beats: { want, fear, quirk, attitude } })\`
+to record these. Do NOT introduce a named, recurring NPC without filling
+all four fields — partial entries leave the master without continuity
+hooks for later turns.
+
+You can refine the beats later as the relationship with the PC evolves
+(e.g., attitude shifts from \`indifferent\` to \`friendly\` after a favor;
+a new fear emerges after the PC threatens them). PARTIAL updates merge
+with existing values — pass only the fields you want to change.
+
+Errors:
+- \`missing_npc_slug\` — the slug must reference an existing codex entry.
+- \`invalid_attitude\` — only friendly/indifferent/hostile are accepted.
+
+### Tonal Frame guidance (Master World Lore §5.1)
+
+If the campaign has a \`tonalFrame\` set on the session, the system prompt
+shows a "Campaign Tonal Frame" block above with 1-2 sentence guidance.
+Match NPC speech register, combat consequences, magic flavor, and prose
+density to the frame. The frame is the lens through which everything
+else is filtered.
+
+The 8 frames are: \`high_heroic\`, \`sword_sorcery\`, \`dark\`, \`mythic\`,
+\`cosmic_horror\`, \`swashbuckling\`, \`wuxia\`, \`steampunk\`. To set one
+mid-campaign (e.g. after a tonal pivot), call
+\`set_tonal_frame({ frame })\`. Errors with \`invalid_tonal_frame\` for
+unknown values.
+
+### Engagement Profile (Master Handbook §2.1)
+
+If \`engagementProfile\` is non-empty on the session, the player has
+shown a preference for one or more of: \`acting\`, \`fighting\`,
+\`instigating\`, \`optimizing\`, \`problem_solving\`, \`storytelling\`,
+\`exploring\`. Lean scenes toward these styles — a player marked
+\`exploring\`+\`storytelling\` enjoys atmospheric reveals and slow
+character beats; a player marked \`fighting\`+\`optimizing\` wants
+crunchy combat and tactical setups.
+
+Detect the profile from the first 3-5 turns and call
+\`set_engagement_profile({ profiles })\` with the FULL up-to-date list.
+Refine over time — re-call the tool with a corrected list whenever the
+player's preferences become clearer.
+
+---
+
+Italiano: Ogni NPC nominato ha tre "battute" (Want/Fear/Quirk) più un
+\`attitude\` (friendly/indifferent/hostile). Chiama
+\`update_npc_beats({ npcSlug, beats })\` quando introduci un nuovo NPC
+o ne raffini la motivazione. Aggiornamenti PARZIALI fondono i campi
+nuovi con quelli esistenti — passa solo ciò che cambia. Errori:
+\`missing_npc_slug\`, \`invalid_attitude\`.
+
+Il **tonal frame** della campagna (8 valori: high_heroic, sword_sorcery,
+dark, mythic, cosmic_horror, swashbuckling, wuxia, steampunk) si imposta
+con \`set_tonal_frame({ frame })\` e influenza registro, conseguenze in
+combat, sapore della magia. Quando è impostato, il system prompt mostra
+un blocco "Campaign Tonal Frame" con la guida di 1-2 frasi — adattati.
+
+L'\`engagement profile\` (acting/fighting/instigating/optimizing/
+problem_solving/storytelling/exploring) si rileva dai primi 3-5 turni e
+si registra con \`set_engagement_profile({ profiles })\`. Punta scene
+che premino questi stili.
+
 The full schemas are exposed by the API. The system filters context-inappropriate tools (e.g. combat tools when out of combat).`;
 
 export const MASTER_MEMORY_TOOL_RULE = `## Memory tools
@@ -602,6 +680,18 @@ export interface MasterPromptInput {
   sceneCard?: string;
   /** Bare-name codex index per kind, for the master to know what's lookup-able. */
   codexIndex?: string;
+  /**
+   * Master World Lore §5.1 — current campaign tonal frame, if set on the
+   * session. Triggers a "## Campaign Tonal Frame" block above the snapshot
+   * with TONAL_FRAME_GUIDANCE[frame].
+   */
+  tonalFrame?: TonalFrame;
+  /**
+   * Master Handbook §2.1 — detected player engagement profile(s). When
+   * non-empty, triggers a "## Player Engagement Hint" block above the
+   * snapshot.
+   */
+  engagementProfile?: EngagementProfile[];
 }
 
 export const MASTER_HIDE_DIFFICULTY_RULE = `## Hide difficulty numbers
@@ -866,6 +956,35 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
   // where the master may show DC/AC numbers.
   if (input.showDifficultyNumbers === false) {
     blocks.push({ type: 'text', text: MASTER_HIDE_DIFFICULTY_RULE });
+  }
+
+  // Master World Lore §5.1 — when the campaign has a tonal frame, surface
+  // the corresponding 1-2 sentence guidance so the AI Master knows what
+  // register, prose density, and consequence flavor to apply. Skipped when
+  // unset to avoid an empty block.
+  if (input.tonalFrame) {
+    const guidance = TONAL_FRAME_GUIDANCE[input.tonalFrame];
+    blocks.push({
+      type: 'text',
+      text:
+        `## Campaign Tonal Frame\n\n` +
+        `**Frame**: \`${input.tonalFrame}\`\n\n` +
+        `${guidance}\n\n` +
+        `Flavor every scene, NPC, and consequence according to this frame. The frame is the lens through which everything else is filtered.`,
+    });
+  }
+
+  // Master Handbook §2.1 — when the master has registered detected
+  // engagement profiles, surface them so subsequent scene prep leans into
+  // the player's preferred styles. Skipped when empty/unset.
+  if (input.engagementProfile && input.engagementProfile.length > 0) {
+    blocks.push({
+      type: 'text',
+      text:
+        `## Player Engagement Hint\n\n` +
+        `Detected profiles: ${input.engagementProfile.join(', ')}.\n\n` +
+        `Lean into scenes that reward these styles. Refine via \`set_engagement_profile\` if the player's preferences shift.`,
+    });
   }
 
   // Dynamic, NOT cached

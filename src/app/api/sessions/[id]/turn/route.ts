@@ -97,6 +97,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           chapterDigests: memory.chapterDigests,
           sceneCard: memory.sceneCard,
           codexIndex: memory.codexIndex,
+          // Master World Lore §5.1 + Master Handbook §2.1 — pass through the
+          // session-level tonal frame and engagement profile so the system
+          // prompt can inject the dynamic blocks when set.
+          tonalFrame: snap.state.tonalFrame,
+          engagementProfile: snap.state.engagementProfile,
         });
 
         const recent = await db
