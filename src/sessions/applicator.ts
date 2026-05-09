@@ -256,10 +256,72 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
       await tx.update(charactersTable).set({ ac: Math.max(1, Math.floor(m.newAc)), updatedAt: new Date() }).where(eq(charactersTable.id, m.characterId));
       break;
     }
-    // Ops Plan B emits but Plan D1 does not yet act on; ignore safely.
-    case 'death_save':
-    case 'reset_death_saves':
+    case 'death_save': {
+      // PHB §3.18: tracked on the PC's session_state row. Monsters/NPCs
+      // don't roll death saves (they die at 0 HP), so treat any non-PC
+      // actorId as a no-op.
+      if (m.actorId !== ctx.characterId) break;
+      const [s] = await tx.select().from(sessionStateTable).where(eq(sessionStateTable.sessionId, sessionId)).limit(1);
+      if (!s) break;
+      const ds = s.deathSaves ?? { successes: 0, failures: 0 };
+      const flags = (s.flags ?? {}) as { stable?: boolean; dead?: boolean };
+      if (m.success) {
+        const newSuccesses = Math.min(3, ds.successes + 1);
+        if (newSuccesses >= 3) {
+          // STABLE — reset counters, mark stable, ensure unconscious is present.
+          const conds = (s.conditions as ConditionInstance[]).slice();
+          if (!conds.some((c) => c.slug === 'unconscious')) {
+            conds.push({
+              slug: 'unconscious',
+              source: 'stable but down',
+              durationRounds: 'until_removed',
+              appliedRound: 0,
+            });
+          }
+          await tx
+            .update(sessionStateTable)
+            .set({
+              deathSaves: { successes: 0, failures: 0 },
+              flags: { ...flags, stable: true },
+              conditions: conds,
+            })
+            .where(eq(sessionStateTable.sessionId, sessionId));
+        } else {
+          await tx
+            .update(sessionStateTable)
+            .set({ deathSaves: { successes: newSuccesses, failures: ds.failures } })
+            .where(eq(sessionStateTable.sessionId, sessionId));
+        }
+      } else {
+        const inc = m.isCrit ? 2 : 1;
+        const newFailures = Math.min(3, ds.failures + inc);
+        if (newFailures >= 3) {
+          await tx
+            .update(sessionStateTable)
+            .set({
+              deathSaves: { successes: 0, failures: 3 },
+              flags: { ...flags, dead: true },
+            })
+            .where(eq(sessionStateTable.sessionId, sessionId));
+        } else {
+          await tx
+            .update(sessionStateTable)
+            .set({ deathSaves: { successes: ds.successes, failures: newFailures } })
+            .where(eq(sessionStateTable.sessionId, sessionId));
+        }
+      }
       break;
+    }
+    case 'reset_death_saves': {
+      // Zero the counters; do NOT touch flags (caller decides when to clear
+      // stable/dead — typically on level-up, revivify, or session reset).
+      if (m.actorId !== ctx.characterId) break;
+      await tx
+        .update(sessionStateTable)
+        .set({ deathSaves: { successes: 0, failures: 0 } })
+        .where(eq(sessionStateTable.sessionId, sessionId));
+      break;
+    }
   }
 }
 

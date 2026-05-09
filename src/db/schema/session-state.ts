@@ -12,6 +12,8 @@ export const sessionState = pgTable('session_state', {
   spellSlotsUsed: jsonb('spell_slots_used').$type<Record<string, number>>().notNull().default({}),
   conditions: jsonb('conditions').$type<{ slug: string; source: string; durationRounds: number | 'until_removed'; appliedRound: number }[]>().notNull().default([]),
   resourcesUsed: jsonb('resources_used').$type<Record<string, number>>().notNull().default({}),
+  deathSaves: jsonb('death_saves').$type<{ successes: number; failures: number }>().notNull().default({ successes: 0, failures: 0 }),
+  flags: jsonb('flags').$type<{ stable?: boolean; dead?: boolean }>().notNull().default({}),
   inCombat: boolean('in_combat').notNull().default(false),
   combat: jsonb('combat').$type<{ round: number; turnOrder: { actorId: string; initiative: number }[]; currentIdx: number } | null>(),
   scene: text('scene').notNull().default(''),

@@ -1,0 +1,2 @@
+ALTER TABLE "session_state" ADD COLUMN "death_saves" jsonb DEFAULT '{"successes":0,"failures":0}'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "session_state" ADD COLUMN "flags" jsonb DEFAULT '{}'::jsonb NOT NULL;

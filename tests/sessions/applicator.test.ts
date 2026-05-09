@@ -144,4 +144,110 @@ describe('applyMutations', () => {
     const [after] = await db.select({ xp: characters.xp }).from(characters).where(eq(characters.id, PC_ID)).limit(1);
     expect(after!.xp).toBe(startXp + 250);
   });
+
+  describe('applicator — death_save mutation', () => {
+    // Helper: reset session_state so each death-save test starts clean.
+    async function resetDeathSaves(opts: { conditions?: { slug: string; source: string; durationRounds: number | 'until_removed'; appliedRound: number }[] } = {}) {
+      await db
+        .update(sessionState)
+        .set({
+          deathSaves: { successes: 0, failures: 0 },
+          flags: {},
+          conditions: opts.conditions ?? [],
+        })
+        .where(eq(sessionState.sessionId, SESSION_ID));
+    }
+    async function setDeathSaves(successes: number, failures: number) {
+      await db
+        .update(sessionState)
+        .set({ deathSaves: { successes, failures }, flags: {} })
+        .where(eq(sessionState.sessionId, SESSION_ID));
+    }
+
+    it('success increments successes counter', async () => {
+      await resetDeathSaves();
+      await applyMutations(SESSION_ID, [
+        { op: 'death_save', actorId: PC_ID, success: true },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.deathSaves).toEqual({ successes: 1, failures: 0 });
+      expect(s!.flags).toEqual({});
+    });
+
+    it('3 successes → stable, counters reset, unconscious added', async () => {
+      await setDeathSaves(2, 0);
+      await applyMutations(SESSION_ID, [
+        { op: 'death_save', actorId: PC_ID, success: true },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.deathSaves).toEqual({ successes: 0, failures: 0 });
+      expect(s!.flags).toMatchObject({ stable: true });
+      const conds = s!.conditions as { slug: string }[];
+      expect(conds.some((c) => c.slug === 'unconscious')).toBe(true);
+    });
+
+    it('does not duplicate unconscious if already present when becoming stable', async () => {
+      await db
+        .update(sessionState)
+        .set({
+          deathSaves: { successes: 2, failures: 0 },
+          flags: {},
+          conditions: [{ slug: 'unconscious', source: 'prior knockout', durationRounds: 'until_removed', appliedRound: 0 }],
+        })
+        .where(eq(sessionState.sessionId, SESSION_ID));
+      await applyMutations(SESSION_ID, [
+        { op: 'death_save', actorId: PC_ID, success: true },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      const conds = s!.conditions as { slug: string }[];
+      expect(conds.filter((c) => c.slug === 'unconscious').length).toBe(1);
+    });
+
+    it('3 failures → dead, counters frozen at 0/3', async () => {
+      await setDeathSaves(0, 2);
+      await applyMutations(SESSION_ID, [
+        { op: 'death_save', actorId: PC_ID, success: false },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.deathSaves).toEqual({ successes: 0, failures: 3 });
+      expect(s!.flags).toMatchObject({ dead: true });
+    });
+
+    it('crit failure counts as 2', async () => {
+      await setDeathSaves(0, 0);
+      await applyMutations(SESSION_ID, [
+        { op: 'death_save', actorId: PC_ID, success: false, isCrit: true },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.deathSaves).toEqual({ successes: 0, failures: 2 });
+      expect(s!.flags).toEqual({});
+    });
+
+    it('crit failure caps at 3 and marks dead', async () => {
+      await setDeathSaves(0, 2);
+      await applyMutations(SESSION_ID, [
+        { op: 'death_save', actorId: PC_ID, success: false, isCrit: true },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.deathSaves).toEqual({ successes: 0, failures: 3 });
+      expect(s!.flags).toMatchObject({ dead: true });
+    });
+
+    it('reset_death_saves clears counters but does not touch flags', async () => {
+      await db
+        .update(sessionState)
+        .set({
+          deathSaves: { successes: 2, failures: 1 },
+          flags: { stable: true },
+        })
+        .where(eq(sessionState.sessionId, SESSION_ID));
+      await applyMutations(SESSION_ID, [
+        { op: 'reset_death_saves', actorId: PC_ID },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.deathSaves).toEqual({ successes: 0, failures: 0 });
+      // flags untouched
+      expect(s!.flags).toMatchObject({ stable: true });
+    });
+  });
 });

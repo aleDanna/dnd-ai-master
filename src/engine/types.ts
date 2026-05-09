@@ -124,6 +124,12 @@ export interface ActorRuntimeState {
    * later tasks; included here so engine helpers can already consume it.
    */
   exhaustionLevel?: number;
+  /**
+   * Outcome flags derived from death-save resolution. `stable` means the
+   * PC accumulated 3 successes and is no longer rolling; `dead` means 3
+   * failures. Optional so existing constructors don't need updates.
+   */
+  flags?: { stable?: boolean; dead?: boolean };
   // For PCs only:
   hitDiceRemaining?: number;
   spellSlotsUsed?: Partial<Record<1|2|3|4|5|6|7|8|9, number>>;
