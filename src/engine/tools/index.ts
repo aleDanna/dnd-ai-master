@@ -22,7 +22,8 @@ const ALWAYS_ON: AnthropicTool[] = [
   },
   {
     name: 'ability_check',
-    description: 'Resolve an ability or skill check with a DC.',
+    description:
+      "Resolve an ability or skill check with a DC. Pass useInspiration:true to spend the PC's Inspiration for ADV on this roll (PHB §18.1, consumed regardless of outcome). Errors with no_inspiration if the PC doesn't have Inspiration.",
     input_schema: {
       type: 'object',
       required: ['actor', 'dc'],
@@ -33,12 +34,18 @@ const ALWAYS_ON: AnthropicTool[] = [
         dc: { type: 'integer' },
         advantage: { type: 'boolean' },
         disadvantage: { type: 'boolean' },
+        useInspiration: {
+          type: 'boolean',
+          description:
+            "PHB §18.1: spend Inspiration for ADV on this check (consumed on first roll, regardless of pass/fail). Errors with no_inspiration if the PC isn't currently inspired.",
+        },
       },
     } as never,
   },
   {
     name: 'saving_throw',
-    description: 'Resolve a saving throw of a given ability against a DC.',
+    description:
+      "Resolve a saving throw of a given ability against a DC. Pass useInspiration:true to spend Inspiration for ADV (PHB §18.1; consumed regardless of outcome).",
     input_schema: {
       type: 'object',
       required: ['actor', 'ability', 'dc'],
@@ -48,6 +55,11 @@ const ALWAYS_ON: AnthropicTool[] = [
         dc: { type: 'integer' },
         advantage: { type: 'boolean' },
         disadvantage: { type: 'boolean' },
+        useInspiration: {
+          type: 'boolean',
+          description:
+            'PHB §18.1: spend Inspiration for ADV on this saving throw (consumed regardless of outcome). Errors with no_inspiration if the PC has no Inspiration.',
+        },
       },
     } as never,
   },
@@ -85,6 +97,11 @@ const ALWAYS_ON: AnthropicTool[] = [
         },
         advantage: { type: 'boolean' },
         disadvantage: { type: 'boolean' },
+        useInspiration: {
+          type: 'boolean',
+          description:
+            "PHB §18.1: the attacker spends Inspiration for ADV on this attack (consumed regardless of hit/miss). Errors with no_inspiration if the attacker isn't inspired.",
+        },
       },
     } as never,
   },

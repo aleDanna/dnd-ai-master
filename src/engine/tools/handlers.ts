@@ -55,6 +55,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       advantage: input.advantage === true,
       disadvantage: input.disadvantage === true,
       runtime,
+      useInspiration: input.useInspiration === true,
     });
   },
 
@@ -70,6 +71,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       advantage: input.advantage === true,
       disadvantage: input.disadvantage === true,
       runtime,
+      useInspiration: input.useInspiration === true,
     });
   },
 
@@ -105,6 +107,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       ranged: input.ranged === true,
       meleeRange: typeof input.meleeRange === 'number' ? input.meleeRange : undefined,
       knockOut: input.knockOut === true,
+      useInspiration: input.useInspiration === true,
     });
   },
 

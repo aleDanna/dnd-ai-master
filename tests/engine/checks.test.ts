@@ -241,3 +241,127 @@ describe('savingThrow — condition effects', () => {
     expect(r.data?.autoFailed).toBeFalsy();
   });
 });
+
+describe('abilityCheck — useInspiration (PHB §18.1)', () => {
+  const inspired: Character = { ...fighter, inspiration: true };
+  const uninspired: Character = { ...fighter, inspiration: false };
+
+  it('useInspiration:true with inspiration grants ADV (2 d20s) + emits spend mutation', () => {
+    const r = abilityCheck(
+      { char: inspired, skill: 'Athletics', dc: 10, useInspiration: true },
+      makeSeededRng(7),
+    );
+    expect(r.rolls[0]!.rolls.length).toBe(2);
+    expect(r.rolls[0]!.meta?.advantage).toBe(true);
+    const spend = r.mutations.find((m) => m.op === 'spend_inspiration');
+    expect(spend).toMatchObject({ characterId: inspired.id });
+  });
+
+  it('useInspiration:true without inspiration → error no_inspiration, no rolls', () => {
+    const r = abilityCheck(
+      { char: uninspired, skill: 'Athletics', dc: 10, useInspiration: true },
+      makeSeededRng(1),
+    );
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('no_inspiration');
+    expect(r.rolls).toEqual([]);
+    expect(r.mutations).toEqual([]);
+  });
+
+  it('useInspiration:false (default) → no spend mutation, single die', () => {
+    const r = abilityCheck(
+      { char: inspired, skill: 'Athletics', dc: 10 },
+      makeSeededRng(1),
+    );
+    expect(r.rolls[0]!.rolls.length).toBe(1);
+    expect(r.mutations.find((m) => m.op === 'spend_inspiration')).toBeUndefined();
+  });
+
+  it('spend mutation emitted regardless of pass/fail outcome', () => {
+    // Run with the inspired char twice — even on a result that misses the
+    // DC, the mutation must still be present.
+    const r = abilityCheck(
+      { char: inspired, skill: 'Athletics', dc: 25, useInspiration: true },
+      makeSeededRng(2),
+    );
+    // A DC 25 check is hard to pass with +5 even on ADV — confirm the spend
+    // is unconditional regardless of `r.ok`.
+    expect(r.mutations.find((m) => m.op === 'spend_inspiration')).toBeDefined();
+  });
+
+  it('combines with helped (advantage) without double-rolling', () => {
+    const helpedRuntime: ActorRuntimeState = {
+      actorId: inspired.id,
+      hpCurrent: 10,
+      tempHp: 0,
+      deathSaves: { successes: 0, failures: 0 },
+      conditions: [
+        { slug: 'helped', source: 'ally', durationRounds: 'until_removed', appliedRound: 0 },
+      ],
+    };
+    const r = abilityCheck(
+      { char: inspired, skill: 'Athletics', dc: 10, useInspiration: true, runtime: helpedRuntime },
+      makeSeededRng(1),
+    );
+    // ADV is binary: helped + inspiration still produces exactly 2 dice.
+    expect(r.rolls[0]!.rolls.length).toBe(2);
+    // Both consume mutations are present.
+    expect(r.mutations.find((m) => m.op === 'remove_condition' && m.conditionSlug === 'helped')).toBeDefined();
+    expect(r.mutations.find((m) => m.op === 'spend_inspiration')).toBeDefined();
+  });
+});
+
+describe('savingThrow — useInspiration (PHB §18.1)', () => {
+  const inspired: Character = { ...fighter, inspiration: true };
+  const uninspired: Character = { ...fighter, inspiration: false };
+
+  it('useInspiration:true with inspiration grants ADV + emits spend mutation', () => {
+    const r = savingThrow(
+      { char: inspired, ability: 'STR', dc: 10, useInspiration: true },
+      makeSeededRng(7),
+    );
+    expect(r.rolls[0]!.rolls.length).toBe(2);
+    expect(r.rolls[0]!.meta?.advantage).toBe(true);
+    expect(r.mutations.find((m) => m.op === 'spend_inspiration')).toBeDefined();
+  });
+
+  it('useInspiration:true without inspiration → error no_inspiration', () => {
+    const r = savingThrow(
+      { char: uninspired, ability: 'STR', dc: 10, useInspiration: true },
+      makeSeededRng(1),
+    );
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('no_inspiration');
+    expect(r.rolls).toEqual([]);
+    expect(r.mutations).toEqual([]);
+  });
+
+  it('useInspiration:false → no spend mutation', () => {
+    const r = savingThrow(
+      { char: inspired, ability: 'STR', dc: 10 },
+      makeSeededRng(1),
+    );
+    expect(r.mutations.find((m) => m.op === 'spend_inspiration')).toBeUndefined();
+  });
+
+  it('spend still emitted on auto-fail saves (paralyzed STR)', () => {
+    // Paralyzed forces auto-fail on STR/DEX saves (PHB Appendix A). The
+    // player declared the spend before learning the auto-fail; consume it.
+    const paralyzedRuntime: ActorRuntimeState = {
+      actorId: inspired.id,
+      hpCurrent: 10,
+      tempHp: 0,
+      deathSaves: { successes: 0, failures: 0 },
+      conditions: [
+        { slug: 'paralyzed', source: 'spell', durationRounds: 'until_removed', appliedRound: 0 },
+      ],
+    };
+    const r = savingThrow(
+      { char: inspired, ability: 'STR', dc: 10, useInspiration: true, runtime: paralyzedRuntime },
+      makeSeededRng(1),
+    );
+    expect(r.ok).toBe(false);
+    expect(r.data?.autoFailed).toBe(true);
+    expect(r.mutations.find((m) => m.op === 'spend_inspiration')).toBeDefined();
+  });
+});

@@ -44,6 +44,12 @@ export interface MakeAttackInput {
    * L20: 4; Barbarian/Paladin/Ranger L5: 2; monster Multiattack varies).
    */
   isExtraAttack?: boolean;
+  /**
+   * PHB §18.1: when true the attacker spends their Inspiration to gain ADV
+   * on this attack roll (consumed regardless of outcome). Errors with
+   * 'no_inspiration' if the attacker doesn't have Inspiration to spend.
+   */
+  useInspiration?: boolean;
 }
 
 export interface MakeAttackResultData {
@@ -72,6 +78,20 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
       mutations: [],
     };
   }
+
+  // PHB §18.1 Inspiration. The caller flags `useInspiration: true` to spend
+  // the attacker's Inspiration for ADV on this roll. Reject early when the
+  // attacker doesn't actually have Inspiration to spend — no rolls happen,
+  // no mutations are emitted, the caller knows to drop the flag.
+  if (input.useInspiration && !input.attacker.inspiration) {
+    return { ok: false, error: 'no_inspiration', rolls: [], mutations: [] };
+  }
+  // When valid, the attacker gets ADV and we emit the spend mutation on
+  // every exit path below (the spend is consumed regardless of outcome —
+  // PHB: "spend Inspiration to gain advantage on one attack").
+  const spendInspirationMut: Mutation | null = input.useInspiration
+    ? { op: 'spend_inspiration', characterId: input.attacker.id }
+    : null;
 
   // Action-economy budget check (PHB §3.9). Skipped if attacker has no turnState
   // (backward compat for callers that don't yet track action economy). Also
@@ -119,6 +139,7 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
   // OR all sources of advantage / disadvantage.
   let advantage =
     !!input.advantage ||
+    !!input.useInspiration ||
     fxAttacker.attackRollAdvantage ||
     fxTarget.incomingAttackAdvantage ||
     (meleeWithin5 && fxTarget.incomingMeleeWithin5ftAdvantage) ||
@@ -148,6 +169,7 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
     const missMuts: Mutation[] = [];
     if (consumeActionMut) missMuts.push(consumeActionMut);
     if (consumeHelpedMut) missMuts.push(consumeHelpedMut);
+    if (spendInspirationMut) missMuts.push(spendInspirationMut);
     return {
       ok: false,
       error: 'miss',
@@ -162,6 +184,7 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
     const missMuts: Mutation[] = [];
     if (consumeActionMut) missMuts.push(consumeActionMut);
     if (consumeHelpedMut) missMuts.push(consumeHelpedMut);
+    if (spendInspirationMut) missMuts.push(spendInspirationMut);
     return {
       ok: false,
       error: 'miss',
@@ -200,6 +223,7 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
       ];
       if (consumeActionMut) mutations.push(consumeActionMut);
       if (consumeHelpedMut) mutations.push(consumeHelpedMut);
+      if (spendInspirationMut) mutations.push(spendInspirationMut);
       return {
         ok: true,
         data: { hit: true, crit, rawDamage, finalDamage, knockedOut: true },
@@ -215,6 +239,7 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
   }
   if (consumeActionMut) mutations.push(consumeActionMut);
   if (consumeHelpedMut) mutations.push(consumeHelpedMut);
+  if (spendInspirationMut) mutations.push(spendInspirationMut);
 
   return {
     ok: true,
