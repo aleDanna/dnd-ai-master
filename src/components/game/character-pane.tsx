@@ -1,9 +1,11 @@
 'use client';
+import * as React from 'react';
 import { Eyebrow } from '@/components/ui/eyebrow';
 import { Chip } from '@/components/ui/chip';
-import { categorizeInventory, slugToLabel } from '@/lib/inventory';
+import { categorizeInventory, formatInventoryDisplay, slugToLabel } from '@/lib/inventory';
 import type { Character } from '@/engine/types';
 import type { SessionStateRow } from '@/sessions/client-types';
+import type { MasterInventoryView } from '@/srd/enrich-inventory';
 
 // Classes that learn spells at any level. Used to decide whether to render
 // the Spells section even when `character.spellcasting` is null (e.g. older
@@ -15,9 +17,10 @@ const SPELLCASTER_CLASSES = new Set([
 export interface CharacterPaneProps {
   character: Character;
   state: SessionStateRow;
+  enrichedInventory?: MasterInventoryView[];
 }
 
-export function CharacterPane({ character, state }: CharacterPaneProps) {
+export function CharacterPane({ character, state, enrichedInventory }: CharacterPaneProps) {
   const hpPct = character.hpMax > 0 ? Math.round((state.hpCurrent / character.hpMax) * 100) : 0;
   const hpTone = hpPct <= 25 ? 'var(--ember)' : hpPct <= 50 ? 'var(--gold)' : 'var(--verdigris)';
 
@@ -157,7 +160,7 @@ export function CharacterPane({ character, state }: CharacterPaneProps) {
         />
       )}
 
-      <InventorySection inventory={character.inventory} />
+      <InventorySection inventory={character.inventory} enriched={enrichedInventory} />
 
       {character.features.length > 0 && (
         <div>
@@ -199,9 +202,22 @@ const CURRENCY_COLOR: Record<string, string> = {
   cp: 'var(--ember)',
 };
 
-function InventorySection({ inventory }: { inventory: { slug: string; qty: number; equipped: boolean }[] }) {
+function InventorySection({
+  inventory,
+  enriched,
+}: {
+  inventory: { slug: string; qty: number; equipped: boolean }[];
+  enriched?: MasterInventoryView[];
+}) {
   const cat = categorizeInventory(inventory);
   const totalCount = cat.currency.length + cat.equipped.length + cat.other.length;
+
+  // Index enriched rows by slug so InventoryRow lookups are O(1).
+  const enrichedMap = React.useMemo(() => {
+    const m = new Map<string, MasterInventoryView>();
+    for (const e of enriched ?? []) m.set(e.slug, e);
+    return m;
+  }, [enriched]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -238,7 +254,7 @@ function InventorySection({ inventory }: { inventory: { slug: string; qty: numbe
           <Eyebrow style={{ marginBottom: 6 }}>Equipped</Eyebrow>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             {cat.equipped.map((it) => (
-              <InventoryRow key={it.slug} slug={it.slug} qty={it.qty} equipped />
+              <InventoryRow key={it.slug} slug={it.slug} qty={it.qty} equipped enriched={enrichedMap.get(it.slug)} />
             ))}
           </div>
         </div>
@@ -249,7 +265,7 @@ function InventorySection({ inventory }: { inventory: { slug: string; qty: numbe
           <Eyebrow style={{ marginBottom: 6 }}>Inventory</Eyebrow>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             {cat.other.map((it) => (
-              <InventoryRow key={it.slug} slug={it.slug} qty={it.qty} equipped={false} />
+              <InventoryRow key={it.slug} slug={it.slug} qty={it.qty} equipped={false} enriched={enrichedMap.get(it.slug)} />
             ))}
           </div>
         </div>
@@ -278,7 +294,15 @@ function InventorySection({ inventory }: { inventory: { slug: string; qty: numbe
   );
 }
 
-function InventoryRow({ slug, qty, equipped }: { slug: string; qty: number; equipped: boolean }) {
+function InventoryRow({
+  slug, qty, equipped, enriched,
+}: {
+  slug: string;
+  qty: number;
+  equipped: boolean;
+  enriched?: MasterInventoryView;
+}) {
+  const { label } = formatInventoryDisplay(slug, enriched);
   return (
     <div
       style={{
@@ -292,7 +316,7 @@ function InventoryRow({ slug, qty, equipped }: { slug: string; qty: number; equi
         border: equipped ? '1px solid rgba(122,79,184,0.3)' : '1px solid transparent',
       }}
     >
-      <span style={{ flex: 1 }}>{slugToLabel(slug)}</span>
+      <span style={{ flex: 1 }}>{label}</span>
       {qty > 1 && (
         <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-muted)', fontVariantNumeric: 'tabular-nums', fontSize: 11 }}>
           ×{qty}

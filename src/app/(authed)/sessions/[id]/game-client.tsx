@@ -17,6 +17,7 @@ import { MemoryStatusBanner } from '@/components/memory-status-banner';
 import { setActiveAudio, getActiveAudio } from '@/lib/tts-playback';
 import type { Character } from '@/engine/types';
 import type { CombatActorRow, MessageRow, SessionRow, SessionStateRow } from '@/sessions/client-types';
+import type { MasterInventoryView } from '@/srd/enrich-inventory';
 
 export interface GameClientProps {
   sessionId: string;
@@ -40,6 +41,7 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
   // before this state was here, because returning to the page reused the
   // initially-rendered React tree.
   const [character, setCharacter] = React.useState<Character>(initialCharacter);
+  const [enrichedInventory, setEnrichedInventory] = React.useState<MasterInventoryView[]>([]);
   const [spellOpen, setSpellOpen] = React.useState(false);
   const [autoplay, setAutoplay] = React.useState(initialAutoplay);
   const lastCompleteIdRef = React.useRef<string | null>(null);
@@ -88,6 +90,8 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
         features: patch.features as Character['features'],
       };
     });
+    const next = (patch as { enrichedInventory?: MasterInventoryView[] }).enrichedInventory;
+    if (next) setEnrichedInventory(next);
   }, [stateSub.snapshot?.character]);
 
   // Derive server-side error from any turn_error event in the stream.
@@ -272,7 +276,7 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
       </header>
 
       <div style={{ display: 'flex', flex: 1, alignItems: 'stretch' }}>
-        <CharacterPane character={character} state={liveState} />
+        <CharacterPane character={character} state={liveState} enrichedInventory={enrichedInventory} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, position: 'relative' }}>
           {!memoryReady && (
             <div style={{ padding: '8px 16px', flexShrink: 0 }}>
