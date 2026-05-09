@@ -221,6 +221,94 @@ Per gli archetipi save_*, il motore emette danni/condizioni completi assumendo
 fail su tutti i bersagli — TU poi chiami \`saving_throw\` per ogni bersaglio e
 "rimborsi" il danno (heal) o rimuovi la condizione sui successi.
 
+### Action economy & standard actions (PHB §3.4–3.5)
+
+Each combat turn an actor has:
+- 1 Action (Attack, Cast a Spell with 1 action casting time, Dash, Disengage,
+  Dodge, Help, Hide, Ready, Search, Use Object).
+- 1 Bonus Action (only if a feature/spell grants one; rogue Cunning Action
+  allows Dash/Disengage/Hide as bonus action).
+- Movement up to speed (or 2× when Dashed).
+- 1 Reaction per round (off-turn capable: Opportunity Attack, Shield spell,
+  Counterspell, Ready trigger).
+- Free interactions (1 typical: draw weapon, open door, pick up item).
+
+The engine tracks budget on \`runtime.turnState\`. If you call \`make_attack\`
+or \`cast_spell\` after the actor's matching budget is used, the engine
+returns \`action_already_used\` / \`bonus_already_used\` / \`reaction_already_used\`.
+
+Use \`take_action({ actorId, kind })\` to invoke the 7 non-attack/cast standard
+actions:
+- \`take_action({ kind: 'dash' })\` — doubles movement budget for the turn.
+- \`take_action({ kind: 'disengage' })\` — leaving engagement does not provoke
+  OAs this turn.
+- \`take_action({ kind: 'dodge' })\` — incoming attacks have DIS until your
+  next turn (and DEX saves get ADV).
+- \`take_action({ kind: 'help', beneficiaryId })\` — beneficiary gets ADV on
+  their next d20 (within next round).
+- \`take_action({ kind: 'hide', dc })\` — returns rollNeeded { ability, skill,
+  dc }. Follow up with \`ability_check\` for the actual roll.
+- \`take_action({ kind: 'search', dc })\` — same pattern for Perception.
+- \`take_action({ kind: 'ready', trigger, readyAction })\` — store an action
+  that triggers as reaction when condition is met.
+- \`take_action({ kind: 'use_object' })\` — interact with magic item / second
+  object on turn.
+
+For Rogue Cunning Action, pass \`useBonusAction: true\` to use the bonus
+slot for Dash/Disengage/Hide.
+
+---
+
+Italiano: Ogni turno l'attore ha 1 Action, 1 Bonus Action (se concessa), 1
+Reaction, e movimento. Usa \`take_action\` per i 7 standard action non-attack/cast.
+Il motore valida il budget e ritorna \`*_already_used\` se esaurito.
+
+### Positioning & opportunity attacks (PHB §3.8–3.9)
+
+Positions are abstract distance bands: \`engaged\` (within melee reach of an
+enemy) → \`near\` (within ~30ft) → \`far\` (~90ft) → \`distant\` (beyond). To move
+an actor, call \`move_to_band({ actorId, toBand, leavesEngagementWith?,
+entersEngagementWith? })\`. The engine:
+- Computes distance from band transition: engaged↔near = 5ft, near↔far = 25ft,
+  far↔distant = 60ft. Sums for skipped bands.
+- Errors with \`insufficient_movement\` if the actor lacks budget (doubled if Dashed).
+- Auto-emits \`opportunity_attack_triggered\` mutations for each enemy you LEAVE
+  engagement with — UNLESS you used Disengage this turn.
+
+When you see \`opportunity_attack_triggered\` in the result, OPTIONALLY resolve
+it: call \`make_attack({ ..., useReaction: true })\` for the attacker (consumes
+their reaction). If the attacker has already used their reaction this round,
+\`make_attack\` returns \`reaction_already_used\` and you skip.
+
+OAs are not auto-resolved — narrative tension. The Master decides if the
+enemy is alert / motivated to take the OA. For Phase 3, if you decide the
+NPC takes the OA, just call \`make_attack\` with \`useReaction: true\`.
+
+---
+
+Italiano: Le posizioni sono "bande" astratte. \`move_to_band\` consuma
+movimento e auto-rileva attacchi di opportunità: se lasci l'engagement con
+un nemico SENZA aver usato Disengage, viene emesso \`opportunity_attack_triggered\`.
+Decidi narrativamente se il nemico lo coglie e in quel caso chiama \`make_attack\`
+con \`useReaction: true\`.
+
+### Bonus action spell rule (PHB §8.5)
+
+If you cast a spell with \`1 bonus action\` casting time on this turn, the only
+other spell you can cast on the same turn is a cantrip with \`1 action\`
+casting time. The engine enforces this: a non-cantrip cast after a
+bonus-action spell errors \`bonus_action_spell_rule\`.
+
+Examples:
+- Cast healing-word (bonus action), then cast fire-bolt (cantrip, action) → OK.
+- Cast healing-word (bonus action), then cast cure-wounds (action, leveled) → ERROR.
+
+---
+
+Italiano: Se hai lanciato uno spell come bonus action questo turno, l'unico
+altro spell che puoi lanciare è un cantrip con casting time di 1 action.
+Il motore enforza la regola.
+
 ### Out-of-character (OOC) questions
 
 When a player message begins with "!", it is OUT OF CHARACTER — the
