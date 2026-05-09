@@ -120,6 +120,13 @@
       "when": 1778342041835,
       "tag": "0016_icy_nico_minoru",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1778343780345,
+      "tag": "0017_condemned_shadow_king",
+      "breakpoints": true
     }
   ]
 }

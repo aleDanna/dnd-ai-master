@@ -1,4 +1,4 @@
-import { pgTable, text, uuid, timestamp, pgEnum, index } from 'drizzle-orm/pg-core';
+import { pgTable, text, uuid, timestamp, pgEnum, index, varchar, jsonb } from 'drizzle-orm/pg-core';
 import { users } from './users';
 import { characters } from './characters';
 
@@ -17,6 +17,18 @@ export const sessions = pgTable(
     turnLockExpiresAt: timestamp('turn_lock_expires_at', { withTimezone: true }),
     memoryLockHolder: uuid('memory_lock_holder'),
     memoryLockExpiresAt: timestamp('memory_lock_expires_at', { withTimezone: true }),
+    /**
+     * Master World Lore §5.1 — campaign tonal frame (high_heroic,
+     * sword_sorcery, dark, mythic, cosmic_horror, swashbuckling, wuxia,
+     * steampunk). NULL until the master picks one via `set_tonal_frame`.
+     */
+    tonalFrame: varchar('tonal_frame', { length: 32 }),
+    /**
+     * Master Handbook §2.1 — detected player engagement profiles. Empty
+     * array by default; the master populates via `set_engagement_profile`
+     * after observing the first few turns.
+     */
+    engagementProfile: jsonb('engagement_profile').$type<string[]>().notNull().default([]),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

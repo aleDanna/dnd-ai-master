@@ -8,7 +8,16 @@ import {
   type SessionState,
   type CombatActor as CombatActorRow,
 } from '@/db/schema';
-import type { Character, CombatActor, ConcentrationState, EngineState, ActorRuntimeState } from '@/engine/types';
+import type {
+  Character,
+  CombatActor,
+  ConcentrationState,
+  EngineState,
+  ActorRuntimeState,
+  TonalFrame,
+  EngagementProfile,
+} from '@/engine/types';
+import { isValidTonalFrame, isValidEngagementProfile } from '@/engine/npc-tonal';
 import type { SnapshotForModel } from './types';
 
 export async function buildSnapshot(sessionId: string, userId: string): Promise<SnapshotForModel> {
@@ -88,6 +97,21 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
     };
   }
 
+  // Master World Lore §5.1 + Master Handbook §2.1 — hydrate the
+  // session-level tonal frame and engagement profile. The frame is a
+  // single string in the DB; we validate it against the typed union and
+  // drop unknown values defensively (forward-compat with legacy data).
+  // The engagement profile is a jsonb array; same defensive filter.
+  const tonalFrame: TonalFrame | undefined =
+    typeof session.tonalFrame === 'string' && isValidTonalFrame(session.tonalFrame)
+      ? session.tonalFrame
+      : undefined;
+  const engagementProfile: EngagementProfile[] = Array.isArray(session.engagementProfile)
+    ? (session.engagementProfile.filter((p): p is EngagementProfile =>
+        typeof p === 'string' && isValidEngagementProfile(p),
+      ) as EngagementProfile[])
+    : [];
+
   const state: EngineState = {
     characters,
     combatActors,
@@ -97,6 +121,8 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
     // PHB §6 — hydrate exploration/travel state if persisted. NULL means
     // the session has no explicit travel context (combat or default scene).
     travel: stateRow.travel ?? undefined,
+    tonalFrame,
+    engagementProfile,
   };
 
   // What the master sees about the PC. xp + inventory are included

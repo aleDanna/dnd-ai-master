@@ -66,6 +66,18 @@ export const codexEntities = pgTable(
     attunementPrereq: text('attunement_prereq'),
     cursed: boolean('cursed').notNull().default(false),
     sentient: boolean('sentient').notNull().default(false),
+    /**
+     * Master Handbook §11.1 — NPC Three-Beat metadata. Populated only on
+     * rows where kind='npc'; ignored for other kinds. The master should
+     * fill these whenever introducing or evolving a named NPC. NULL means
+     * the beat hasn't been recorded yet (and the master prompt should
+     * remind the AI to fill them).
+     */
+    want: text('want'),
+    fear: text('fear'),
+    quirk: text('quirk'),
+    /** 'friendly' | 'indifferent' | 'hostile' (NPC kind only). */
+    attitude: varchar('attitude', { length: 16 }),
     lastSeenMsgId: uuid('last_seen_msg_id').references(() => sessionMessages.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

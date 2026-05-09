@@ -6,6 +6,7 @@ import {
   diceLog as diceLogTable,
   sessions as sessionsTable,
   characters as charactersTable,
+  codexEntities as codexEntitiesTable,
   type DiceLogInsert,
 } from '@/db/schema';
 import type {
@@ -717,6 +718,51 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
             ),
           );
       }
+      break;
+    }
+    case 'set_tonal_frame': {
+      // Master World Lore §5.1 — persist the campaign tonal frame on the
+      // session row. The validator at the tool layer guarantees the value
+      // is one of the 8 known frames; the applicator stays permissive.
+      await tx
+        .update(sessionsTable)
+        .set({ tonalFrame: m.frame, updatedAt: new Date() })
+        .where(eq(sessionsTable.id, sessionId));
+      break;
+    }
+    case 'set_engagement_profile': {
+      // Master Handbook §2.1 — persist the detected engagement profile
+      // array. Replaces the previous value (the master typically calls
+      // this with the FULL up-to-date list). Empty array is legal —
+      // it clears the hint.
+      await tx
+        .update(sessionsTable)
+        .set({ engagementProfile: m.profiles, updatedAt: new Date() })
+        .where(eq(sessionsTable.id, sessionId));
+      break;
+    }
+    case 'update_npc_beats': {
+      // Master Handbook §11.1 — partial update of an NPC codex entry's
+      // Three-Beat fields. Build the patch from non-null/undefined values
+      // so unspecified fields stay intact (idempotent re-application of
+      // the SAME patch is a no-op; later patches MERGE with previous).
+      const patch: Record<string, unknown> = {};
+      if (m.beats.want != null) patch.want = m.beats.want;
+      if (m.beats.fear != null) patch.fear = m.beats.fear;
+      if (m.beats.quirk != null) patch.quirk = m.beats.quirk;
+      if (m.beats.attitude != null) patch.attitude = m.beats.attitude;
+      if (Object.keys(patch).length === 0) break;
+      patch.updatedAt = new Date();
+      await tx
+        .update(codexEntitiesTable)
+        .set(patch)
+        .where(
+          and(
+            eq(codexEntitiesTable.sessionId, sessionId),
+            eq(codexEntitiesTable.kind, 'npc'),
+            eq(codexEntitiesTable.slug, m.npcSlug),
+          ),
+        );
       break;
     }
   }
