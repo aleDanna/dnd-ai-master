@@ -100,6 +100,12 @@ export interface ConditionInstance {
   appliedRound: number;
 }
 
+export interface ConcentrationState {
+  spellSlug: string;
+  slotLevel: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+  startedRound: number;
+}
+
 export interface ResourceUsage {
   // Per-character resource trackers, keyed by feature slug.
   // Examples: { rage: 1, second_wind: 0, action_surge: 0 }
@@ -130,6 +136,12 @@ export interface ActorRuntimeState {
    * failures. Optional so existing constructors don't need updates.
    */
   flags?: { stable?: boolean; dead?: boolean };
+  /**
+   * If set, the actor is concentrating on a spell. Per PHB §8.8, only one
+   * concentration spell may be active at a time; taking damage triggers a
+   * CON save (DC = max(10, ⌊damage/2⌋)) to maintain it.
+   */
+  concentratingOn?: ConcentrationState;
   // For PCs only:
   hitDiceRemaining?: number;
   spellSlotsUsed?: Partial<Record<1|2|3|4|5|6|7|8|9, number>>;
@@ -168,6 +180,9 @@ export type Mutation =
   | { op: 'death_save'; actorId: string; success: boolean; isCrit?: boolean }
   | { op: 'reset_death_saves'; actorId: string }
   | { op: 'set_stable'; actorId: string; stable: boolean }
+  | { op: 'set_concentration'; actorId: string; spellSlug: string; slotLevel: 0|1|2|3|4|5|6|7|8|9; startedRound: number }
+  | { op: 'break_concentration'; actorId: string; reason: 'damage' | 'incapacitated' | 'killed' | 'new_concentration' | 'manual' }
+  | { op: 'concentration_check'; actorId: string; dc: number; spellSlug: string }
   | { op: 'set_combat'; combat: CombatState | null }
   | { op: 'advance_turn' }
   | { op: 'set_scene'; scene: string };
