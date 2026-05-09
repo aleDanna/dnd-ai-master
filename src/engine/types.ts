@@ -326,6 +326,73 @@ export interface EngineState {
    * travel or when light conditions change.
    */
   travel?: TravelState;
+  /**
+   * Master World Lore §5.1 — campaign tonal frame. One of 8 frames that
+   * shapes narration style, NPC speech, combat consequences. Set via
+   * `set_tonal_frame` tool; persisted at session-level. Optional so the
+   * session works without an explicit frame (master uses default flavor).
+   */
+  tonalFrame?: TonalFrame;
+  /**
+   * Master Handbook §2.1 — detected player engagement profile(s). Master
+   * registers via `set_engagement_profile` after observing the first few
+   * turns. Defaults to empty array; the master then leans into scene
+   * styles that reward these profiles.
+   */
+  engagementProfile?: EngagementProfile[];
+}
+
+// ─── NPC Three-Beat (Master Handbook §11.1) ───────────────────────────────
+
+/**
+ * Master World Lore §5.1 — 8 tonal frames that flavor a campaign. Each one
+ * implies a register for NPC speech, magic flavor, combat consequences,
+ * and prose density. See TONAL_FRAME_GUIDANCE in `src/engine/npc-tonal.ts`
+ * for 1-2 sentence explanations the master can lean on.
+ */
+export type TonalFrame =
+  | 'high_heroic'
+  | 'sword_sorcery'
+  | 'dark'
+  | 'mythic'
+  | 'cosmic_horror'
+  | 'swashbuckling'
+  | 'wuxia'
+  | 'steampunk';
+
+/**
+ * Master Handbook §2.1 — 7 player engagement profiles. The master detects
+ * the player's preferred style(s) from their first few turns and prioritises
+ * scenes that reward those styles.
+ */
+export type EngagementProfile =
+  | 'acting'
+  | 'fighting'
+  | 'instigating'
+  | 'optimizing'
+  | 'problem_solving'
+  | 'storytelling'
+  | 'exploring';
+
+/**
+ * Master Handbook §11.1 — every named NPC has an attitude toward the PC.
+ * Used for narrative consistency and to drive the master's choice of
+ * tone, body language, and willingness to assist or oppose.
+ */
+export type NPCAttitude = 'friendly' | 'indifferent' | 'hostile';
+
+/**
+ * Master Handbook §11.1 — the Three-Beat structure for an NPC: every
+ * named NPC has a Want, a Fear, and a Quirk, plus an Attitude. Stored
+ * on the codex_entities row (kind='npc') so the master sees them in
+ * lookup_codex results and can keep characterisation consistent across
+ * turns.
+ */
+export interface NPCBeats {
+  want?: string;
+  fear?: string;
+  quirk?: string;
+  attitude?: NPCAttitude;
 }
 
 // ─── Mutations (declarative ops to apply to state) ─────────────────────────
@@ -392,7 +459,18 @@ export type Mutation =
   // PHB §6.4 — set special senses on a PC or combat actor (darkvision,
   // blindsight, tremorsense, truesight, optional passive Perception
   // override). Branches on actor type in the applicator.
-  | { op: 'set_senses'; actorId: string; senses: Senses };
+  | { op: 'set_senses'; actorId: string; senses: Senses }
+  // Master World Lore §5.1 — set the campaign's tonal frame (persists on
+  // sessions.tonal_frame). One of 8 frames shaping narration style.
+  | { op: 'set_tonal_frame'; frame: TonalFrame }
+  // Master Handbook §2.1 — register the detected player engagement
+  // profile(s). Persists on sessions.engagement_profile (jsonb array).
+  | { op: 'set_engagement_profile'; profiles: EngagementProfile[] }
+  // Master Handbook §11.1 — update the Want/Fear/Quirk/Attitude for an
+  // existing NPC codex entry (kind='npc', matched by slug). Partial
+  // updates merge with existing values; null/undefined fields are left
+  // unchanged.
+  | { op: 'update_npc_beats'; npcSlug: string; beats: NPCBeats };
 
 // ─── Action results ────────────────────────────────────────────────────────
 
