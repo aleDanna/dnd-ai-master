@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { castSpell } from '@/engine/spells';
-import { applyDamage } from '@/engine/combat/damage';
 import { makeSeededRng } from '@/engine/rand';
-import type { Character, ActorRuntimeState, CombatActor } from '@/engine/types';
+import type { Character, ActorRuntimeState } from '@/engine/types';
 
 function wizard(level = 1, spells: string[] = []): Character {
   return {
@@ -100,7 +99,6 @@ describe('Bug #4: cantrip scaling + crit upcast doubling', () => {
     }, () => 0.5);  // d20 = 11; +7 = 18 ≥ 5 → hit; subsequent rolls are damage
     expect(r.ok).toBe(true);
     if (r.ok) {
-      const dmg = r.mutations.find((m) => m.op === 'apply_damage');
       // 2d10 means: rolls.length includes 2 dice in the damage formula
       // The exact total varies but the formula should reflect 2d10
       const dmgRoll = r.rolls[1]; // first is attack, second is damage

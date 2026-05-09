@@ -48,6 +48,12 @@ export interface ArchetypeContext {
    * emitted by handlers. Defaults to 0 if not supplied (out-of-combat casts).
    */
   currentRound?: number;
+  /**
+   * Caster character level (1..20). Used for PHB §10 cantrip damage scaling
+   * (multiplier increases at character level 5/11/17). Optional so legacy
+   * callers without scaling expectations still work.
+   */
+  casterLevel?: number;
 }
 
 export type ArchetypeHandler = (
@@ -69,6 +75,35 @@ function extraDiceForUpcast(
   const m = scaling.match(/^(\d+)d(\d+)$/);
   if (!m) return null;
   return { count: parseInt(m[1]!, 10) * (slot - minSlot), sides: parseInt(m[2]!, 10) };
+}
+
+/**
+ * PHB §10 cantrip damage scaling. Cantrips multiply their base dice count
+ * at character level 5/11/17:
+ *   - Level 1-4 → ×1
+ *   - Level 5-10 → ×2
+ *   - Level 11-16 → ×3
+ *   - Level 17-20 → ×4
+ * Modifiers (e.g. "1d10+1") are preserved verbatim. Returns the original
+ * formula when not a cantrip or when caster level is unknown.
+ */
+function applyCantripScaling(
+  diceFormula: string,
+  isCantrip: boolean,
+  casterLevel: number | undefined,
+): string {
+  if (!isCantrip || !casterLevel) return diceFormula;
+  const m = diceFormula.match(/^(\d+)d(\d+)(.*)$/);
+  if (!m) return diceFormula;
+  const count = parseInt(m[1]!, 10);
+  const sides = parseInt(m[2]!, 10);
+  const rest = m[3] ?? '';
+  const multiplier =
+    casterLevel >= 17 ? 4
+    : casterLevel >= 11 ? 3
+    : casterLevel >= 5 ? 2
+    : 1;
+  return `${count * multiplier}d${sides}${rest}`;
 }
 
 /** Wrap the uniform RNG into the engine's `Rng` interface for `rollDice`. */
@@ -120,11 +155,20 @@ function handleAttackDamage(
     };
   }
 
-  const dmgRoll = rollDice(binding.damage.dice, diceRng);
+  const isCantrip = (binding.minSlot ?? 0) === 0;
+  const scaledDice = applyCantripScaling(binding.damage.dice, isCantrip, ctx.casterLevel);
+  const dmgRoll = rollDice(scaledDice, diceRng);
   const upcast = extraDiceForUpcast(binding.damage.perSlotAbove, ctx.slotLevel, binding.minSlot ?? 1);
   const upcastRoll = upcast ? rollDice(`${upcast.count}d${upcast.sides}`, diceRng) : null;
-  const crit = isCrit ? rollDice(binding.damage.dice, diceRng) : null;
-  const total = dmgRoll.total + (upcastRoll?.total ?? 0) + (crit?.total ?? 0);
+  // PHB §3.11: a critical hit doubles ALL damage dice, including bonus dice.
+  // Upcast dice (perSlotAbove) are bonus damage and should also re-roll on crit.
+  const crit = isCrit ? rollDice(scaledDice, diceRng) : null;
+  const upcastCrit = isCrit && upcast ? rollDice(`${upcast.count}d${upcast.sides}`, diceRng) : null;
+  const total =
+    dmgRoll.total +
+    (upcastRoll?.total ?? 0) +
+    (crit?.total ?? 0) +
+    (upcastCrit?.total ?? 0);
 
   return {
     ok: true,
@@ -139,6 +183,7 @@ function handleAttackDamage(
       dmgRoll,
       ...(upcastRoll ? [upcastRoll] : []),
       ...(crit ? [crit] : []),
+      ...(upcastCrit ? [upcastCrit] : []),
     ],
     mutations: [
       { op: 'apply_damage', actorId: target.id, amount: total, type: binding.damage.type, isCrit } as Mutation,
@@ -157,7 +202,9 @@ function handleSaveDamage(
   // This handler emits an apply_damage mutation per target assuming FAIL (full damage).
   // The Master is expected to halve the value on success when binding.save.halfOnSuccess.
   const diceRng = adaptRng(ctx.rng);
-  const dmgRoll = rollDice(binding.damage.dice, diceRng);
+  const isCantrip = (binding.minSlot ?? 0) === 0;
+  const scaledDice = applyCantripScaling(binding.damage.dice, isCantrip, ctx.casterLevel);
+  const dmgRoll = rollDice(scaledDice, diceRng);
   const upcast = extraDiceForUpcast(binding.damage.perSlotAbove, ctx.slotLevel, binding.minSlot ?? 1);
   const upcastRoll = upcast ? rollDice(`${upcast.count}d${upcast.sides}`, diceRng) : null;
   const total = dmgRoll.total + (upcastRoll?.total ?? 0);
