@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { categorizeInventory, slugToLabel } from '@/lib/inventory';
+import { categorizeInventory, formatInventoryDisplay, slugToLabel } from '@/lib/inventory';
+import type { MasterInventoryView } from '@/srd/enrich-inventory';
 
 describe('categorizeInventory', () => {
   it('returns empty buckets for an empty inventory', () => {
@@ -69,5 +70,65 @@ describe('slugToLabel', () => {
 
   it('returns empty string on empty input', () => {
     expect(slugToLabel('')).toBe('');
+  });
+});
+
+describe('formatInventoryDisplay', () => {
+  it('falls back to slugToLabel when no enriched view is provided', () => {
+    expect(formatInventoryDisplay('rope-hempen-50ft')).toEqual({
+      label: 'Rope Hempen 50ft',
+      isNarrative: false,
+    });
+  });
+
+  it('uses enriched name for SRD weapons', () => {
+    const view: MasterInventoryView = { slug: 'longsword', qty: 1, equipped: true, kind: 'weapon', name: 'Longsword' };
+    expect(formatInventoryDisplay('longsword', view)).toEqual({
+      label: 'Longsword',
+      isNarrative: false,
+    });
+  });
+
+  it('appends "(narrativo)" for non-magical named items', () => {
+    const view: MasterInventoryView = {
+      slug: 'strano-amuleto-di-osso',
+      qty: 1,
+      equipped: false,
+      kind: 'named_item',
+      name: 'Strano amuleto di osso',
+      magical: false,
+    };
+    expect(formatInventoryDisplay('strano-amuleto-di-osso', view)).toEqual({
+      label: 'Strano amuleto di osso (narrativo)',
+      isNarrative: true,
+    });
+  });
+
+  it('does NOT append "(narrativo)" for magical named items', () => {
+    const view: MasterInventoryView = {
+      slug: 'spada-di-aldric',
+      qty: 1,
+      equipped: true,
+      kind: 'named_item',
+      name: 'Spada di Aldric',
+      magical: true,
+    };
+    expect(formatInventoryDisplay('spada-di-aldric', view)).toEqual({
+      label: 'Spada di Aldric',
+      isNarrative: false,
+    });
+  });
+
+  it('handles named_item with name absent (codex row missing on first paint)', () => {
+    const view: MasterInventoryView = {
+      slug: 'lettera-cifrata',
+      qty: 1,
+      kind: 'named_item',
+      // No name field — defensive fallback to slugToLabel.
+    } as MasterInventoryView;
+    expect(formatInventoryDisplay('lettera-cifrata', view)).toEqual({
+      label: 'Lettera Cifrata',
+      isNarrative: false,
+    });
   });
 });
