@@ -322,6 +322,19 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
         .where(eq(sessionStateTable.sessionId, sessionId));
       break;
     }
+    case 'set_stable': {
+      // PHB §3.19: stable PCs no longer roll death saves. Monsters/NPCs are
+      // not tracked here, so non-PC actorIds are no-ops.
+      if (m.actorId !== ctx.characterId) break;
+      const [s] = await tx.select().from(sessionStateTable).where(eq(sessionStateTable.sessionId, sessionId)).limit(1);
+      if (!s) break;
+      const flags = (s.flags ?? {}) as { stable?: boolean; dead?: boolean };
+      await tx
+        .update(sessionStateTable)
+        .set({ flags: { ...flags, stable: m.stable } })
+        .where(eq(sessionStateTable.sessionId, sessionId));
+      break;
+    }
   }
 }
 

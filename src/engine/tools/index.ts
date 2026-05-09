@@ -239,6 +239,39 @@ const ALWAYS_ON: AnthropicTool[] = [
     } as never,
   },
   {
+    name: 'make_death_save',
+    description:
+      'Roll a death save for an actor at 0 HP. Returns the d20 result and applies the proper success/failure mutation. Natural 20 → regain 1 HP and remove unconscious. Natural 1 → 2 failures. 10+ → success. <10 → failure. 3 successes → stable. 3 failures → dead.',
+    input_schema: {
+      type: 'object',
+      required: ['actorId'],
+      properties: {
+        actorId: { type: 'string', description: 'ID of the actor at 0 HP making the save.' },
+      },
+    } as never,
+  },
+  {
+    name: 'stabilize',
+    description:
+      "Stabilize a dying actor. method='medicine_check' requires medicineRoll (d20 + WIS+Medicine bonus, DC 10). method='healing_kit' auto-stabilizes (consumes 1 use). method='spell' assumes a healing spell already restored ≥1 HP. On success: clears death saves and marks stable; the actor remains unconscious until they regain HP (PHB §3.19).",
+    input_schema: {
+      type: 'object',
+      required: ['actorId', 'method'],
+      properties: {
+        actorId: { type: 'string', description: 'ID of the dying actor to stabilize.' },
+        method: {
+          type: 'string',
+          enum: ['medicine_check', 'healing_kit', 'spell'],
+          description: 'How stabilization is attempted.',
+        },
+        medicineRoll: {
+          type: 'integer',
+          description: 'Required if method=medicine_check: total of d20 + Wisdom (Medicine) bonus.',
+        },
+      },
+    } as never,
+  },
+  {
     name: 'lookup_codex',
     description:
       "Look up a campaign-codex entity by kind + name/slug. Use when an NPC, location, quest, faction, lore fact, named item, or relationship is referenced in chat and is NOT already visible in the Scene card. The codex is the single source of truth for narrative continuity — prefer it over re-inventing details. Returns up to 5 matches; returns an empty array when nothing matches.",

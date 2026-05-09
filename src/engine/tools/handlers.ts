@@ -1,4 +1,4 @@
-import type { ActionResult, EngineState } from '../types';
+import type { ActionResult, DiceRoll, EngineState, Mutation } from '../types';
 import { rollDice as rollDiceFn, rollD20 as rollD20Fn } from '../dice';
 import { abilityCheck, savingThrow } from '../checks';
 import { rollInitiative } from '../combat/initiative';
@@ -258,7 +258,134 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       data: { slug, qty },
     };
   },
+
+  make_death_save: (state, input) => {
+    const ref = input.actorId ?? input.actor;
+    if (ref == null) return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
+    const actorId = resolveCharacterId(state, ref);
+    return handleMakeDeathSave({ rng: Math.random }, state, { actorId });
+  },
+
+  stabilize: (state, input) => {
+    const ref = input.actorId ?? input.actor;
+    if (ref == null) return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
+    const actorId = resolveCharacterId(state, ref);
+    const method = String(input.method) as 'medicine_check' | 'healing_kit' | 'spell';
+    const medicineRollRaw = input.medicineRoll;
+    const medicineRoll =
+      typeof medicineRollRaw === 'number' && Number.isFinite(medicineRollRaw)
+        ? medicineRollRaw
+        : undefined;
+    return handleStabilize({ rng: Math.random }, state, { actorId, method, medicineRoll });
+  },
 };
+
+// ─── Pure death-save / stabilize handlers ──────────────────────────────────
+// Exported separately so tests can drive them with a deterministic RNG. The
+// registry entries above wrap them with Math.random for production use.
+
+export function handleMakeDeathSave(
+  ctx: { rng: () => number },
+  state: EngineState,
+  input: { actorId: string },
+): ActionResult<{
+  roll: number;
+  total: number;
+  success: boolean;
+  naturalTwenty?: boolean;
+  naturalOne?: boolean;
+}> {
+  const rt = state.runtime[input.actorId];
+  if (!rt) return { ok: false, error: 'unknown actor', rolls: [], mutations: [] };
+  if (rt.hpCurrent > 0) return { ok: false, error: 'actor not at 0 HP', rolls: [], mutations: [] };
+  if (rt.flags?.dead) return { ok: false, error: 'actor is already dead', rolls: [], mutations: [] };
+  if (rt.flags?.stable) {
+    return { ok: false, error: 'actor is stable, no save needed', rolls: [], mutations: [] };
+  }
+
+  const roll = Math.floor(ctx.rng() * 20) + 1;
+  const formulaRoll: DiceRoll = {
+    formula: '1d20',
+    rolls: [roll],
+    modifier: 0,
+    total: roll,
+    meta: { kind: 'save' },
+  };
+
+  if (roll === 20) {
+    return {
+      ok: true,
+      data: { roll, total: roll, success: true, naturalTwenty: true },
+      rolls: [formulaRoll],
+      mutations: [
+        { op: 'reset_death_saves', actorId: input.actorId },
+        { op: 'set_hp', actorId: input.actorId, hpCurrent: 1 },
+        { op: 'remove_condition', actorId: input.actorId, conditionSlug: 'unconscious' },
+      ],
+    };
+  }
+  if (roll === 1) {
+    return {
+      ok: true,
+      data: { roll, total: roll, success: false, naturalOne: true },
+      rolls: [formulaRoll],
+      mutations: [
+        { op: 'death_save', actorId: input.actorId, success: false },
+        { op: 'death_save', actorId: input.actorId, success: false },
+      ],
+    };
+  }
+  const success = roll >= 10;
+  return {
+    ok: true,
+    data: { roll, total: roll, success },
+    rolls: [formulaRoll],
+    mutations: [{ op: 'death_save', actorId: input.actorId, success }],
+  };
+}
+
+export function handleStabilize(
+  _ctx: { rng: () => number },
+  state: EngineState,
+  input: { actorId: string; method: 'medicine_check' | 'healing_kit' | 'spell'; medicineRoll?: number },
+): ActionResult<{ stabilized: boolean }> {
+  const rt = state.runtime[input.actorId];
+  if (!rt) return { ok: false, error: 'unknown actor', rolls: [], mutations: [] };
+  if (rt.hpCurrent > 0) return { ok: false, error: 'actor is not at 0 HP', rolls: [], mutations: [] };
+  if (rt.flags?.dead) return { ok: false, error: 'actor is dead', rolls: [], mutations: [] };
+
+  let stabilized = false;
+  switch (input.method) {
+    case 'healing_kit':
+    case 'spell':
+      stabilized = true;
+      break;
+    case 'medicine_check':
+      if (input.medicineRoll == null) {
+        return {
+          ok: false,
+          error: 'medicineRoll required for medicine_check method',
+          rolls: [],
+          mutations: [],
+        };
+      }
+      stabilized = input.medicineRoll >= 10;
+      break;
+    default:
+      return { ok: false, error: 'unknown stabilize method', rolls: [], mutations: [] };
+  }
+
+  if (!stabilized) {
+    return { ok: true, data: { stabilized: false }, rolls: [], mutations: [] };
+  }
+
+  // PHB §3.19: stable but still unconscious — DO NOT remove the condition.
+  const muts: Mutation[] = [
+    { op: 'reset_death_saves', actorId: input.actorId },
+    { op: 'set_stable', actorId: input.actorId, stable: true },
+  ];
+  return { ok: true, data: { stabilized: true }, rolls: [], mutations: muts };
+}
 
 function resolveCharacterId(state: EngineState, actorRef: unknown): string {
   if (typeof actorRef === 'string' && actorRef === 'player_character' && state.characters.length === 1) {
