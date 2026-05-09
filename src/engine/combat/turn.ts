@@ -15,7 +15,10 @@ export function endTurn(input: EndTurnInput): ActionResult<{ nextActorId: string
     ok: true,
     data: { nextActorId, newRound: isLast, round: nextRound },
     rolls: [],
-    mutations: [{ op: 'advance_turn' }],
+    mutations: [
+      { op: 'advance_turn' },
+      { op: 'start_turn', actorId: nextActorId },
+    ],
   };
 }
 

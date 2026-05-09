@@ -3,6 +3,7 @@ import { attackBonus, abilityModifier } from '../modifiers';
 import { rollD20, rollDamage } from '../dice';
 import { defaultRng, type Rng } from '../rand';
 import { getEffectsForActor } from '../condition-effects';
+import { canConsumeAction } from './turn-state';
 
 export interface WeaponSpec {
   name: string;
@@ -33,6 +34,8 @@ export interface MakeAttackInput {
    * Ranged attacks silently ignore this flag (PHB §3.20).
    */
   knockOut?: boolean;
+  /** PHB §3.9: an opportunity attack consumes the attacker's reaction, not their action. */
+  useReaction?: boolean;
 }
 
 export interface MakeAttackResultData {
@@ -62,6 +65,27 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
     };
   }
 
+  // Action-economy budget check (PHB §3.9). Skipped if attacker has no turnState
+  // (backward compat for callers that don't yet track action economy).
+  const attackerTurnState = input.attackerRuntime?.turnState;
+  const actionKind: 'action' | 'reaction' = input.useReaction ? 'reaction' : 'action';
+  if (attackerTurnState && !canConsumeAction(attackerTurnState, actionKind)) {
+    return {
+      ok: false,
+      error: actionKind === 'reaction' ? 'reaction_already_used' : 'action_already_used',
+      rolls: [],
+      mutations: [],
+    };
+  }
+
+  // Build a consume_action mutation when (and only when) the attacker tracks turnState.
+  const consumeActionMut: Mutation | null = attackerTurnState
+    ? { op: 'consume_action', actorId: input.attacker.id, kind: actionKind }
+    : null;
+
+  // Target dodging (PHB §3.7) imposes DIS on attacks against it (until next turn).
+  const targetDodging = input.targetRuntime?.turnState?.dodging ?? false;
+
   const isMelee = !input.ranged;
   const meleeWithin5 = isMelee && (input.meleeRange ?? 5) <= 5;
 
@@ -76,7 +100,8 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
     !!input.disadvantage ||
     fxAttacker.attackRollDisadvantage ||
     fxTarget.incomingAttackDisadvantage ||
-    (!!input.ranged && fxTarget.incomingRangedDisadvantage);
+    (!!input.ranged && fxTarget.incomingRangedDisadvantage) ||
+    targetDodging;
 
   // PHB §1.3: any number of ADV + any number of DIS → straight roll.
   if (advantage && disadvantage) {
@@ -92,12 +117,24 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
     : advantage ? Math.max(...attackRoll.rolls) : Math.min(...attackRoll.rolls);
 
   if (natural === 1) {
-    return { ok: false, error: 'miss', data: { hit: false, crit: false, rawDamage: 0, finalDamage: 0 }, rolls: [attackRoll], mutations: [] };
+    return {
+      ok: false,
+      error: 'miss',
+      data: { hit: false, crit: false, rawDamage: 0, finalDamage: 0 },
+      rolls: [attackRoll],
+      mutations: consumeActionMut ? [consumeActionMut] : [],
+    };
   }
   const naturalCrit = natural === 20;
   const hit = naturalCrit || attackRoll.total >= input.target.ac;
   if (!hit) {
-    return { ok: false, error: 'miss', data: { hit: false, crit: false, rawDamage: 0, finalDamage: 0 }, rolls: [attackRoll], mutations: [] };
+    return {
+      ok: false,
+      error: 'miss',
+      data: { hit: false, crit: false, rawDamage: 0, finalDamage: 0 },
+      rolls: [attackRoll],
+      mutations: consumeActionMut ? [consumeActionMut] : [],
+    };
   }
 
   // Auto-crit when target is paralyzed/unconscious within 5ft melee (PHB Appendix A).
@@ -127,6 +164,7 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
           },
         },
       ];
+      if (consumeActionMut) mutations.push(consumeActionMut);
       return {
         ok: true,
         data: { hit: true, crit, rawDamage, finalDamage, knockedOut: true },
@@ -140,6 +178,7 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
   if (finalDamage > 0) {
     mutations.push({ op: 'apply_damage', actorId: input.target.id, amount: finalDamage, type: input.weapon.damageType });
   }
+  if (consumeActionMut) mutations.push(consumeActionMut);
 
   return {
     ok: true,

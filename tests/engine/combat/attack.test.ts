@@ -1,7 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { makeAttack } from '@/engine/combat/attack';
 import { makeSeededRng } from '@/engine/rand';
-import type { ActorRuntimeState, Character, CombatActor, ConditionInstance, ConditionSlug } from '@/engine/types';
+import { newTurnState } from '@/engine/combat/turn-state';
+import type {
+  ActorRuntimeState,
+  Character,
+  CombatActor,
+  ConditionInstance,
+  ConditionSlug,
+  TurnState,
+} from '@/engine/types';
 
 const cond = (slug: ConditionSlug, extra?: Partial<ConditionInstance>): ConditionInstance => ({
   slug,
@@ -11,13 +19,17 @@ const cond = (slug: ConditionSlug, extra?: Partial<ConditionInstance>): Conditio
   ...extra,
 });
 
-function runtimeFor(actorId: string, opts: { hpCurrent?: number; conditions?: ConditionInstance[] } = {}): ActorRuntimeState {
+function runtimeFor(
+  actorId: string,
+  opts: { hpCurrent?: number; conditions?: ConditionInstance[]; turnState?: TurnState } = {},
+): ActorRuntimeState {
   return {
     actorId,
     hpCurrent: opts.hpCurrent ?? 10,
     tempHp: 0,
     conditions: opts.conditions ?? [],
     deathSaves: { successes: 0, failures: 0 },
+    ...(opts.turnState ? { turnState: opts.turnState } : {}),
   };
 }
 
@@ -322,5 +334,166 @@ describe('makeAttack — knockOut option', () => {
     expect(r.error).toBe('miss');
     expect(r.data?.knockedOut).toBeFalsy();
     expect(r.mutations.length).toBe(0);
+  });
+});
+
+describe('makeAttack — action economy', () => {
+  const longsword = { name: 'Longsword', damage: '1d8', damageType: 'slashing' as const, profGroup: 'Martial', useDex: false };
+  const fixedHit = { intInclusive: (_min: number, max: number) => max === 20 ? 18 : Math.ceil(max / 2) };
+  const fixedMiss = { intInclusive: (_min: number, max: number) => max === 20 ? 2 : 1 };
+
+  it('errors if attacker action already used (no useReaction)', () => {
+    const attackerRuntime = runtimeFor(fighter.id, {
+      hpCurrent: 44,
+      turnState: { ...newTurnState(), actionUsed: true },
+    });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+      attackerRuntime,
+    }, fixedHit);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/action_already_used|no_action/i);
+  });
+
+  it('useReaction:true allows attack even if action used (consumes reaction)', () => {
+    const attackerRuntime = runtimeFor(fighter.id, {
+      hpCurrent: 44,
+      turnState: { ...newTurnState(), actionUsed: true, reactionUsed: false },
+    });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+      attackerRuntime,
+      useReaction: true,
+    }, fixedHit);
+    expect(r.ok).toBe(true);
+    const consumeMut = r.mutations.find((m) => m.op === 'consume_action');
+    expect(consumeMut).toBeDefined();
+    expect(consumeMut).toMatchObject({ kind: 'reaction' });
+  });
+
+  it('useReaction:true errors if reaction already used', () => {
+    const attackerRuntime = runtimeFor(fighter.id, {
+      hpCurrent: 44,
+      turnState: { ...newTurnState(), reactionUsed: true },
+    });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+      attackerRuntime,
+      useReaction: true,
+    }, fixedHit);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/reaction_already_used/i);
+  });
+
+  it('successful attack emits consume_action(action) by default', () => {
+    const attackerRuntime = runtimeFor(fighter.id, {
+      hpCurrent: 44,
+      turnState: newTurnState(),
+    });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+      attackerRuntime,
+    }, fixedHit);
+    expect(r.ok).toBe(true);
+    const consumeMut = r.mutations.find((m) => m.op === 'consume_action');
+    expect(consumeMut).toBeDefined();
+    expect(consumeMut).toMatchObject({ kind: 'action' });
+  });
+
+  it('miss path also emits consume_action (action consumed regardless of hit)', () => {
+    const attackerRuntime = runtimeFor(fighter.id, {
+      hpCurrent: 44,
+      turnState: newTurnState(),
+    });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+      attackerRuntime,
+    }, fixedMiss);
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('miss');
+    const consumeMut = r.mutations.find((m) => m.op === 'consume_action');
+    expect(consumeMut).toBeDefined();
+    expect(consumeMut).toMatchObject({ kind: 'action' });
+  });
+
+  it('knockout path also emits consume_action', () => {
+    const lowHpGoblin: CombatActor = { ...goblin, hpMax: 7 };
+    const attackerRuntime = runtimeFor(fighter.id, {
+      hpCurrent: 44,
+      turnState: newTurnState(),
+    });
+    const targetRuntime = runtimeFor(lowHpGoblin.id, { hpCurrent: 1 });
+    const r = makeAttack({
+      attacker: fighter,
+      target: lowHpGoblin,
+      weapon: longsword,
+      attackerRuntime,
+      targetRuntime,
+      ranged: false,
+      knockOut: true,
+    }, fixedHit);
+    expect(r.ok).toBe(true);
+    expect(r.data?.knockedOut).toBe(true);
+    const consumeMut = r.mutations.find((m) => m.op === 'consume_action');
+    expect(consumeMut).toBeDefined();
+    expect(consumeMut).toMatchObject({ kind: 'action' });
+  });
+
+  it('attacker without turnState skips budget check (backward compat)', () => {
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+    }, fixedHit);
+    expect(r.ok).toBe(true);
+    // No consume_action emitted when no turnState (nothing to consume against).
+    const consumeMut = r.mutations.find((m) => m.op === 'consume_action');
+    expect(consumeMut).toBeUndefined();
+  });
+
+  it('target dodging → DIS on attack (rolls length 2)', () => {
+    const attackerRuntime = runtimeFor(fighter.id, { hpCurrent: 44 });
+    const targetRuntime = runtimeFor(goblin.id, {
+      hpCurrent: 7,
+      turnState: { ...newTurnState(), dodging: true },
+    });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+      attackerRuntime,
+      targetRuntime,
+    }, makeSeededRng(7));
+    expect(r.rolls[0]?.rolls.length).toBe(2);
+    // DIS picks the lower of the two
+    const min = Math.min(...r.rolls[0]!.rolls);
+    expect(r.rolls[0]!.total).toBe(min + r.rolls[0]!.modifier);
+  });
+
+  it('target dodging cancels attacker advantage (ADV+DIS = single d20)', () => {
+    const attackerRuntime = runtimeFor(fighter.id, { hpCurrent: 44 });
+    const targetRuntime = runtimeFor(goblin.id, {
+      hpCurrent: 7,
+      turnState: { ...newTurnState(), dodging: true },
+    });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+      attackerRuntime,
+      targetRuntime,
+      advantage: true,
+    }, makeSeededRng(11));
+    expect(r.rolls[0]?.rolls.length).toBe(1);
   });
 });
