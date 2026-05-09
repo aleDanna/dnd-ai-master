@@ -1,0 +1,1 @@
+ALTER TABLE "session_state" ADD COLUMN "exhaustion_level" integer DEFAULT 0 NOT NULL;

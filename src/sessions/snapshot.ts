@@ -59,6 +59,7 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
     tempHp: stateRow.tempHp,
     deathSaves: stateRow.deathSaves ?? { successes: 0, failures: 0 },
     flags: stateRow.flags ?? {},
+    exhaustionLevel: stateRow.exhaustionLevel ?? 0,
     conditions: stateRow.conditions as ActorRuntimeState['conditions'],
     hitDiceRemaining: stateRow.hitDiceRemaining,
     spellSlotsUsed: parseSlotsUsed(stateRow.spellSlotsUsed),

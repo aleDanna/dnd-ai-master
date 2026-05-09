@@ -250,4 +250,162 @@ describe('applyMutations', () => {
       expect(s!.flags).toMatchObject({ stable: true });
     });
   });
+
+  describe('exhaustion stacking', () => {
+    // Helper: reset session_state into a clean slate per test. We zero
+    // exhaustion_level, drop any prior exhaustion entries, and clear the
+    // flags so dead/stable from death-save tests don't leak into ours.
+    async function resetExhaustion(level: number = 0, hasCondition: boolean = false) {
+      const conditions = hasCondition
+        ? [{ slug: 'exhaustion', source: 'forced march', durationRounds: 'until_removed' as const, appliedRound: 0 }]
+        : [];
+      await db
+        .update(sessionState)
+        .set({
+          exhaustionLevel: level,
+          conditions,
+          flags: {},
+        })
+        .where(eq(sessionState.sessionId, SESSION_ID));
+    }
+
+    it('first add_condition exhaustion → level 1, condition added once', async () => {
+      await resetExhaustion(0, false);
+      await applyMutations(SESSION_ID, [
+        {
+          op: 'add_condition',
+          actorId: PC_ID,
+          condition: { slug: 'exhaustion', source: 'forced march', durationRounds: 'until_removed', appliedRound: 0 },
+        },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.exhaustionLevel).toBe(1);
+      const conds = s!.conditions as { slug: string }[];
+      expect(conds.filter((c) => c.slug === 'exhaustion').length).toBe(1);
+    });
+
+    it('second add_condition exhaustion → level 2, condition still present once', async () => {
+      await resetExhaustion(1, true);
+      await applyMutations(SESSION_ID, [
+        {
+          op: 'add_condition',
+          actorId: PC_ID,
+          condition: { slug: 'exhaustion', source: 'starvation', durationRounds: 'until_removed', appliedRound: 0 },
+        },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.exhaustionLevel).toBe(2);
+      const conds = s!.conditions as { slug: string }[];
+      expect(conds.filter((c) => c.slug === 'exhaustion').length).toBe(1);
+    });
+
+    it('exhaustion stacking caps at 6', async () => {
+      await resetExhaustion(5, true);
+      await applyMutations(SESSION_ID, [
+        {
+          op: 'add_condition',
+          actorId: PC_ID,
+          condition: { slug: 'exhaustion', source: 'curse', durationRounds: 'until_removed', appliedRound: 0 },
+        },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.exhaustionLevel).toBe(6);
+      // Adding a 7th does NOT push past 6.
+      await applyMutations(SESSION_ID, [
+        {
+          op: 'add_condition',
+          actorId: PC_ID,
+          condition: { slug: 'exhaustion', source: 'extra', durationRounds: 'until_removed', appliedRound: 0 },
+        },
+      ], []);
+      const [s2] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s2!.exhaustionLevel).toBe(6);
+    });
+
+    it('exhaustion level 6 sets flags.dead', async () => {
+      await resetExhaustion(5, true);
+      await applyMutations(SESSION_ID, [
+        {
+          op: 'add_condition',
+          actorId: PC_ID,
+          condition: { slug: 'exhaustion', source: 'curse', durationRounds: 'until_removed', appliedRound: 0 },
+        },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.exhaustionLevel).toBe(6);
+      expect(s!.flags).toMatchObject({ dead: true });
+    });
+
+    it('remove_condition exhaustion decrements level by 1, condition stays while > 0', async () => {
+      await resetExhaustion(3, true);
+      await applyMutations(SESSION_ID, [
+        { op: 'remove_condition', actorId: PC_ID, conditionSlug: 'exhaustion' },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.exhaustionLevel).toBe(2);
+      const conds = s!.conditions as { slug: string }[];
+      expect(conds.some((c) => c.slug === 'exhaustion')).toBe(true);
+    });
+
+    it('remove_condition exhaustion at level 1 → level 0, condition removed from array', async () => {
+      await resetExhaustion(1, true);
+      await applyMutations(SESSION_ID, [
+        { op: 'remove_condition', actorId: PC_ID, conditionSlug: 'exhaustion' },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.exhaustionLevel).toBe(0);
+      const conds = s!.conditions as { slug: string }[];
+      expect(conds.some((c) => c.slug === 'exhaustion')).toBe(false);
+    });
+
+    it('remove_condition exhaustion at level 0 is a no-op', async () => {
+      await resetExhaustion(0, false);
+      await applyMutations(SESSION_ID, [
+        { op: 'remove_condition', actorId: PC_ID, conditionSlug: 'exhaustion' },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.exhaustionLevel).toBe(0);
+      const conds = s!.conditions as { slug: string }[];
+      expect(conds.some((c) => c.slug === 'exhaustion')).toBe(false);
+    });
+
+    it('non-exhaustion add_condition does not touch exhaustionLevel', async () => {
+      await resetExhaustion(2, true);
+      await applyMutations(SESSION_ID, [
+        {
+          op: 'add_condition',
+          actorId: PC_ID,
+          condition: { slug: 'poisoned', source: 'venom', durationRounds: 3, appliedRound: 1 },
+        },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.exhaustionLevel).toBe(2);
+      const conds = s!.conditions as { slug: string }[];
+      expect(conds.some((c) => c.slug === 'poisoned')).toBe(true);
+      expect(conds.some((c) => c.slug === 'exhaustion')).toBe(true);
+    });
+
+    it('non-exhaustion remove_condition does not touch exhaustionLevel', async () => {
+      // start with both poisoned and exhaustion present, exhaustionLevel=2.
+      await db
+        .update(sessionState)
+        .set({
+          exhaustionLevel: 2,
+          conditions: [
+            { slug: 'exhaustion', source: 'forced march', durationRounds: 'until_removed', appliedRound: 0 },
+            { slug: 'poisoned', source: 'venom', durationRounds: 3, appliedRound: 1 },
+          ],
+          flags: {},
+        })
+        .where(eq(sessionState.sessionId, SESSION_ID));
+      await applyMutations(SESSION_ID, [
+        { op: 'remove_condition', actorId: PC_ID, conditionSlug: 'poisoned' },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.exhaustionLevel).toBe(2);
+      const conds = s!.conditions as { slug: string }[];
+      expect(conds.some((c) => c.slug === 'poisoned')).toBe(false);
+      expect(conds.some((c) => c.slug === 'exhaustion')).toBe(true);
+    });
+  });
 });

@@ -105,17 +105,50 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
     case 'add_condition':
     case 'remove_condition': {
       const isPc = m.actorId === ctx.characterId;
+      const targetSlug = m.op === 'add_condition' ? m.condition.slug : m.conditionSlug;
       if (isPc) {
         const [s] = await tx.select().from(sessionStateTable).where(eq(sessionStateTable.sessionId, sessionId)).limit(1);
         if (!s) return;
-        const conds = (s.conditions as ConditionInstance[]).filter((c) => c.slug !== (m.op === 'add_condition' ? m.condition.slug : m.conditionSlug));
+        // PHB §4.1: exhaustion is a 6-level cumulative track. The slug
+        // appears in `conditions[]` only ONCE — the level lives in
+        // `session_state.exhaustion_level`. Each add_condition increments
+        // the level (capped at 6, sets flags.dead at 6); each
+        // remove_condition decrements (min 0, removes from array at 0).
+        if (targetSlug === 'exhaustion') {
+          const curLevel = s.exhaustionLevel ?? 0;
+          if (m.op === 'add_condition') {
+            const newLevel = Math.min(6, curLevel + 1);
+            const conds = (s.conditions as ConditionInstance[]).slice();
+            const hasExhaustion = conds.some((c) => c.slug === 'exhaustion');
+            if (!hasExhaustion) conds.push(m.condition);
+            const flags = (s.flags ?? {}) as { stable?: boolean; dead?: boolean };
+            const nextFlags = newLevel >= 6 ? { ...flags, dead: true } : flags;
+            await tx
+              .update(sessionStateTable)
+              .set({ exhaustionLevel: newLevel, conditions: conds, flags: nextFlags })
+              .where(eq(sessionStateTable.sessionId, sessionId));
+          } else {
+            // remove_condition: decrement, drop from array at 0
+            if (curLevel <= 0) break; // no-op when already clear
+            const newLevel = Math.max(0, curLevel - 1);
+            const conds = newLevel === 0
+              ? (s.conditions as ConditionInstance[]).filter((c) => c.slug !== 'exhaustion')
+              : (s.conditions as ConditionInstance[]);
+            await tx
+              .update(sessionStateTable)
+              .set({ exhaustionLevel: newLevel, conditions: conds })
+              .where(eq(sessionStateTable.sessionId, sessionId));
+          }
+          break;
+        }
+        const conds = (s.conditions as ConditionInstance[]).filter((c) => c.slug !== targetSlug);
         if (m.op === 'add_condition') conds.push(m.condition);
         await tx.update(sessionStateTable).set({ conditions: conds }).where(eq(sessionStateTable.sessionId, sessionId));
       } else {
         // FIX I1: scope by session_id too
         const [a] = await tx.select().from(combatActorsTable).where(and(eq(combatActorsTable.sessionId, sessionId), eq(combatActorsTable.id, m.actorId))).limit(1);
         if (!a) return;
-        const conds = (a.conditions as ConditionInstance[]).filter((c) => c.slug !== (m.op === 'add_condition' ? m.condition.slug : m.conditionSlug));
+        const conds = (a.conditions as ConditionInstance[]).filter((c) => c.slug !== targetSlug);
         if (m.op === 'add_condition') conds.push(m.condition);
         await tx.update(combatActorsTable).set({ conditions: conds }).where(and(eq(combatActorsTable.sessionId, sessionId), eq(combatActorsTable.id, m.actorId)));
       }
