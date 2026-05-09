@@ -1,7 +1,6 @@
 import type { ActionResult, EngineState } from '../types';
 import { db } from '@/db/client';
 import { codexEntities } from '@/db/schema';
-import { and, eq } from 'drizzle-orm';
 import { slugify } from '@/srd/util/slug';
 
 // New flavor-only inventory channel. Unlike `add_item` (which validates the
@@ -44,39 +43,23 @@ export async function addNarrativeItem(
   const rawDesc = typeof input.description === 'string' ? input.description : '';
   const description = rawDesc.length > DESC_MAX ? rawDesc.slice(0, DESC_MAX) : rawDesc;
 
-  // Read-then-insert. A unique-violation race (codex auto-update inserting
-  // the same slug between our SELECT and INSERT) is caught and treated as
-  // success — the entry exists, that's all we need before the inventory
-  // mutation is queued.
-  const [existing] = await db
-    .select()
-    .from(codexEntities)
-    .where(
-      and(
-        eq(codexEntities.sessionId, ctx.sessionId),
-        eq(codexEntities.kind, 'named_item'),
-        eq(codexEntities.slug, slug),
-      ),
-    )
-    .limit(1);
-
-  if (!existing) {
-    try {
-      await db.insert(codexEntities).values({
-        sessionId: ctx.sessionId,
-        kind: 'named_item',
-        slug,
-        name: rawName,
-        data: { description, magical: false },
-      });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (!/duplicate key|unique/i.test(msg)) {
-        return { ok: false, error: 'db_failed', rolls: [], mutations: [] };
-      }
-      // race with concurrent insert — proceed
-    }
-  }
+  // INSERT ... ON CONFLICT DO NOTHING against the unique index
+  // codex_entities_session_kind_slug_uniq. If the row already exists (codex
+  // auto-update or a duplicate same-turn call), we skip the insert and
+  // proceed directly to the inventory mutation. The codex pipeline owns
+  // updates to existing rows; we never overwrite name/description here.
+  await db
+    .insert(codexEntities)
+    .values({
+      sessionId: ctx.sessionId,
+      kind: 'named_item',
+      slug,
+      name: rawName,
+      data: { description, magical: false },
+    })
+    .onConflictDoNothing({
+      target: [codexEntities.sessionId, codexEntities.kind, codexEntities.slug],
+    });
 
   return {
     ok: true,
