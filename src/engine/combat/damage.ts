@@ -1,4 +1,5 @@
 import type { ActionResult, ActorRuntimeState, CombatActor, Character, DamageType, Mutation } from '../types';
+import { concentrationCheckDC } from '../spells/concentration';
 
 export interface ApplyDamageInput {
   runtime?: ActorRuntimeState;
@@ -21,6 +22,35 @@ function modifyForResistance(amount: number, type: DamageType, target: CombatAct
   return amount;
 }
 
+/**
+ * PHB §8.8 concentration cascade. Returns the mutation(s) to append to the
+ * damage result for a concentrating target. Callers pass the post-resistance
+ * `finalDamage` and pre-decided fate flags so we don't re-derive them.
+ */
+function concentrationMutations(
+  runtime: ActorRuntimeState | undefined,
+  finalDamage: number,
+  willBeKilled: boolean,
+  willGoToZero: boolean,
+): Mutation[] {
+  if (!runtime?.concentratingOn) return [];
+  if (finalDamage <= 0) return [];
+  if (willBeKilled) {
+    return [{ op: 'break_concentration', actorId: runtime.actorId, reason: 'killed' }];
+  }
+  if (willGoToZero) {
+    return [{ op: 'break_concentration', actorId: runtime.actorId, reason: 'incapacitated' }];
+  }
+  return [
+    {
+      op: 'concentration_check',
+      actorId: runtime.actorId,
+      dc: concentrationCheckDC(finalDamage),
+      spellSlug: runtime.concentratingOn.spellSlug,
+    },
+  ];
+}
+
 export function applyDamage(input: ApplyDamageInput): ActionResult<{ newHp: number; newTempHp: number; dying?: boolean; dead?: boolean }> {
   const adjusted = modifyForResistance(input.amount, input.type, input.target);
 
@@ -33,23 +63,33 @@ export function applyDamage(input: ApplyDamageInput): ActionResult<{ newHp: numb
     const targetId = input.runtime?.actorId ?? input.target.id;
     // §3.17 — single-source damage ≥ hpMax → instant death.
     if (adjusted >= input.target.hpMax) {
+      const baseMuts: Mutation[] = [
+        { op: 'set_hp', actorId: targetId, hpCurrent: 0 },
+        {
+          op: 'add_condition',
+          actorId: targetId,
+          condition: {
+            slug: 'unconscious',
+            source: 'massive damage',
+            durationRounds: 'until_removed',
+            appliedRound: 0,
+          },
+        },
+      ];
+      // Per §8.8: a concentrating creature reduced to 0 HP by massive damage
+      // loses concentration with reason='killed'. Already at 0 HP though, so
+      // they shouldn't be holding concentration in practice; emit defensively.
+      const concMuts = concentrationMutations(
+        input.runtime,
+        adjusted,
+        true,    // killed
+        false,
+      );
       return {
         ok: true,
         data: { newHp: 0, newTempHp: input.runtime?.tempHp ?? 0, dead: true },
         rolls: [],
-        mutations: [
-          { op: 'set_hp', actorId: targetId, hpCurrent: 0 },
-          {
-            op: 'add_condition',
-            actorId: targetId,
-            condition: {
-              slug: 'unconscious',
-              source: 'massive damage',
-              durationRounds: 'until_removed',
-              appliedRound: 0,
-            },
-          },
-        ],
+        mutations: [...baseMuts, ...concMuts],
       };
     }
     // §3.18 — +1 failure (+2 on crit).
@@ -60,6 +100,7 @@ export function applyDamage(input: ApplyDamageInput): ActionResult<{ newHp: numb
       success: false,
       isCrit: input.isCrit ?? false,
     }));
+    // No concentration mutation here: an unconscious PC can't be concentrating.
     return {
       ok: true,
       data: { newHp: 0, newTempHp: input.runtime?.tempHp ?? 0, dying: true },
@@ -109,6 +150,19 @@ export function applyDamage(input: ApplyDamageInput): ActionResult<{ newHp: numb
       dying = true;
     }
   }
+
+  // PHB §8.8 cascade for concentrating targets along the standard path.
+  // Damage that would incapacitate (HP → 0) breaks concentration without a
+  // save; instant-death damage breaks with reason='killed'; otherwise emit a
+  // concentration_check with DC = max(10, ⌊damage/2⌋).
+  const willGoToZero = newHp === 0 && runtime.hpCurrent > 0 && !dead;
+  const concMuts = concentrationMutations(
+    runtime,
+    adjusted,
+    dead,
+    willGoToZero,
+  );
+  mutations.push(...concMuts);
 
   return {
     ok: true,
