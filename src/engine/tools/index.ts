@@ -76,6 +76,13 @@ const ALWAYS_ON: AnthropicTool[] = [
             useDex: { type: 'boolean' },
           },
         },
+        ranged: { type: 'boolean', description: 'True for ranged weapon attacks. Defaults to false (melee).' },
+        meleeRange: { type: 'number', description: 'Melee reach in feet. Defaults to 5. Only consulted when ranged is false.' },
+        knockOut: {
+          type: 'boolean',
+          description:
+            'PHB §3.20: melee-only non-lethal blow. If a hit reduces the target to 0 HP, the target falls unconscious instead of triggering death saves. Ranged attacks silently ignore this flag.',
+        },
         advantage: { type: 'boolean' },
         disadvantage: { type: 'boolean' },
       },
@@ -91,6 +98,11 @@ const ALWAYS_ON: AnthropicTool[] = [
         actor: ACTOR_ID,
         amount: { type: 'integer', minimum: 0 },
         type: DAMAGE_TYPE_ENUM,
+        isCrit: {
+          type: 'boolean',
+          description:
+            'True if the damage is from a critical hit. When the target is already at 0 HP this causes 2 death-save failures instead of 1 (PHB §3.18).',
+        },
       },
     } as never,
   },

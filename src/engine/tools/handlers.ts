@@ -40,6 +40,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
     const charId = resolveCharacterId(state, input.actor);
     const char = state.characters.find((c) => c.id === charId);
     if (!char) return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
+    const runtime = state.runtime[charId];
     return abilityCheck({
       char,
       skill: input.skill as never,
@@ -47,6 +48,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       dc: Number(input.dc),
       advantage: input.advantage === true,
       disadvantage: input.disadvantage === true,
+      runtime,
     });
   },
 
@@ -54,12 +56,14 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
     const charId = resolveCharacterId(state, input.actor);
     const char = state.characters.find((c) => c.id === charId);
     if (!char) return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
+    const runtime = state.runtime[charId];
     return savingThrow({
       char,
       ability: input.ability as never,
       dc: Number(input.dc),
       advantage: input.advantage === true,
       disadvantage: input.disadvantage === true,
+      runtime,
     });
   },
 
@@ -71,10 +75,13 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
     const attackerId = resolveCharacterId(state, input.attacker);
     const attacker = state.characters.find((c) => c.id === attackerId);
     if (!attacker) return { ok: false, error: 'unknown_attacker', rolls: [], mutations: [] };
-    const target = state.combatActors.find((a) => a.id === String(input.target));
+    const targetId = String(input.target);
+    const target = state.combatActors.find((a) => a.id === targetId);
     if (!target) return { ok: false, error: 'unknown_target', rolls: [], mutations: [] };
     const weaponInput = input.weapon as Record<string, unknown>;
     if (!weaponInput || typeof weaponInput !== 'object') return { ok: false, error: 'bad_weapon', rolls: [], mutations: [] };
+    const attackerRuntime = state.runtime[attackerId];
+    const targetRuntime = state.runtime[targetId];
     return makeAttack({
       attacker,
       target,
@@ -87,6 +94,11 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       },
       advantage: input.advantage === true,
       disadvantage: input.disadvantage === true,
+      attackerRuntime,
+      targetRuntime,
+      ranged: input.ranged === true,
+      meleeRange: typeof input.meleeRange === 'number' ? input.meleeRange : undefined,
+      knockOut: input.knockOut === true,
     });
   },
 
@@ -101,6 +113,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       target: target as never,
       amount: Number(input.amount),
       type: input.type as never,
+      isCrit: input.isCrit === true,
     });
   },
 
