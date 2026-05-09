@@ -83,6 +83,16 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
     ? { op: 'consume_action', actorId: input.attacker.id, kind: actionKind }
     : null;
 
+  // PHB §3.5 Help: a 'helped' beneficiary gets ADV on the next d20 (consumed
+  // on first use, regardless of hit/miss). Detect on the attacker, and
+  // schedule a remove_condition mutation in the result paths below.
+  const helpedAttacker = (input.attackerRuntime?.conditions ?? []).some(
+    (c) => c.slug === 'helped',
+  );
+  const consumeHelpedMut: Mutation | null = helpedAttacker
+    ? { op: 'remove_condition', actorId: input.attacker.id, conditionSlug: 'helped' }
+    : null;
+
   // Target dodging (PHB §3.7) imposes DIS on attacks against it (until next turn).
   const targetDodging = input.targetRuntime?.turnState?.dodging ?? false;
 
@@ -94,7 +104,8 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
     !!input.advantage ||
     fxAttacker.attackRollAdvantage ||
     fxTarget.incomingAttackAdvantage ||
-    (meleeWithin5 && fxTarget.incomingMeleeWithin5ftAdvantage);
+    (meleeWithin5 && fxTarget.incomingMeleeWithin5ftAdvantage) ||
+    helpedAttacker;
 
   let disadvantage =
     !!input.disadvantage ||
@@ -117,23 +128,29 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
     : advantage ? Math.max(...attackRoll.rolls) : Math.min(...attackRoll.rolls);
 
   if (natural === 1) {
+    const missMuts: Mutation[] = [];
+    if (consumeActionMut) missMuts.push(consumeActionMut);
+    if (consumeHelpedMut) missMuts.push(consumeHelpedMut);
     return {
       ok: false,
       error: 'miss',
       data: { hit: false, crit: false, rawDamage: 0, finalDamage: 0 },
       rolls: [attackRoll],
-      mutations: consumeActionMut ? [consumeActionMut] : [],
+      mutations: missMuts,
     };
   }
   const naturalCrit = natural === 20;
   const hit = naturalCrit || attackRoll.total >= input.target.ac;
   if (!hit) {
+    const missMuts: Mutation[] = [];
+    if (consumeActionMut) missMuts.push(consumeActionMut);
+    if (consumeHelpedMut) missMuts.push(consumeHelpedMut);
     return {
       ok: false,
       error: 'miss',
       data: { hit: false, crit: false, rawDamage: 0, finalDamage: 0 },
       rolls: [attackRoll],
-      mutations: consumeActionMut ? [consumeActionMut] : [],
+      mutations: missMuts,
     };
   }
 
@@ -165,6 +182,7 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
         },
       ];
       if (consumeActionMut) mutations.push(consumeActionMut);
+      if (consumeHelpedMut) mutations.push(consumeHelpedMut);
       return {
         ok: true,
         data: { hit: true, crit, rawDamage, finalDamage, knockedOut: true },
@@ -179,6 +197,7 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
     mutations.push({ op: 'apply_damage', actorId: input.target.id, amount: finalDamage, type: input.weapon.damageType });
   }
   if (consumeActionMut) mutations.push(consumeActionMut);
+  if (consumeHelpedMut) mutations.push(consumeHelpedMut);
 
   return {
     ok: true,

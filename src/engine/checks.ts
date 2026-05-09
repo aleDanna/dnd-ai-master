@@ -1,4 +1,4 @@
-import type { Ability, ActionResult, ActorRuntimeState, Character, Skill } from './types';
+import type { Ability, ActionResult, ActorRuntimeState, Character, Mutation, Skill } from './types';
 import { abilityModifier, savingThrowBonus, skillBonus, passiveScore } from './modifiers';
 import { rollD20 } from './dice';
 import { defaultRng, type Rng } from './rand';
@@ -27,14 +27,25 @@ export function abilityCheck(input: AbilityCheckInput, rng: Rng = defaultRng): A
   const fx = getEffectsForActor(input.runtime?.conditions ?? [], {
     exhaustionLevel: input.runtime?.exhaustionLevel,
   });
-  const advantage = !!input.advantage;
+  // PHB §3.5 Help: a 'helped' beneficiary gets ADV on the next d20 (consumed
+  // on first use, regardless of pass/fail). Detect on the runtime here.
+  const helpedActor = (input.runtime?.conditions ?? []).some((c) => c.slug === 'helped');
+  const advantage = !!input.advantage || helpedActor;
   const disadvantage = !!input.disadvantage || fx.abilityCheckDisadvantage;
   const roll = rollD20({ advantage, disadvantage, modifier }, rng);
+  const mutations: Mutation[] = [];
+  if (helpedActor) {
+    mutations.push({
+      op: 'remove_condition',
+      actorId: input.char.id,
+      conditionSlug: 'helped',
+    });
+  }
   return {
     ok: roll.total >= input.dc,
     data: { dc: input.dc },
     rolls: [roll],
-    mutations: [],
+    mutations,
   };
 }
 
