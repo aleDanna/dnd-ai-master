@@ -46,6 +46,13 @@ export interface Character {
     tools: string[];
     languages: string[];
   };
+  /**
+   * PHB §18.1 Inspiration: a single boolean flag — "you either have it or
+   * you don't". The DM grants Inspiration for great roleplaying or memorable
+   * accomplishments. The PC may spend it to gain ADV on one attack, ability
+   * check, or saving throw (consumed regardless of outcome).
+   */
+  inspiration?: boolean;
   spellcasting: SpellcastingState | null;
   features: FeatureInstance[];   // race/class/bg/feat features w/ uses-left
   inventory: InventoryItem[];
@@ -229,7 +236,13 @@ export type Mutation =
   | { op: 'take_dash'; actorId: string; extraSpeedFt: number }
   | { op: 'set_readied'; actorId: string; trigger: string; action: string }
   | { op: 'set_position'; actorId: string; position: Position }
-  | { op: 'opportunity_attack_triggered'; attackerId: string; targetId: string };
+  | { op: 'opportunity_attack_triggered'; attackerId: string; targetId: string }
+  // PHB §18.1 — DM awards Inspiration; idempotent if PC already has it.
+  | { op: 'grant_inspiration'; characterId: string }
+  // Spend Inspiration to grant ADV on next d20; consumed on first roll.
+  | { op: 'spend_inspiration'; characterId: string }
+  // PHB §5.2 — stamps the timestamp of the most recent successful long rest.
+  | { op: 'set_long_rest_at'; epochMs: number };
 
 // ─── Action results ────────────────────────────────────────────────────────
 

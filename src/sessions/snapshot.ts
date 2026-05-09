@@ -42,6 +42,7 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
       ac: character.ac,
       speed: character.speed,
       proficiencies: character.proficiencies as Character['proficiencies'],
+      inspiration: character.inspiration ?? false,
       spellcasting: character.spellcasting as Character['spellcasting'],
       features: character.features as Character['features'],
       inventory: character.inventory,

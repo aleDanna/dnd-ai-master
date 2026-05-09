@@ -409,6 +409,87 @@ describe('applyMutations', () => {
     });
   });
 
+  describe('applicator — inspiration', () => {
+    // Helper: reset PC inspiration to false so each test starts clean.
+    async function resetInspiration(value: boolean = false) {
+      await db
+        .update(characters)
+        .set({ inspiration: value })
+        .where(eq(characters.id, PC_ID));
+    }
+
+    it('grant_inspiration sets characters.inspiration=true', async () => {
+      await resetInspiration(false);
+      await applyMutations(SESSION_ID, [
+        { op: 'grant_inspiration', characterId: PC_ID },
+      ], []);
+      const [c] = await db.select({ insp: characters.inspiration }).from(characters).where(eq(characters.id, PC_ID)).limit(1);
+      expect(c!.insp).toBe(true);
+    });
+
+    it('grant_inspiration when already inspired stays true (idempotent)', async () => {
+      await resetInspiration(true);
+      await applyMutations(SESSION_ID, [
+        { op: 'grant_inspiration', characterId: PC_ID },
+      ], []);
+      const [c] = await db.select({ insp: characters.inspiration }).from(characters).where(eq(characters.id, PC_ID)).limit(1);
+      expect(c!.insp).toBe(true);
+    });
+
+    it('spend_inspiration sets characters.inspiration=false', async () => {
+      await resetInspiration(true);
+      await applyMutations(SESSION_ID, [
+        { op: 'spend_inspiration', characterId: PC_ID },
+      ], []);
+      const [c] = await db.select({ insp: characters.inspiration }).from(characters).where(eq(characters.id, PC_ID)).limit(1);
+      expect(c!.insp).toBe(false);
+    });
+
+    it('grant + spend round-trip lands at false', async () => {
+      await resetInspiration(false);
+      await applyMutations(SESSION_ID, [
+        { op: 'grant_inspiration', characterId: PC_ID },
+      ], []);
+      let [c] = await db.select({ insp: characters.inspiration }).from(characters).where(eq(characters.id, PC_ID)).limit(1);
+      expect(c!.insp).toBe(true);
+
+      await applyMutations(SESSION_ID, [
+        { op: 'spend_inspiration', characterId: PC_ID },
+      ], []);
+      [c] = await db.select({ insp: characters.inspiration }).from(characters).where(eq(characters.id, PC_ID)).limit(1);
+      expect(c!.insp).toBe(false);
+    });
+
+    it('set_long_rest_at writes the timestamp to session_state', async () => {
+      // Reset the column first
+      await db
+        .update(sessionState)
+        .set({ lastLongRestAt: null })
+        .where(eq(sessionState.sessionId, SESSION_ID));
+
+      const epochMs = 1_700_000_000_000;
+      await applyMutations(SESSION_ID, [
+        { op: 'set_long_rest_at', epochMs },
+      ], []);
+      const [s] = await db.select({ lastLongRestAt: sessionState.lastLongRestAt }).from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.lastLongRestAt).toBeInstanceOf(Date);
+      expect(s!.lastLongRestAt!.getTime()).toBe(epochMs);
+    });
+
+    it('set_long_rest_at overwrites a previous timestamp', async () => {
+      const first = 1_700_000_000_000;
+      const second = 1_700_086_400_000; // 24h later
+      await applyMutations(SESSION_ID, [
+        { op: 'set_long_rest_at', epochMs: first },
+      ], []);
+      await applyMutations(SESSION_ID, [
+        { op: 'set_long_rest_at', epochMs: second },
+      ], []);
+      const [s] = await db.select({ lastLongRestAt: sessionState.lastLongRestAt }).from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.lastLongRestAt!.getTime()).toBe(second);
+    });
+  });
+
   describe('applicator — concentration mutations', () => {
     // Helper: clear the concentratingOn column so each test starts at NULL.
     async function resetConcentration() {

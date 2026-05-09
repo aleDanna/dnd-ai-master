@@ -598,6 +598,33 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
       // intentionally does not mutate state for this op.
       break;
     }
+    case 'grant_inspiration': {
+      // PHB §18.1: idempotent — granting Inspiration when already inspired
+      // is a no-op (the boolean is already true). We unconditionally write
+      // true to avoid an extra read-roundtrip; the SQL UPDATE is harmless.
+      await tx
+        .update(charactersTable)
+        .set({ inspiration: true, updatedAt: new Date() })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
+    case 'spend_inspiration': {
+      await tx
+        .update(charactersTable)
+        .set({ inspiration: false, updatedAt: new Date() })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
+    case 'set_long_rest_at': {
+      // PHB §5.2: stamp the moment of the most recent successful long rest
+      // on session_state so the next long_rest call can enforce the 24h
+      // cooldown.
+      await tx
+        .update(sessionStateTable)
+        .set({ lastLongRestAt: new Date(m.epochMs) })
+        .where(eq(sessionStateTable.sessionId, sessionId));
+      break;
+    }
   }
 }
 

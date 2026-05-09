@@ -1,4 +1,4 @@
-import { pgTable, text, integer, jsonb, uuid, timestamp, index } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, jsonb, uuid, timestamp, index, boolean } from 'drizzle-orm/pg-core';
 import { users } from './users';
 
 export const characters = pgTable(
@@ -47,6 +47,11 @@ export const characters = pgTable(
     }>().notNull(),
     hitDiceMax: integer('hit_dice_max').notNull(),
     hitDieSize: integer('hit_die_size').notNull(),
+    /**
+     * PHB §18.1 Inspiration. Single boolean — the PC has it or doesn't.
+     * The DM grants it; the PC spends it for ADV on one d20 roll.
+     */
+    inspiration: boolean('inspiration').notNull().default(false),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

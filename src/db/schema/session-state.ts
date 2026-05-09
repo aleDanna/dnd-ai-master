@@ -1,4 +1,4 @@
-import { pgTable, uuid, integer, jsonb, boolean, text } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, integer, jsonb, boolean, text, timestamp } from 'drizzle-orm/pg-core';
 import { bytea } from '../types';
 import { sessions } from './sessions';
 import type { TurnState, Position } from '@/engine/types';
@@ -27,6 +27,12 @@ export const sessionState = pgTable('session_state', {
   sceneImageData: bytea('scene_image_data'),
   sceneImagePrompt: text('scene_image_prompt'),
   sceneImageVersion: integer('scene_image_version').notNull().default(0),
+  /**
+   * PHB §5.2: timestamp of the most recent successful long rest. Used to
+   * enforce the "at most one long rest per 24 hours" cooldown. NULL when
+   * the PC has never long-rested since the session started.
+   */
+  lastLongRestAt: timestamp('last_long_rest_at'),
 });
 
 export type SessionState = typeof sessionState.$inferSelect;
