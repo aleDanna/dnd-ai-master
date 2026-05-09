@@ -395,6 +395,76 @@ richiede un TS Costituzione (CD 15, +5 per giorno consecutivo).
 Il long rest richiede ≥1 PF, cooldown 24h, niente attività strenue per ≥1h,
 e riduce di 1 l'exhaustion al successo.
 
+### Exploration Layer (PHB §6.1–6.6)
+
+**Travel pace** (PHB §6.1):
+- Fast: 4 mi/h, 30 mi/day, **-5 to passive Perception** (DIS — noisy and inattentive).
+- Normal: 3 mi/h, 24 mi/day, baseline.
+- Slow: 2 mi/h, 18 mi/day, **stealth allowed** while travelling.
+
+Use \`set_travel_pace({ pace: 'fast'|'normal'|'slow' })\` whenever the
+party announces or changes their pace. The pace is persisted on
+session_state and stays in effect until you call the tool again.
+
+**Vision & Light** (PHB §6.4):
+- **Bright** light: normal vision.
+- **Dim** light (lightly obscured): DIS on Perception relying on sight,
+  unless darkvision in range (treats dim as bright).
+- **Darkness** (heavily obscured): effectively blinded. **Darkvision**
+  treats darkness as **dim** within range — the observer still has DIS
+  on Perception but is NOT blinded.
+- **Blindsight** and **tremorsense** ignore light entirely (within range).
+- **Truesight** within range overrides everything: sees through magical
+  and non-magical darkness, invisibility, and illusions.
+
+Set the ambient light with \`set_light_level({ lightLevel })\`. Configure
+a creature's senses (race/feature derivation, monster stat blocks) with
+\`set_senses({ actor, senses: { darkvisionFt?, blindsightFt?, ... } })\`.
+
+To programmatically check what an observer can perceive at a given
+distance, call \`check_vision({ observer, distanceFt, lightLevel? })\`.
+The tool is **pure** (no mutation) and returns
+\`{ canSee, perceptionDisadvantage, effectivelyBlinded, senseUsed, lightLevel }\`.
+If \`lightLevel\` is omitted it defaults to \`state.travel.lightLevel\`
+(else \`'bright'\`). YOU then apply the resulting ADV/DIS to any
+follow-up Perception roll (pass \`disadvantage:true\` to \`ability_check\`).
+
+**Falling** (PHB §6.6): use \`apply_falling({ actor, distanceFt })\`.
+Rolls \`min(20, floor(distanceFt/10))\` d6 bludgeoning damage and lands
+the actor prone. The cap of 20d6 is hard (PHB §6.6). Distances <10 ft
+are a no-op. The DM is responsible for narrating the fall and any
+mitigating effects (Feather Fall, resistance) BEFORE calling.
+
+**Suffocation** (PHB §6.5): hold breath = max(30 sec, (1+CON mod)·60 sec).
+After the hold-breath window, the PC endures \`max(1, CON mod)\` rounds at
+0 HP before falling unconscious and beginning to suffocate (instant death
+follows in the rules; the engine drops them to 0 HP + unconscious here
+and lets you narrate the rest). Use
+\`apply_suffocation({ actor, secondsWithoutAir })\` — returns status
+\`'ok'\` / \`'past_breath'\` / \`'unconscious'\` and applies mutations only
+on the unconscious branch.
+
+**Marching order** (PHB §6.2): use
+\`set_marching_order({ order: { front: [...], middle: [...], back: [...] } })\`
+to record who is in each rank. The engine does not enforce positional
+rules — this is a narrative hook the master uses for ambushes, area
+effects, and surprise rounds.
+
+---
+
+Italiano: Phase 6 aggiunge il layer di esplorazione. Imposta il passo di
+viaggio con \`set_travel_pace\` (Fast = 4 mi/h con -5 Percezione passiva,
+Normal = 3 mi/h, Slow = 2 mi/h con stealth consentito). Cambia la luce
+ambientale con \`set_light_level\` (bright/dim/darkness). Configura sensi
+speciali (visione del buio, percezione cieca, sensibilità sismica, vista
+del vero) con \`set_senses\`. Usa \`check_vision\` (puro — niente
+mutazioni) per sapere cosa percepisce un osservatore a una certa distanza
+con il livello di luce corrente o esplicito. Per le cadute chiama
+\`apply_falling\` (1d6 per 3 metri, max 20d6, prono). Per il soffocamento
+\`apply_suffocation\` con \`secondsWithoutAir\` — quando entrambe le
+finestre di sopravvivenza sono esaurite il PG va a 0 PF e diventa
+unconscious. \`set_marching_order\` è solo narrativo (front/middle/back).
+
 ### Magic Items: Rarity & Attunement (PHB §10.1)
 
 **Rarities** (with reference sale price midpoints):
