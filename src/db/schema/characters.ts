@@ -1,5 +1,6 @@
 import { pgTable, text, integer, jsonb, uuid, timestamp, index, boolean } from 'drizzle-orm/pg-core';
 import { users } from './users';
+import type { Senses } from '@/engine/types';
 
 export const characters = pgTable(
   'characters',
@@ -58,6 +59,13 @@ export const characters = pgTable(
      * enforce the cap so historic over-counts (if any) survive a migration.
      */
     attunedItems: jsonb('attuned_items').$type<string[]>().notNull().default([]),
+    /**
+     * PHB §6.4 special senses (darkvision, blindsight, tremorsense,
+     * truesight) and an optional passive Perception override. NULL for
+     * humans/standard humanoids with no special senses; populated by
+     * race/feature derivation or the master via set_senses.
+     */
+    senses: jsonb('senses').$type<Senses | null>().default(null),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

@@ -8,7 +8,14 @@ import {
   characters as charactersTable,
   type DiceLogInsert,
 } from '@/db/schema';
-import type { ConditionInstance, DiceRoll, Mutation, TurnState } from '@/engine/types';
+import type {
+  ConditionInstance,
+  DiceRoll,
+  Mutation,
+  TurnState,
+  TravelState,
+  Senses,
+} from '@/engine/types';
 import { newTurnState, consumeAction, spendMovement } from '@/engine/combat/turn-state';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -660,6 +667,56 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
         .update(charactersTable)
         .set({ attunedItems: next, updatedAt: new Date() })
         .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
+    case 'set_travel_pace':
+    case 'set_light_level':
+    case 'set_marching_order': {
+      // PHB §6.1/§6.4/§6.2 — merge into the session_state.travel jsonb so
+      // each field can be updated independently. Read-modify-write keeps
+      // unrelated fields intact.
+      const [s] = await tx
+        .select({ travel: sessionStateTable.travel })
+        .from(sessionStateTable)
+        .where(eq(sessionStateTable.sessionId, sessionId))
+        .limit(1);
+      if (!s) break;
+      const cur: TravelState = (s.travel ?? {}) as TravelState;
+      let next: TravelState;
+      if (m.op === 'set_travel_pace') {
+        next = { ...cur, pace: m.pace };
+      } else if (m.op === 'set_light_level') {
+        next = { ...cur, lightLevel: m.lightLevel };
+      } else {
+        next = { ...cur, marchingOrder: m.order };
+      }
+      await tx
+        .update(sessionStateTable)
+        .set({ travel: next })
+        .where(eq(sessionStateTable.sessionId, sessionId));
+      break;
+    }
+    case 'set_senses': {
+      // PHB §6.4 — write Senses to the PC row (characters.senses) when the
+      // actorId is the session's PC, otherwise the matching combat-actor row.
+      const isPc = m.actorId === ctx.characterId;
+      const senses: Senses = m.senses;
+      if (isPc) {
+        await tx
+          .update(charactersTable)
+          .set({ senses, updatedAt: new Date() })
+          .where(eq(charactersTable.id, m.actorId));
+      } else {
+        await tx
+          .update(combatActorsTable)
+          .set({ senses })
+          .where(
+            and(
+              eq(combatActorsTable.sessionId, sessionId),
+              eq(combatActorsTable.id, m.actorId),
+            ),
+          );
+      }
       break;
     }
   }

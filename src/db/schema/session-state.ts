@@ -1,7 +1,7 @@
 import { pgTable, uuid, integer, jsonb, boolean, text, timestamp } from 'drizzle-orm/pg-core';
 import { bytea } from '../types';
 import { sessions } from './sessions';
-import type { TurnState, Position } from '@/engine/types';
+import type { TurnState, Position, TravelState } from '@/engine/types';
 
 export const sessionState = pgTable('session_state', {
   sessionId: uuid('session_id')
@@ -33,6 +33,13 @@ export const sessionState = pgTable('session_state', {
    * the PC has never long-rested since the session started.
    */
   lastLongRestAt: timestamp('last_long_rest_at'),
+  /**
+   * PHB §6 — exploration/travel context: pace (Fast/Normal/Slow), ambient
+   * light level (bright/dim/darkness), marching order (front/middle/back).
+   * NULL when the session is in plain combat/scene mode without explicit
+   * travel context.
+   */
+  travel: jsonb('travel').$type<TravelState | null>().default(null),
 });
 
 export type SessionState = typeof sessionState.$inferSelect;

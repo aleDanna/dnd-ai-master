@@ -896,4 +896,77 @@ describe('applyMutations', () => {
       expect(after!.position).toEqual(before!.position);
     });
   });
+
+  describe('applicator — exploration mutations (PHB §6)', () => {
+    async function resetTravel() {
+      await db
+        .update(sessionState)
+        .set({ travel: null })
+        .where(eq(sessionState.sessionId, SESSION_ID));
+    }
+
+    it('set_travel_pace persists travel.pace and merges with existing fields', async () => {
+      await resetTravel();
+      await applyMutations(SESSION_ID, [
+        { op: 'set_travel_pace', pace: 'fast' },
+      ], []);
+      const [s1] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s1!.travel).toEqual({ pace: 'fast' });
+
+      // A subsequent set_light_level should preserve the pace.
+      await applyMutations(SESSION_ID, [
+        { op: 'set_light_level', lightLevel: 'dim' },
+      ], []);
+      const [s2] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s2!.travel).toEqual({ pace: 'fast', lightLevel: 'dim' });
+    });
+
+    it('set_light_level: bright → darkness updates only the light field', async () => {
+      await resetTravel();
+      await applyMutations(SESSION_ID, [
+        { op: 'set_light_level', lightLevel: 'bright' },
+      ], []);
+      let [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.travel).toEqual({ lightLevel: 'bright' });
+
+      await applyMutations(SESSION_ID, [
+        { op: 'set_light_level', lightLevel: 'darkness' },
+      ], []);
+      [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect(s!.travel).toEqual({ lightLevel: 'darkness' });
+    });
+
+    it('set_marching_order persists the front/middle/back ranks', async () => {
+      await resetTravel();
+      const order = { front: ['pc1', 'companion'], middle: ['scout'], back: ['mage'] };
+      await applyMutations(SESSION_ID, [
+        { op: 'set_marching_order', order },
+      ], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect((s!.travel as { marchingOrder?: typeof order } | null)?.marchingOrder).toEqual(order);
+    });
+
+    it('set_senses on the PC writes characters.senses', async () => {
+      await applyMutations(SESSION_ID, [
+        { op: 'set_senses', actorId: PC_ID, senses: { darkvisionFt: 60, passivePerception: 13 } },
+      ], []);
+      const [c] = await db.select({ senses: characters.senses }).from(characters).where(eq(characters.id, PC_ID)).limit(1);
+      expect(c!.senses).toEqual({ darkvisionFt: 60, passivePerception: 13 });
+    });
+
+    it('set_senses on a combat actor writes combat_actors.senses (PC vs monster branching)', async () => {
+      await applyMutations(SESSION_ID, [
+        { op: 'set_senses', actorId: MONSTER_ID, senses: { darkvisionFt: 60 } },
+      ], []);
+      const [a] = await db.select({ senses: combatActors.senses }).from(combatActors).where(eq(combatActors.id, MONSTER_ID)).limit(1);
+      expect(a!.senses).toEqual({ darkvisionFt: 60 });
+
+      // PC senses unaffected (verifies the actorId branching doesn't leak across).
+      await applyMutations(SESSION_ID, [
+        { op: 'set_senses', actorId: MONSTER_ID, senses: { blindsightFt: 30, tremorsenseFt: 15 } },
+      ], []);
+      const [a2] = await db.select({ senses: combatActors.senses }).from(combatActors).where(eq(combatActors.id, MONSTER_ID)).limit(1);
+      expect(a2!.senses).toEqual({ blindsightFt: 30, tremorsenseFt: 15 });
+    });
+  });
 });

@@ -52,6 +52,9 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
       attunedItems: Array.isArray(character.attunedItems) ? character.attunedItems : [],
       hitDiceMax: character.hitDiceMax,
       hitDieSize: character.hitDieSize,
+      // PHB §6.4 — hydrate the optional Senses column. NULL → undefined so
+      // the engine type's optional field reads as absent.
+      senses: character.senses ?? undefined,
     },
   ];
 
@@ -91,6 +94,9 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
     runtime,
     combat: stateRow.combat ?? null,
     scene: stateRow.scene,
+    // PHB §6 — hydrate exploration/travel state if persisted. NULL means
+    // the session has no explicit travel context (combat or default scene).
+    travel: stateRow.travel ?? undefined,
   };
 
   // What the master sees about the PC. xp + inventory are included
@@ -139,6 +145,8 @@ function toEngineCombatActor(row: CombatActorRow): CombatActor {
     immunities: c.immunities ?? [],
     vulnerabilities: c.vulnerabilities ?? [],
     conditionImmunities: c.conditionImmunities ?? [],
+    // PHB §6.4 — special senses (NULL when the actor has none).
+    senses: row.senses ?? undefined,
   };
 }
 

@@ -1,6 +1,6 @@
 import { pgTable, uuid, text, integer, jsonb, boolean, index } from 'drizzle-orm/pg-core';
 import { sessions } from './sessions';
-import type { TurnState, Position } from '@/engine/types';
+import type { TurnState, Position, Senses } from '@/engine/types';
 
 export const combatActors = pgTable(
   'combat_actors',
@@ -17,6 +17,11 @@ export const combatActors = pgTable(
     isAlive: boolean('is_alive').notNull().default(true),
     turnState: jsonb('turn_state').$type<TurnState | null>().default(null),
     position: jsonb('position').$type<Position | null>().default(null),
+    /**
+     * PHB §6.4 special senses for this combat actor (typically derived
+     * from the monster stat block). NULL when not provided.
+     */
+    senses: jsonb('senses').$type<Senses | null>().default(null),
   },
   (t) => ({
     sessionIdx: index('combat_actors_session_idx').on(t.sessionId),
