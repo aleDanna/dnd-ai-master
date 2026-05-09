@@ -251,8 +251,21 @@ const ALWAYS_ON: AnthropicTool[] = [
   },
   {
     name: 'long_rest',
-    description: 'Take a long rest: full HP, all slots, all resources, half hit dice.',
-    input_schema: { type: 'object', required: ['actor'], properties: { actor: ACTOR_ID } } as never,
+    description:
+      "Take a long rest (PHB §5.2): full HP, all slots, all resources, half hit dice, and exhaustion -1. Returns errors when constraints are violated: cannot_rest_at_zero_hp (PC must be at ≥1 HP first — heal or stabilize), long_rest_cooldown (less than 24h since the previous long rest), long_rest_interrupted (interruptedByMinutes ≥ 60 — at least 1 hour of strenuous activity invalidates the rest, party must restart). Stamps the rest's timestamp on session_state for the 24h cooldown.",
+    input_schema: {
+      type: 'object',
+      required: ['actor'],
+      properties: {
+        actor: ACTOR_ID,
+        interruptedByMinutes: {
+          type: 'integer',
+          minimum: 0,
+          description:
+            'Minutes of strenuous activity (combat, casting, walking ≥1h) that interrupted the rest. ≥60 invalidates the rest. Default 0.',
+        },
+      },
+    } as never,
   },
   {
     name: 'equip',

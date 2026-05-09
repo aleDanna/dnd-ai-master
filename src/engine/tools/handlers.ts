@@ -244,13 +244,9 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
     return shortRest({ char, runtime, hitDiceSpent: Number(input.hitDiceSpent ?? 0) });
   },
 
-  long_rest: (state, input) => {
-    const charId = resolveCharacterId(state, input.actor);
-    const char = state.characters.find((c) => c.id === charId);
-    const runtime = state.runtime[charId];
-    if (!char || !runtime) return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
-    return longRest({ char, runtime });
-  },
+  // long_rest moved to TOOL_HANDLERS_DB so it can read the persisted
+  // `last_long_rest_at` from session_state for the §5.2 24h cooldown
+  // check. See the entry in TOOL_HANDLERS_DB below.
 
   equip: (state, input) => {
     const char = state.characters.find((c) => c.id === resolveCharacterId(state, input.actor));
@@ -546,6 +542,43 @@ export type DbToolHandler = (
 export const TOOL_HANDLERS_DB: Record<string, DbToolHandler> = {
   // lookup_codex doesn't need state, ignore the second arg.
   lookup_codex: (ctx, _state, input) => lookupCodex(ctx, input),
+
+  long_rest: async (ctx, state, input) => {
+    const charId = resolveCharacterId(state, input.actor);
+    const char = state.characters.find((c) => c.id === charId);
+    const runtime = state.runtime[charId];
+    if (!char || !runtime) {
+      return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
+    }
+
+    // PHB §5.2: read the persisted `last_long_rest_at` from session_state
+    // so we can enforce the 24h cooldown. NULL → no cooldown to enforce.
+    const { db } = await import('@/db/client');
+    const { sessionState } = await import('@/db/schema');
+    const { eq } = await import('drizzle-orm');
+    const [row] = await db
+      .select({ lastLongRestAt: sessionState.lastLongRestAt })
+      .from(sessionState)
+      .where(eq(sessionState.sessionId, ctx.sessionId))
+      .limit(1);
+    const lastLongRestAtMs = row?.lastLongRestAt
+      ? row.lastLongRestAt.getTime()
+      : undefined;
+
+    const interruptedByMinutesRaw = input.interruptedByMinutes;
+    const interruptedByMinutes =
+      typeof interruptedByMinutesRaw === 'number' && Number.isFinite(interruptedByMinutesRaw)
+        ? Math.max(0, Math.floor(interruptedByMinutesRaw))
+        : undefined;
+
+    return longRest({
+      char,
+      runtime,
+      lastLongRestAtMs,
+      currentEpochMs: Date.now(),
+      interruptedByMinutes,
+    });
+  },
 
   cast_spell: async (_ctx, state, input) => {
     const casterId = resolveCharacterId(state, input.caster);

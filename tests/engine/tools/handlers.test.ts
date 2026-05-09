@@ -248,12 +248,9 @@ describe('TOOL_HANDLERS — happy paths', () => {
     expect(r.ok).toBe(true);
   });
 
-  it('long_rest restores resources', () => {
-    const r = TOOL_HANDLERS['long_rest']!(baseState, {
-      actor: 'player_character',
-    });
-    expect(r.ok).toBe(true);
-  });
+  // long_rest is now a DB handler (TOOL_HANDLERS_DB) — happy-path coverage
+  // for the constraint logic lives in tests/engine/rests.test.ts. The
+  // definition→handler contract above already verifies the registry wiring.
 
   it('equip equips an item from inventory', () => {
     const r = TOOL_HANDLERS['equip']!(baseState, {
@@ -389,13 +386,9 @@ describe('TOOL_HANDLERS — error branches', () => {
     expect(r.error).toBe('unknown_actor');
   });
 
-  it('long_rest unknown actor returns error', () => {
-    const r = TOOL_HANDLERS['long_rest']!(baseState, {
-      actor: 'nonexistent',
-    });
-    expect(r.ok).toBe(false);
-    expect(r.error).toBe('unknown_actor');
-  });
+  // long_rest unknown-actor branch lives in TOOL_HANDLERS_DB; covered via
+  // integration in the long-rest scenarios. The pure engine tests in
+  // rests.test.ts already cover the constraint paths.
 
   it('equip unknown actor returns error', () => {
     const r = TOOL_HANDLERS['equip']!(baseState, {

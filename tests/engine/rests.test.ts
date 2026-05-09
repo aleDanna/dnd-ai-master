@@ -94,3 +94,163 @@ describe('longRest', () => {
     expect(r.mutations.some((m) => m.op === 'restore_spell_slot')).toBe(false);
   });
 });
+
+describe('longRest — PHB §5.2 constraints', () => {
+  const NOW = 1_700_000_000_000;
+  const TWENTY_FOUR_H = 24 * 60 * 60 * 1000;
+
+  it('errors when hpCurrent < 1', () => {
+    const downed: ActorRuntimeState = { ...fighterRuntime, hpCurrent: 0 };
+    const r = longRest({ char: fighter, runtime: downed, currentEpochMs: NOW });
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('cannot_rest_at_zero_hp');
+    expect(r.mutations).toEqual([]);
+  });
+
+  it('errors when last long rest was less than 24h ago (12h)', () => {
+    const r = longRest({
+      char: fighter,
+      runtime: fighterRuntime,
+      lastLongRestAtMs: NOW - 12 * 60 * 60 * 1000,
+      currentEpochMs: NOW,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('long_rest_cooldown');
+    expect(r.mutations).toEqual([]);
+  });
+
+  it('errors when last long rest was just under 24h ago (boundary)', () => {
+    const r = longRest({
+      char: fighter,
+      runtime: fighterRuntime,
+      lastLongRestAtMs: NOW - (TWENTY_FOUR_H - 1),
+      currentEpochMs: NOW,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('long_rest_cooldown');
+  });
+
+  it('succeeds when 24h+ have passed (boundary at 24h exactly)', () => {
+    const r = longRest({
+      char: fighter,
+      runtime: fighterRuntime,
+      lastLongRestAtMs: NOW - TWENTY_FOUR_H,
+      currentEpochMs: NOW,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('succeeds when 25h have passed', () => {
+    const r = longRest({
+      char: fighter,
+      runtime: fighterRuntime,
+      lastLongRestAtMs: NOW - 25 * 60 * 60 * 1000,
+      currentEpochMs: NOW,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('errors when interruptedByMinutes >= 60 (exactly 60)', () => {
+    const r = longRest({
+      char: fighter,
+      runtime: fighterRuntime,
+      currentEpochMs: NOW,
+      interruptedByMinutes: 60,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('long_rest_interrupted');
+    expect(r.mutations).toEqual([]);
+  });
+
+  it('errors when interruptedByMinutes well above 60', () => {
+    const r = longRest({
+      char: fighter,
+      runtime: fighterRuntime,
+      currentEpochMs: NOW,
+      interruptedByMinutes: 240,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('long_rest_interrupted');
+  });
+
+  it('succeeds when interruptedByMinutes < 60 (45m of light activity)', () => {
+    const r = longRest({
+      char: fighter,
+      runtime: fighterRuntime,
+      currentEpochMs: NOW,
+      interruptedByMinutes: 45,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('succeeds when interruptedByMinutes is undefined (no interruption)', () => {
+    const r = longRest({
+      char: fighter,
+      runtime: fighterRuntime,
+      currentEpochMs: NOW,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('reduces exhaustion by 1 (PHB §4.1) when present', () => {
+    const tired: ActorRuntimeState = { ...fighterRuntime, exhaustionLevel: 3 };
+    const r = longRest({ char: fighter, runtime: tired, currentEpochMs: NOW });
+    expect(r.ok).toBe(true);
+    const ex = r.mutations.find(
+      (m) => m.op === 'remove_condition' && m.conditionSlug === 'exhaustion',
+    );
+    expect(ex).toBeDefined();
+  });
+
+  it('does not emit remove_condition exhaustion when level is 0', () => {
+    const r = longRest({ char: fighter, runtime: fighterRuntime, currentEpochMs: NOW });
+    expect(r.ok).toBe(true);
+    const ex = r.mutations.find(
+      (m) => m.op === 'remove_condition' && m.conditionSlug === 'exhaustion',
+    );
+    expect(ex).toBeUndefined();
+  });
+
+  it('does not emit remove_condition exhaustion when exhaustionLevel is undefined', () => {
+    const noExhaustField: ActorRuntimeState = { ...fighterRuntime };
+    delete noExhaustField.exhaustionLevel;
+    const r = longRest({ char: fighter, runtime: noExhaustField, currentEpochMs: NOW });
+    expect(r.ok).toBe(true);
+    const ex = r.mutations.find(
+      (m) => m.op === 'remove_condition' && m.conditionSlug === 'exhaustion',
+    );
+    expect(ex).toBeUndefined();
+  });
+
+  it('emits set_long_rest_at mutation with currentEpochMs', () => {
+    const r = longRest({ char: fighter, runtime: fighterRuntime, currentEpochMs: NOW });
+    expect(r.ok).toBe(true);
+    const stamp = r.mutations.find((m) => m.op === 'set_long_rest_at');
+    expect(stamp).toBeDefined();
+    expect((stamp as { op: 'set_long_rest_at'; epochMs: number }).epochMs).toBe(NOW);
+  });
+
+  it('emits set_long_rest_at using Date.now() when currentEpochMs is omitted', () => {
+    const before = Date.now();
+    const r = longRest({ char: fighter, runtime: fighterRuntime });
+    const after = Date.now();
+    expect(r.ok).toBe(true);
+    const stamp = r.mutations.find((m) => m.op === 'set_long_rest_at') as {
+      op: 'set_long_rest_at';
+      epochMs: number;
+    };
+    expect(stamp.epochMs).toBeGreaterThanOrEqual(before);
+    expect(stamp.epochMs).toBeLessThanOrEqual(after);
+  });
+
+  it('does NOT emit set_long_rest_at when the rest is rejected', () => {
+    const r = longRest({
+      char: fighter,
+      runtime: fighterRuntime,
+      lastLongRestAtMs: NOW - 1000, // 1s ago — clearly within 24h
+      currentEpochMs: NOW,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.mutations.find((m) => m.op === 'set_long_rest_at')).toBeUndefined();
+  });
+});
