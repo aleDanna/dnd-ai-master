@@ -1,3 +1,5 @@
+import type { MasterInventoryView } from '@/srd/enrich-inventory';
+
 /**
  * Client-side categorization for an inventory list. The character payload
  * carries items as `{ slug, qty, equipped }` triples — we don't ship SRD
@@ -95,4 +97,29 @@ export function slugToLabel(slug: string): string {
     .filter(Boolean)
     .map((w) => w[0]!.toUpperCase() + w.slice(1))
     .join(' ');
+}
+
+/**
+ * Decide what label to render for an inventory row, and whether to apply
+ * the narrative-item visual treatment. Pure — no DB access.
+ *
+ * - Falls back to slugToLabel when no enriched view is supplied (older SSE
+ *   tick that hasn't shipped enriched data yet).
+ * - For named_items, uses `view.name` when present; appends "(narrativo)"
+ *   only when `magical === false`. Magical named items get the full name
+ *   without suffix (the player should see them as real items).
+ */
+export function formatInventoryDisplay(
+  slug: string,
+  view?: MasterInventoryView,
+): { label: string; isNarrative: boolean } {
+  if (!view) return { label: slugToLabel(slug), isNarrative: false };
+
+  const baseName = view.name && view.name.trim() ? view.name : slugToLabel(slug);
+  const isNarrative = view.kind === 'named_item' && view.magical === false;
+
+  return {
+    label: isNarrative ? `${baseName} (narrativo)` : baseName,
+    isNarrative,
+  };
 }
