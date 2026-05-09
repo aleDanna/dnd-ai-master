@@ -203,6 +203,41 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
       const last = c.currentIdx >= c.turnOrder.length - 1;
       const next = { ...c, currentIdx: last ? 0 : c.currentIdx + 1, round: last ? c.round + 1 : c.round };
       await tx.update(sessionStateTable).set({ combat: next }).where(eq(sessionStateTable.sessionId, sessionId));
+
+      // PHB §8.7: tick condition durations at the end of the previous actor's
+      // turn. The actor whose turn just ended is at c.turnOrder[c.currentIdx]
+      // (BEFORE we advanced). Decrement durationRounds for round-counted
+      // conditions; drop any that hit 0; leave 'until_removed' alone.
+      const previousActorId = c.turnOrder[c.currentIdx]?.actorId;
+      if (previousActorId) {
+        const isPc = previousActorId === ctx.characterId;
+        if (isPc) {
+          const conds = (s.conditions as ConditionInstance[]) ?? [];
+          const ticked = tickConditionsArray(conds);
+          if (ticked.changed) {
+            await tx
+              .update(sessionStateTable)
+              .set({ conditions: ticked.next })
+              .where(eq(sessionStateTable.sessionId, sessionId));
+          }
+        } else {
+          const [actor] = await tx
+            .select()
+            .from(combatActorsTable)
+            .where(and(eq(combatActorsTable.sessionId, sessionId), eq(combatActorsTable.id, previousActorId)))
+            .limit(1);
+          if (actor) {
+            const conds = (actor.conditions as ConditionInstance[]) ?? [];
+            const ticked = tickConditionsArray(conds);
+            if (ticked.changed) {
+              await tx
+                .update(combatActorsTable)
+                .set({ conditions: ticked.next })
+                .where(and(eq(combatActorsTable.sessionId, sessionId), eq(combatActorsTable.id, previousActorId)));
+            }
+          }
+        }
+      }
       break;
     }
     case 'set_scene': {
@@ -596,4 +631,38 @@ function mergeInventoryRemove(inv: unknown, slug: string, qty: number): InvRow[]
   return safe
     .map((it) => (it.slug === slug ? { ...it, qty: it.qty - safeQty } : it))
     .filter((it) => it.qty > 0);
+}
+
+/**
+ * Pure helper that decrements `durationRounds` on each round-counted
+ * condition and drops those that reach 0. Conditions with
+ * `durationRounds === 'until_removed'` are passed through untouched.
+ *
+ * Mirrors the logic of `tickConditions` in `engine/combat/turn.ts` but
+ * works on a raw array (no ActorRuntimeState needed) so the applicator
+ * can call it inside its existing transactional read-update cycle on
+ * either `session_state.conditions` or `combat_actors.conditions`.
+ *
+ * Returns `changed=false` when nothing needed to update — caller skips
+ * the DB write to avoid a no-op transaction step.
+ */
+function tickConditionsArray(
+  conds: ConditionInstance[],
+): { next: ConditionInstance[]; changed: boolean } {
+  let changed = false;
+  const next: ConditionInstance[] = [];
+  for (const c of conds) {
+    if (c.durationRounds === 'until_removed') {
+      next.push(c);
+      continue;
+    }
+    const newDuration = c.durationRounds - 1;
+    if (newDuration <= 0) {
+      changed = true;
+      continue; // drop expired
+    }
+    if (newDuration !== c.durationRounds) changed = true;
+    next.push({ ...c, durationRounds: newDuration });
+  }
+  return { next, changed };
 }

@@ -488,6 +488,107 @@ describe('applyMutations', () => {
     });
   });
 
+  describe('applicator — advance_turn ticks condition durations', () => {
+    // Helper: seed a fresh combat with PC + MONSTER so we can drive advance_turn.
+    async function seedCombat(args: {
+      currentIdx: number;
+      round: number;
+      pcConditions?: { slug: string; source: string; durationRounds: number | 'until_removed'; appliedRound: number }[];
+      monsterConditions?: { slug: string; source: string; durationRounds: number | 'until_removed'; appliedRound: number }[];
+    }) {
+      const combat = {
+        round: args.round,
+        currentIdx: args.currentIdx,
+        turnOrder: [
+          { actorId: PC_ID, initiative: 18 },
+          { actorId: MONSTER_ID, initiative: 12 },
+        ],
+      };
+      await db
+        .update(sessionState)
+        .set({
+          combat: combat as never,
+          inCombat: true,
+          conditions: (args.pcConditions ?? []) as never,
+        })
+        .where(eq(sessionState.sessionId, SESSION_ID));
+      await db
+        .update(combatActors)
+        .set({ conditions: (args.monsterConditions ?? []) as never })
+        .where(eq(combatActors.id, MONSTER_ID));
+    }
+
+    it('decrements PC condition durationRounds when their turn ends', async () => {
+      await seedCombat({
+        currentIdx: 0, // PC's turn
+        round: 1,
+        pcConditions: [
+          { slug: 'blessed', source: 'cleric bless', durationRounds: 10, appliedRound: 0 },
+        ],
+      });
+      await applyMutations(SESSION_ID, [{ op: 'advance_turn' }], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      const conds = (s!.conditions ?? []) as { slug: string; durationRounds: number | 'until_removed' }[];
+      expect(conds.find((c) => c.slug === 'blessed')?.durationRounds).toBe(9);
+    });
+
+    it('removes PC condition when durationRounds reaches 0', async () => {
+      await seedCombat({
+        currentIdx: 0,
+        round: 1,
+        pcConditions: [
+          { slug: 'helped', source: 'help-action', durationRounds: 1, appliedRound: 0 },
+        ],
+      });
+      await applyMutations(SESSION_ID, [{ op: 'advance_turn' }], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      const conds = (s!.conditions ?? []) as { slug: string }[];
+      expect(conds.some((c) => c.slug === 'helped')).toBe(false);
+    });
+
+    it('leaves until_removed conditions untouched', async () => {
+      await seedCombat({
+        currentIdx: 0,
+        round: 1,
+        pcConditions: [
+          { slug: 'unconscious', source: 'KO', durationRounds: 'until_removed', appliedRound: 0 },
+        ],
+      });
+      await applyMutations(SESSION_ID, [{ op: 'advance_turn' }], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      const conds = (s!.conditions ?? []) as { slug: string; durationRounds: number | 'until_removed' }[];
+      expect(conds.find((c) => c.slug === 'unconscious')?.durationRounds).toBe('until_removed');
+    });
+
+    it('decrements monster (combat actor) condition durations when their turn ends', async () => {
+      await seedCombat({
+        currentIdx: 1, // monster's turn
+        round: 2,
+        monsterConditions: [
+          { slug: 'poisoned', source: 'venom', durationRounds: 3, appliedRound: 1 },
+        ],
+      });
+      await applyMutations(SESSION_ID, [{ op: 'advance_turn' }], []);
+      const [a] = await db.select().from(combatActors).where(eq(combatActors.id, MONSTER_ID)).limit(1);
+      const conds = (a!.conditions ?? []) as { slug: string; durationRounds: number | 'until_removed' }[];
+      expect(conds.find((c) => c.slug === 'poisoned')?.durationRounds).toBe(2);
+    });
+
+    it('removes expired monster condition', async () => {
+      await seedCombat({
+        currentIdx: 1,
+        round: 2,
+        monsterConditions: [
+          { slug: 'poisoned', source: 'venom', durationRounds: 1, appliedRound: 1 },
+        ],
+      });
+      await applyMutations(SESSION_ID, [{ op: 'advance_turn' }], []);
+      const [a] = await db.select().from(combatActors).where(eq(combatActors.id, MONSTER_ID)).limit(1);
+      const conds = (a!.conditions ?? []) as { slug: string }[];
+      expect(conds.some((c) => c.slug === 'poisoned')).toBe(false);
+    });
+  });
+
   describe('applicator — action economy mutations', () => {
     // Helper: clear/seed turnState + position so each test starts at a known state.
     async function resetTurnState(turnState: unknown = null, position: unknown = null) {
