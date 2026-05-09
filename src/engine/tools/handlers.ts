@@ -1,4 +1,18 @@
-import type { ActionResult, DiceRoll, EngineState, Mutation } from '../types';
+import type {
+  ActionResult,
+  DiceRoll,
+  EngineState,
+  LightLevel,
+  MarchingOrder,
+  Mutation,
+  Senses,
+  TravelPace,
+} from '../types';
+import {
+  fallingDamageFormula,
+  lightEffects,
+  suffocationSurvival,
+} from '../exploration';
 import { rollDice as rollDiceFn, rollD20 as rollD20Fn } from '../dice';
 import { abilityCheck, savingThrow } from '../checks';
 import { rollInitiative } from '../combat/initiative';
@@ -446,6 +460,77 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       return { ok: false, error: 'invalid_slug', rolls: [], mutations: [] };
     }
     return handleUnattune(state, { character: charId, itemSlug: slug });
+  },
+
+  set_travel_pace: (state, input) => {
+    return handleSetTravelPace(state, { pace: input.pace as TravelPace });
+  },
+
+  set_light_level: (state, input) => {
+    return handleSetLightLevel(state, { lightLevel: input.lightLevel as LightLevel });
+  },
+
+  set_marching_order: (state, input) => {
+    return handleSetMarchingOrder(state, { order: input.order as MarchingOrder });
+  },
+
+  set_senses: (state, input) => {
+    const ref = input.actor ?? input.actorId ?? input.character;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
+    }
+    const senses = input.senses as Senses;
+    return handleSetSenses(state, { actor: String(ref), senses });
+  },
+
+  check_vision: (state, input) => {
+    const ref = input.observer ?? input.actor ?? input.actorId;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_observer', rolls: [], mutations: [] };
+    }
+    const distanceFt = Number(input.distanceFt);
+    if (!Number.isFinite(distanceFt)) {
+      return { ok: false, error: 'invalid_distance', rolls: [], mutations: [] };
+    }
+    const lightLevel =
+      typeof input.lightLevel === 'string'
+        ? (input.lightLevel as LightLevel)
+        : undefined;
+    return handleCheckVision(state, {
+      observer: String(ref),
+      distanceFt,
+      lightLevel,
+    });
+  },
+
+  apply_falling: (state, input) => {
+    const ref = input.actor ?? input.actorId;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
+    }
+    const distanceFt = Number(input.distanceFt);
+    if (!Number.isFinite(distanceFt)) {
+      return { ok: false, error: 'invalid_distance', rolls: [], mutations: [] };
+    }
+    return handleApplyFalling({ rng: Math.random }, state, {
+      actor: String(ref),
+      distanceFt,
+    });
+  },
+
+  apply_suffocation: (state, input) => {
+    const ref = input.actor ?? input.actorId ?? input.character;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const secondsWithoutAir = Number(input.secondsWithoutAir);
+    if (!Number.isFinite(secondsWithoutAir)) {
+      return { ok: false, error: 'invalid_seconds', rolls: [], mutations: [] };
+    }
+    return handleApplySuffocation(state, {
+      actor: String(ref),
+      secondsWithoutAir,
+    });
   },
 };
 
@@ -991,6 +1076,341 @@ export function handleUnattune(
     rolls: [],
     mutations: [
       { op: 'unattune', characterId: char.id, itemSlug: input.itemSlug },
+    ],
+  };
+}
+
+// ─── Exploration handlers (PHB §6.1, §6.2, §6.4, §6.5, §6.6) ──────────────
+
+const VALID_TRAVEL_PACES: ReadonlySet<TravelPace> = new Set(['fast', 'normal', 'slow']);
+const VALID_LIGHT_LEVELS: ReadonlySet<LightLevel> = new Set(['bright', 'dim', 'darkness']);
+
+/**
+ * PHB §6.1: set the party's travel pace. Wraps a single set_travel_pace
+ * mutation. Returns `invalid_pace` if the input isn't fast/normal/slow.
+ */
+export function handleSetTravelPace(
+  _state: EngineState,
+  input: { pace: TravelPace },
+): ActionResult<{ pace: TravelPace }> {
+  if (!VALID_TRAVEL_PACES.has(input.pace)) {
+    return { ok: false, error: 'invalid_pace', rolls: [], mutations: [] };
+  }
+  return {
+    ok: true,
+    data: { pace: input.pace },
+    rolls: [],
+    mutations: [{ op: 'set_travel_pace', pace: input.pace }],
+  };
+}
+
+/**
+ * PHB §6.4: set the ambient light level for the current scene. Returns
+ * `invalid_light_level` if the input isn't bright/dim/darkness.
+ */
+export function handleSetLightLevel(
+  _state: EngineState,
+  input: { lightLevel: LightLevel },
+): ActionResult<{ lightLevel: LightLevel }> {
+  if (!VALID_LIGHT_LEVELS.has(input.lightLevel)) {
+    return { ok: false, error: 'invalid_light_level', rolls: [], mutations: [] };
+  }
+  return {
+    ok: true,
+    data: { lightLevel: input.lightLevel },
+    rolls: [],
+    mutations: [{ op: 'set_light_level', lightLevel: input.lightLevel }],
+  };
+}
+
+/**
+ * PHB §6.2: set the marching order ranks. Each rank is an array of actor
+ * IDs (PC + companions/NPCs). The engine accepts arbitrary IDs — the
+ * master is responsible for using consistent identifiers.
+ */
+export function handleSetMarchingOrder(
+  _state: EngineState,
+  input: { order: MarchingOrder },
+): ActionResult<{ order: MarchingOrder }> {
+  if (
+    !input.order ||
+    typeof input.order !== 'object' ||
+    !Array.isArray(input.order.front) ||
+    !Array.isArray(input.order.middle) ||
+    !Array.isArray(input.order.back)
+  ) {
+    return { ok: false, error: 'invalid_order', rolls: [], mutations: [] };
+  }
+  return {
+    ok: true,
+    data: { order: input.order },
+    rolls: [],
+    mutations: [{ op: 'set_marching_order', order: input.order }],
+  };
+}
+
+/**
+ * PHB §6.4: assign Senses (darkvision/blindsight/tremorsense/truesight +
+ * optional passive Perception override) to a PC or combat actor. The
+ * applicator branches PC vs combat-actor by id.
+ */
+export function handleSetSenses(
+  state: EngineState,
+  input: { actor: string; senses: Senses },
+): ActionResult<{ actor: string; senses: Senses }> {
+  const actorId = resolveCharacterId(state, input.actor);
+  const isPc = state.characters.some((c) => c.id === actorId);
+  const isCombatActor = state.combatActors.some((a) => a.id === actorId);
+  if (!isPc && !isCombatActor) {
+    return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
+  }
+  if (!input.senses || typeof input.senses !== 'object') {
+    return { ok: false, error: 'invalid_senses', rolls: [], mutations: [] };
+  }
+  return {
+    ok: true,
+    data: { actor: actorId, senses: input.senses },
+    rolls: [],
+    mutations: [{ op: 'set_senses', actorId, senses: input.senses }],
+  };
+}
+
+/**
+ * PHB §6.4: pure read-only check of what an observer can perceive at a
+ * given distance under the current (or supplied) light level. Returns
+ * `canSee/perceptionDisadvantage/effectivelyBlinded/senseUsed`.
+ *
+ * Sense priority (per PHB):
+ *   1. blindsight (in range) — bypasses light entirely
+ *   2. tremorsense (in range) — bypasses light entirely
+ *   3. truesight (in range) — sees as bright regardless of darkness
+ *   4. darkvision + light level — treats dim as bright, darkness as dim
+ *   5. plain sight — bound by ambient light
+ *
+ * If `lightLevel` is omitted, falls back to `state.travel?.lightLevel`
+ * else `'bright'`.
+ *
+ * NO mutation — purely informational. Caller decides how to use the
+ * advantage/disadvantage in subsequent rolls (e.g. pass `disadvantage`
+ * to `ability_check` for a Perception roll).
+ */
+export function handleCheckVision(
+  state: EngineState,
+  input: { observer: string; distanceFt: number; lightLevel?: LightLevel },
+): ActionResult<{
+  canSee: boolean;
+  perceptionDisadvantage: boolean;
+  effectivelyBlinded: boolean;
+  senseUsed: 'sight' | 'darkvision' | 'blindsight' | 'tremorsense' | 'truesight';
+  lightLevel: LightLevel;
+}> {
+  const observerId = resolveCharacterId(state, input.observer);
+  const obs =
+    state.characters.find((c) => c.id === observerId) ??
+    state.combatActors.find((a) => a.id === observerId);
+  if (!obs) {
+    return { ok: false, error: 'unknown_observer', rolls: [], mutations: [] };
+  }
+  if (!Number.isFinite(input.distanceFt) || input.distanceFt < 0) {
+    return { ok: false, error: 'invalid_distance', rolls: [], mutations: [] };
+  }
+  const senses: Senses = obs.senses ?? {};
+  const lightLevel: LightLevel =
+    input.lightLevel ?? state.travel?.lightLevel ?? 'bright';
+
+  // Blindsight / tremorsense bypass light. Blindsight wins ties since a
+  // creature with both can see normally either way; tremorsense requires
+  // ground contact (the engine doesn't model that — narrative concern).
+  if ((senses.blindsightFt ?? 0) >= input.distanceFt) {
+    return {
+      ok: true,
+      data: {
+        canSee: true,
+        perceptionDisadvantage: false,
+        effectivelyBlinded: false,
+        senseUsed: 'blindsight',
+        lightLevel,
+      },
+      rolls: [],
+      mutations: [],
+    };
+  }
+  if ((senses.tremorsenseFt ?? 0) >= input.distanceFt) {
+    return {
+      ok: true,
+      data: {
+        canSee: true,
+        perceptionDisadvantage: false,
+        effectivelyBlinded: false,
+        senseUsed: 'tremorsense',
+        lightLevel,
+      },
+      rolls: [],
+      mutations: [],
+    };
+  }
+
+  const fx = lightEffects(lightLevel, senses, input.distanceFt);
+  // Determine which sense answered: truesight beats darkvision beats sight.
+  let senseUsed: 'sight' | 'darkvision' | 'truesight' = 'sight';
+  if ((senses.truesightFt ?? 0) >= input.distanceFt) {
+    senseUsed = 'truesight';
+  } else if ((senses.darkvisionFt ?? 0) >= input.distanceFt && lightLevel !== 'bright') {
+    senseUsed = 'darkvision';
+  }
+
+  return {
+    ok: true,
+    data: {
+      canSee: !fx.effectivelyBlinded,
+      perceptionDisadvantage: fx.perceptionDisadvantage,
+      effectivelyBlinded: fx.effectivelyBlinded,
+      senseUsed,
+      lightLevel,
+    },
+    rolls: [],
+    mutations: [],
+  };
+}
+
+/**
+ * PHB §6.6: a falling creature takes 1d6 bludgeoning per 10 ft (max 20d6)
+ * AND lands prone unless negated. The handler rolls the dice and emits
+ * `apply_damage` (bludgeoning) + `add_condition` (prone). distanceFt < 10
+ * is a no-op (no dice rolled, no prone).
+ */
+export function handleApplyFalling(
+  ctx: { rng: () => number },
+  state: EngineState,
+  input: { actor: string; distanceFt: number },
+): ActionResult<{ damage: number; prone: boolean; dice: number }> {
+  const actorId = resolveCharacterId(state, input.actor);
+  const target =
+    state.characters.find((c) => c.id === actorId) ??
+    state.combatActors.find((a) => a.id === actorId);
+  if (!target) {
+    return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
+  }
+  if (!Number.isFinite(input.distanceFt)) {
+    return { ok: false, error: 'invalid_distance', rolls: [], mutations: [] };
+  }
+
+  const { dice } = fallingDamageFormula(input.distanceFt);
+  if (dice === 0) {
+    return {
+      ok: true,
+      data: { damage: 0, prone: false, dice: 0 },
+      rolls: [],
+      mutations: [],
+    };
+  }
+
+  let total = 0;
+  const rollValues: number[] = [];
+  for (let i = 0; i < dice; i++) {
+    const r = Math.floor(ctx.rng() * 6) + 1;
+    rollValues.push(r);
+    total += r;
+  }
+  const formulaRoll: DiceRoll = {
+    formula: `${dice}d6`,
+    rolls: rollValues,
+    modifier: 0,
+    total,
+    meta: { kind: 'damage', subtype: 'falling' },
+  };
+
+  return {
+    ok: true,
+    data: { damage: total, prone: true, dice },
+    rolls: [formulaRoll],
+    mutations: [
+      { op: 'apply_damage', actorId: target.id, amount: total, type: 'bludgeoning' },
+      {
+        op: 'add_condition',
+        actorId: target.id,
+        condition: {
+          slug: 'prone',
+          source: 'falling',
+          durationRounds: 'until_removed',
+          appliedRound: state.combat?.round ?? 0,
+        },
+      },
+    ],
+  };
+}
+
+/**
+ * PHB §6.5: hold breath = max(30 sec, (1+CON mod)·60 sec). After that, a
+ * creature can endure CON mod rounds (min 1) at 0 HP before falling
+ * unconscious and beginning to suffocate. The handler categorises the
+ * elapsed time:
+ *   - status='ok' if within hold-breath window
+ *   - status='past_breath' if past hold but within post-breath rounds
+ *   - status='unconscious' once both windows are exhausted: emits
+ *     set_hp 0 + add_condition unconscious
+ *
+ * Currently scoped to PCs (the rule applies to creatures generally; the
+ * engine only persists the PC's CON and conditions in session_state).
+ */
+export function handleApplySuffocation(
+  state: EngineState,
+  input: { actor: string; secondsWithoutAir: number },
+): ActionResult<{
+  holdBreathSeconds: number;
+  postBreathRounds: number;
+  status: 'ok' | 'past_breath' | 'unconscious';
+}> {
+  const actorId = resolveCharacterId(state, input.actor);
+  const char = state.characters.find((c) => c.id === actorId);
+  if (!char) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+  if (!Number.isFinite(input.secondsWithoutAir) || input.secondsWithoutAir < 0) {
+    return { ok: false, error: 'invalid_seconds', rolls: [], mutations: [] };
+  }
+
+  const conMod = abilityModifier(char.abilities.CON);
+  const { holdBreathSeconds, postBreathRounds } = suffocationSurvival(conMod);
+  const postBreathSeconds = postBreathRounds * 6; // 6 sec per combat round (PHB §9)
+
+  if (input.secondsWithoutAir <= holdBreathSeconds) {
+    return {
+      ok: true,
+      data: { holdBreathSeconds, postBreathRounds, status: 'ok' },
+      rolls: [],
+      mutations: [],
+    };
+  }
+
+  if (input.secondsWithoutAir <= holdBreathSeconds + postBreathSeconds) {
+    return {
+      ok: true,
+      data: { holdBreathSeconds, postBreathRounds, status: 'past_breath' },
+      rolls: [],
+      mutations: [],
+    };
+  }
+
+  // Past both windows → drop to 0 HP and unconscious. The PC enters the
+  // dying state; the master is responsible for narrating subsequent ticks
+  // (instant death after 5 rounds of full suffocation per PHB §6.5).
+  return {
+    ok: true,
+    data: { holdBreathSeconds, postBreathRounds, status: 'unconscious' },
+    rolls: [],
+    mutations: [
+      { op: 'set_hp', actorId: char.id, hpCurrent: 0 },
+      {
+        op: 'add_condition',
+        actorId: char.id,
+        condition: {
+          slug: 'unconscious',
+          source: 'suffocation',
+          durationRounds: 'until_removed',
+          appliedRound: state.combat?.round ?? 0,
+        },
+      },
     ],
   };
 }

@@ -510,6 +510,116 @@ const ALWAYS_ON: AnthropicTool[] = [
     } as never,
   },
   {
+    name: 'set_travel_pace',
+    description:
+      "PHB §6.1: set the party's travel pace (Fast/Normal/Slow). Fast = 4 mi/h, 30 mi/day, but -5 to passive Perception (DIS). Normal = 3 mi/h, 24 mi/day, baseline. Slow = 2 mi/h, 18 mi/day, but stealth allowed while travelling. Persists to session_state.travel.pace; merges with any existing travel state (light level, marching order). Errors with invalid_pace if the value isn't fast/normal/slow.",
+    input_schema: {
+      type: 'object',
+      required: ['pace'],
+      properties: {
+        pace: { type: 'string', enum: ['fast', 'normal', 'slow'] },
+      },
+    } as never,
+  },
+  {
+    name: 'set_light_level',
+    description:
+      "PHB §6.4: set the ambient light level for the current scene (bright/dim/darkness). Bright = normal vision. Dim = lightly obscured (DIS on Perception relying on sight unless darkvision). Darkness = heavily obscured (effectively blinded unless darkvision/truesight). Persists to session_state.travel.lightLevel; check_vision honours this default when called without an explicit lightLevel.",
+    input_schema: {
+      type: 'object',
+      required: ['lightLevel'],
+      properties: {
+        lightLevel: { type: 'string', enum: ['bright', 'dim', 'darkness'] },
+      },
+    } as never,
+  },
+  {
+    name: 'set_marching_order',
+    description:
+      "PHB §6.2: record the party's marching order (front/middle/back ranks). Each rank is an array of actor IDs (PC + companions/NPCs). Narrative-only — used for ambush positioning and area-of-effect rulings; the engine does not enforce positional rules from this state.",
+    input_schema: {
+      type: 'object',
+      required: ['order'],
+      properties: {
+        order: {
+          type: 'object',
+          required: ['front', 'middle', 'back'],
+          properties: {
+            front: { type: 'array', items: { type: 'string' } },
+            middle: { type: 'array', items: { type: 'string' } },
+            back: { type: 'array', items: { type: 'string' } },
+          },
+        },
+      },
+    } as never,
+  },
+  {
+    name: 'set_senses',
+    description:
+      "PHB §6.4: assign special senses to a PC or combat actor. All fields optional and in feet — provide only the senses the actor possesses. darkvisionFt: sees dim as bright and darkness as dim within range (still DIS for Perception in actual darkness). blindsightFt: perceives surroundings without relying on sight. tremorsenseFt: detects creatures touching the same surface. truesightFt: sees through magical and non-magical darkness, invisibility, and illusions within range. passivePerception: optional override (otherwise derived from skill). Branches PC vs combat actor by id.",
+    input_schema: {
+      type: 'object',
+      required: ['actor', 'senses'],
+      properties: {
+        actor: ACTOR_ID,
+        senses: {
+          type: 'object',
+          properties: {
+            darkvisionFt: { type: 'integer', minimum: 0 },
+            blindsightFt: { type: 'integer', minimum: 0 },
+            tremorsenseFt: { type: 'integer', minimum: 0 },
+            truesightFt: { type: 'integer', minimum: 0 },
+            passivePerception: { type: 'integer', minimum: 0 },
+          },
+        },
+      },
+    } as never,
+  },
+  {
+    name: 'check_vision',
+    description:
+      "PHB §6.4: programmatically check what an observer can perceive at a given distance under the current (or supplied) light level. Returns { canSee, perceptionDisadvantage, effectivelyBlinded, senseUsed, lightLevel }. Sense priority: blindsight > tremorsense (both bypass light) > truesight (overrides darkness) > darkvision + light (treats dim as bright, darkness as dim) > plain sight. lightLevel optional — defaults to session_state.travel.lightLevel else 'bright'. Pure (no mutation) — caller decides how to apply ADV/DIS to subsequent Perception rolls.",
+    input_schema: {
+      type: 'object',
+      required: ['observer', 'distanceFt'],
+      properties: {
+        observer: ACTOR_ID,
+        distanceFt: { type: 'integer', minimum: 0 },
+        lightLevel: {
+          type: 'string',
+          enum: ['bright', 'dim', 'darkness'],
+          description: "Optional override; falls back to state.travel.lightLevel else 'bright'.",
+        },
+      },
+    } as never,
+  },
+  {
+    name: 'apply_falling',
+    description:
+      "PHB §6.6: apply falling damage. Rolls Math.min(20, floor(distanceFt/10)) d6 bludgeoning and emits apply_damage + add_condition('prone'). Capped at 20d6 (the rules' maximum). distanceFt < 10 is a no-op (returns dice:0, prone:false, no mutations). The DM is responsible for narrating the fall and any resistance/feather-fall negation BEFORE calling — the tool is otherwise unconditional.",
+    input_schema: {
+      type: 'object',
+      required: ['actor', 'distanceFt'],
+      properties: {
+        actor: ACTOR_ID,
+        distanceFt: { type: 'integer', minimum: 0 },
+      },
+    } as never,
+  },
+  {
+    name: 'apply_suffocation',
+    description:
+      "PHB §6.5: evaluate suffocation status given seconds without air. Hold-breath = max(30 sec, (1+CON mod)·60 sec). After that, the PC endures CON mod rounds (min 1) at 0 HP before falling unconscious. Returns status: 'ok' (within hold-breath), 'past_breath' (past hold but within post-breath rounds), or 'unconscious' (both windows exhausted — emits set_hp 0 + add_condition unconscious). PC-only.",
+    input_schema: {
+      type: 'object',
+      required: ['actor', 'secondsWithoutAir'],
+      properties: {
+        actor: ACTOR_ID,
+        secondsWithoutAir: { type: 'integer', minimum: 0 },
+      },
+    } as never,
+  },
+  {
     name: 'lookup_codex',
     description:
       "Look up a campaign-codex entity by kind + name/slug. Use when an NPC, location, quest, faction, lore fact, named item, or relationship is referenced in chat and is NOT already visible in the Scene card. The codex is the single source of truth for narrative continuity — prefer it over re-inventing details. Returns up to 5 matches; returns an empty array when nothing matches.",
