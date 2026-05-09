@@ -257,11 +257,48 @@ actions:
 For Rogue Cunning Action, pass \`useBonusAction: true\` to use the bonus
 slot for Dash/Disengage/Hide.
 
+**Extra Attack / Multiattack (PHB §10):**
+Some classes (Fighter, Barbarian, Paladin, Ranger) at level 5+ have the Extra
+Attack feature: "When you take the Attack action on your turn, you can attack
+twice instead of once." Some monsters have similar Multiattack actions.
+
+To represent multiple attacks in a single Attack action, call \`make_attack\`
+multiple times. The FIRST call consumes the action; subsequent calls within
+the same turn must pass \`isExtraAttack: true\` to skip the action budget
+check (and the redundant \`consume_action\` emission). The Master enforces
+the per-class limit (Fighter L5: 2, L11: 3, L20: 4; Barbarian/Paladin/Ranger
+L5: 2; monster Multiattack varies per stat block).
+
+Example flow for Fighter L5 attacking a goblin twice:
+1. \`make_attack({ attacker: 'pc1', target: 'm1', weapon: ... })\` → consumes the action.
+2. \`make_attack({ attacker: 'pc1', target: 'm1', weapon: ..., isExtraAttack: true })\` → no budget consume.
+
+If you call \`make_attack\` a second time WITHOUT \`isExtraAttack: true\`,
+the engine returns \`action_already_used\`.
+
+**Condition durations decrement automatically:**
+When \`advance_turn\` fires, the engine decrements \`durationRounds\` on the
+previous actor's conditions and removes those that reach 0. So spells like
+bless (10 rounds), hold-person (10 rounds), helped (1 round), and similar
+timed effects end on their own without manual \`remove_condition\` calls.
+Conditions with \`durationRounds: 'until_removed'\` are unchanged. You can
+still emit \`remove_condition\` explicitly when an effect ends early
+(e.g., concentration broken, dispel magic, save success on a re-roll).
+
 ---
 
 Italiano: Ogni turno l'attore ha 1 Action, 1 Bonus Action (se concessa), 1
 Reaction, e movimento. Usa \`take_action\` per i 7 standard action non-attack/cast.
 Il motore valida il budget e ritorna \`*_already_used\` se esaurito.
+
+Per Extra Attack / Multiattack (Fighter/Barbarian/Paladin/Ranger L5+, mostri
+con Multiattack): chiama \`make_attack\` più volte. Il primo consuma l'azione;
+i successivi dello stesso turno devono passare \`isExtraAttack: true\` per
+saltare il check del budget. Tu enforzi il limite per classe.
+
+Le durate delle condition si decrementano automaticamente su \`advance_turn\`
+(bless, helped, hold-person, ecc. scadono da sole). Le condition
+\`until_removed\` non cambiano.
 
 ### Positioning & opportunity attacks (PHB §3.8–3.9)
 
