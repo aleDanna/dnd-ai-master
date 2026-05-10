@@ -949,6 +949,86 @@ difensori; \`add_bastion_room\` aggiunge stanze (workshop, library,
 armory, stable, garden, storage, training, shrine, kitchen, guesthouse;
 livello 1-3).
 
+### Mounted Combat & Vehicles (PHB §3.23, §9.6)
+
+**Mounts** — a PC can ride a willing creature one size larger. Use
+\`mount({ rider, mount, mode: 'controlled'|'independent' })\` to put
+the rider on the mount.
+
+- **Controlled** (default): the mount acts on the rider's initiative
+  count and may take only the Dash, Disengage, or Dodge action — the
+  rider directs everything else. Use this for ordinary trained beasts
+  (riding horse, war pony, mastiff).
+- **Independent**: the mount has its own initiative and chooses its
+  own actions (e.g., an intelligent steed, a pegasus, a wyvern).
+
+Mounting/dismounting costs HALF the rider's speed (PHB §3.23). The
+master is responsible for narrating that movement cost; the engine
+itself does not auto-deduct from \`movementSpentFt\`.
+
+Tools:
+- \`mount({ rider, mount, mode? })\` — places the rider on the mount.
+  Engine validates: mount exists in \`combatActors\`; mode (if
+  supplied) is one of controlled/independent; when BOTH rider and
+  mount have size data, mount is at least one size larger.
+- \`dismount({ rider })\` — clears the rider's \`mountedOn\`.
+- \`set_mount_mode({ rider, mode })\` — switch between controlled and
+  independent without dismounting.
+
+**Reaction swap (PHB §3.23)**: when an attack targets EITHER the
+rider OR the mount, the rider may use their REACTION to make the
+OTHER take the hit instead. Call:
+
+\`swap_attack_target({ rider, originalTargetId, newTargetId })\`
+
+The engine consumes the rider's reaction and validates the pair
+(one must be the rider, the other the rider's current mount). The
+engine does NOT re-roll or re-resolve the attack — the master narrates
+the redirected hit and applies the damage manually with
+\`apply_damage\`. Errors: \`reaction_already_used\` if the rider
+already spent their reaction this round.
+
+**Vehicles** (PHB §9.6 + DMG ships) — the catalog covers 10 vehicles:
+- Mundane (PHB §9.6): \`cart\`, \`sled\`, \`wagon\`, \`carriage\`. Speed
+  depends on the draft animal pulling the vehicle.
+- Ships (DMG / Ghosts of Saltmarsh): \`rowboat\`, \`sailing-ship\`,
+  \`galley\`, \`longship\`, \`warship\`. Each ship has full combat stats
+  (AC, HP, damage threshold, crew complement).
+- Air: \`airship\` (flying vessel, 80 ft, AC 13).
+
+Tools:
+- \`embark_vehicle({ character, vehicleSlug })\` — validates the slug
+  is in the catalog and stamps \`embarkedOn\` on the PC.
+- \`disembark_vehicle({ character })\` — clears \`embarkedOn\`.
+
+The catalog is read-only: there is no tool to create or mutate a
+vehicle definition. The master may narratively gate access (PC must
+own the vehicle, be invited aboard, or sneak on as a stowaway).
+
+Errors:
+- \`unknown_character\`, \`unknown_mount\`, \`unknown_vehicle\` — id
+  mismatch.
+- \`not_mounted\`, \`not_embarked\` — the rider/PC isn't currently in
+  the relevant state.
+- \`invalid_mode\`, \`mount_too_small\`, \`reaction_already_used\`,
+  \`invalid_swap_pair\` — bad input or pre-condition.
+
+---
+
+Italiano: Phase 14 aggiunge mount + veicoli (PHB §3.23, §9.6).
+Il PC può montare una creatura willing più grande di almeno una taglia
+con \`mount\` (modalità di default \`controlled\`: la cavalcatura agisce
+sull'iniziativa del rider e può solo Dash/Disengage/Dodge; modalità
+\`independent\` per cavalcature intelligenti che agiscono autonomamente).
+Mount e dismount costano metà velocità del rider — il master narra il
+costo. Il **reaction swap** (\`swap_attack_target\`) permette al rider
+di assorbire l'attacco al posto della cavalcatura o viceversa: l'engine
+consuma la reaction; il master applica il danno con \`apply_damage\`. I
+**veicoli** (\`embark_vehicle\` / \`disembark_vehicle\`) coprono 10 slug:
+\`cart\`, \`sled\`, \`wagon\`, \`carriage\` (terra), \`rowboat\`,
+\`sailing-ship\`, \`galley\`, \`longship\`, \`warship\` (acqua),
+\`airship\` (aria). Il catalogo è read-only.
+
 ### Out-of-character (OOC) questions
 
 When a player message begins with "!", it is OUT OF CHARACTER — the
