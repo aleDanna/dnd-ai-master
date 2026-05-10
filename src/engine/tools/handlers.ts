@@ -3,6 +3,8 @@ import type {
   DiceRoll,
   EngagementProfile,
   EngineState,
+  EquippedFocus,
+  FocusKind,
   LightLevel,
   MarchingOrder,
   Mutation,
@@ -472,6 +474,33 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       return { ok: false, error: 'invalid_slug', rolls: [], mutations: [] };
     }
     return handleAttune(state, { character: charId, itemSlug: slug });
+  },
+
+  equip_focus: (state, input) => {
+    const ref = input.character ?? input.actor;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const charId = resolveCharacterId(state, ref);
+    const kind = input.kind as string;
+    const slug = String(input.itemSlug ?? '').trim().toLowerCase();
+    if (!slug) {
+      return { ok: false, error: 'invalid_slug', rolls: [], mutations: [] };
+    }
+    return handleEquipFocus(state, {
+      character: charId,
+      kind: kind as FocusKind,
+      itemSlug: slug,
+    });
+  },
+
+  unequip_focus: (state, input) => {
+    const ref = input.character ?? input.actor;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const charId = resolveCharacterId(state, ref);
+    return handleUnequipFocus(state, { character: charId });
   },
 
   unattune: (state, input) => {
@@ -1093,6 +1122,79 @@ export function handleAttune(
 }
 
 /**
+ * PHB §8.4 — equip a spellcasting focus. Validates:
+ *   - The character exists (`unknown_character`).
+ *   - `kind` is one of arcane/druidic/holy/instrument (`invalid_focus_kind`).
+ *   - `itemSlug` is in inventory (`item_not_in_inventory`).
+ *
+ * Class-vs-kind matching is NOT enforced here: a non-caster fighter may
+ * carry an arcane orb (it just won't satisfy components at cast time
+ * because focusKindForClass returns null). This permissive policy keeps
+ * the tool usable for narrative scenes (e.g. carrying a focus for a
+ * sleeping ally).
+ */
+const VALID_FOCUS_KINDS: ReadonlySet<FocusKind> = new Set([
+  'arcane',
+  'druidic',
+  'holy',
+  'instrument',
+]);
+
+export function handleEquipFocus(
+  state: EngineState,
+  input: { character: string; kind: FocusKind; itemSlug: string },
+): ActionResult<{ equipped: boolean; focus: EquippedFocus }> {
+  const char = state.characters.find((c) => c.id === input.character);
+  if (!char) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+  if (typeof input.kind !== 'string' || !VALID_FOCUS_KINDS.has(input.kind)) {
+    return { ok: false, error: 'invalid_focus_kind', rolls: [], mutations: [] };
+  }
+  const owned = char.inventory.some(
+    (i) => i.slug === input.itemSlug && i.qty >= 1,
+  );
+  if (!owned) {
+    return {
+      ok: false,
+      error: 'item_not_in_inventory',
+      rolls: [],
+      mutations: [],
+    };
+  }
+  const focus: EquippedFocus = { kind: input.kind, itemSlug: input.itemSlug };
+  return {
+    ok: true,
+    data: { equipped: true, focus },
+    rolls: [],
+    mutations: [{ op: 'set_focus', characterId: char.id, focus }],
+  };
+}
+
+/**
+ * PHB §8.4 — drop the currently held focus. Idempotent: when no focus
+ * is set, returns ok with `unequipped:false` (no mutation).
+ */
+export function handleUnequipFocus(
+  state: EngineState,
+  input: { character: string },
+): ActionResult<{ unequipped: boolean }> {
+  const char = state.characters.find((c) => c.id === input.character);
+  if (!char) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+  if (!char.equippedFocus) {
+    return { ok: true, data: { unequipped: false }, rolls: [], mutations: [] };
+  }
+  return {
+    ok: true,
+    data: { unequipped: true },
+    rolls: [],
+    mutations: [{ op: 'unset_focus', characterId: char.id }],
+  };
+}
+
+/**
  * PHB §10.1: break attunement to a magic item. More permissive than `attune`
  * — if the PC is not currently attuned, returns ok with `unattuned:false`
  * (no error). Used for voluntary unattunement during a long rest, item lost,
@@ -1622,11 +1724,17 @@ export const TOOL_HANDLERS_DB: Record<string, DbToolHandler> = {
     const slotLevel = Number(input.slotLevel) as 0|1|2|3|4|5|6|7|8|9;
     const targets = ((input.targets as { id: string }[]) ?? []).map((t) => ({ id: String(t.id) }));
     const asRitual = input.asRitual === true;
+    // PHB §8.3 — caster's hand state and material possession. Both default
+    // to true (the master is the source of truth: pass false only when
+    // a narrative reason exists).
+    const freeHand = input.freeHand !== false;
+    const hasMaterial = input.hasMaterial !== false;
 
     // Always fetch spellMeta from the SRD: castSpell now uses `castingTime` to
-    // drive action-economy consumption (PHB §3.9 + §8.5), in addition to the
-    // ritual flag check for `asRitual` casts. Falls back to `undefined` if the
-    // spell isn't in the SRD — castSpell will assume '1 action' in that case.
+    // drive action-economy consumption (PHB §3.9 + §8.5), `components` for
+    // PHB §8.3 V/S/M validation, in addition to the ritual flag check for
+    // `asRitual` casts. Falls back to `undefined` if the spell isn't in the
+    // SRD — castSpell will assume '1 action' and skip component validation.
     const spellMeta = await lookupSpellMeta(spellSlug);
 
     return castSpell({
@@ -1638,6 +1746,8 @@ export const TOOL_HANDLERS_DB: Record<string, DbToolHandler> = {
       currentRound: state.combat?.round ?? 0,
       asRitual,
       spellMeta,
+      freeHand,
+      hasMaterial,
     });
   },
 };

@@ -241,7 +241,8 @@ const ALWAYS_ON: AnthropicTool[] = [
   },
   {
     name: 'cast_spell',
-    description: 'Cast a spell from the caster\'s known list. For cantrips pass slotLevel=0 (no slot consumed). For leveled spells pass slotLevel 1-9 (the slot at that level is consumed). When the spell has no built-in mechanical handler the call still succeeds — narrate the effect and call follow-up tools (apply_damage, saving_throw, apply_condition, etc.) for any consequences.',
+    description:
+      "Cast a spell from the caster's known list. For cantrips pass slotLevel=0 (no slot consumed). For leveled spells pass slotLevel 1-9 (the slot at that level is consumed). When the spell has no built-in mechanical handler the call still succeeds — narrate the effect and call follow-up tools (apply_damage, saving_throw, apply_condition, etc.) for any consequences. PHB §8.3 components are validated BEFORE slot consumption: pass freeHand=false when both hands are visibly occupied AND no focus is held; pass hasMaterial=false when you've narratively decided the costly material is missing. Errors: component_silenced (V required, caster has 'silenced' condition), component_no_free_hand (S required), component_missing_material (M with cost required, not in inventory).",
     input_schema: {
       type: 'object',
       required: ['caster', 'spellSlug', 'slotLevel'],
@@ -254,6 +255,16 @@ const ALWAYS_ON: AnthropicTool[] = [
           type: 'boolean',
           description:
             "PHB §8.13: cast the spell as a ritual (10 minutes longer, no slot consumed). Only valid for spells with the ritual tag — the call errors out if the spell isn't a ritual. Defaults to false.",
+        },
+        freeHand: {
+          type: 'boolean',
+          description:
+            "PHB §8.3: caster has at least one free hand for the somatic gesture. Defaults to true. Pass false ONLY when both hands are visibly occupied (e.g., wielding a two-handed weapon AND a shield, or holding a heavy object) AND no focus is held — a focus matching the caster's class (PHB §8.4) replaces the free-hand requirement.",
+        },
+        hasMaterial: {
+          type: 'boolean',
+          description:
+            "PHB §8.3: caster has the spell's listed material in inventory. Defaults to true (the master assumes possession). Pass false when you've narratively determined the material is missing — costly materials (gp cost or 'consumed') can't be replaced by a focus.",
         },
       },
     } as never,
@@ -544,6 +555,30 @@ const ALWAYS_ON: AnthropicTool[] = [
         character: ACTOR_ID,
         itemSlug: { type: 'string' },
       },
+    } as never,
+  },
+  {
+    name: 'equip_focus',
+    description:
+      "PHB §8.4: declare that the PC is currently holding a spellcasting focus. The held focus replaces the somatic free-hand requirement AND substitutes any non-costly material component during cast_spell. Kinds: 'arcane' (orb / rod / staff / wand for sorcerer/warlock/wizard), 'druidic' (sprig of mistletoe / wooden staff / yew wand for druid/ranger), 'holy' (amulet / emblem / reliquary for cleric/paladin), 'instrument' (lute / lyre / drum for bard). The itemSlug must already be in the PC's inventory. Errors: unknown_character, invalid_focus_kind, item_not_in_inventory. The engine does NOT enforce class-vs-kind matching (a fighter can carry an orb) — but at cast time, only a focus matching the caster's class via PHB §8.4 satisfies components.",
+    input_schema: {
+      type: 'object',
+      required: ['character', 'kind', 'itemSlug'],
+      properties: {
+        character: ACTOR_ID,
+        kind: { type: 'string', enum: ['arcane', 'druidic', 'holy', 'instrument'] },
+        itemSlug: { type: 'string' },
+      },
+    } as never,
+  },
+  {
+    name: 'unequip_focus',
+    description:
+      "PHB §8.4: drop the currently held focus. After this call the PC needs a free hand for somatic components and explicit possession for material components. Idempotent: calling unequip_focus when no focus is set returns ok with unequipped:false (no mutation).",
+    input_schema: {
+      type: 'object',
+      required: ['character'],
+      properties: { character: ACTOR_ID },
     } as never,
   },
   {
