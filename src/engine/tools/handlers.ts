@@ -1,12 +1,19 @@
 import type {
   ActionResult,
+  Bastion,
+  BastionFortification,
+  BastionRoom,
+  BastionRoomKind,
   CraftingKind,
   CraftingProject,
   DiceRoll,
+  DowntimeActivity,
+  DowntimeActivityKind,
   EngagementProfile,
   EngineState,
   EquippedFocus,
   FocusKind,
+  Hireling,
   LightLevel,
   MarchingOrder,
   Mutation,
@@ -26,6 +33,14 @@ import {
   type CraftingRequirements,
   type CraftingSpellLevel,
 } from '../crafting';
+import {
+  buildDefaultBastion,
+  downtimeRequirements,
+  hirelingTotalCost,
+  isValidBastionFortification,
+  isValidBastionRoomKind,
+  isValidDowntimeActivityKind,
+} from '../downtime';
 import {
   isValidTonalFrame,
   isValidEngagementProfile,
@@ -773,6 +788,88 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
     return handleCancelCrafting(state, {
       character: charId,
       projectId: typeof input.projectId === 'string' ? input.projectId : '',
+    });
+  },
+
+  // ── Phase 13: downtime / hirelings / bastion (PHB §6 + 2024 PHB) ──
+  start_downtime_activity: (state, input) => {
+    const ref = input.character ?? input.actor;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const charId = resolveCharacterId(state, ref);
+    return handleStartDowntimeActivity(state, {
+      character: charId,
+      activity: input.activity as DowntimeActivityKind,
+      days: typeof input.days === 'number' ? input.days : undefined,
+      activityId: typeof input.activityId === 'string' ? input.activityId : undefined,
+      startedAt: typeof input.startedAt === 'number' ? input.startedAt : undefined,
+    });
+  },
+
+  complete_downtime_activity: (state, input) => {
+    const ref = input.character ?? input.actor;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const charId = resolveCharacterId(state, ref);
+    return handleCompleteDowntimeActivity(state, {
+      character: charId,
+      activityId: typeof input.activityId === 'string' ? input.activityId : '',
+    });
+  },
+
+  hire: (state, input) => {
+    const ref = input.character ?? input.actor;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const charId = resolveCharacterId(state, ref);
+    return handleHire(state, {
+      character: charId,
+      kind: input.kind as 'skilled' | 'unskilled',
+      count: typeof input.count === 'number' ? input.count : 0,
+      days: typeof input.days === 'number' ? input.days : 0,
+      hireId: typeof input.hireId === 'string' ? input.hireId : undefined,
+      startedAt: typeof input.startedAt === 'number' ? input.startedAt : undefined,
+    });
+  },
+
+  dismiss_hireling: (state, input) => {
+    const ref = input.character ?? input.actor;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const charId = resolveCharacterId(state, ref);
+    return handleDismissHireling(state, {
+      character: charId,
+      hireId: typeof input.hireId === 'string' ? input.hireId : '',
+    });
+  },
+
+  set_bastion: (state, input) => {
+    const ref = input.character ?? input.actor;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const charId = resolveCharacterId(state, ref);
+    return handleSetBastion(state, {
+      character: charId,
+      name: typeof input.name === 'string' ? input.name : '',
+      fortification: input.fortification as BastionFortification,
+    });
+  },
+
+  add_bastion_room: (state, input) => {
+    const ref = input.character ?? input.actor;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const charId = resolveCharacterId(state, ref);
+    return handleAddBastionRoom(state, {
+      character: charId,
+      kind: input.kind as BastionRoomKind,
+      level: typeof input.level === 'number' ? input.level : undefined,
     });
   },
 };
@@ -2474,6 +2571,285 @@ export function handleCancelCrafting(
         projectId: project.id,
       },
     ],
+  };
+}
+
+// ─── Phase 13: downtime / hirelings / bastion (PHB §6 + 2024 PHB) ──────────
+
+/** Generate a unique-enough id without depending on crypto APIs.
+ *  Same fallback shape as `generateProjectId` for crafting. */
+function generateId(prefix: string): string {
+  const cryptoApi: { randomUUID?: () => string } | undefined =
+    typeof globalThis !== 'undefined'
+      ? ((globalThis as { crypto?: { randomUUID?: () => string } }).crypto ?? undefined)
+      : undefined;
+  if (cryptoApi && typeof cryptoApi.randomUUID === 'function') {
+    return cryptoApi.randomUUID();
+  }
+  const ts = Date.now().toString(36);
+  const rnd = Math.floor(Math.random() * 1_000_000).toString(36);
+  return `${prefix || 'id'}-${ts}-${rnd}`;
+}
+
+/**
+ * PHB §6: kick off a downtime activity. Validates the kind and uses
+ * `downtimeRequirements` for the default day count when none is
+ * supplied. Generates a stable id so the master can address the
+ * activity later via `complete_downtime_activity`.
+ *
+ * Errors:
+ *   - `unknown_character` — character not found.
+ *   - `invalid_activity` — kind not in the 5-value union.
+ *   - `invalid_days` — days argument supplied but not a finite non-negative number.
+ */
+export function handleStartDowntimeActivity(
+  state: EngineState,
+  input: {
+    character: string;
+    activity: DowntimeActivityKind;
+    days?: number;
+    activityId?: string;
+    startedAt?: number;
+  },
+): ActionResult<{ activity: DowntimeActivity }> {
+  const char = state.characters.find((c) => c.id === input.character);
+  if (!char) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+  if (!isValidDowntimeActivityKind(input.activity)) {
+    return { ok: false, error: 'invalid_activity', rolls: [], mutations: [] };
+  }
+  let daysRemaining: number;
+  if (typeof input.days === 'number') {
+    if (!Number.isFinite(input.days) || input.days < 0) {
+      return { ok: false, error: 'invalid_days', rolls: [], mutations: [] };
+    }
+    daysRemaining = Math.floor(input.days);
+  } else {
+    daysRemaining = downtimeRequirements(input.activity).daysRequired;
+  }
+  const activity: DowntimeActivity = {
+    id:
+      typeof input.activityId === 'string' && input.activityId.trim()
+        ? input.activityId.trim()
+        : generateId(`downtime-${input.activity}`),
+    kind: input.activity,
+    daysRemaining,
+    gpSpent: 0,
+  };
+  if (typeof input.startedAt === 'number' && Number.isFinite(input.startedAt)) {
+    activity.startedAt = Math.floor(input.startedAt);
+  }
+  return {
+    ok: true,
+    data: { activity },
+    rolls: [],
+    mutations: [
+      { op: 'start_downtime_activity', characterId: char.id, activity },
+    ],
+  };
+}
+
+/**
+ * PHB §6: complete an in-flight downtime activity. The engine validates
+ * the activity exists; the master narrates the outcome (success, fail,
+ * partial) separately. The applicator removes the activity from
+ * `downtimeActivities`.
+ *
+ * Errors:
+ *   - `unknown_character`, `unknown_activity`.
+ */
+export function handleCompleteDowntimeActivity(
+  state: EngineState,
+  input: { character: string; activityId: string },
+): ActionResult<{ activity: DowntimeActivity }> {
+  const char = state.characters.find((c) => c.id === input.character);
+  if (!char) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+  const activities = char.downtimeActivities ?? [];
+  const activity = activities.find((a) => a.id === input.activityId);
+  if (!activity) {
+    return { ok: false, error: 'unknown_activity', rolls: [], mutations: [] };
+  }
+  return {
+    ok: true,
+    data: { activity },
+    rolls: [],
+    mutations: [
+      { op: 'complete_downtime_activity', characterId: char.id, activityId: activity.id },
+    ],
+  };
+}
+
+/**
+ * PHB §6: hire `count` hirelings of `kind` for `days`. Computes the
+ * total cost via `hirelingTotalCost` (skilled = 2 gp/day, unskilled =
+ * 2 sp/day). The engine does NOT enforce gp possession — the master
+ * is responsible for the narrative deduction.
+ *
+ * Errors:
+ *   - `unknown_character`, `invalid_kind`, `invalid_count`, `invalid_days`.
+ */
+export function handleHire(
+  state: EngineState,
+  input: {
+    character: string;
+    kind: 'skilled' | 'unskilled';
+    count: number;
+    days: number;
+    hireId?: string;
+    startedAt?: number;
+  },
+): ActionResult<{ hireling: Hireling }> {
+  const char = state.characters.find((c) => c.id === input.character);
+  if (!char) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+  if (input.kind !== 'skilled' && input.kind !== 'unskilled') {
+    return { ok: false, error: 'invalid_kind', rolls: [], mutations: [] };
+  }
+  if (
+    typeof input.count !== 'number' ||
+    !Number.isFinite(input.count) ||
+    input.count <= 0
+  ) {
+    return { ok: false, error: 'invalid_count', rolls: [], mutations: [] };
+  }
+  if (
+    typeof input.days !== 'number' ||
+    !Number.isFinite(input.days) ||
+    input.days <= 0
+  ) {
+    return { ok: false, error: 'invalid_days', rolls: [], mutations: [] };
+  }
+  const count = Math.floor(input.count);
+  const days = Math.floor(input.days);
+  const cost = hirelingTotalCost(input.kind, count, days);
+  const hireling: Hireling = {
+    id:
+      typeof input.hireId === 'string' && input.hireId.trim()
+        ? input.hireId.trim()
+        : generateId(`hire-${input.kind}`),
+    kind: input.kind,
+    count,
+    days,
+    gpCost: cost.gp,
+    spCost: cost.sp,
+  };
+  if (typeof input.startedAt === 'number' && Number.isFinite(input.startedAt)) {
+    hireling.startedAt = Math.floor(input.startedAt);
+  }
+  return {
+    ok: true,
+    data: { hireling },
+    rolls: [],
+    mutations: [{ op: 'hire', characterId: char.id, hireling }],
+  };
+}
+
+/**
+ * PHB §6: dismiss a hireling engagement by id. Validates the hireling
+ * exists.
+ *
+ * Errors:
+ *   - `unknown_character`, `unknown_hireling`.
+ */
+export function handleDismissHireling(
+  state: EngineState,
+  input: { character: string; hireId: string },
+): ActionResult<{ hireling: Hireling }> {
+  const char = state.characters.find((c) => c.id === input.character);
+  if (!char) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+  const hirelings = char.hirelings ?? [];
+  const hireling = hirelings.find((h) => h.id === input.hireId);
+  if (!hireling) {
+    return { ok: false, error: 'unknown_hireling', rolls: [], mutations: [] };
+  }
+  return {
+    ok: true,
+    data: { hireling },
+    rolls: [],
+    mutations: [
+      { op: 'dismiss_hireling', characterId: char.id, hireId: hireling.id },
+    ],
+  };
+}
+
+/**
+ * 2024 PHB simplified Bastion: establish (or replace) the PC's bastion.
+ * Builds the default record via `buildDefaultBastion` so the room
+ * count + defender garrison match the fortification tier.
+ *
+ * Errors:
+ *   - `unknown_character`, `invalid_name`, `invalid_fortification`.
+ */
+export function handleSetBastion(
+  state: EngineState,
+  input: { character: string; name: string; fortification: BastionFortification },
+): ActionResult<{ bastion: Bastion }> {
+  const char = state.characters.find((c) => c.id === input.character);
+  if (!char) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+  const name = (input.name ?? '').trim();
+  if (!name) {
+    return { ok: false, error: 'invalid_name', rolls: [], mutations: [] };
+  }
+  if (!isValidBastionFortification(input.fortification)) {
+    return { ok: false, error: 'invalid_fortification', rolls: [], mutations: [] };
+  }
+  const bastion = buildDefaultBastion(name, input.fortification);
+  return {
+    ok: true,
+    data: { bastion },
+    rolls: [],
+    mutations: [{ op: 'set_bastion', characterId: char.id, bastion }],
+  };
+}
+
+/**
+ * 2024 PHB simplified Bastion: append a room to `bastion.rooms`.
+ * Requires the PC to already have a bastion (otherwise the master
+ * must call `set_bastion` first).
+ *
+ * Errors:
+ *   - `unknown_character`, `no_bastion`, `invalid_room_kind`,
+ *     `invalid_room_level`.
+ */
+export function handleAddBastionRoom(
+  state: EngineState,
+  input: { character: string; kind: BastionRoomKind; level?: number },
+): ActionResult<{ room: BastionRoom }> {
+  const char = state.characters.find((c) => c.id === input.character);
+  if (!char) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+  if (!char.bastion) {
+    return { ok: false, error: 'no_bastion', rolls: [], mutations: [] };
+  }
+  if (!isValidBastionRoomKind(input.kind)) {
+    return { ok: false, error: 'invalid_room_kind', rolls: [], mutations: [] };
+  }
+  const lvlRaw = input.level ?? 1;
+  if (
+    typeof lvlRaw !== 'number' ||
+    !Number.isFinite(lvlRaw) ||
+    ![1, 2, 3].includes(Math.floor(lvlRaw))
+  ) {
+    return { ok: false, error: 'invalid_room_level', rolls: [], mutations: [] };
+  }
+  const room: BastionRoom = {
+    kind: input.kind,
+    level: Math.floor(lvlRaw) as BastionRoom['level'],
+  };
+  return {
+    ok: true,
+    data: { room },
+    rolls: [],
+    mutations: [{ op: 'add_bastion_room', characterId: char.id, room }],
   };
 }
 

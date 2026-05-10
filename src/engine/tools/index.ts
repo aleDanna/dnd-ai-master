@@ -973,6 +973,163 @@ const ALWAYS_ON: AnthropicTool[] = [
       },
     } as never,
   },
+  // ── Phase 13: stronghold / downtime / hirelings (PHB §6 + 2024 PHB) ──
+  {
+    name: 'start_downtime_activity',
+    description:
+      "PHB §6 downtime activities: start a long-running non-combat project. The engine appends a `DowntimeActivity` to `character.downtimeActivities` with a stable id and a default day count from the activity kind:\n  - 'practicing_profession' → 5 days, no flat cost; earns lifestyle (master may roll a tool/skill check on completion).\n  - 'recuperating' → 3 days, end disease or poison via DC 15 CON save (master rolls on completion).\n  - 'researching' → 1 day per piece of info, DC 15 INT (Investigation) check.\n  - 'training' → 250 days at 1 gp/day to learn a new language or tool proficiency.\n  - 'crafting' → routed through Phase 12's `start_crafting` tool. Use this kind only as a narrative tag if you want; the engine returns 0 days.\nThe optional `days` argument overrides the default (use sparingly — the master is encouraged to follow the PHB defaults). Errors: unknown_character, invalid_activity, invalid_days.",
+    input_schema: {
+      type: 'object',
+      required: ['character', 'activity'],
+      properties: {
+        character: ACTOR_ID,
+        activity: {
+          type: 'string',
+          enum: [
+            'practicing_profession',
+            'recuperating',
+            'researching',
+            'training',
+            'crafting',
+          ],
+          description: 'Kind of downtime activity (PHB §6).',
+        },
+        days: {
+          type: 'integer',
+          minimum: 0,
+          description:
+            "Optional override for the activity's day count. Defaults to the PHB §6 standard (5/3/1/250/0).",
+        },
+        activityId: {
+          type: 'string',
+          description: 'Optional explicit activity id (otherwise the engine generates one).',
+        },
+        startedAt: {
+          type: 'integer',
+          minimum: 0,
+          description: 'Optional bookkeeping: in-game timestamp/round the activity starts.',
+        },
+      },
+    } as never,
+  },
+  {
+    name: 'complete_downtime_activity',
+    description:
+      'PHB §6 downtime activities: finalise an in-flight downtime activity. The engine REMOVES the activity from `character.downtimeActivities`. The Master narrates the actual outcome (success, failure, partial) — including any saving throw / ability check the activity calls for, e.g. DC 15 CON for `recuperating`. Errors: unknown_character, unknown_activity.',
+    input_schema: {
+      type: 'object',
+      required: ['character', 'activityId'],
+      properties: {
+        character: ACTOR_ID,
+        activityId: {
+          type: 'string',
+          description: 'Activity id from `start_downtime_activity`.',
+        },
+      },
+    } as never,
+  },
+  {
+    name: 'hire',
+    description:
+      'PHB §6 hirelings: record a hireling engagement. `kind` selects the wage tier — `skilled` = 2 gp/day (artisans, scribes, mercenaries), `unskilled` = 2 sp/day (laborers, porters). The engine computes the total cost (`gp`, `sp`) via `count × days × rate` and appends a `Hireling` record to `character.hirelings`. The engine does NOT enforce gp possession — the master is responsible for narratively deducting wages from the inventory. Errors: unknown_character, invalid_kind, invalid_count (must be > 0), invalid_days (must be > 0).',
+    input_schema: {
+      type: 'object',
+      required: ['character', 'kind', 'count', 'days'],
+      properties: {
+        character: ACTOR_ID,
+        kind: {
+          type: 'string',
+          enum: ['skilled', 'unskilled'],
+          description: 'Skilled = 2 gp/day; unskilled = 2 sp/day (PHB §6).',
+        },
+        count: {
+          type: 'integer',
+          minimum: 1,
+          description: 'Number of hirelings in this engagement.',
+        },
+        days: {
+          type: 'integer',
+          minimum: 1,
+          description: 'Engagement length in days.',
+        },
+        hireId: {
+          type: 'string',
+          description: 'Optional explicit engagement id (otherwise the engine generates one).',
+        },
+        startedAt: {
+          type: 'integer',
+          minimum: 0,
+          description: 'Optional bookkeeping: in-game timestamp/round the engagement starts.',
+        },
+      },
+    } as never,
+  },
+  {
+    name: 'dismiss_hireling',
+    description:
+      'PHB §6 hirelings: release a hireling engagement. The engine REMOVES the engagement from `character.hirelings`. Errors: unknown_character, unknown_hireling.',
+    input_schema: {
+      type: 'object',
+      required: ['character', 'hireId'],
+      properties: {
+        character: ACTOR_ID,
+        hireId: { type: 'string', description: 'Engagement id from `hire`.' },
+      },
+    } as never,
+  },
+  {
+    name: 'set_bastion',
+    description:
+      "2024 PHB Bastion (simplified): establish (or replace) the PC's owned property. The engine builds the default room list and defender count from `fortification`:\n  - `modest`    → 2 rooms (kitchen + storage), 2 defenders.\n  - `fortified` → 4 rooms (+ armory + training), 8 defenders.\n  - `castle`    → 7 rooms (above + library + shrine + guesthouse, with bumped levels), 30 defenders.\nUse `add_bastion_room` afterwards to expand. Calling this again overwrites the bastion (so use only when the PC is intentionally moving / upgrading the property). Errors: unknown_character, invalid_name, invalid_fortification.",
+    input_schema: {
+      type: 'object',
+      required: ['character', 'name', 'fortification'],
+      properties: {
+        character: ACTOR_ID,
+        name: { type: 'string', description: 'Display name of the bastion.' },
+        fortification: {
+          type: 'string',
+          enum: ['modest', 'fortified', 'castle'],
+          description: 'Tier of the bastion — drives default rooms + defender count.',
+        },
+      },
+    } as never,
+  },
+  {
+    name: 'add_bastion_room',
+    description:
+      "2024 PHB Bastion (simplified): append a room to the bastion's room list. Requires the PC to already have a bastion (call `set_bastion` first). `level` defaults to 1 (basic); 2 = improved, 3 = master. Errors: unknown_character, no_bastion, invalid_room_kind, invalid_room_level.",
+    input_schema: {
+      type: 'object',
+      required: ['character', 'kind'],
+      properties: {
+        character: ACTOR_ID,
+        kind: {
+          type: 'string',
+          enum: [
+            'workshop',
+            'library',
+            'armory',
+            'stable',
+            'garden',
+            'storage',
+            'training',
+            'shrine',
+            'kitchen',
+            'guesthouse',
+          ],
+          description: 'Kind of room being added.',
+        },
+        level: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 3,
+          default: 1,
+          description: '1 = basic, 2 = improved, 3 = master. Defaults to 1.',
+        },
+      },
+    } as never,
+  },
 ];
 
 /**
