@@ -2286,7 +2286,7 @@ export function handleUseLayOnHands(
   };
 }
 
-function resolveCharacterId(state: EngineState, actorRef: unknown): string {
+export function resolveCharacterId(state: EngineState, actorRef: unknown): string {
   if (typeof actorRef === 'string' && actorRef === 'player_character' && state.characters.length === 1) {
     return state.characters[0]!.id;
   }
@@ -3193,11 +3193,15 @@ export function handleSwapAttackTarget(
 }
 
 import { lookupCodex } from './lookup-codex';
+import { addNarrativeItem } from './add-narrative-item';
 import { lookupSpellMeta } from '@/srd/lookup';
 
 export interface DbToolCtx {
   sessionId: string;
-  state: EngineState;
+  /** Engine state. Optional in the ctx since it's also passed as the 2nd arg
+   * to the handler — handlers that take 3 args (ctx, state, input) get it from
+   * the 2nd arg; handlers that only take (ctx, input) read it from ctx.state. */
+  state?: EngineState;
 }
 
 export type DbToolHandler = (
@@ -3209,6 +3213,7 @@ export type DbToolHandler = (
 export const TOOL_HANDLERS_DB: Record<string, DbToolHandler> = {
   // lookup_codex doesn't need state, ignore the second arg.
   lookup_codex: (ctx, _state, input) => lookupCodex(ctx, input),
+  add_narrative_item: (ctx, state, input) => addNarrativeItem({ sessionId: ctx.sessionId, state }, input),
 
   long_rest: async (ctx, state, input) => {
     const charId = resolveCharacterId(state, input.actor);

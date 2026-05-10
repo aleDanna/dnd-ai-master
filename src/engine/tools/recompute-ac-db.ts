@@ -15,6 +15,7 @@ export async function recomputeAcDb(
   const charId = resolveCharacterId(ctx.state, input.actor);
   const char = ctx.state.characters.find((c) => c.id === charId);
   if (!char) return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
-  const armorSpecs = await loadArmorSpecs();
-  return recomputeAC({ char, armorSpecs });
+  // armorSpecs DB lookup not yet wired into recomputeAC; engine uses hardcoded ARMOR catalog.
+  await loadArmorSpecs();  // preserve side effect (cache warm) for future use
+  return recomputeAC({ char });
 }

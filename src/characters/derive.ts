@@ -1,5 +1,5 @@
 import type { Ability, Character, Skill, SpellcastingState } from '@/engine/types';
-import type { SrdBackground } from '@/db/schema';
+import type { SrdBackground, SrdClass, SrdRace } from '@/db/schema';
 import { abilityModifier, proficiencyBonusForLevel } from '@/engine/modifiers';
 import type { WizardState } from './types';
 
@@ -105,6 +105,12 @@ export function deriveLevel1Spellcasting(classSlug: string, abilities: Record<Ab
 
 export interface DeriveContext {
   background?: SrdBackground;
+  /** @deprecated unused — derive reads from wizard.raceSlug. Kept for legacy test compat. */
+  race?: SrdRace;
+  /** @deprecated unused — derive reads from wizard.subraceSlug. Kept for legacy test compat. */
+  parentRace?: SrdRace;
+  /** @deprecated unused — derive reads from wizard.classSlug. Kept for legacy test compat. */
+  klass?: SrdClass;
 }
 
 /** Pure derivation. NO DB writes; the persistence layer (Task 22) does that. */
