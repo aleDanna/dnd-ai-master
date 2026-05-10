@@ -114,3 +114,128 @@ describe('CharacterPane Spells section', () => {
     expect(screen.queryByText('prep')).not.toBeInTheDocument();
   });
 });
+
+describe('CharacterPane Inspiration', () => {
+  it('hides the star when inspiration is missing or false', () => {
+    render(<CharacterPane character={baseCharacter} state={baseState} />);
+    expect(screen.queryByLabelText('Has Inspiration')).toBeNull();
+  });
+
+  it('renders the gold star next to the name when inspiration is true (PHB §18.1)', () => {
+    const inspired: Character = { ...baseCharacter, inspiration: true };
+    render(<CharacterPane character={inspired} state={baseState} />);
+    expect(screen.getByLabelText('Has Inspiration')).toBeInTheDocument();
+  });
+});
+
+describe('CharacterPane multi-class breakdown (PHB §2.5)', () => {
+  it('falls back to single class when classes[] is empty', () => {
+    render(<CharacterPane character={baseCharacter} state={baseState} />);
+    expect(screen.getByText(/human · Fighter 1/i)).toBeInTheDocument();
+  });
+
+  it('joins multiple classes with " / " when classes[] has entries', () => {
+    const multi: Character = {
+      ...baseCharacter,
+      level: 7,
+      classes: [
+        { slug: 'wizard', level: 5 },
+        { slug: 'fighter', level: 2 },
+      ],
+    };
+    render(<CharacterPane character={multi} state={baseState} />);
+    expect(screen.getByText(/Wizard 5 \/ Fighter 2/)).toBeInTheDocument();
+  });
+});
+
+describe('CharacterPane Attunement (PHB §10.1)', () => {
+  it('hides the section when attunedItems is empty', () => {
+    render(<CharacterPane character={baseCharacter} state={baseState} />);
+    expect(screen.queryByText(/Attuned:/i)).toBeNull();
+  });
+
+  it('shows N/3 and item slugs when attunedItems is present', () => {
+    const attuned: Character = {
+      ...baseCharacter,
+      attunedItems: ['amulet-of-health', 'cloak-of-protection'],
+    };
+    render(<CharacterPane character={attuned} state={baseState} />);
+    expect(screen.getByText(/Attuned:\s*2\s*\/\s*3/)).toBeInTheDocument();
+    expect(screen.getByText('Amulet Of Health')).toBeInTheDocument();
+    expect(screen.getByText('Cloak Of Protection')).toBeInTheDocument();
+  });
+});
+
+describe('CharacterPane Equipped Focus (PHB §8.4)', () => {
+  it('hides the section when no focus is set', () => {
+    render(<CharacterPane character={baseCharacter} state={baseState} />);
+    expect(screen.queryByText('Focus')).toBeNull();
+  });
+
+  it('renders the focus kind + slug when set', () => {
+    const focused: Character = {
+      ...baseCharacter,
+      equippedFocus: { kind: 'holy', itemSlug: 'emblem-pelor' },
+    };
+    render(<CharacterPane character={focused} state={baseState} />);
+    expect(screen.getByText('Focus')).toBeInTheDocument();
+    expect(screen.getByText(/Holy: Emblem Pelor/)).toBeInTheDocument();
+  });
+});
+
+describe('CharacterPane Senses (PHB §6.4)', () => {
+  it('hides the section when senses is undefined', () => {
+    render(<CharacterPane character={baseCharacter} state={baseState} />);
+    expect(screen.queryByText('Senses')).toBeNull();
+  });
+
+  it('renders only the present senses', () => {
+    const elf: Character = {
+      ...baseCharacter,
+      senses: { darkvisionFt: 60, blindsightFt: 30 },
+    };
+    render(<CharacterPane character={elf} state={baseState} />);
+    expect(screen.getByText('Senses')).toBeInTheDocument();
+    expect(screen.getByText('Darkvision 60 ft')).toBeInTheDocument();
+    expect(screen.getByText('Blindsight 30 ft')).toBeInTheDocument();
+    expect(screen.queryByText(/Tremorsense/)).toBeNull();
+    expect(screen.queryByText(/Truesight/)).toBeNull();
+  });
+});
+
+describe('CharacterPane condition durations (PHB §3.6)', () => {
+  it('shows "(N rds)" for finite durations', () => {
+    const stateWithCond: SessionStateRow = {
+      ...baseState,
+      conditions: [
+        { slug: 'poisoned', source: 'spider', durationRounds: 3, appliedRound: 1 },
+      ],
+    };
+    render(<CharacterPane character={baseCharacter} state={stateWithCond} />);
+    expect(screen.getByText('poisoned')).toBeInTheDocument();
+    expect(screen.getByText(/\(3 rds\)/)).toBeInTheDocument();
+  });
+
+  it('shows "(1 rd)" singular for one-round durations', () => {
+    const stateWithCond: SessionStateRow = {
+      ...baseState,
+      conditions: [
+        { slug: 'frightened', source: 'wolf', durationRounds: 1, appliedRound: 1 },
+      ],
+    };
+    render(<CharacterPane character={baseCharacter} state={stateWithCond} />);
+    expect(screen.getByText(/\(1 rd\)/)).toBeInTheDocument();
+  });
+
+  it('omits the countdown for "until_removed" conditions', () => {
+    const stateWithCond: SessionStateRow = {
+      ...baseState,
+      conditions: [
+        { slug: 'cursed', source: 'lich', durationRounds: 'until_removed', appliedRound: 1 },
+      ],
+    };
+    render(<CharacterPane character={baseCharacter} state={stateWithCond} />);
+    expect(screen.getByText('cursed')).toBeInTheDocument();
+    expect(screen.queryByText(/\(\d+/)).toBeNull();
+  });
+});
