@@ -34,7 +34,7 @@ describe('VEHICLE_CATALOG (PHB §9.6 + DMG)', () => {
   });
 
   it('cart matches PHB §9.6 (15 gp, 2 pax, 200 lb)', () => {
-    const c = VEHICLE_CATALOG.cart;
+    const c = vehicleBySlug('cart')!;
     expect(c.costGp).toBe(15);
     expect(c.passengers).toBe(2);
     expect(c.capacityLb).toBe(200);
@@ -42,7 +42,7 @@ describe('VEHICLE_CATALOG (PHB §9.6 + DMG)', () => {
   });
 
   it('sailing-ship matches DMG (15 AC, 300 HP, 15 dmg threshold, 20 crew)', () => {
-    const s = VEHICLE_CATALOG['sailing-ship'];
+    const s = vehicleBySlug('sailing-ship')!;
     expect(s.ac).toBe(15);
     expect(s.hpMax).toBe(300);
     expect(s.damageThreshold).toBe(15);
@@ -51,14 +51,14 @@ describe('VEHICLE_CATALOG (PHB §9.6 + DMG)', () => {
   });
 
   it('galley is the fastest water vessel (400 ft) and most expensive (30000 gp)', () => {
-    const galley = VEHICLE_CATALOG.galley;
+    const galley = vehicleBySlug('galley')!;
     expect(galley.speedFt).toBe(400);
     expect(galley.costGp).toBe(30_000);
     expect(galley.crew).toBe(80);
   });
 
   it('airship has flight stats (80 ft, 13 AC, 10 dmg threshold)', () => {
-    const a = VEHICLE_CATALOG.airship;
+    const a = vehicleBySlug('airship')!;
     expect(a.speedFt).toBe(80);
     expect(a.ac).toBe(13);
     expect(a.damageThreshold).toBe(10);
@@ -66,7 +66,7 @@ describe('VEHICLE_CATALOG (PHB §9.6 + DMG)', () => {
   });
 
   it('rowboat is small, cheap (50 gp), 1-crew', () => {
-    const r = VEHICLE_CATALOG.rowboat;
+    const r = vehicleBySlug('rowboat')!;
     expect(r.costGp).toBe(50);
     expect(r.crew).toBe(1);
     expect(r.hpMax).toBe(50);

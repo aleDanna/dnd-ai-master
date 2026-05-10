@@ -19,11 +19,15 @@ import type {
   DowntimeActivity,
   DowntimeActivityKind,
   Hireling,
+  MountedState,
+  MountMode,
   Mutation,
   TurnState,
   TravelState,
   Senses,
 } from '@/engine/types';
+import { isValidMountMode } from '@/engine/mounts';
+import { isValidVehicleSlug } from '@/engine/vehicles';
 import { newTurnState, consumeAction, spendMovement } from '@/engine/combat/turn-state';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -1267,6 +1271,72 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
         .where(eq(charactersTable.id, m.characterId));
       break;
     }
+    case 'mount': {
+      // Phase 14 (PHB §3.23): set characters.mounted_on to
+      // { mountId, mode }. Default mode is 'controlled' when omitted
+      // (the engine echoes the PHB default). Silent no-op when the
+      // characterId doesn't match the PC.
+      if (m.characterId !== ctx.characterId) break;
+      const mode: MountMode = isValidMountMode(m.mode) ? m.mode : 'controlled';
+      const next: MountedState = { mountId: m.mountId, mode };
+      await tx
+        .update(charactersTable)
+        .set({ mountedOn: next, updatedAt: new Date() })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
+    case 'dismount': {
+      // Phase 14: clear characters.mounted_on. Idempotent — the column
+      // is set to NULL even if the PC was already dismounted.
+      if (m.characterId !== ctx.characterId) break;
+      await tx
+        .update(charactersTable)
+        .set({ mountedOn: null, updatedAt: new Date() })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
+    case 'set_mount_mode': {
+      // Phase 14: update the mode on the existing mount state. Silent
+      // no-op when the PC is not currently mounted (the master is
+      // expected to call mount() first).
+      if (m.characterId !== ctx.characterId) break;
+      if (!isValidMountMode(m.mode)) break;
+      const [c] = await tx
+        .select({ mountedOn: charactersTable.mountedOn })
+        .from(charactersTable)
+        .where(eq(charactersTable.id, m.characterId))
+        .limit(1);
+      if (!c) break;
+      const cur = hydrateMountedOnRaw(c.mountedOn);
+      if (!cur) break;
+      const next: MountedState = { mountId: cur.mountId, mode: m.mode };
+      await tx
+        .update(charactersTable)
+        .set({ mountedOn: next, updatedAt: new Date() })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
+    case 'embark_vehicle': {
+      // Phase 14 (PHB §9.6): overwrite characters.embarked_on with the
+      // catalogued vehicle slug. Silent no-op when the slug is unknown
+      // (the tool layer is the gate; the applicator stays defensive).
+      if (m.characterId !== ctx.characterId) break;
+      if (!isValidVehicleSlug(m.vehicleSlug)) break;
+      await tx
+        .update(charactersTable)
+        .set({ embarkedOn: m.vehicleSlug, updatedAt: new Date() })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
+    case 'disembark_vehicle': {
+      // Phase 14: clear characters.embarked_on. Idempotent.
+      if (m.characterId !== ctx.characterId) break;
+      await tx
+        .update(charactersTable)
+        .set({ embarkedOn: null, updatedAt: new Date() })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
   }
 }
 
@@ -1516,6 +1586,16 @@ function sanitizeBastionRoom(r: BastionRoom | undefined | null): BastionRoom | n
     kind: room.kind as BastionRoom['kind'],
     level: Math.floor(room.level) as BastionRoom['level'],
   };
+}
+
+// ─── Phase 14: mounted-state defensive hydrator ────────────────────────────
+
+function hydrateMountedOnRaw(raw: unknown): MountedState | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Partial<MountedState>;
+  if (typeof r.mountId !== 'string' || !r.mountId) return null;
+  if (!isValidMountMode(r.mode)) return null;
+  return { mountId: r.mountId, mode: r.mode };
 }
 
 /**

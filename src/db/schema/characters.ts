@@ -7,6 +7,7 @@ import type {
   DowntimeActivity,
   EquippedFocus,
   Hireling,
+  MountedState,
   Senses,
 } from '@/engine/types';
 
@@ -130,6 +131,20 @@ export const characters = pgTable(
      * when bastion is null).
      */
     bastion: jsonb('bastion').$type<Bastion | null>().default(null),
+    /**
+     * PHB §3.23 — current mounted state (rider POV). NULL when the PC
+     * is not on a mount. Holds `{ mountId, mode }` where `mountId` is
+     * the id of a `combat_actors` row in the same scene and `mode` is
+     * controlled/independent. Mutations: mount (overwrite),
+     * dismount (clear), set_mount_mode (update mode).
+     */
+    mountedOn: jsonb('mounted_on').$type<MountedState | null>().default(null),
+    /**
+     * PHB §9.6 — current vehicle the PC is embarked on (slug into the
+     * `VEHICLE_CATALOG`). NULL when the PC is on foot. Mutations:
+     * embark_vehicle (overwrite), disembark_vehicle (clear).
+     */
+    embarkedOn: text('embarked_on'),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

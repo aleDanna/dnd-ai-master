@@ -26,9 +26,13 @@ import type {
   EquippedFocus,
   FocusKind,
   Hireling,
+  MountedState,
+  Size,
   TonalFrame,
   EngagementProfile,
 } from '@/engine/types';
+import { isValidMountMode, isValidSize } from '@/engine/mounts';
+import { isValidVehicleSlug } from '@/engine/vehicles';
 import { isValidTonalFrame, isValidEngagementProfile } from '@/engine/npc-tonal';
 import type { SnapshotForModel } from './types';
 
@@ -236,6 +240,41 @@ function hydrateBastion(raw: unknown): Bastion | undefined {
   };
 }
 
+// ─── Phase 14 (PHB §3.23, §9.6) defensive hydrators ────────────────────────
+
+/**
+ * PHB §3.23 — hydrate the `mounted_on` jsonb column. Drops malformed
+ * entries defensively so a corrupt mode/value can't crash the tool layer.
+ * Returns `undefined` when the column is null/empty.
+ */
+function hydrateMountedOn(raw: unknown): MountedState | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as Partial<MountedState>;
+  if (typeof r.mountId !== 'string' || !r.mountId) return undefined;
+  if (!isValidMountMode(r.mode)) return undefined;
+  return { mountId: r.mountId, mode: r.mode };
+}
+
+/**
+ * PHB §9.6 — hydrate the `embarked_on` text column. Returns the slug only
+ * when it matches a known vehicle in `VEHICLE_CATALOG`; otherwise drops
+ * the value defensively (forward-compat with legacy data).
+ */
+function hydrateEmbarkedOn(raw: unknown): string | undefined {
+  if (typeof raw !== 'string' || !raw) return undefined;
+  return isValidVehicleSlug(raw) ? raw : undefined;
+}
+
+/**
+ * PHB §1 / monster manual sizing — hydrate the `size` varchar column on a
+ * combat actor. Drops unknown sizes defensively so the master can't be
+ * tripped by a corrupt value.
+ */
+function hydrateSize(raw: unknown): Size | undefined {
+  if (typeof raw !== 'string' || !raw) return undefined;
+  return isValidSize(raw) ? raw : undefined;
+}
+
 /**
  * PHB §2.5 — hydrate the `classes` jsonb column. Validates each entry has a
  * string `slug` and a positive integer `level`; drops malformed entries
@@ -335,6 +374,13 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
       // 2024 PHB simplified Bastion. NULL → undefined so the optional
       // field reads as absent on the engine type.
       bastion: hydrateBastion(character.bastion),
+      // PHB §3.23 — Phase 14 mounted state. Defaults to undefined when
+      // the column is null / malformed; the tool layer treats absence
+      // as "on foot".
+      mountedOn: hydrateMountedOn(character.mountedOn),
+      // PHB §9.6 — Phase 14 vehicle embarkation. Slug into the
+      // catalog; undefined when not embarked.
+      embarkedOn: hydrateEmbarkedOn(character.embarkedOn),
     },
   ];
 
@@ -438,6 +484,11 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
     downtimeActivities: hydrateDowntimeActivities(character.downtimeActivities),
     hirelings: hydrateHirelings(character.hirelings),
     bastion: hydrateBastion(character.bastion) ?? null,
+    // PHB §3.23 / §9.6 (Phase 14): master sees current mount + vehicle
+    // state so it can decide whether the PC needs to dismount before
+    // moving away on foot, or before engaging in combat off-vehicle.
+    mountedOn: hydrateMountedOn(character.mountedOn) ?? null,
+    embarkedOn: hydrateEmbarkedOn(character.embarkedOn) ?? null,
     spellSlots: buildSpellSlotsView(character.spellcasting as Character['spellcasting'], stateRow.spellSlotsUsed),
   });
 
@@ -462,6 +513,10 @@ function toEngineCombatActor(row: CombatActorRow): CombatActor {
     conditionImmunities: c.conditionImmunities ?? [],
     // PHB §6.4 — special senses (NULL when the actor has none).
     senses: row.senses ?? undefined,
+    // PHB §1 / monster manual sizing — Phase 14 mount validation.
+    // Validated defensively so a corrupt value reads as "no size data"
+    // and the master falls back to permissive behaviour.
+    size: hydrateSize(row.size),
   };
 }
 

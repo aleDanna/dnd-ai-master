@@ -1772,4 +1772,152 @@ describe('applyMutations', () => {
       expect(b!.rooms[2]).toMatchObject({ kind: 'library', level: 1 });
     });
   });
+
+  // ─── Phase 14: mounted combat / vehicles (PHB §3.23, §9.6) ──────────────
+  describe('applicator — mount/dismount/embark mutations', () => {
+    type MountedRow = { mountId: string; mode: string } | null;
+
+    async function getMountedOn(): Promise<MountedRow> {
+      const [c] = await db
+        .select({ m: characters.mountedOn })
+        .from(characters)
+        .where(eq(characters.id, PC_ID))
+        .limit(1);
+      return (c!.m ?? null) as MountedRow;
+    }
+
+    async function getEmbarkedOn(): Promise<string | null> {
+      const [c] = await db
+        .select({ e: characters.embarkedOn })
+        .from(characters)
+        .where(eq(characters.id, PC_ID))
+        .limit(1);
+      return c!.e ?? null;
+    }
+
+    async function resetVehicleState() {
+      await db
+        .update(characters)
+        .set({ mountedOn: null, embarkedOn: null })
+        .where(eq(characters.id, PC_ID));
+    }
+
+    it('mount writes characters.mounted_on with default controlled mode', async () => {
+      await resetVehicleState();
+      await applyMutations(
+        SESSION_ID,
+        [{ op: 'mount', characterId: PC_ID, mountId: MONSTER_ID }],
+        [],
+      );
+      const m = await getMountedOn();
+      expect(m).not.toBeNull();
+      expect(m!.mountId).toBe(MONSTER_ID);
+      expect(m!.mode).toBe('controlled');
+    });
+
+    it('mount with explicit independent mode persists', async () => {
+      await resetVehicleState();
+      await applyMutations(
+        SESSION_ID,
+        [
+          {
+            op: 'mount',
+            characterId: PC_ID,
+            mountId: MONSTER_ID,
+            mode: 'independent',
+          },
+        ],
+        [],
+      );
+      const m = await getMountedOn();
+      expect(m!.mode).toBe('independent');
+    });
+
+    it('dismount clears characters.mounted_on (idempotent)', async () => {
+      await resetVehicleState();
+      // No mount → dismount is a silent no-op (the column stays NULL).
+      await applyMutations(
+        SESSION_ID,
+        [{ op: 'dismount', characterId: PC_ID }],
+        [],
+      );
+      expect(await getMountedOn()).toBeNull();
+
+      // Mount + dismount cycle.
+      await applyMutations(
+        SESSION_ID,
+        [
+          { op: 'mount', characterId: PC_ID, mountId: MONSTER_ID },
+          { op: 'dismount', characterId: PC_ID },
+        ],
+        [],
+      );
+      expect(await getMountedOn()).toBeNull();
+    });
+
+    it('set_mount_mode updates the mode while preserving the mountId', async () => {
+      await resetVehicleState();
+      await applyMutations(
+        SESSION_ID,
+        [
+          { op: 'mount', characterId: PC_ID, mountId: MONSTER_ID, mode: 'controlled' },
+          { op: 'set_mount_mode', characterId: PC_ID, mode: 'independent' },
+        ],
+        [],
+      );
+      const m = await getMountedOn();
+      expect(m!.mountId).toBe(MONSTER_ID);
+      expect(m!.mode).toBe('independent');
+    });
+
+    it('set_mount_mode is a no-op when not currently mounted', async () => {
+      await resetVehicleState();
+      await applyMutations(
+        SESSION_ID,
+        [{ op: 'set_mount_mode', characterId: PC_ID, mode: 'independent' }],
+        [],
+      );
+      expect(await getMountedOn()).toBeNull();
+    });
+
+    it('embark_vehicle persists a known slug; unknown slug is dropped', async () => {
+      await resetVehicleState();
+      await applyMutations(
+        SESSION_ID,
+        [{ op: 'embark_vehicle', characterId: PC_ID, vehicleSlug: 'sailing-ship' }],
+        [],
+      );
+      expect(await getEmbarkedOn()).toBe('sailing-ship');
+
+      // Unknown slug — applicator drops it; column unchanged.
+      await applyMutations(
+        SESSION_ID,
+        [{ op: 'embark_vehicle', characterId: PC_ID, vehicleSlug: 'mecha' }],
+        [],
+      );
+      expect(await getEmbarkedOn()).toBe('sailing-ship');
+    });
+
+    it('disembark_vehicle clears characters.embarked_on (idempotent)', async () => {
+      await resetVehicleState();
+      // Cycle: embark → disembark.
+      await applyMutations(
+        SESSION_ID,
+        [
+          { op: 'embark_vehicle', characterId: PC_ID, vehicleSlug: 'rowboat' },
+          { op: 'disembark_vehicle', characterId: PC_ID },
+        ],
+        [],
+      );
+      expect(await getEmbarkedOn()).toBeNull();
+
+      // Idempotent — disembark again is fine.
+      await applyMutations(
+        SESSION_ID,
+        [{ op: 'disembark_vehicle', characterId: PC_ID }],
+        [],
+      );
+      expect(await getEmbarkedOn()).toBeNull();
+    });
+  });
 });
