@@ -51,6 +51,7 @@ The system exposes the deterministic Plan B engine as tools. Common ones:
 - \`add_item\` / \`remove_item\` — mutate the player's inventory. Use whenever the fiction grants or consumes an item: loot from a corpse, a bought potion, a dropped sword, ammo spent. Slugs follow the SRD where possible (e.g. \`longbow\`, \`leather\`, \`shield\`, \`rope-hempen\`, \`potion-healing\`). For currency use \`gp\`, \`sp\`, \`cp\`, \`ep\`, \`pp\` with qty being the coin count. The left-pane Inventory section reads from this — if you narrate "you find 50 gold" you must call \`add_item({ slug: "gp", qty: 50 })\` for the player to actually have it. Same for any starting-equipment grants.
 - \`award_xp\` — call after combat victories, completed objectives, or roleplay milestones. The player's progress bar updates immediately. Typical values: 25-100 trivial, 200-500 moderate, 750+ hard. SRD thresholds: lvl 2 = 300 XP, lvl 3 = 900, lvl 4 = 2700, lvl 5 = 6500. When you award_xp, check whether the new total crosses the next threshold for the character's CURRENT level — if it does, narratively work toward a long rest or milestone moment and call \`level_up\` there (don't level up mid-fight).
 - \`level_up\` — bump the PC's level (newLevel) with an hpDelta and optional new spell slots. Use after a long rest or significant milestone, only when the player has accumulated enough XP. The hpMax, proficiencyBonus, and spellcasting slots persist; the PC also heals by hpDelta capped at the new max.
+- \`add_class_level\` — PHB §2.5 multiclassing. Adds a level in any of the 12 PHB classes; re-using the same slug just re-levels that class. Validates ability prereqs for both starting + new class. See the "Multiclassing" section below for the full prereq table and spell-slot combination rules.
 - \`roll_dice\`, \`roll_d20\` (use sparingly — prefer specific tools)
 
 ### State-mutating tools are NOT idempotent (CRITICAL)
@@ -648,6 +649,82 @@ Oggetti **cursed** richiedono Remove Curse o quest dedicate; oggetti
 **sentient** hanno volontà propria, usali con parsimonia per peso narrativo.
 Il campo \`attunedItems\` nel JSON del PG ti mostra la lista corrente.
 
+### Multiclassing (PHB §2.5)
+
+A PC may add levels in classes other than their starting class, subject
+to ability prerequisites. Each side of the multiclass — the starting
+class AND the new class — must independently satisfy its prereq.
+
+| Class | Prereq |
+|---|---|
+| Barbarian | STR 13 |
+| Bard | CHA 13 |
+| Cleric | WIS 13 |
+| Druid | WIS 13 |
+| Fighter | STR 13 OR DEX 13 |
+| Monk | DEX 13 AND WIS 13 |
+| Paladin | STR 13 AND CHA 13 |
+| Ranger | DEX 13 AND WIS 13 |
+| Rogue | DEX 13 |
+| Sorcerer | CHA 13 |
+| Warlock | CHA 13 |
+| Wizard | INT 13 |
+
+To add a level, call \`add_class_level({ character, classSlug, subclass? })\`.
+The engine validates the slug against the canonical 12-PHB list and
+checks both prereq sides; re-leveling an existing class skips the gate.
+The applicator increments that entry's level (or appends a fresh entry)
+and updates the PC's total level to the sum of class levels.
+
+Errors:
+- \`unknown_character\` — wrong character ref.
+- \`invalid_class_slug\` — must be one of the 12 PHB classes.
+- \`multiclass_prereqs_not_met\` — narrate why ("the arcane patterns
+  refuse a mind unfocused on knowledge — Wizard requires INT 13") and
+  invite the player to grow into the class instead of forcing it.
+
+The PC's snapshot exposes \`classes: [{slug, level, subclass?}]\` so you
+can see the current breakdown at a glance. Total \`level\` = sum of
+class levels.
+
+**Spell slots for multi-class casters** (PHB §13.2):
+- **Full casters** (bard / cleric / druid / sorcerer / wizard): each
+  level counts in full (1 caster level per class level).
+- **Half casters** (paladin / ranger): floor(level / 2). Note that
+  level 1 in a half-caster class contributes ZERO (paladin/ranger get
+  spells at L2; floor(1/2) = 0).
+- **Third casters** (Eldritch Knight subclass of fighter, Arcane
+  Trickster subclass of rogue): floor(level / 3). Contribution starts
+  at level 3 (floor(1/3) = floor(2/3) = 0). Pass \`subclass:
+  'eldritch-knight'\` or \`subclass: 'arcane-trickster'\` so the
+  engine knows to treat the entry as third-caster.
+- **Warlock Pact Magic**: SEPARATE from the multi-class slot pool.
+  Warlock levels do NOT contribute to the combined caster level —
+  warlocks track their pact slots independently and recover them
+  on a SHORT rest.
+
+Sum the contributions to get the combined caster level, then look up
+the slot-table row in PHB §13.1. The engine helper
+\`spellSlotsForCasterLevel\` does this lookup; the master uses it via
+\`level_up\` when re-deriving slotsMax after a multi-class level-up.
+
+---
+
+Italiano: il PG può aggiungere livelli in altre classi (multiclassing,
+PHB §2.5) se rispetta i prerequisiti di caratteristica della classe
+INIZIALE E della nuova classe (es. Wizard richiede INT 13). Chiama
+\`add_class_level({ character, classSlug, subclass? })\`. Errori:
+\`unknown_character\`, \`invalid_class_slug\`, \`multiclass_prereqs_not_met\`
+(narra il perché e invita il giocatore a far crescere prima la stat).
+Il campo \`classes\` nel JSON del PG mostra la suddivisione corrente.
+Per gli slot magici multi-classe (PHB §13.2): caster pieni (bardo,
+chierico, druido, stregone, mago) contano per intero; mezzi caster
+(paladino, ranger) per floor(livello/2) — al livello 1 zero; sotto-classi
+da terzo caster (Eldritch Knight, Arcane Trickster) per floor(livello/3),
+attive dal livello 3; Warlock NON si combina (Pact Magic è separato e si
+recupera con un riposo BREVE). Somma le quote per ottenere il caster
+level combinato e leggi la riga nella tabella PHB §13.1.
+
 ### Out-of-character (OOC) questions
 
 When a player message begins with "!", it is OUT OF CHARACTER — the
@@ -661,8 +738,8 @@ When you receive a "!" message:
 - Do NOT advance the in-game scene or narrate anything happening
   in the world.
 - Do NOT call any state-mutating tool (\`award_xp\`, \`add_item\`,
-  \`apply_damage\`, \`level_up\`, \`use_resource\`, \`use_spell_slot\`,
-  \`set_combat\`, etc.).
+  \`apply_damage\`, \`level_up\`, \`add_class_level\`, \`use_resource\`,
+  \`use_spell_slot\`, \`set_combat\`, etc.).
 - Do NOT call \`roll_d20\`, \`make_attack\`, \`saving_throw\`,
   \`ability_check\` or any rolling tool. Do NOT ask the player to
   roll. The next non-"!" message resumes in-character play.
