@@ -47,7 +47,7 @@ describe('tts_cache persistence', () => {
     const fakeMp3 = Buffer.from([0xff, 0xfb, 0x90, 0x44, 0x00, 0x00]);
 
     // First insert: succeeds.
-    await db.insert(ttsCache).values({ messageId: MESSAGE_ID, voice: 'onyx', audioMp3: fakeMp3 });
+    await db.insert(ttsCache).values({ messageId: MESSAGE_ID, voice: 'onyx', audioMp3: fakeMp3, provider: 'openai' });
 
     const [hit] = await db
       .select()
@@ -60,7 +60,7 @@ describe('tts_cache persistence', () => {
     // Second insert with the same PK: no-op via onConflictDoNothing (would otherwise throw).
     await db
       .insert(ttsCache)
-      .values({ messageId: MESSAGE_ID, voice: 'onyx', audioMp3: Buffer.from([0x01, 0x02]) })
+      .values({ messageId: MESSAGE_ID, voice: 'onyx', audioMp3: Buffer.from([0x01, 0x02]), provider: 'openai' })
       .onConflictDoNothing();
 
     // Original audio still there — second insert was suppressed.
@@ -72,7 +72,7 @@ describe('tts_cache persistence', () => {
     expect(Buffer.compare(stillThere!.audioMp3, fakeMp3)).toBe(0);
 
     // A different voice for the same message gets its own row.
-    await db.insert(ttsCache).values({ messageId: MESSAGE_ID, voice: 'nova', audioMp3: Buffer.from([0x77, 0x88]) });
+    await db.insert(ttsCache).values({ messageId: MESSAGE_ID, voice: 'nova', audioMp3: Buffer.from([0x77, 0x88]), provider: 'openai' });
     const allForMessage = await db.select().from(ttsCache).where(eq(ttsCache.messageId, MESSAGE_ID));
     expect(allForMessage.length).toBe(2);
     expect(allForMessage.map((r) => r.voice).sort()).toEqual(['nova', 'onyx']);
