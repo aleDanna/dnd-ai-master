@@ -60,9 +60,20 @@ export function CharacterPane({ character, state }: CharacterPaneProps) {
           {character.name[0]}
         </div>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, lineHeight: 1.1 }}>{character.name}</div>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, lineHeight: 1.1, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span>{character.name}</span>
+            {character.inspiration === true && (
+              <span
+                aria-label="Has Inspiration"
+                title="Has Inspiration — spend for ADV on one d20 roll"
+                style={{ color: 'var(--gold)', fontSize: 18, lineHeight: 1 }}
+              >
+                ★
+              </span>
+            )}
+          </div>
           <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 2 }}>
-            {character.raceSlug} · {character.classSlug} {character.level}
+            {character.raceSlug} · {formatClassBreakdown(character)}
           </div>
         </div>
       </div>
@@ -82,6 +93,10 @@ export function CharacterPane({ character, state }: CharacterPaneProps) {
         <Stat label="Speed" value={`${character.speed}'`} />
         <Stat label="PB" value={`+${character.proficiencyBonus}`} />
       </div>
+
+      <SensesSection senses={character.senses} />
+      <AttunementSection attunedItems={character.attunedItems} />
+      <EquippedFocusSection focus={character.equippedFocus} />
 
       <div>
         <Eyebrow style={{ marginBottom: 6 }}>Abilities</Eyebrow>
@@ -114,7 +129,14 @@ export function CharacterPane({ character, state }: CharacterPaneProps) {
           <Eyebrow style={{ marginBottom: 6 }}>Conditions</Eyebrow>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {state.conditions.map((c) => (
-              <Chip key={c.slug} tone="warn" dot>{c.slug}</Chip>
+              <Chip key={c.slug} tone="warn" dot>
+                {c.slug}
+                {typeof c.durationRounds === 'number' && c.durationRounds > 0 && (
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, opacity: 0.75, marginLeft: 4 }}>
+                    ({c.durationRounds} {c.durationRounds === 1 ? 'rd' : 'rds'})
+                  </span>
+                )}
+              </Chip>
             ))}
           </div>
         </div>
@@ -187,6 +209,82 @@ function Stat({ label, value }: { label: string; value: string | number }) {
     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 0', textAlign: 'center' }}>
       <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--fg-muted)' }}>{label}</div>
       <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 600, marginTop: 2 }}>{value}</div>
+    </div>
+  );
+}
+
+/**
+ * PHB §2.5 — render the class breakdown. For a single-class PC this is just
+ * "fighter 3" (legacy fallback); for a multiclass PC it joins entries as
+ * "fighter 3 / wizard 2". Capitalises the slug for display.
+ */
+function formatClassBreakdown(character: Character): string {
+  const cap = (s: string) => (s ? s[0]!.toUpperCase() + s.slice(1) : s);
+  if (character.classes && character.classes.length > 0) {
+    return character.classes.map((c) => `${cap(c.slug)} ${c.level}`).join(' / ');
+  }
+  return `${cap(character.classSlug)} ${character.level}`;
+}
+
+/**
+ * PHB §6.4 — render the senses block. Shows only present senses, each as a
+ * compact "Darkvision 60 ft" line. Hidden entirely when no senses are set.
+ */
+function SensesSection({ senses }: { senses?: Character['senses'] }) {
+  if (!senses) return null;
+  const entries: string[] = [];
+  if (senses.darkvisionFt) entries.push(`Darkvision ${senses.darkvisionFt} ft`);
+  if (senses.blindsightFt) entries.push(`Blindsight ${senses.blindsightFt} ft`);
+  if (senses.tremorsenseFt) entries.push(`Tremorsense ${senses.tremorsenseFt} ft`);
+  if (senses.truesightFt) entries.push(`Truesight ${senses.truesightFt} ft`);
+  if (entries.length === 0) return null;
+  return (
+    <div>
+      <Eyebrow style={{ marginBottom: 6 }}>Senses</Eyebrow>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+        {entries.map((label) => (
+          <Chip key={label} tone="neutral">{label}</Chip>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * PHB §10.1 — show the attunement count (capped at 3) plus the slug list.
+ * Hidden entirely when nothing is attuned.
+ */
+function AttunementSection({ attunedItems }: { attunedItems?: string[] }) {
+  if (!attunedItems || attunedItems.length === 0) return null;
+  return (
+    <div>
+      <Eyebrow style={{ marginBottom: 6 }}>Attuned: {attunedItems.length}/3</Eyebrow>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+        {attunedItems.map((slug) => (
+          <Chip key={slug} tone="accent">{slugToLabel(slug)}</Chip>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const FOCUS_LABEL: Record<'arcane' | 'druidic' | 'holy' | 'instrument', string> = {
+  arcane: 'Arcane',
+  druidic: 'Druidic',
+  holy: 'Holy',
+  instrument: 'Instrument',
+};
+
+/**
+ * PHB §8.4 — show the held spellcasting focus as a compact "Holy: emblem-pelor"
+ * style chip. Hidden when no focus is declared.
+ */
+function EquippedFocusSection({ focus }: { focus?: Character['equippedFocus'] }) {
+  if (!focus) return null;
+  return (
+    <div>
+      <Eyebrow style={{ marginBottom: 6 }}>Focus</Eyebrow>
+      <Chip tone="gold">{FOCUS_LABEL[focus.kind]}: {slugToLabel(focus.itemSlug)}</Chip>
     </div>
   );
 }
