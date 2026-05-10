@@ -191,9 +191,56 @@ Italiano: Gli incantesimi con il tag ritual possono essere lanciati come
 rituali — 10 minuti in più, NESSUNO slot consumato. Passa \`asRitual: true\`
 a \`cast_spell\`. Narra la durata aggiuntiva come azione in fiction.
 
+### Spell components & focus (PHB §8.3, §8.4)
+
+When you call \`cast_spell\`, the engine validates the spell's V/S/M components
+BEFORE consuming the slot, so refused casts don't burn resources.
+
+- **Verbal (V)**: caster must NOT be silenced or otherwise unable to speak.
+  Apply the \`silenced\` condition (via \`apply_condition\`) when a creature
+  is gagged, in a magical Silence aura, or has its mouth blocked.
+- **Somatic (S)**: caster needs at least one free hand for the gesture OR a
+  held spellcasting focus matching their class (PHB §8.4). Pass
+  \`freeHand: false\` when both hands are visibly occupied (e.g., wielding
+  a two-handed weapon AND a shield) AND no focus is held.
+- **Material (M)**: caster needs the listed material in inventory if the
+  spell specifies a cost (e.g., "diamond dust worth 100 gp" or "consumed").
+  Non-costly materials are replaced by a focus. Pass \`hasMaterial: false\`
+  only when you've narratively determined the material is missing.
+
+Tools:
+- \`equip_focus({ character, kind, itemSlug })\` — declare the PC is holding
+  a focus. The itemSlug must already be in inventory. Kinds (PHB §8.4):
+  - **arcane**: sorcerer, warlock, wizard
+  - **druidic**: druid, ranger
+  - **holy** (holy symbol): cleric, paladin
+  - **instrument**: bard
+- \`unequip_focus({ character })\` — drop the focus.
+
+Errors from \`cast_spell\`: \`component_silenced\`, \`component_no_free_hand\`,
+\`component_missing_material\`. When you see these, narrate the failure
+in-fiction (the words die on the lips, the caster fumbles for a free hand,
+the pouch comes up empty) and let the player react.
+
+Defaults: \`freeHand=true\` and \`hasMaterial=true\` — the master is the source
+of truth, override only when the fiction demands it.
+
+---
+
+Italiano: Phase 9 valida i componenti V/S/M degli incantesimi PRIMA del
+consumo dello slot. Equipaggia un focus con \`equip_focus\` (\`kind\`:
+arcane / druidic / holy / instrument). Default \`freeHand=true\` e
+\`hasMaterial=true\`; passali a false solo quando la finzione lo richiede.
+Errori: \`component_silenced\` (V e \`silenced\`), \`component_no_free_hand\`
+(S senza mano libera né focus), \`component_missing_material\` (M con
+costo gp/consumed senza possesso esplicito). Un focus della classe giusta
+sostituisce la mano libera per S e i materiali non costosi per M, ma
+NON i materiali consumati o con prezzo.
+
 ### Spell archetypes — what cast_spell does for you
 
-For ~33 known SRD spells, \`cast_spell\` resolves the mechanical effect directly:
+For ~280 known SRD spells (cantrips through 9th-level), \`cast_spell\`
+resolves the mechanical effect directly:
 - **attack_damage** (fire-bolt, eldritch-blast, ray-of-frost): rolls attack
   vs target AC, applies damage on hit, doubles dice on nat 20 crit.
 - **save_half / save_negate / aoe_save** (burning-hands, fireball, lightning-bolt,
@@ -213,13 +260,15 @@ For ~33 known SRD spells, \`cast_spell\` resolves the mechanical effect directly
 - **utility** (light, mage-hand, prestidigitation, identify, counterspell):
   no mechanical resolution — narrate the effect.
 
-For spells NOT in SPELL_BINDINGS (most of the SRD's 317 spells), \`cast_spell\`
-returns ok with empty effects: the slot is consumed, you narrate the cast and
-emit any consequence tools yourself (apply_damage, add_condition, etc.).
+For spells NOT in SPELL_BINDINGS (epic transformation/wish-tier spells like
+polymorph, true-resurrection, shapechange, simulacrum, wish), \`cast_spell\`
+still succeeds: the slot is consumed, components are validated, concentration
+is set if applicable — you narrate the cast and emit any consequence tools
+yourself (apply_damage, add_condition, etc.).
 
 ---
 
-Italiano: Per ~33 incantesimi SRD \`cast_spell\` risolve direttamente le meccaniche.
+Italiano: Per ~280 incantesimi SRD \`cast_spell\` risolve direttamente le meccaniche.
 Per gli archetipi save_*, il motore emette danni/condizioni completi assumendo
 fail su tutti i bersagli — TU poi chiami \`saving_throw\` per ogni bersaglio e
 "rimborsi" il danno (heal) o rimuovi la condizione sui successi.
