@@ -286,6 +286,37 @@ describe('TOOL_HANDLERS — happy paths', () => {
     });
     expect(r.ok).toBe(true);
   });
+
+  it('add_class_level: same-class re-level skips prereqs and emits add_class_level mutation', () => {
+    // Fighter STR 18 — re-leveling fighter should always succeed.
+    const r = TOOL_HANDLERS['add_class_level']!(baseState, {
+      character: 'player_character', classSlug: 'fighter',
+    });
+    expect(r.ok).toBe(true);
+    expect(r.mutations).toEqual([
+      { op: 'add_class_level', characterId: 'pc1', classSlug: 'fighter' },
+    ]);
+  });
+
+  it('add_class_level: cross-class succeeds when prereqs are met', () => {
+    // Fighter STR 18 → adding Barbarian (STR 13) should pass.
+    const r = TOOL_HANDLERS['add_class_level']!(baseState, {
+      character: 'player_character', classSlug: 'barbarian',
+    });
+    expect(r.ok).toBe(true);
+    expect((r.mutations[0] as { classSlug: string }).classSlug).toBe('barbarian');
+  });
+
+  it('add_class_level: persists subclass when supplied', () => {
+    // Fighter STR 18 → re-leveling fighter with Eldritch Knight subclass.
+    const r = TOOL_HANDLERS['add_class_level']!(baseState, {
+      character: 'pc1', classSlug: 'fighter', subclass: 'eldritch-knight',
+    });
+    expect(r.ok).toBe(true);
+    expect(r.mutations).toEqual([
+      { op: 'add_class_level', characterId: 'pc1', classSlug: 'fighter', subclass: 'eldritch-knight' },
+    ]);
+  });
 });
 
 describe('TOOL_HANDLERS — error branches', () => {
@@ -420,6 +451,30 @@ describe('TOOL_HANDLERS — error branches', () => {
     });
     expect(r.ok).toBe(false);
     expect(r.error).toBe('unknown_actor');
+  });
+
+  it('add_class_level missing character returns unknown_character', () => {
+    const r = TOOL_HANDLERS['add_class_level']!(baseState, { classSlug: 'wizard' });
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('unknown_character');
+  });
+
+  it('add_class_level invalid class slug returns invalid_class_slug', () => {
+    const r = TOOL_HANDLERS['add_class_level']!(baseState, {
+      character: 'player_character', classSlug: 'homebrew-warden',
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('invalid_class_slug');
+  });
+
+  it('add_class_level prereqs not met returns multiclass_prereqs_not_met', () => {
+    // Fighter INT 10 → adding wizard (INT 13) should fail.
+    const r = TOOL_HANDLERS['add_class_level']!(baseState, {
+      character: 'player_character', classSlug: 'wizard',
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('multiclass_prereqs_not_met');
+    expect(r.mutations).toEqual([]);
   });
 
   it('player_character ref does not resolve when state has multiple PCs', () => {

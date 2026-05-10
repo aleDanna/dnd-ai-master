@@ -42,6 +42,10 @@ import { shortRest, longRest } from '../rests';
 import { equip, unequip, recomputeAC } from '../equipment';
 import { levelUp } from '../levelup';
 import {
+  meetsMulticlassPrereqs,
+  VALID_CLASS_SLUGS,
+} from '../multiclass';
+import {
   dehydrationSaveDC,
   forcedMarchDC,
   starvationSurvivalDays,
@@ -325,6 +329,50 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       newLevel: Number(input.newLevel),
       hpRollMode: (input.hpRollMode as 'average' | 'rolled') ?? 'average',
     });
+  },
+
+  // PHB §2.5 Multiclassing: add (or re-level) one level of a class. The
+  // engine validates the class slug against the canonical 12-PHB list
+  // and the multiclass ability prerequisites for both the starting
+  // class and the target class. Re-leveling an existing class skips
+  // the prereq gate (the PC already has that class). Subclass is
+  // optional but, when supplied, is persisted on the entry — the
+  // master uses it to drive Eldritch Knight / Arcane Trickster
+  // third-caster spell-slot calculations.
+  add_class_level: (state, input) => {
+    const ref = input.character ?? input.actor;
+    if (ref == null) return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    const charId = resolveCharacterId(state, ref);
+    const char = state.characters.find((c) => c.id === charId);
+    if (!char) return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+
+    const slug = typeof input.classSlug === 'string' ? input.classSlug.trim().toLowerCase() : '';
+    if (!slug || !VALID_CLASS_SLUGS.includes(slug)) {
+      return { ok: false, error: 'invalid_class_slug', rolls: [], mutations: [] };
+    }
+
+    if (!meetsMulticlassPrereqs(char, slug)) {
+      return { ok: false, error: 'multiclass_prereqs_not_met', rolls: [], mutations: [] };
+    }
+
+    const subclass =
+      typeof input.subclass === 'string' && input.subclass.trim()
+        ? input.subclass.trim().toLowerCase()
+        : undefined;
+
+    return {
+      ok: true,
+      rolls: [],
+      mutations: [
+        {
+          op: 'add_class_level',
+          characterId: char.id,
+          classSlug: slug,
+          ...(subclass ? { subclass } : {}),
+        },
+      ],
+      data: { added: true, classSlug: slug, subclass },
+    };
   },
 
   award_xp: (state, input) => {

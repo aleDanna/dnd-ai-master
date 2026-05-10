@@ -361,6 +361,31 @@ const ALWAYS_ON: AnthropicTool[] = [
     } as never,
   },
   {
+    name: 'add_class_level',
+    description:
+      "PHB §2.5 Multiclassing: add a level to a PC. If `classSlug` matches an existing class on the PC, that class's level is incremented (re-level — no prereq check). If the slug is a new class, the PC must satisfy BOTH the starting class's AND the new class's ability prereqs (e.g., Wizard requires INT 13, Paladin STR 13 AND CHA 13, Fighter STR 13 OR DEX 13). Errors: `unknown_character`, `invalid_class_slug` (must be one of the 12 PHB classes), `multiclass_prereqs_not_met` (ability score gate failed). Optional `subclass` is persisted on the entry — pass it for Eldritch Knight / Arcane Trickster to drive third-caster spell-slot math.",
+    input_schema: {
+      type: 'object',
+      required: ['character', 'classSlug'],
+      properties: {
+        character: ACTOR_ID,
+        classSlug: {
+          type: 'string',
+          enum: [
+            'barbarian', 'bard', 'cleric', 'druid', 'fighter', 'monk',
+            'paladin', 'ranger', 'rogue', 'sorcerer', 'warlock', 'wizard',
+          ],
+          description: 'One of the 12 PHB classes (lowercase slug).',
+        },
+        subclass: {
+          type: 'string',
+          description:
+            "Optional subclass / archetype slug (e.g., 'eldritch-knight', 'arcane-trickster'). Persisted on the entry; the master uses it for third-caster slot math.",
+        },
+      },
+    } as never,
+  },
+  {
     name: 'add_item',
     description:
       'Add an item to the player character\'s inventory. Use slugs from the SRD where possible (e.g. "longbow", "leather", "shield", "rope-hempen"). For currency use the standard slugs gp/sp/cp/ep/pp with qty being the amount of coins. Stacks with existing entries of the same slug.',
