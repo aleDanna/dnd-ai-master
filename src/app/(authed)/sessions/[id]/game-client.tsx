@@ -74,7 +74,12 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
         prev.proficiencyBonus === patch.proficiencyBonus &&
         prev.inventory === patch.inventory &&
         prev.spellcasting === patch.spellcasting &&
-        prev.features === patch.features
+        prev.features === patch.features &&
+        prev.inspiration === patch.inspiration &&
+        prev.attunedItems === patch.attunedItems &&
+        prev.equippedFocus === patch.equippedFocus &&
+        prev.classes === patch.classes &&
+        prev.senses === patch.senses
       ) return prev;
       return {
         ...prev,
@@ -86,6 +91,11 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
         inventory: patch.inventory,
         spellcasting: patch.spellcasting as Character['spellcasting'],
         features: patch.features as Character['features'],
+        inspiration: patch.inspiration ?? prev.inspiration,
+        attunedItems: patch.attunedItems ?? prev.attunedItems,
+        equippedFocus: patch.equippedFocus ?? prev.equippedFocus,
+        classes: patch.classes ?? prev.classes,
+        senses: patch.senses ?? prev.senses,
       };
     });
   }, [stateSub.snapshot?.character]);
@@ -317,6 +327,7 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
           onEndCombat={endCombat}
           pcName={character.name}
           pcHpMax={character.hpMax}
+          pcSpeed={character.speed}
         />
       </div>
     </div>
