@@ -77,6 +77,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
               statusFlag: sessionState.statusFlag,
               sceneImageVersion: sessionState.sceneImageVersion,
               sceneImagePrompt: sessionState.sceneImagePrompt,
+              // Phase 1-10: travel, turnState (PC), position (PC) — surfaced
+              // to the right-pane UI for the multiclass branch.
+              travel: sessionState.travel,
+              turnState: sessionState.turnState,
+              position: sessionState.position,
             })
             .from(sessionState)
             .where(eq(sessionState.sessionId, sessionId))
@@ -101,6 +106,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
               inventory: characters.inventory,
               spellcasting: characters.spellcasting,
               features: characters.features,
+              // Phase 4/5/8/9/10: surface the new PC-level fields.
+              inspiration: characters.inspiration,
+              attunedItems: characters.attunedItems,
+              equippedFocus: characters.equippedFocus,
+              classes: characters.classes,
+              senses: characters.senses,
             })
             .from(characters)
             .where(eq(characters.id, session.characterId))
