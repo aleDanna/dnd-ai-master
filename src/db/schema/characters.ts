@@ -1,6 +1,14 @@
 import { pgTable, text, integer, jsonb, uuid, timestamp, index, boolean } from 'drizzle-orm/pg-core';
 import { users } from './users';
-import type { ClassLevel, CraftingProject, EquippedFocus, Senses } from '@/engine/types';
+import type {
+  Bastion,
+  ClassLevel,
+  CraftingProject,
+  DowntimeActivity,
+  EquippedFocus,
+  Hireling,
+  Senses,
+} from '@/engine/types';
 
 export const characters = pgTable(
   'characters',
@@ -93,6 +101,35 @@ export const characters = pgTable(
      * (remove + emit add_inventory), cancel_crafting (remove).
      */
     craftingProjects: jsonb('crafting_projects').$type<CraftingProject[]>().notNull().default([]),
+    /**
+     * PHB §6 — in-flight downtime activities (practicing_profession,
+     * recuperating, researching, training, crafting). Each entry tracks
+     * the activity kind, days remaining, and any gp spent. Default `[]`
+     * so legacy rows survive the migration. Mutations:
+     * start_downtime_activity (append), complete_downtime_activity
+     * (remove from array). The 'crafting' kind exists for completeness;
+     * actual crafting projects live on `craftingProjects`.
+     */
+    downtimeActivities: jsonb('downtime_activities')
+      .$type<DowntimeActivity[]>()
+      .notNull()
+      .default([]),
+    /**
+     * PHB §6 — currently retained hirelings. Each entry holds the wage
+     * tier (skilled = 2 gp/day or unskilled = 2 sp/day), count, days,
+     * and pre-computed gp/sp cost. Default `[]`. Mutations: hire
+     * (append), dismiss_hireling (remove).
+     */
+    hirelings: jsonb('hirelings').$type<Hireling[]>().notNull().default([]),
+    /**
+     * 2024 PHB simplified Bastion record — the PC's owned property.
+     * NULL until `set_bastion` is called for the first time. Holds a
+     * name, fortification tier (modest/fortified/castle), array of
+     * rooms (kind + level 1..3), and defender count. Mutations:
+     * set_bastion (overwrite), add_bastion_room (append room — no-op
+     * when bastion is null).
+     */
+    bastion: jsonb('bastion').$type<Bastion | null>().default(null),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

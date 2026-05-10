@@ -10,10 +10,15 @@ import {
   type DiceLogInsert,
 } from '@/db/schema';
 import type {
+  Bastion,
+  BastionRoom,
   ClassLevel,
   ConditionInstance,
   CraftingProject,
   DiceRoll,
+  DowntimeActivity,
+  DowntimeActivityKind,
+  Hireling,
   Mutation,
   TurnState,
   TravelState,
@@ -1149,6 +1154,119 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
         .where(eq(charactersTable.id, m.characterId));
       break;
     }
+    case 'start_downtime_activity': {
+      // Phase 13 (PHB §6): append to characters.downtime_activities.
+      // Idempotent on duplicate id (silent no-op so re-applied event
+      // logs don't grow the array).
+      if (m.characterId !== ctx.characterId) break;
+      const [c] = await tx
+        .select({ activities: charactersTable.downtimeActivities })
+        .from(charactersTable)
+        .where(eq(charactersTable.id, m.characterId))
+        .limit(1);
+      if (!c) break;
+      const cur = asDowntimeActivitiesArray(c.activities);
+      if (cur.some((a) => a.id === m.activity.id)) break;
+      const next: DowntimeActivity[] = [
+        ...cur,
+        sanitizeDowntimeActivity(m.activity),
+      ];
+      await tx
+        .update(charactersTable)
+        .set({ downtimeActivities: next, updatedAt: new Date() })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
+    case 'complete_downtime_activity': {
+      // Phase 13: remove the activity from downtime_activities. The
+      // master narrates the outcome separately. Silent no-op on
+      // missing id (replayable event log).
+      if (m.characterId !== ctx.characterId) break;
+      const [c] = await tx
+        .select({ activities: charactersTable.downtimeActivities })
+        .from(charactersTable)
+        .where(eq(charactersTable.id, m.characterId))
+        .limit(1);
+      if (!c) break;
+      const cur = asDowntimeActivitiesArray(c.activities);
+      const next = cur.filter((a) => a.id !== m.activityId);
+      if (next.length === cur.length) break;
+      await tx
+        .update(charactersTable)
+        .set({ downtimeActivities: next, updatedAt: new Date() })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
+    case 'hire': {
+      // Phase 13 (PHB §6): append a hireling engagement to
+      // characters.hirelings. Idempotent on duplicate id.
+      if (m.characterId !== ctx.characterId) break;
+      const [c] = await tx
+        .select({ hirelings: charactersTable.hirelings })
+        .from(charactersTable)
+        .where(eq(charactersTable.id, m.characterId))
+        .limit(1);
+      if (!c) break;
+      const cur = asHirelingsArray(c.hirelings);
+      if (cur.some((h) => h.id === m.hireling.id)) break;
+      const next: Hireling[] = [...cur, sanitizeHireling(m.hireling)];
+      await tx
+        .update(charactersTable)
+        .set({ hirelings: next, updatedAt: new Date() })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
+    case 'dismiss_hireling': {
+      // Phase 13: drop a hireling engagement from characters.hirelings.
+      // Silent no-op when the id is not present.
+      if (m.characterId !== ctx.characterId) break;
+      const [c] = await tx
+        .select({ hirelings: charactersTable.hirelings })
+        .from(charactersTable)
+        .where(eq(charactersTable.id, m.characterId))
+        .limit(1);
+      if (!c) break;
+      const cur = asHirelingsArray(c.hirelings);
+      const next = cur.filter((h) => h.id !== m.hireId);
+      if (next.length === cur.length) break;
+      await tx
+        .update(charactersTable)
+        .set({ hirelings: next, updatedAt: new Date() })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
+    case 'set_bastion': {
+      // Phase 13 (2024 PHB simplified): overwrite the PC's bastion
+      // record. Pass null to clear; pass a Bastion to establish/replace.
+      if (m.characterId !== ctx.characterId) break;
+      const next: Bastion | null = m.bastion ? sanitizeBastion(m.bastion) : null;
+      await tx
+        .update(charactersTable)
+        .set({ bastion: next, updatedAt: new Date() })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
+    case 'add_bastion_room': {
+      // Phase 13: append a room to bastion.rooms. Silent no-op when
+      // the PC has no bastion (master must call set_bastion first).
+      if (m.characterId !== ctx.characterId) break;
+      const [c] = await tx
+        .select({ bastion: charactersTable.bastion })
+        .from(charactersTable)
+        .where(eq(charactersTable.id, m.characterId))
+        .limit(1);
+      if (!c) break;
+      const current = asBastion(c.bastion);
+      if (!current) break;
+      const room = sanitizeBastionRoom(m.room);
+      if (!room) break;
+      const next: Bastion = { ...current, rooms: [...current.rooms, room] };
+      await tx
+        .update(charactersTable)
+        .set({ bastion: next, updatedAt: new Date() })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
   }
 }
 
@@ -1228,6 +1346,176 @@ function sanitizeProject(p: CraftingProject): CraftingProject {
     out.startedRound = Math.floor(p.startedRound);
   }
   return out;
+}
+
+// ─── Phase 13: downtime / hireling / bastion sanitisers ───────────────────
+
+const VALID_DOWNTIME_KINDS: ReadonlySet<DowntimeActivityKind> = new Set([
+  'practicing_profession',
+  'recuperating',
+  'researching',
+  'training',
+  'crafting',
+]);
+
+/** Coerce the jsonb downtime_activities column into a clean array. */
+function asDowntimeActivitiesArray(raw: unknown): DowntimeActivity[] {
+  if (!Array.isArray(raw)) return [];
+  const out: DowntimeActivity[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const r = item as Partial<DowntimeActivity>;
+    if (typeof r.id !== 'string' || !r.id) continue;
+    if (typeof r.kind !== 'string' || !VALID_DOWNTIME_KINDS.has(r.kind as DowntimeActivityKind)) {
+      continue;
+    }
+    if (typeof r.daysRemaining !== 'number' || !Number.isFinite(r.daysRemaining)) continue;
+    const gp =
+      typeof r.gpSpent === 'number' && Number.isFinite(r.gpSpent)
+        ? Math.max(0, Math.floor(r.gpSpent))
+        : 0;
+    const entry: DowntimeActivity = {
+      id: r.id,
+      kind: r.kind as DowntimeActivityKind,
+      daysRemaining: Math.max(0, Math.floor(r.daysRemaining)),
+      gpSpent: gp,
+    };
+    if (typeof r.startedAt === 'number' && Number.isFinite(r.startedAt)) {
+      entry.startedAt = Math.floor(r.startedAt);
+    }
+    out.push(entry);
+  }
+  return out;
+}
+
+function sanitizeDowntimeActivity(a: DowntimeActivity): DowntimeActivity {
+  const out: DowntimeActivity = {
+    id: a.id,
+    kind: a.kind,
+    daysRemaining: Math.max(0, Math.floor(a.daysRemaining)),
+    gpSpent: Math.max(0, Math.floor(a.gpSpent)),
+  };
+  if (typeof a.startedAt === 'number' && Number.isFinite(a.startedAt)) {
+    out.startedAt = Math.floor(a.startedAt);
+  }
+  return out;
+}
+
+const VALID_HIRELING_KINDS: ReadonlySet<Hireling['kind']> = new Set(['skilled', 'unskilled']);
+
+function asHirelingsArray(raw: unknown): Hireling[] {
+  if (!Array.isArray(raw)) return [];
+  const out: Hireling[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const r = item as Partial<Hireling>;
+    if (typeof r.id !== 'string' || !r.id) continue;
+    if (typeof r.kind !== 'string' || !VALID_HIRELING_KINDS.has(r.kind as Hireling['kind'])) {
+      continue;
+    }
+    if (typeof r.count !== 'number' || !Number.isFinite(r.count) || r.count < 0) continue;
+    if (typeof r.days !== 'number' || !Number.isFinite(r.days) || r.days < 0) continue;
+    const gpCost =
+      typeof r.gpCost === 'number' && Number.isFinite(r.gpCost) ? Math.max(0, Math.floor(r.gpCost)) : 0;
+    const spCost =
+      typeof r.spCost === 'number' && Number.isFinite(r.spCost) ? Math.max(0, Math.floor(r.spCost)) : 0;
+    const entry: Hireling = {
+      id: r.id,
+      kind: r.kind as Hireling['kind'],
+      count: Math.max(0, Math.floor(r.count)),
+      days: Math.max(0, Math.floor(r.days)),
+      gpCost,
+      spCost,
+    };
+    if (typeof r.startedAt === 'number' && Number.isFinite(r.startedAt)) {
+      entry.startedAt = Math.floor(r.startedAt);
+    }
+    out.push(entry);
+  }
+  return out;
+}
+
+function sanitizeHireling(h: Hireling): Hireling {
+  const out: Hireling = {
+    id: h.id,
+    kind: h.kind,
+    count: Math.max(0, Math.floor(h.count)),
+    days: Math.max(0, Math.floor(h.days)),
+    gpCost: Math.max(0, Math.floor(h.gpCost)),
+    spCost: Math.max(0, Math.floor(h.spCost)),
+  };
+  if (typeof h.startedAt === 'number' && Number.isFinite(h.startedAt)) {
+    out.startedAt = Math.floor(h.startedAt);
+  }
+  return out;
+}
+
+const VALID_BASTION_FORTIFICATIONS: ReadonlySet<Bastion['fortification']> = new Set([
+  'modest',
+  'fortified',
+  'castle',
+]);
+
+const VALID_BASTION_ROOM_KINDS: ReadonlySet<BastionRoom['kind']> = new Set([
+  'workshop',
+  'library',
+  'armory',
+  'stable',
+  'garden',
+  'storage',
+  'training',
+  'shrine',
+  'kitchen',
+  'guesthouse',
+]);
+
+function asBastion(raw: unknown): Bastion | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Partial<Bastion>;
+  if (typeof r.name !== 'string') return null;
+  if (typeof r.fortification !== 'string' || !VALID_BASTION_FORTIFICATIONS.has(r.fortification as Bastion['fortification'])) {
+    return null;
+  }
+  if (typeof r.defenders !== 'number' || !Number.isFinite(r.defenders)) return null;
+  const rooms: BastionRoom[] = [];
+  if (Array.isArray(r.rooms)) {
+    for (const room of r.rooms) {
+      const clean = sanitizeBastionRoom(room as BastionRoom);
+      if (clean) rooms.push(clean);
+    }
+  }
+  return {
+    name: r.name,
+    fortification: r.fortification as Bastion['fortification'],
+    rooms,
+    defenders: Math.max(0, Math.floor(r.defenders)),
+  };
+}
+
+function sanitizeBastion(b: Bastion): Bastion {
+  return {
+    name: b.name,
+    fortification: b.fortification,
+    rooms: (b.rooms ?? [])
+      .map(sanitizeBastionRoom)
+      .filter((r): r is BastionRoom => r != null),
+    defenders: Math.max(0, Math.floor(b.defenders)),
+  };
+}
+
+function sanitizeBastionRoom(r: BastionRoom | undefined | null): BastionRoom | null {
+  if (!r || typeof r !== 'object') return null;
+  const room = r as Partial<BastionRoom>;
+  if (typeof room.kind !== 'string' || !VALID_BASTION_ROOM_KINDS.has(room.kind as BastionRoom['kind'])) {
+    return null;
+  }
+  if (typeof room.level !== 'number' || ![1, 2, 3].includes(Math.floor(room.level))) {
+    return null;
+  }
+  return {
+    kind: room.kind as BastionRoom['kind'],
+    level: Math.floor(room.level) as BastionRoom['level'],
+  };
 }
 
 /**

@@ -1483,4 +1483,293 @@ describe('applyMutations', () => {
       expect(afterInv.length).toBe(beforeInv.length);
     });
   });
+
+  // ─── Phase 13: downtime / hireling / bastion (PHB §6 + 2024 PHB) ─────────
+  describe('applicator — downtime/hireling/bastion mutations', () => {
+    type ActivityRow = {
+      id: string;
+      kind: string;
+      daysRemaining: number;
+      gpSpent: number;
+      startedAt?: number;
+    };
+    type HirelingRow = {
+      id: string;
+      kind: string;
+      count: number;
+      days: number;
+      gpCost: number;
+      spCost: number;
+      startedAt?: number;
+    };
+    type BastionRow = {
+      name: string;
+      fortification: string;
+      rooms: { kind: string; level: number }[];
+      defenders: number;
+    } | null;
+
+    async function getActivities(): Promise<ActivityRow[]> {
+      const [c] = await db
+        .select({ a: characters.downtimeActivities })
+        .from(characters)
+        .where(eq(characters.id, PC_ID))
+        .limit(1);
+      return (c!.a ?? []) as ActivityRow[];
+    }
+
+    async function getHirelings(): Promise<HirelingRow[]> {
+      const [c] = await db
+        .select({ h: characters.hirelings })
+        .from(characters)
+        .where(eq(characters.id, PC_ID))
+        .limit(1);
+      return (c!.h ?? []) as HirelingRow[];
+    }
+
+    async function getBastion(): Promise<BastionRow> {
+      const [c] = await db
+        .select({ b: characters.bastion })
+        .from(characters)
+        .where(eq(characters.id, PC_ID))
+        .limit(1);
+      return (c!.b ?? null) as BastionRow;
+    }
+
+    async function resetDowntime() {
+      await db
+        .update(characters)
+        .set({
+          downtimeActivities: [],
+          hirelings: [],
+          bastion: null,
+        })
+        .where(eq(characters.id, PC_ID));
+    }
+
+    it('start_downtime_activity appends to characters.downtime_activities', async () => {
+      await resetDowntime();
+      await applyMutations(
+        SESSION_ID,
+        [
+          {
+            op: 'start_downtime_activity',
+            characterId: PC_ID,
+            activity: {
+              id: 'dt-1',
+              kind: 'recuperating',
+              daysRemaining: 3,
+              gpSpent: 0,
+            },
+          },
+        ],
+        [],
+      );
+      const acts = await getActivities();
+      expect(acts).toHaveLength(1);
+      expect(acts[0]).toMatchObject({
+        id: 'dt-1',
+        kind: 'recuperating',
+        daysRemaining: 3,
+        gpSpent: 0,
+      });
+    });
+
+    it('start_downtime_activity is idempotent on duplicate id', async () => {
+      await resetDowntime();
+      const activity = {
+        id: 'dt-dup',
+        kind: 'researching' as const,
+        daysRemaining: 5,
+        gpSpent: 0,
+      };
+      await applyMutations(
+        SESSION_ID,
+        [{ op: 'start_downtime_activity', characterId: PC_ID, activity }],
+        [],
+      );
+      await applyMutations(
+        SESSION_ID,
+        [{ op: 'start_downtime_activity', characterId: PC_ID, activity }],
+        [],
+      );
+      const acts = await getActivities();
+      expect(acts).toHaveLength(1);
+    });
+
+    it('complete_downtime_activity removes the activity from the array', async () => {
+      await resetDowntime();
+      await applyMutations(
+        SESSION_ID,
+        [
+          {
+            op: 'start_downtime_activity',
+            characterId: PC_ID,
+            activity: {
+              id: 'dt-2',
+              kind: 'practicing_profession',
+              daysRemaining: 5,
+              gpSpent: 0,
+            },
+          },
+          {
+            op: 'complete_downtime_activity',
+            characterId: PC_ID,
+            activityId: 'dt-2',
+          },
+        ],
+        [],
+      );
+      const acts = await getActivities();
+      expect(acts.find((a) => a.id === 'dt-2')).toBeUndefined();
+    });
+
+    it('hire appends a hireling engagement to characters.hirelings', async () => {
+      await resetDowntime();
+      await applyMutations(
+        SESSION_ID,
+        [
+          {
+            op: 'hire',
+            characterId: PC_ID,
+            hireling: {
+              id: 'hire-1',
+              kind: 'unskilled',
+              count: 2,
+              days: 10,
+              gpCost: 0,
+              spCost: 40,
+            },
+          },
+        ],
+        [],
+      );
+      const list = await getHirelings();
+      expect(list).toHaveLength(1);
+      expect(list[0]).toMatchObject({
+        id: 'hire-1',
+        kind: 'unskilled',
+        count: 2,
+        days: 10,
+        spCost: 40,
+      });
+    });
+
+    it('dismiss_hireling drops the engagement by id', async () => {
+      await resetDowntime();
+      await applyMutations(
+        SESSION_ID,
+        [
+          {
+            op: 'hire',
+            characterId: PC_ID,
+            hireling: {
+              id: 'hire-2',
+              kind: 'skilled',
+              count: 1,
+              days: 5,
+              gpCost: 10,
+              spCost: 0,
+            },
+          },
+          {
+            op: 'dismiss_hireling',
+            characterId: PC_ID,
+            hireId: 'hire-2',
+          },
+        ],
+        [],
+      );
+      const list = await getHirelings();
+      expect(list.find((h) => h.id === 'hire-2')).toBeUndefined();
+    });
+
+    it('set_bastion overwrites the bastion field; null clears it', async () => {
+      await resetDowntime();
+      await applyMutations(
+        SESSION_ID,
+        [
+          {
+            op: 'set_bastion',
+            characterId: PC_ID,
+            bastion: {
+              name: 'Ravenhollow Manor',
+              fortification: 'fortified',
+              rooms: [
+                { kind: 'kitchen', level: 1 },
+                { kind: 'storage', level: 1 },
+                { kind: 'armory', level: 1 },
+                { kind: 'training', level: 1 },
+              ],
+              defenders: 8,
+            },
+          },
+        ],
+        [],
+      );
+      let b = await getBastion();
+      expect(b).not.toBeNull();
+      expect(b!.name).toBe('Ravenhollow Manor');
+      expect(b!.fortification).toBe('fortified');
+      expect(b!.defenders).toBe(8);
+      expect(b!.rooms).toHaveLength(4);
+
+      // Now clear it.
+      await applyMutations(
+        SESSION_ID,
+        [{ op: 'set_bastion', characterId: PC_ID, bastion: null }],
+        [],
+      );
+      b = await getBastion();
+      expect(b).toBeNull();
+    });
+
+    it('add_bastion_room appends to bastion.rooms; no-op when no bastion', async () => {
+      await resetDowntime();
+      // No bastion yet → add_bastion_room should be a silent no-op.
+      await applyMutations(
+        SESSION_ID,
+        [
+          {
+            op: 'add_bastion_room',
+            characterId: PC_ID,
+            room: { kind: 'library', level: 1 },
+          },
+        ],
+        [],
+      );
+      let b = await getBastion();
+      expect(b).toBeNull();
+
+      // Establish a modest bastion (2 rooms), then add a library.
+      await applyMutations(
+        SESSION_ID,
+        [
+          {
+            op: 'set_bastion',
+            characterId: PC_ID,
+            bastion: {
+              name: 'Brookholt Cottage',
+              fortification: 'modest',
+              rooms: [
+                { kind: 'kitchen', level: 1 },
+                { kind: 'storage', level: 1 },
+              ],
+              defenders: 2,
+            },
+          },
+          {
+            op: 'add_bastion_room',
+            characterId: PC_ID,
+            room: { kind: 'library', level: 1 },
+          },
+        ],
+        [],
+      );
+      b = await getBastion();
+      expect(b).not.toBeNull();
+      expect(b!.rooms).toHaveLength(3);
+      expect(b!.rooms[2]).toMatchObject({ kind: 'library', level: 1 });
+    });
+  });
 });
