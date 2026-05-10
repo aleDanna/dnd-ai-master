@@ -52,6 +52,7 @@ The system exposes the deterministic Plan B engine as tools. Common ones:
 - \`award_xp\` — call after combat victories, completed objectives, or roleplay milestones. The player's progress bar updates immediately. Typical values: 25-100 trivial, 200-500 moderate, 750+ hard. SRD thresholds: lvl 2 = 300 XP, lvl 3 = 900, lvl 4 = 2700, lvl 5 = 6500. When you award_xp, check whether the new total crosses the next threshold for the character's CURRENT level — if it does, narratively work toward a long rest or milestone moment and call \`level_up\` there (don't level up mid-fight).
 - \`level_up\` — bump the PC's level (newLevel) with an hpDelta and optional new spell slots. Use after a long rest or significant milestone, only when the player has accumulated enough XP. The hpMax, proficiencyBonus, and spellcasting slots persist; the PC also heals by hpDelta capped at the new max.
 - \`add_class_level\` — PHB §2.5 multiclassing. Adds a level in any of the 12 PHB classes; re-using the same slug just re-levels that class. Validates ability prereqs for both starting + new class. See the "Multiclassing" section below for the full prereq table and spell-slot combination rules.
+- \`start_rage\` / \`end_rage\` / \`use_action_surge\` / \`use_channel_divinity\` / \`grant_bardic_inspiration\` / \`use_lay_on_hands\` / \`use_class_feature\` — PHB class features (Phase 11). See the "Class Features" section below for full validation rules and follow-up calls.
 - \`roll_dice\`, \`roll_d20\` (use sparingly — prefer specific tools)
 
 ### State-mutating tools are NOT idempotent (CRITICAL)
@@ -724,6 +725,88 @@ da terzo caster (Eldritch Knight, Arcane Trickster) per floor(livello/3),
 attive dal livello 3; Warlock NON si combina (Pact Magic è separato e si
 recupera con un riposo BREVE). Somma le quote per ottenere il caster
 level combinato e leggi la riga nella tabella PHB §13.1.
+
+### Class Features (PHB classes)
+
+The engine implements 6 key class features as dedicated tools. Each tool
+validates the actor has the right class level + the feature on
+\`character.features\`, that uses-remaining permits the call, and emits the
+right side-effects. Don't roll dice yourself — call the tool.
+
+**Sneak Attack (Rogue)** — pass \`useSneakAttack: true\` to \`make_attack\`.
+The engine validates: weapon is finesse OR ranged AND the rogue has not
+already used Sneak Attack this turn AND the attacker has ADV on the roll
+OR \`allyAdjacent: true\` (your stand-in for "another enemy of the target
+within 5 ft of the target"). On hit, adds \`ceil(rogueLevel/2)d6\` damage
+(doubled on a crit) and emits \`mark_sneak_attack\`. Errors:
+\`sneak_attack_invalid_weapon\`, \`sneak_attack_already_used\`. Once-per-turn,
+reset on \`start_turn\`.
+
+**Rage (Barbarian)** — call \`start_rage({ actor })\`. Sets the \`raging\`
+condition for 10 rounds, consumes one rage use, and:
+- Adds \`rageDamageBonus(barbLevel)\` (+2 L1-8, +3 L9-15, +4 L16+) to melee
+  STR weapon damage. Ranged and DEX-based melee don't benefit.
+- Halves bludgeoning/piercing/slashing damage taken (innate resistance
+  does NOT stack — don't quarter damage).
+- The master applies advantage on STR checks/saves narratively (pass
+  \`advantage: true\` on the relevant tool calls).
+
+Call \`end_rage({ actor })\` to drop early. Daily uses scale 2/3/4/5/∞ at
+L1/L3/L6/L12/L17. Errors: \`not_barbarian\`, \`feature_not_found\`,
+\`no_uses_remaining\`.
+
+**Action Surge (Fighter)** — call \`use_action_surge({ actor })\`. Validates
+fighter L2+ with action_surge feature; emits \`reset_action_for_surge\`
+which clears \`turnState.actionUsed\` so the fighter can take ANOTHER
+action this turn. Bonus action and reaction are NOT touched. 1 use at
+L2-16, 2 uses at L17+. Recharges on short rest (\`short_rest\` already
+handles this).
+
+**Channel Divinity (Cleric/Paladin)** — call
+\`use_channel_divinity({ actor, effect })\`. \`effect\` is a free-text
+narrative (turn_undead, sacred_weapon, divine_sense, etc.) — the engine
+only consumes the use. Follow up with the appropriate tool call for the
+mechanical consequence (e.g. \`apply_condition({ actor, condition: "sacred_weapon" })\`
+for the +CHA-mod attack bonus). Cleric: 1 use L2-5, 2 L6-17, 3 L18+
+(short-rest recharge). Paladin: 1 use L3+ (long-rest, short-rest L11+).
+
+**Bardic Inspiration (Bard)** — call
+\`grant_bardic_inspiration({ actor, targetId, dieSize? })\`. The die size is
+auto-derived from bard level (d6 L1-4, d8 L5-9, d10 L10-14, d12 L15+) if
+not supplied. Adds the \`bardic_inspired\` condition on the target with
+the die in \`source\` (e.g. "bardic_inspiration:d8"). Recipient may spend
+the die later (player declares; you narrate). Bonus action. Daily uses
+= max(1, CHA mod); recharges on short rest from L5+. Errors: \`not_bard\`,
+\`unknown_target\`, \`invalid_die_size\`.
+
+**Lay on Hands (Paladin)** — call
+\`use_lay_on_hands({ actor, targetId, points?, curePoison? })\`. Pool =
+5 × paladin_level. Spend \`points\` to heal that many HP one-for-one;
+spend a flat 5 for \`curePoison: true\` (also removes the poisoned
+condition on the target); or both in one call. Pool resets on long
+rest. Errors: \`not_paladin\`, \`unknown_target\`, \`invalid_points\`,
+\`nothing_to_do\`, \`insufficient_pool\`.
+
+**Generic** — for class features the engine doesn't model directly
+(Second Wind heal, Ki-fueled abilities, Wild Shape, etc.) call
+\`use_class_feature({ actor, featureSlug, uses? })\`. The engine validates
+the slug is on \`character.features\` and uses remain; you handle the
+mechanical effect with follow-up tool calls (typically \`heal\` for
+Second Wind, \`apply_condition\` for buffs, etc.).
+
+---
+
+Italiano: l'engine implementa 6 class feature come tool dedicati con
+resource tracking. Sneak Attack (\`useSneakAttack: true\` su make_attack —
+finesse/ranged + ADV o \`allyAdjacent\`, una sola volta a turno). Rage
+(\`start_rage\` / \`end_rage\` — 10 round, +2/+3/+4 ai danni melee STR,
+resistenza a contundente/perforante/tagliente, ADV su prove/TS di FOR).
+Action Surge (\`use_action_surge\` — un'azione extra in questo turno).
+Channel Divinity (\`use_channel_divinity({ effect })\` — consuma un uso;
+poi chiama il tool dell'effetto specifico). Bardic Inspiration
+(\`grant_bardic_inspiration({ targetId })\` — d6/d8/d10/d12 per livello).
+Lay on Hands (\`use_lay_on_hands({ targetId, points?, curePoison? })\` —
+pool = 5 × livello paladino).
 
 ### Out-of-character (OOC) questions
 

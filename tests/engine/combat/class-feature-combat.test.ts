@@ -11,8 +11,6 @@ import type {
 } from '@/engine/types';
 
 const fixed20 = { intInclusive: (min: number, max: number) => max === 20 ? 20 : 1 + min };
-// fixed at midrange roll (helpful for damage dice).
-const allFours = { intInclusive: (min: number, max: number) => Math.min(max, 4) };
 
 function rng(values: number[]) {
   let i = 0;
