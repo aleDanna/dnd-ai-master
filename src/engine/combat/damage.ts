@@ -20,10 +20,32 @@ function isPc(target: CombatActor | Character): target is Character {
   return 'classSlug' in target;
 }
 
-function modifyForResistance(amount: number, type: DamageType, target: CombatActor | Character): number {
-  if (isPc(target)) return amount;       // PC resistances/immunities not modeled in Plan B (covered later via gear/spells)
+function modifyForResistance(
+  amount: number,
+  type: DamageType,
+  target: CombatActor | Character,
+  targetRaging = false,
+): number {
+  if (isPc(target)) {
+    // PHB Barbarian Rage: PC raging benefits from resistance to
+    // bludgeoning/piercing/slashing. The rest of PC resistances/immunities
+    // are not modeled in this layer (covered later via gear/spells).
+    if (
+      targetRaging &&
+      (type === 'bludgeoning' || type === 'piercing' || type === 'slashing')
+    ) {
+      return Math.floor(amount / 2);
+    }
+    return amount;
+  }
   if (target.immunities.includes(type)) return 0;
   if (target.resistances.includes(type)) return Math.floor(amount / 2);
+  if (
+    targetRaging &&
+    (type === 'bludgeoning' || type === 'piercing' || type === 'slashing')
+  ) {
+    return Math.floor(amount / 2);
+  }
   if (target.vulnerabilities.includes(type)) return amount * 2;
   return amount;
 }
@@ -58,7 +80,8 @@ function concentrationMutations(
 }
 
 export function applyDamage(input: ApplyDamageInput): ActionResult<{ newHp: number; newTempHp: number; dying?: boolean; dead?: boolean }> {
-  const adjusted = modifyForResistance(input.amount, input.type, input.target);
+  const targetRaging = (input.runtime?.conditions ?? []).some((c) => c.slug === 'raging');
+  const adjusted = modifyForResistance(input.amount, input.type, input.target, targetRaging);
 
   // ── PHB §3.17–3.18: damage while already at 0 HP ──
   // If the target is a PC and currently at 0 HP, do not subtract HP again;

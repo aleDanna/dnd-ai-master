@@ -1,11 +1,12 @@
 import type { ActionResult, ActorRuntimeState, Character, CombatActor, ConditionInstance, CoverLevel, DamageType, Mutation } from '../types';
 import { attackBonus, abilityModifier } from '../modifiers';
-import { rollD20, rollDamage } from '../dice';
+import { rollD20, rollDamage, rollDice } from '../dice';
 import { defaultRng, type Rng } from '../rand';
 import { getEffectsForActor } from '../condition-effects';
 import { canConsumeAction } from './turn-state';
 import { coverAcBonus, isTotalCover } from './cover';
 import { isAmmunition, isLight, isLoading, meleeReachFor } from './weapon-properties';
+import { classLevel, rageDamageBonus, sneakAttackDice } from '../class-features';
 
 export interface WeaponSpec {
   name: string;
@@ -90,6 +91,30 @@ export interface MakeAttackInput {
    * (PHB exception: negative modifiers DO apply).
    */
   offHand?: boolean;
+  /**
+   * PHB Rogue Sneak Attack — when true, the rogue applies their Sneak
+   * Attack extra dice (ceil(rogueLevel/2)d6) on a HIT. Requires:
+   *   - the weapon has the 'finesse' property OR the attack is ranged
+   *   - the rogue has not already used Sneak Attack this turn
+   *     (turnState.sneakAttackUsed === false)
+   *   - the attacker has ADV on the roll, OR `allyAdjacent === true`
+   *     (the master's stand-in for "another enemy of the target
+   *     within 5 ft of the target"). DIS makes Sneak Attack ineligible
+   *     even with `allyAdjacent`.
+   * On a successful hit the extra dice are rolled and added to the
+   * damage total; a `mark_sneak_attack` mutation is appended so the
+   * once-per-turn rule is enforced.
+   * On a MISS the use is NOT consumed (PHB: Sneak Attack triggers on
+   * a hit; the dice are only rolled on the hit branch).
+   */
+  useSneakAttack?: boolean;
+  /**
+   * PHB Rogue Sneak Attack alternative trigger — when true, the master
+   * declares an enemy of the target is within 5 ft of the target,
+   * granting Sneak Attack eligibility without ADV. The engine can't
+   * model fine-grained positioning, so this is an explicit input.
+   */
+  allyAdjacent?: boolean;
 }
 
 export interface MakeAttackResultData {
@@ -98,6 +123,10 @@ export interface MakeAttackResultData {
   rawDamage: number;
   finalDamage: number;
   knockedOut?: boolean;
+  /** Extra Sneak Attack damage applied this hit (Phase 11). Absent when no Sneak Attack triggered. */
+  sneakAttackDamage?: number;
+  /** Extra Rage damage bonus applied to the damage total (Phase 11). Absent when no rage bonus. */
+  rageBonus?: number;
 }
 
 function effectsFromRuntime(runtime: ActorRuntimeState | undefined): ReturnType<typeof getEffectsForActor> {
@@ -256,6 +285,19 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
     ? { op: 'remove_condition', actorId: input.attacker.id, conditionSlug: 'helped' }
     : null;
 
+  // PHB Rogue Sneak Attack — validate weapon eligibility BEFORE rolling.
+  // Once-per-turn check uses turnState.sneakAttackUsed. Triggering trigger
+  // is "ADV on roll OR allyAdjacent"; the actual damage is added on hit.
+  if (input.useSneakAttack) {
+    const hasFinesse = (input.weapon.properties ?? []).includes('finesse');
+    if (!hasFinesse && !input.ranged) {
+      return { ok: false, error: 'sneak_attack_invalid_weapon', rolls: [], mutations: [] };
+    }
+    if (attackerTurnState?.sneakAttackUsed) {
+      return { ok: false, error: 'sneak_attack_already_used', rolls: [], mutations: [] };
+    }
+  }
+
   // Target dodging (PHB §3.7) imposes DIS on attacks against it (until next turn).
   const targetDodging = input.targetRuntime?.turnState?.dodging ?? false;
 
@@ -353,8 +395,51 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
       ? input.weapon.damage
       : `${input.weapon.damage}${damageMod > 0 ? '+' : ''}${damageMod}`;
   const damageRoll = rollDamage(damageFormula, { crit }, rng);
-  const rawDamage = Math.max(0, damageRoll.total);
-  const finalDamage = applyDamageModifiers(rawDamage, input.weapon.damageType, input.target);
+  const baseDamage = Math.max(0, damageRoll.total);
+
+  // PHB Barbarian Rage damage bonus — applies on melee STR weapon attacks
+  // while the attacker has the 'raging' condition. Ranged attacks and
+  // DEX-based melee (finesse used as DEX) do NOT receive the bonus.
+  const isRaging = (input.attackerRuntime?.conditions ?? []).some((c) => c.slug === 'raging');
+  let rageBonus = 0;
+  if (isRaging && isMelee && !input.weapon.useDex) {
+    const barbLevel = classLevel(input.attacker, 'barbarian');
+    rageBonus = rageDamageBonus(barbLevel);
+  }
+
+  // PHB Rogue Sneak Attack — eligibility requires ADV on the roll OR
+  // allyAdjacent (master-determined). DIS does not block ADV but ADV is
+  // already nulled out when both ADV+DIS are true; the eligibility check
+  // here uses the FINAL `advantage` boolean. Once-per-turn marker is
+  // emitted so the next attack this turn rejects.
+  let sneakAttackDamage = 0;
+  let sneakAttackRoll: typeof damageRoll | null = null;
+  if (input.useSneakAttack) {
+    const eligible = advantage || input.allyAdjacent === true;
+    if (!eligible) {
+      // Hit landed but Sneak Attack was not actually applicable.
+      // We follow the lenient path: log no SA dice. The master can
+      // re-issue with the right ADV/allyAdjacent flag.
+    } else {
+      const rogueLevel = classLevel(input.attacker, 'rogue');
+      const dice = sneakAttackDice(rogueLevel);
+      if (dice > 0) {
+        // Sneak Attack dice double on a crit (PHB Sneak Attack: extra
+        // dice are part of the attack's damage roll, so they double).
+        const saDice = crit ? dice * 2 : dice;
+        sneakAttackRoll = rollDice(`${saDice}d6`, rng);
+        sneakAttackDamage = sneakAttackRoll.total;
+      }
+    }
+  }
+
+  const rawDamage = baseDamage + rageBonus + sneakAttackDamage;
+  const finalDamage = applyDamageModifiers(
+    rawDamage,
+    input.weapon.damageType,
+    input.target,
+    isTargetRaging(input.targetRuntime),
+  );
 
   // Knockout path: melee only, requires hit, requires would-reduce-to-≤0.
   if (input.knockOut && isMelee) {
@@ -379,10 +464,17 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
       if (consumeAmmoMut) mutations.push(consumeAmmoMut);
       if (markLoadingMut) mutations.push(markLoadingMut);
       if (markOffHandMut) mutations.push(markOffHandMut);
+      if (sneakAttackDamage > 0) {
+        mutations.push({ op: 'mark_sneak_attack', actorId: input.attacker.id });
+      }
       return {
         ok: true,
-        data: { hit: true, crit, rawDamage, finalDamage, knockedOut: true },
-        rolls: [attackRoll, damageRoll],
+        data: {
+          hit: true, crit, rawDamage, finalDamage, knockedOut: true,
+          ...(sneakAttackDamage > 0 ? { sneakAttackDamage } : {}),
+          ...(rageBonus > 0 ? { rageBonus } : {}),
+        },
+        rolls: sneakAttackRoll ? [attackRoll, damageRoll, sneakAttackRoll] : [attackRoll, damageRoll],
         mutations,
       };
     }
@@ -398,18 +490,46 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
   if (consumeAmmoMut) mutations.push(consumeAmmoMut);
   if (markLoadingMut) mutations.push(markLoadingMut);
   if (markOffHandMut) mutations.push(markOffHandMut);
+  if (sneakAttackDamage > 0) {
+    mutations.push({ op: 'mark_sneak_attack', actorId: input.attacker.id });
+  }
 
   return {
     ok: true,
-    data: { hit: true, crit, rawDamage, finalDamage },
-    rolls: [attackRoll, damageRoll],
+    data: {
+      hit: true, crit, rawDamage, finalDamage,
+      ...(sneakAttackDamage > 0 ? { sneakAttackDamage } : {}),
+      ...(rageBonus > 0 ? { rageBonus } : {}),
+    },
+    rolls: sneakAttackRoll ? [attackRoll, damageRoll, sneakAttackRoll] : [attackRoll, damageRoll],
     mutations,
   };
 }
 
-function applyDamageModifiers(amount: number, type: DamageType, target: CombatActor): number {
+function isTargetRaging(runtime: ActorRuntimeState | undefined): boolean {
+  if (!runtime) return false;
+  return runtime.conditions.some((c) => c.slug === 'raging');
+}
+
+function applyDamageModifiers(
+  amount: number,
+  type: DamageType,
+  target: CombatActor,
+  targetRaging = false,
+): number {
   if (target.immunities.includes(type)) return 0;
+  // PHB Barbarian Rage: resistance to bludgeoning/piercing/slashing while
+  // raging. Per the rules, multiple resistances do NOT stack (don't quarter
+  // damage). If the target already has innate resistance to this type, the
+  // existing resistance branch handles it; the rage branch only kicks in
+  // when there is no innate resistance.
   if (target.resistances.includes(type)) return Math.floor(amount / 2);
+  if (
+    targetRaging &&
+    (type === 'bludgeoning' || type === 'piercing' || type === 'slashing')
+  ) {
+    return Math.floor(amount / 2);
+  }
   if (target.vulnerabilities.includes(type)) return amount * 2;
   return amount;
 }
