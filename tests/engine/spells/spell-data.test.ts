@@ -6,6 +6,34 @@ describe('SPELL_BINDINGS', () => {
     expect(Object.keys(SPELL_BINDINGS).length).toBeGreaterThanOrEqual(30);
   });
 
+  it('Phase 9: covers at least 150 spells (expanded SRD coverage)', () => {
+    expect(Object.keys(SPELL_BINDINGS).length).toBeGreaterThanOrEqual(150);
+  });
+
+  it('Phase 9: includes the most common spells the master will reach for', () => {
+    const mustHave = [
+      // Cantrips
+      'fire-bolt', 'eldritch-blast', 'sacred-flame', 'mage-hand',
+      // 1st
+      'magic-missile', 'cure-wounds', 'healing-word', 'shield', 'mage-armor',
+      'bless', 'bane', 'sleep', 'burning-hands', 'thunderwave',
+      // 2nd
+      'hold-person', 'invisibility', 'misty-step', 'scorching-ray', 'web',
+      // 3rd
+      'fireball', 'lightning-bolt', 'counterspell', 'fly', 'dispel-magic',
+      'haste', 'fear', 'hypnotic-pattern', 'spirit-guardians',
+      // 4th
+      'banishment', 'greater-invisibility', 'wall-of-fire', 'stoneskin',
+      // 5th
+      'cone-of-cold', 'mass-cure-wounds', 'hold-monster', 'wall-of-force',
+      // 6th-9th
+      'disintegrate', 'chain-lightning', 'finger-of-death', 'meteor-swarm',
+    ];
+    for (const slug of mustHave) {
+      expect(SPELL_BINDINGS[slug], `expected '${slug}' to have a binding`).toBeDefined();
+    }
+  });
+
   it('every binding has a valid archetype', () => {
     const valid = ['attack_damage', 'save_half', 'save_negate', 'save_condition', 'heal', 'buff', 'aoe_save', 'utility'];
     for (const [, binding] of Object.entries(SPELL_BINDINGS)) {
