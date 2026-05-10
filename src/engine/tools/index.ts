@@ -869,7 +869,7 @@ const ALWAYS_ON: AnthropicTool[] = [
       properties: {
         actor: ACTOR_ID,
         targetId: { type: 'string', description: 'Recipient of the inspiration die. Must be a known actor (PC or combat actor).' },
-        dieSize: { type: 'integer', enum: [6, 8, 10, 12], description: 'Override the level-based die size. Most callers should omit this.' },
+        dieSize: { type: 'string', enum: ['6', '8', '10', '12'], description: 'Override the level-based die size (as a string: "6"/"8"/"10"/"12"). Most callers should omit this.' },
       },
     } as never,
   },

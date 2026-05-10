@@ -21,12 +21,24 @@ import { getResolvedPreferences } from '@/lib/preferences';
 import { loadMemoryContext } from '@/sessions/memory/context';
 import { extractMemory } from '@/sessions/memory/extractor';
 
+/**
+ * Synthetic user instruction injected on the very first turn of a campaign,
+ * when the player has not written anything yet. The master sees the campaign
+ * premise via the cached system block; this user message tells it to open
+ * the scene now without rolling dice or mutating state. Kept in the same
+ * language flavor as the rest of the system prompt — the master mirrors the
+ * premise's language for the actual narration.
+ */
+const BEGIN_INSTRUCTION =
+  '[Begin the campaign now. Open the scene by narrating, in second person, the player character\'s immediate surroundings and the situation that draws them in — strictly grounded in the Campaign premise above. Voice any NPCs in earshot. Do NOT call any state-mutating tool (no add_item, award_xp, apply_damage, roll_initiative, etc.) on this opening turn — just establish the scene. End with an open-ended cue inviting the player\'s first action.]';
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
   if (!userId) return jsonResponse({ error: 'unauthenticated' }, 401);
   const { id: sessionId } = await params;
-  const body = (await req.json().catch(() => null)) as { message?: string } | null;
-  if (!body?.message?.trim()) return jsonResponse({ error: 'missing-message' }, 400);
+  const body = (await req.json().catch(() => null)) as { message?: string; begin?: boolean } | null;
+  const isBegin = body?.begin === true;
+  if (!isBegin && !body?.message?.trim()) return jsonResponse({ error: 'missing-message' }, 400);
 
   // Wrap the preamble (session lookup, quota, lock) so a DB connection blip
   // returns a clean JSON error instead of a bare 500. Neon's serverless
@@ -42,6 +54,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId), isNull(sessions.deletedAt)))
       .limit(1);
     if (!session) return jsonResponse({ error: 'not-found' }, 404);
+
+    // A "begin" turn only makes sense when the chat is empty. If anything
+    // has been said already, ignore the flag silently — clients may
+    // re-trigger the auto-opener on remount and we don't want that to
+    // duplicate the intro.
+    if (isBegin) {
+      const [existing] = await db
+        .select({ id: sessionMessages.id })
+        .from(sessionMessages)
+        .where(eq(sessionMessages.sessionId, sessionId))
+        .limit(1);
+      if (existing) return jsonResponse({ error: 'already-begun' }, 409);
+    }
 
     const quota = await checkQuotas({ userId });
     if (!quota.ok) return jsonResponse({ error: quota.reason }, 429);
@@ -66,14 +91,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // 0. Resolve per-user prefs once — drive provider/model + behavior flags from here.
         const userPrefs = await getResolvedPreferences(userId);
 
-        // 1. Persist player message
-        const [pm] = await db.insert(sessionMessages).values({ sessionId, role: 'player', content: body.message! }).returning();
-        send('player_message_persisted', { type: 'player_message_persisted', messageId: pm!.id });
+        // 1. Persist player message — skipped on the synthetic "begin" turn
+        // (no real player text exists yet; the master is opening the scene
+        // from the campaign premise).
+        if (!isBegin) {
+          const [pm] = await db.insert(sessionMessages).values({ sessionId, role: 'player', content: body!.message! }).returning();
+          send('player_message_persisted', { type: 'player_message_persisted', messageId: pm!.id });
+        }
 
-        // 2. Language detection if not pinned (uses the user's chosen provider)
+        // 2. Language detection if not pinned (uses the user's chosen provider).
+        // On a begin turn we have no player text, so we run detection on the
+        // premise itself — that way the master mirrors the language the
+        // player wrote (or the preset's language) right out of the gate.
         if (!session.language) {
-          const code = await detectLanguage({ text: body.message!, userId, sessionId, provider: userPrefs.aiProvider });
-          if (code) await db.update(sessions).set({ language: code }).where(eq(sessions.id, sessionId));
+          const detectText = isBegin ? session.premise : body!.message!;
+          if (detectText && detectText.trim().length > 0) {
+            const code = await detectLanguage({ text: detectText, userId, sessionId, provider: userPrefs.aiProvider });
+            if (code) {
+              await db.update(sessions).set({ language: code }).where(eq(sessions.id, sessionId));
+              session.language = code;
+            }
+          }
         }
 
         // 3. Build snapshot
@@ -90,7 +128,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           worldLore,
           characterMonoSpace: snap.characterMonoSpace,
           scene: snap.scene,
-          language: snap.language,
+          language: session.language ?? snap.language,
           manualRolls: userPrefs.manualRolls,
           masterGuidanceLevel: userPrefs.masterGuidanceLevel,
           showDifficultyNumbers: userPrefs.showDifficultyNumbers,
@@ -104,16 +142,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           engagementProfile: snap.state.engagementProfile,
         });
 
-        const recent = await db
-          .select()
-          .from(sessionMessages)
-          .where(and(eq(sessionMessages.sessionId, sessionId), eq(sessionMessages.cacheBreakpoint, false)))
-          .orderBy(desc(sessionMessages.createdAt))
-          .limit(20);
-        const history: Anthropic.Messages.MessageParam[] = recent
-          .reverse()
-          .filter((m) => m.role !== 'system')
-          .map((m) => ({ role: m.role === 'master' ? 'assistant' : 'user', content: m.content }));
+        let history: Anthropic.Messages.MessageParam[];
+        if (isBegin) {
+          // First-turn opener: bypass DB history (we just verified it's empty
+          // upstream of this branch) and feed a single synthetic user
+          // instruction so the model has something to respond to.
+          history = [{ role: 'user', content: BEGIN_INSTRUCTION }];
+        } else {
+          const recent = await db
+            .select()
+            .from(sessionMessages)
+            .where(and(eq(sessionMessages.sessionId, sessionId), eq(sessionMessages.cacheBreakpoint, false)))
+            .orderBy(desc(sessionMessages.createdAt))
+            .limit(20);
+          history = recent
+            .reverse()
+            .filter((m) => m.role !== 'system')
+            .map((m) => ({ role: m.role === 'master' ? 'assistant' : 'user', content: m.content }));
+        }
 
         // 5. Run the tool loop — events flush as they happen via onEvent
         // Provider + model are resolved from user prefs (with env fallback) so each

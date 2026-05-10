@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { equip, unequip, recomputeAC } from '@/engine/equipment';
+import type { ArmorSpec, ArmorSpecMap } from '@/srd/catalog';
 import type { Character } from '@/engine/types';
+
+// Fixed test armor map: enough rows to exercise unarmored, light, heavy, shield.
+const TEST_ARMOR: ArmorSpecMap = new Map<string, ArmorSpec>([
+  ['leather',    { base: 11, dexCap: 'unlimited', category: 'Light',  stealthDisadvantage: false }],
+  ['chain-mail', { base: 16, dexCap: 'none',      category: 'Heavy',  stealthDisadvantage: true  }],
+  ['shield',     { base: 0,  dexCap: 'none',      category: 'Shield', stealthDisadvantage: false, shieldBonus: 2 }],
+]);
 
 const fighter: Character = {
   id: 'pc1', name: 'Tharion', level: 1, xp: 0,
@@ -49,7 +57,7 @@ describe('recomputeAC', () => {
       ...fighter,
       inventory: [{ slug: 'leather', qty: 1, equipped: true }],
     };
-    const r = recomputeAC({ char: equipped });
+    const r = recomputeAC({ char: equipped, armorSpecs: TEST_ARMOR });
     expect(r.data?.newAc).toBe(11 + 2);
     expect(r.mutations[0]).toEqual({ op: 'recompute_ac', characterId: 'pc1', newAc: 13 });
   });
@@ -59,7 +67,7 @@ describe('recomputeAC', () => {
       ...fighter,
       inventory: [{ slug: 'chain-mail', qty: 1, equipped: true }],
     };
-    const r = recomputeAC({ char: equipped });
+    const r = recomputeAC({ char: equipped, armorSpecs: TEST_ARMOR });
     expect(r.data?.newAc).toBe(16);                        // base 16, no DEX
   });
 
@@ -68,12 +76,12 @@ describe('recomputeAC', () => {
       ...fighter,
       inventory: [{ slug: 'leather', qty: 1, equipped: true }, { slug: 'shield', qty: 1, equipped: true }],
     };
-    const r = recomputeAC({ char: equipped });
+    const r = recomputeAC({ char: equipped, armorSpecs: TEST_ARMOR });
     expect(r.data?.newAc).toBe(11 + 2 + 2);
   });
 
   it('no armor → 10 + DEX (unarmored)', () => {
-    const r = recomputeAC({ char: fighter });
+    const r = recomputeAC({ char: fighter, armorSpecs: TEST_ARMOR });
     expect(r.data?.newAc).toBe(10 + 2);
   });
 });

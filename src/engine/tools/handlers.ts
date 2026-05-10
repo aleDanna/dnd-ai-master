@@ -722,10 +722,18 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
   },
 
   grant_bardic_inspiration: (state, input) => {
+    // dieSize is declared as a string enum in the tool schema (Gemini rejects
+    // integer enums). Coerce string|number to integer here for the engine.
+    let dieSize: number | undefined;
+    if (typeof input.dieSize === 'number') dieSize = input.dieSize;
+    else if (typeof input.dieSize === 'string') {
+      const parsed = Number.parseInt(input.dieSize, 10);
+      if (Number.isFinite(parsed)) dieSize = parsed;
+    }
     return handleGrantBardicInspiration(state, {
       actor: String(input.actor ?? input.actorId ?? ''),
       targetId: String(input.targetId ?? input.target ?? ''),
-      dieSize: typeof input.dieSize === 'number' ? input.dieSize : undefined,
+      dieSize,
     });
   },
 

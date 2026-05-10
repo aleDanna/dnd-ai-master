@@ -12,7 +12,7 @@ export interface LookupCodexCtx {
 }
 
 export async function lookupCodex(
-  ctx: LookupCodexCtx,
+  ctx: LookupCodexCtx,  // DbToolCtx is a structural superset; extra `state` field is ignored.
   input: Record<string, unknown>,
 ): Promise<ActionResult> {
   const kind = String(input.kind ?? '');

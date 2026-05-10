@@ -8,12 +8,14 @@ import { Icon } from '@/components/ui/icon';
 import type { WizardState } from '@/characters/types';
 import type { WizardStepName } from './wizard-shell';
 
-const STEP_TO_KEY: Record<WizardStepName, 'race' | 'class' | 'background' | 'abilities' | 'skills' | 'equipment' | 'identity'> = {
+const STEP_TO_KEY: Record<WizardStepName, 'race' | 'class' | 'class-choices' | 'background' | 'abilities' | 'skills' | 'feats' | 'equipment' | 'identity'> = {
   Race: 'race',
   Class: 'class',
+  'Class Choices': 'class-choices',
   Background: 'background',
   Abilities: 'abilities',
   Skills: 'skills',
+  Feats: 'feats',
   Equipment: 'equipment',
   Identity: 'identity',
 };

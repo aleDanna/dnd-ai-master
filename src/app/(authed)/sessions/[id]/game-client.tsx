@@ -143,6 +143,23 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
     };
   }, [fetchSessionData]);
 
+  // Auto-open the campaign: when the player lands on a brand-new session
+  // (no messages yet), kick off the synthetic "begin" turn so the master
+  // narrates the opening scene from the campaign premise. We wait until
+  // memory is ready (so the input isn't disabled) and guard with a ref so
+  // a re-render or remount doesn't fire a second begin — the server also
+  // returns 409 in that case, but we don't want the spurious request.
+  const beganRef = React.useRef(false);
+  const beginTurn = turn.begin;
+  React.useEffect(() => {
+    if (beganRef.current) return;
+    if (!memoryReady) return;
+    if (turn.busy) return;
+    if (messages.length > 0) return;
+    beganRef.current = true;
+    void beginTurn();
+  }, [memoryReady, turn.busy, messages.length, beginTurn]);
+
   // When a turn completes, optimistically inject the master's response into
   // `messages` (using the live-streamed text + the persisted ID from
   // turn_complete) BEFORE resetting events. This prevents the brief gap

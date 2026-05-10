@@ -111,6 +111,8 @@ export interface DeriveContext {
   parentRace?: SrdRace;
   /** @deprecated unused — derive reads from wizard.classSlug. Kept for legacy test compat. */
   klass?: SrdClass;
+  /** @deprecated unused — feats are looked up via wizard.feats slug list. Kept for legacy compat. */
+  feats?: unknown[];
 }
 
 /** Pure derivation. NO DB writes; the persistence layer (Task 22) does that. */

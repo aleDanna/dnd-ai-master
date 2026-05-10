@@ -5,12 +5,16 @@ import type { SrdBackground } from '@/db/schema';
 
 const baseWizard: WizardState = {
   raceSlug: 'half-elf',
+  subraceSlug: null,
   classSlug: 'fighter',
   backgroundSlug: 'soldier',
   abilityMethod: 'array',
   abilities: { STR: 16, DEX: 14, CON: 14, INT: 10, WIS: 12, CHA: 8 },
   skills: ['Athletics', 'Perception'],
   equipmentChoice: 'kit',
+  kitChoices: [],
+  classChoices: {},
+  feats: [],
   identity: {
     name: 'Tharion',
     alignment: 'True Neutral',

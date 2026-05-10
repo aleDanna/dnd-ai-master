@@ -54,15 +54,10 @@ const ARMOR: Record<string, ArmorSpec> = {
 
 export interface RecomputeAcInput {
   char: Character;
-  /** Optional armor spec map override (for DB-backed lookups). When omitted, uses
-   *  the hardcoded ARMOR catalog. */
-  armorSpecs?: Record<string, ArmorSpec>;
-}
-
-interface ArmorSpec {
-  base: number;
-  dexCap: 'unlimited' | 'none' | number;
-  category: 'Light' | 'Medium' | 'Heavy' | 'Shield';
+  /** Optional armor spec map override (for DB-backed lookups). Accepts either a
+   *  Record (test fixtures) or a ReadonlyMap (production from loadArmorSpecs).
+   *  When omitted, uses the hardcoded ARMOR catalog. */
+  armorSpecs?: Record<string, ArmorSpec> | ReadonlyMap<string, ArmorSpec>;
 }
 
 export function recomputeAC(input: RecomputeAcInput): ActionResult<{ newAc: number }> {

@@ -12,13 +12,38 @@ export interface WizardAbilities {
 export type AbilityMethod = 'array' | 'pointbuy' | 'roll';
 
 export interface WizardState {
+  /** Base race slug (e.g. "dwarf", "elf", "human"). Always set before progressing past the race step. */
   raceSlug: string | null;
+  /**
+   * Subrace slug (e.g. "hill-dwarf"), required when the base race has child rows
+   * in `srd_race` (`parent_race_slug = raceSlug`). For races without subraces
+   * (half-elf, half-orc, tiefling) this stays null.
+   */
+  subraceSlug: string | null;
   classSlug: string | null;
   backgroundSlug: string | null;
   abilityMethod: AbilityMethod;
   abilities: WizardAbilities;
   skills: Skill[];
   equipmentChoice: 'kit' | 'gold';
+  /**
+   * One option index per kit choice (in `STARTING_KITS[classSlug].choices`
+   * order). Empty / shorter array means defaults; the resolver clamps
+   * out-of-range indices to 0.
+   */
+  kitChoices: number[];
+  /**
+   * Level-1 class choices, keyed by `ClassChoice.key` (e.g. fighting-style,
+   * divine-domain). Value is the chosen option slug from
+   * `CLASS_L1_CHOICES[classSlug]`. Cleared when the class changes.
+   */
+  classChoices: Record<string, string>;
+  /**
+   * Selected feat slugs (resolve to rows in srd_feat). At level 1 most PCs
+   * pick zero — exception: the Variant Human grants 1. Validation enforces
+   * the cap based on race/class flags; an empty array is always valid.
+   */
+  feats: string[];
   identity: {
     name: string;
     alignment: string;
@@ -63,12 +88,16 @@ export const PORTRAIT_COLORS: string[] = [
 export function emptyWizardState(): WizardState {
   return {
     raceSlug: null,
+    subraceSlug: null,
     classSlug: null,
     backgroundSlug: null,
     abilityMethod: 'array',
     abilities: { STR: 15, DEX: 14, CON: 13, INT: 12, WIS: 10, CHA: 8 },
     skills: [],
     equipmentChoice: 'kit',
+    kitChoices: [],
+    classChoices: {},
+    feats: [],
     identity: {
       name: '',
       alignment: 'True Neutral',

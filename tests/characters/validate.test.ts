@@ -40,6 +40,7 @@ describe('validateWizardState', () => {
     const w = emptyWizardState();
     w.raceSlug = 'half-elf';
     w.classSlug = 'fighter';
+    w.classChoices = { 'fighting-style': 'fighting-style-defense' };
     w.backgroundSlug = 'soldier';
     w.identity.name = 'Tharion';
     const r = validateWizardState(w, completeOptions);
@@ -105,6 +106,7 @@ describe('validateWizardState', () => {
     const w = emptyWizardState();
     w.raceSlug = 'half-elf';
     w.classSlug = 'fighter';
+    w.classChoices = { 'fighting-style': 'fighting-style-defense' };
     w.backgroundSlug = 'soldier';
     w.identity.name = 'Tharion';
     w.abilityMethod = 'pointbuy';
@@ -133,6 +135,7 @@ describe('validateWizardState', () => {
     const w = emptyWizardState();
     w.raceSlug = 'half-elf';
     w.classSlug = 'fighter';
+    w.classChoices = { 'fighting-style': 'fighting-style-defense' };
     w.backgroundSlug = 'soldier';
     w.identity.name = 'Tharion';
     return w;
@@ -185,5 +188,93 @@ describe('validateWizardState', () => {
     w.skills = ['Acrobatics', 'Perception'];
     const r = validateWizardState(w, optionsWithSkillRules);
     expect(r.ok).toBe(true);
+  });
+
+  // ─── Class L1 choices ──────────────────────────────────────────────────────
+
+  describe('class L1 choices', () => {
+    it('rejects a fighter without fighting-style', () => {
+      const w = emptyWizardState();
+      w.raceSlug = 'half-elf';
+      w.classSlug = 'fighter';
+      w.backgroundSlug = 'soldier';
+      w.identity.name = 'Tharion';
+      // no classChoices — fighter requires fighting-style
+      const r = validateWizardState(w, completeOptions);
+      expect(r.errors).toContain('class-choice-required:fighting-style');
+    });
+
+    it('rejects an unknown fighting-style slug', () => {
+      const w = emptyWizardState();
+      w.raceSlug = 'half-elf'; w.classSlug = 'fighter'; w.backgroundSlug = 'soldier'; w.identity.name = 'X';
+      w.classChoices = { 'fighting-style': 'fighting-style-bogus' };
+      const r = validateWizardState(w, completeOptions);
+      expect(r.errors).toContain('class-choice-unknown:fighting-style');
+    });
+
+    it('classes without L1 choices (e.g. wizard) need no classChoices entry', () => {
+      const w = emptyWizardState();
+      w.raceSlug = 'half-elf'; w.classSlug = 'wizard'; w.backgroundSlug = 'soldier'; w.identity.name = 'X';
+      const r = validateWizardState(w, completeOptions);
+      // wizard has no L1 choices in CLASS_L1_CHOICES → no class-choice-* errors
+      expect(r.errors.filter((e) => e.startsWith('class-choice-'))).toEqual([]);
+    });
+  });
+
+  // ─── Subrace ───────────────────────────────────────────────────────────────
+
+  describe('subrace requirement', () => {
+    const subracesByBase = {
+      dwarf: ['hill-dwarf', 'mountain-dwarf'],
+      elf: ['high-elf', 'wood-elf'],
+      // half-elf has none — no subraces in PHB
+    };
+    const optsWithSubrace = {
+      ...completeOptions,
+      raceSlugs: ['dwarf', 'hill-dwarf', 'mountain-dwarf', 'elf', 'high-elf', 'wood-elf', 'half-elf'],
+      subracesByBase,
+    };
+
+    function dwarvenWizard(subraceSlug: string | null) {
+      const w = emptyWizardState();
+      w.raceSlug = 'dwarf';
+      w.subraceSlug = subraceSlug;
+      w.classSlug = 'fighter';
+      w.backgroundSlug = 'soldier';
+      w.identity.name = 'Tharion';
+      return w;
+    }
+
+    it('rejects when base race has subraces and none is picked', () => {
+      const r = validateWizardState(dwarvenWizard(null), optsWithSubrace);
+      expect(r.errors).toContain('subrace-required');
+    });
+
+    it('accepts a valid subrace pick', () => {
+      const r = validateWizardState(dwarvenWizard('hill-dwarf'), optsWithSubrace);
+      expect(r.errors).not.toContain('subrace-required');
+      expect(r.errors).not.toContain('subrace-unknown');
+    });
+
+    it('rejects an unknown subrace slug for the base race', () => {
+      const r = validateWizardState(dwarvenWizard('drow'), optsWithSubrace);
+      expect(r.errors).toContain('subrace-unknown');
+    });
+
+    it('rejects a subrace pick when the base race has no subraces', () => {
+      const w = emptyWizardState();
+      w.raceSlug = 'half-elf';
+      w.subraceSlug = 'hill-dwarf';   // nonsense
+      w.classSlug = 'fighter'; w.backgroundSlug = 'soldier'; w.identity.name = 'X';
+      const r = validateWizardState(w, optsWithSubrace);
+      expect(r.errors).toContain('subrace-not-applicable');
+    });
+
+    it('does not enforce subrace selection when no subraceByBase map is given', () => {
+      const w = dwarvenWizard(null);
+      const r = validateWizardState(w, completeOptions);
+      // raceSlug 'dwarf' is not in completeOptions.raceSlugs (has 'half-elf', 'human') — but that's a different error
+      expect(r.errors).not.toContain('subrace-required');
+    });
   });
 });

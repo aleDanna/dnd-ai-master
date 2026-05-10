@@ -116,3 +116,7 @@ export async function listRaces() {
 export async function listBackgrounds() {
   return db.select().from(srdBackground).orderBy(asc(srdBackground.name));
 }
+
+export async function listFeats() {
+  return db.select().from(srdFeat).orderBy(asc(srdFeat.name));
+}

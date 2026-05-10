@@ -90,7 +90,9 @@ describe('applyMutations', () => {
   });
 
   it('add_inventory + remove_inventory + set_equipped persist to characters.inventory', { timeout: 15000 }, async () => {
-    // Add a longbow and 50 gp
+    // PC starts with the soldier background's 10 gp baseline + soldier
+    // common clothes (Phase B.6 wizard derivation seeds the inventory).
+    // Each assertion accounts for the 10 gp baseline.
     await applyMutations(SESSION_ID, [
       { op: 'add_inventory', characterId: PC_ID, itemSlug: 'longbow', qty: 1 },
       { op: 'add_inventory', characterId: PC_ID, itemSlug: 'gp', qty: 50 },
@@ -98,7 +100,7 @@ describe('applyMutations', () => {
     let [c] = await db.select({ inv: characters.inventory }).from(characters).where(eq(characters.id, PC_ID)).limit(1);
     let inv = (c!.inv ?? []) as { slug: string; qty: number; equipped: boolean }[];
     expect(inv.find((i) => i.slug === 'longbow')).toMatchObject({ qty: 1, equipped: false });
-    expect(inv.find((i) => i.slug === 'gp')).toMatchObject({ qty: 50 });
+    expect(inv.find((i) => i.slug === 'gp')).toMatchObject({ qty: 60 });    // 10 baseline + 50
 
     // Add 25 more gp — should stack
     await applyMutations(SESSION_ID, [
@@ -106,7 +108,7 @@ describe('applyMutations', () => {
     ], []);
     [c] = await db.select({ inv: characters.inventory }).from(characters).where(eq(characters.id, PC_ID)).limit(1);
     inv = (c!.inv ?? []) as { slug: string; qty: number; equipped: boolean }[];
-    expect(inv.find((i) => i.slug === 'gp')!.qty).toBe(75);
+    expect(inv.find((i) => i.slug === 'gp')!.qty).toBe(85);                  // 60 + 25
 
     // Equip the longbow
     await applyMutations(SESSION_ID, [
@@ -116,13 +118,13 @@ describe('applyMutations', () => {
     inv = (c!.inv ?? []) as { slug: string; qty: number; equipped: boolean }[];
     expect(inv.find((i) => i.slug === 'longbow')!.equipped).toBe(true);
 
-    // Spend 30 gp — qty drops to 45
+    // Spend 30 gp — qty drops to 55
     await applyMutations(SESSION_ID, [
       { op: 'remove_inventory', characterId: PC_ID, itemSlug: 'gp', qty: 30 },
     ], []);
     [c] = await db.select({ inv: characters.inventory }).from(characters).where(eq(characters.id, PC_ID)).limit(1);
     inv = (c!.inv ?? []) as { slug: string; qty: number; equipped: boolean }[];
-    expect(inv.find((i) => i.slug === 'gp')!.qty).toBe(45);
+    expect(inv.find((i) => i.slug === 'gp')!.qty).toBe(55);                  // 85 - 30
 
     // Remove all remaining gp — entry disappears entirely
     await applyMutations(SESSION_ID, [

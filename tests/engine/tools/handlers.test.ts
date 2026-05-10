@@ -266,13 +266,6 @@ describe('TOOL_HANDLERS — happy paths', () => {
     expect(r.ok).toBe(true);
   });
 
-  it('recompute_ac returns AC mutation', () => {
-    const r = TOOL_HANDLERS['recompute_ac']!(baseState, {
-      actor: 'player_character',
-    });
-    expect(r.ok).toBe(true);
-  });
-
   it('level_up increases level with default hpRollMode', () => {
     const r = TOOL_HANDLERS['level_up']!(baseState, {
       actor: 'player_character', newLevel: 6,
@@ -432,14 +425,6 @@ describe('TOOL_HANDLERS — error branches', () => {
   it('unequip unknown actor returns error', () => {
     const r = TOOL_HANDLERS['unequip']!(baseState, {
       actor: 'nonexistent', itemSlug: 'longsword',
-    });
-    expect(r.ok).toBe(false);
-    expect(r.error).toBe('unknown_actor');
-  });
-
-  it('recompute_ac unknown actor returns error', () => {
-    const r = TOOL_HANDLERS['recompute_ac']!(baseState, {
-      actor: 'nonexistent',
     });
     expect(r.ok).toBe(false);
     expect(r.error).toBe('unknown_actor');

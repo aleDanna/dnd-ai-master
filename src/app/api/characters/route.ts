@@ -23,10 +23,18 @@ export async function POST(req: NextRequest) {
   }
 
   const options = await loadOptions();
+  // Build base→subrace map so the validator can enforce subrace selection
+  // when the chosen base race has child rows in srd_race.
+  const subracesByBase: Record<string, string[]> = {};
+  for (const r of options.races) {
+    if (r.parentRaceSlug) (subracesByBase[r.parentRaceSlug] ??= []).push(r.slug);
+  }
   const v = validateWizardState(body.wizard, {
     raceSlugs: options.races.map((r) => r.slug),
     classSlugs: options.classes.map((c) => c.slug),
     backgroundSlugs: options.backgrounds.map((b) => b.slug),
+    subracesByBase,
+    featSlugs: options.feats.map((f) => f.slug),
     classSkillRules: Object.fromEntries(
       options.classes.map((c) => [c.slug, { skillsChoose: c.proficiencies.skillsChoose, skillsFrom: c.proficiencies.skillsFrom }]),
     ),

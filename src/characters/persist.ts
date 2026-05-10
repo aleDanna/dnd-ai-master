@@ -1,7 +1,13 @@
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, inArray } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { characters as charactersTable, srdBackground as backgroundsTable } from '@/db/schema';
-import type { SrdBackground } from '@/db/schema';
+import {
+  characters as charactersTable,
+  srdBackground as backgroundsTable,
+  srdRace as racesTable,
+  srdClass as classesTable,
+  srdFeat as featsTable,
+} from '@/db/schema';
+import type { SrdBackground, SrdRace, SrdClass, SrdFeat } from '@/db/schema';
 import { deriveCharacter } from './derive';
 import type { WizardState } from './types';
 
@@ -12,15 +18,35 @@ export interface SaveCharacterInput {
 
 export async function saveCharacter({ userId, wizard }: SaveCharacterInput): Promise<{ id: string }> {
   let background: SrdBackground | undefined = undefined;
+  let race: SrdRace | undefined = undefined;
+  let parentRace: SrdRace | undefined = undefined;
+  let klass: SrdClass | undefined = undefined;
+
   if (wizard.backgroundSlug) {
-    const [bgRow] = await db
-      .select()
-      .from(backgroundsTable)
-      .where(eq(backgroundsTable.slug, wizard.backgroundSlug))
-      .limit(1);
+    const [bgRow] = await db.select().from(backgroundsTable).where(eq(backgroundsTable.slug, wizard.backgroundSlug)).limit(1);
     background = bgRow;
   }
-  const derived = deriveCharacter(wizard, { background });
+  // Resolve the effective race row: subrace if the player picked one, base otherwise.
+  // When a subrace is selected, also load its parent so racial ASI/languages/traits stack.
+  const effectiveRaceSlug = wizard.subraceSlug ?? wizard.raceSlug;
+  if (effectiveRaceSlug) {
+    const [raceRow] = await db.select().from(racesTable).where(eq(racesTable.slug, effectiveRaceSlug)).limit(1);
+    race = raceRow;
+    if (race?.parentRaceSlug) {
+      const [parentRow] = await db.select().from(racesTable).where(eq(racesTable.slug, race.parentRaceSlug)).limit(1);
+      parentRace = parentRow;
+    }
+  }
+  if (wizard.classSlug) {
+    const [classRow] = await db.select().from(classesTable).where(eq(classesTable.slug, wizard.classSlug)).limit(1);
+    klass = classRow;
+  }
+  let feats: SrdFeat[] = [];
+  if (wizard.feats && wizard.feats.length > 0) {
+    feats = await db.select().from(featsTable).where(inArray(featsTable.slug, wizard.feats));
+  }
+
+  const derived = deriveCharacter(wizard, { background, race, parentRace, klass, feats });
   const [inserted] = await db
     .insert(charactersTable)
     .values({

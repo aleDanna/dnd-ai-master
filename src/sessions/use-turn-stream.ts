@@ -6,6 +6,13 @@ export interface UseTurnStreamResult {
   busy: boolean;
   events: TurnEvent[];
   send: (message: string) => Promise<void>;
+  /**
+   * Triggers the synthetic "begin" turn — the server runs the master
+   * with no player message so the campaign opens with a master narration.
+   * Only valid when the chat is empty; the server returns 409 otherwise
+   * and that's treated as a no-op.
+   */
+  begin: () => Promise<void>;
   error: string | null;
   reset: () => void;
 }
@@ -23,7 +30,7 @@ export function useTurnStream(sessionId: string): UseTurnStreamResult {
     setError(null);
   }, []);
 
-  const send = React.useCallback(async (message: string) => {
+  const runTurn = React.useCallback(async (payload: { message?: string; begin?: boolean }) => {
     if (busy) return;
     setBusy(true);
     setError(null);
@@ -34,7 +41,7 @@ export function useTurnStream(sessionId: string): UseTurnStreamResult {
       const res = await fetch(`/api/sessions/${sessionId}/turn`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify(payload),
         signal: ac.signal,
       });
       if (!res.ok || !res.body) {
@@ -71,7 +78,16 @@ export function useTurnStream(sessionId: string): UseTurnStreamResult {
     }
   }, [busy, sessionId]);
 
+  const send = React.useCallback(
+    (message: string) => runTurn({ message }),
+    [runTurn],
+  );
+  const begin = React.useCallback(
+    () => runTurn({ begin: true }),
+    [runTurn],
+  );
+
   React.useEffect(() => () => { abortRef.current?.abort(); }, []);
 
-  return { busy, events, send, error, reset };
+  return { busy, events, send, begin, error, reset };
 }

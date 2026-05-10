@@ -3,7 +3,7 @@ import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { StepBar } from '@/components/layout/step-bar';
 
-export const WIZARD_STEPS = ['Race', 'Class', 'Background', 'Abilities', 'Skills', 'Equipment', 'Identity'] as const;
+export const WIZARD_STEPS = ['Race', 'Class', 'Class Choices', 'Background', 'Abilities', 'Skills', 'Feats', 'Equipment', 'Identity'] as const;
 export type WizardStepName = typeof WIZARD_STEPS[number];
 
 export interface WizardShellProps {
