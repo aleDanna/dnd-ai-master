@@ -141,6 +141,13 @@
       "when": 1778419675273,
       "tag": "0019_dark_nightshade",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1778426788986,
+      "tag": "0020_aspiring_madame_web",
+      "breakpoints": true
     }
   ]
 }

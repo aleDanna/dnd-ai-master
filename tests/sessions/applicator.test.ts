@@ -1256,4 +1256,231 @@ describe('applyMutations', () => {
       expect(ts.bonusUsed).toBe(true);
     });
   });
+
+  // ─── Phase 12: crafting projects (PHB §5 + DMG) ──────────────────────────
+  describe('applicator — crafting mutations', () => {
+    type ProjectRow = {
+      id: string;
+      recipeSlug: string;
+      kind: string;
+      daysRemaining: number;
+      gpSpent: number;
+      startedRound?: number;
+    };
+
+    async function getProjects(): Promise<ProjectRow[]> {
+      const [c] = await db
+        .select({ p: characters.craftingProjects })
+        .from(characters)
+        .where(eq(characters.id, PC_ID))
+        .limit(1);
+      return (c!.p ?? []) as ProjectRow[];
+    }
+
+    async function resetCrafting() {
+      await db
+        .update(characters)
+        .set({ craftingProjects: [] })
+        .where(eq(characters.id, PC_ID));
+    }
+
+    it('start_crafting appends the project to characters.crafting_projects', async () => {
+      await resetCrafting();
+      await applyMutations(
+        SESSION_ID,
+        [
+          {
+            op: 'start_crafting',
+            characterId: PC_ID,
+            project: {
+              id: 'proj-1',
+              recipeSlug: 'longsword',
+              kind: 'item',
+              daysRemaining: 30,
+              gpSpent: 0,
+            },
+          },
+        ],
+        [],
+      );
+      const projects = await getProjects();
+      expect(projects).toHaveLength(1);
+      expect(projects[0]).toMatchObject({
+        id: 'proj-1',
+        recipeSlug: 'longsword',
+        kind: 'item',
+        daysRemaining: 30,
+        gpSpent: 0,
+      });
+    });
+
+    it('start_crafting is idempotent on duplicate id', async () => {
+      await resetCrafting();
+      const project = {
+        id: 'proj-dup',
+        recipeSlug: 'rope-hempen',
+        kind: 'item' as const,
+        daysRemaining: 4,
+        gpSpent: 0,
+      };
+      await applyMutations(
+        SESSION_ID,
+        [{ op: 'start_crafting', characterId: PC_ID, project }],
+        [],
+      );
+      // Second call with the same id is a silent no-op (no duplicate row).
+      await applyMutations(
+        SESSION_ID,
+        [{ op: 'start_crafting', characterId: PC_ID, project }],
+        [],
+      );
+      const projects = await getProjects();
+      expect(projects).toHaveLength(1);
+    });
+
+    it('progress_crafting decrements daysRemaining (clamp 0) and adds gpDelta to gpSpent', async () => {
+      await resetCrafting();
+      await applyMutations(
+        SESSION_ID,
+        [
+          {
+            op: 'start_crafting',
+            characterId: PC_ID,
+            project: {
+              id: 'proj-2',
+              recipeSlug: 'studded-leather',
+              kind: 'item',
+              daysRemaining: 10,
+              gpSpent: 0,
+            },
+          },
+        ],
+        [],
+      );
+
+      // Spend 4 days + 12 gp.
+      await applyMutations(
+        SESSION_ID,
+        [
+          {
+            op: 'progress_crafting',
+            characterId: PC_ID,
+            projectId: 'proj-2',
+            daysSpent: 4,
+            gpDelta: 12,
+          },
+        ],
+        [],
+      );
+      let projects = await getProjects();
+      expect(projects[0]!.daysRemaining).toBe(6);
+      expect(projects[0]!.gpSpent).toBe(12);
+
+      // Spend 99 days — clamps at 0, gpSpent grows by gpDelta.
+      await applyMutations(
+        SESSION_ID,
+        [
+          {
+            op: 'progress_crafting',
+            characterId: PC_ID,
+            projectId: 'proj-2',
+            daysSpent: 99,
+            gpDelta: 5,
+          },
+        ],
+        [],
+      );
+      projects = await getProjects();
+      expect(projects[0]!.daysRemaining).toBe(0);
+      expect(projects[0]!.gpSpent).toBe(17);
+    });
+
+    it('complete_crafting at daysRemaining=0 removes project AND adds inventory', async () => {
+      await resetCrafting();
+      // Reset inventory so we can observe the add cleanly.
+      const [before] = await db
+        .select({ inv: characters.inventory })
+        .from(characters)
+        .where(eq(characters.id, PC_ID))
+        .limit(1);
+      const beforeInv = (before!.inv ?? []) as { slug: string; qty: number }[];
+      const beforeQty = beforeInv.find((i) => i.slug === 'longsword')?.qty ?? 0;
+
+      await applyMutations(
+        SESSION_ID,
+        [
+          {
+            op: 'start_crafting',
+            characterId: PC_ID,
+            project: {
+              id: 'proj-3',
+              recipeSlug: 'longsword',
+              kind: 'item',
+              daysRemaining: 0,
+              gpSpent: 8,
+            },
+          },
+          { op: 'complete_crafting', characterId: PC_ID, projectId: 'proj-3' },
+        ],
+        [],
+      );
+
+      const projects = await getProjects();
+      expect(projects.find((p) => p.id === 'proj-3')).toBeUndefined();
+
+      const [after] = await db
+        .select({ inv: characters.inventory })
+        .from(characters)
+        .where(eq(characters.id, PC_ID))
+        .limit(1);
+      const afterInv = (after!.inv ?? []) as { slug: string; qty: number }[];
+      const afterQty = afterInv.find((i) => i.slug === 'longsword')?.qty ?? 0;
+      expect(afterQty).toBe(beforeQty + 1);
+    });
+
+    it('cancel_crafting drops the project without an inventory side-effect', async () => {
+      await resetCrafting();
+      const [before] = await db
+        .select({ inv: characters.inventory })
+        .from(characters)
+        .where(eq(characters.id, PC_ID))
+        .limit(1);
+      const beforeInv = (before!.inv ?? []) as { slug: string; qty: number }[];
+
+      await applyMutations(
+        SESSION_ID,
+        [
+          {
+            op: 'start_crafting',
+            characterId: PC_ID,
+            project: {
+              id: 'proj-4',
+              recipeSlug: 'wand-of-fireballs',
+              kind: 'magic_item',
+              daysRemaining: 100,
+              gpSpent: 500,
+            },
+          },
+          { op: 'cancel_crafting', characterId: PC_ID, projectId: 'proj-4' },
+        ],
+        [],
+      );
+
+      const projects = await getProjects();
+      expect(projects.find((p) => p.id === 'proj-4')).toBeUndefined();
+
+      const [after] = await db
+        .select({ inv: characters.inventory })
+        .from(characters)
+        .where(eq(characters.id, PC_ID))
+        .limit(1);
+      const afterInv = (after!.inv ?? []) as { slug: string; qty: number }[];
+      // No new wand entry should have appeared.
+      expect(
+        afterInv.find((i) => i.slug === 'wand-of-fireballs'),
+      ).toBeUndefined();
+      // Other inventory entries are untouched.
+      expect(afterInv.length).toBe(beforeInv.length);
+    });
+  });
 });

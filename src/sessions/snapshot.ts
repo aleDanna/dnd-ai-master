@@ -13,6 +13,8 @@ import type {
   ClassLevel,
   CombatActor,
   ConcentrationState,
+  CraftingKind,
+  CraftingProject,
   EngineState,
   ActorRuntimeState,
   EquippedFocus,
@@ -37,6 +39,57 @@ function hydrateFocus(raw: unknown): EquippedFocus | undefined {
   if (typeof r.kind !== 'string' || typeof r.itemSlug !== 'string') return undefined;
   if (!VALID_FOCUS_KINDS.has(r.kind as FocusKind)) return undefined;
   return { kind: r.kind as FocusKind, itemSlug: r.itemSlug };
+}
+
+const VALID_CRAFTING_KINDS: ReadonlySet<CraftingKind> = new Set([
+  'item',
+  'magic_item',
+  'scroll',
+  'potion',
+]);
+
+/**
+ * PHB §5 + DMG: hydrate the `crafting_projects` jsonb column. Drops
+ * malformed entries defensively so legacy/garbage rows can't crash the
+ * tool layer (e.g. handler look-ups by id). Returns `[]` when the
+ * column is null/empty.
+ */
+function hydrateCraftingProjects(raw: unknown): CraftingProject[] {
+  if (!Array.isArray(raw)) return [];
+  const clean: CraftingProject[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const r = item as {
+      id?: unknown;
+      recipeSlug?: unknown;
+      kind?: unknown;
+      daysRemaining?: unknown;
+      gpSpent?: unknown;
+      startedRound?: unknown;
+    };
+    if (typeof r.id !== 'string' || !r.id) continue;
+    if (typeof r.recipeSlug !== 'string' || !r.recipeSlug) continue;
+    if (typeof r.kind !== 'string' || !VALID_CRAFTING_KINDS.has(r.kind as CraftingKind)) continue;
+    const days = typeof r.daysRemaining === 'number' && Number.isFinite(r.daysRemaining)
+      ? Math.max(0, Math.floor(r.daysRemaining))
+      : null;
+    if (days == null) continue;
+    const gp = typeof r.gpSpent === 'number' && Number.isFinite(r.gpSpent)
+      ? Math.max(0, Math.floor(r.gpSpent))
+      : 0;
+    const project: CraftingProject = {
+      id: r.id,
+      recipeSlug: r.recipeSlug,
+      kind: r.kind as CraftingKind,
+      daysRemaining: days,
+      gpSpent: gp,
+    };
+    if (typeof r.startedRound === 'number' && Number.isFinite(r.startedRound)) {
+      project.startedRound = Math.floor(r.startedRound);
+    }
+    clean.push(project);
+  }
+  return clean;
 }
 
 /**
@@ -126,6 +179,10 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
       // against the FocusKind union so a corrupt/legacy value can't
       // crash component validation downstream.
       equippedFocus: hydrateFocus(character.equippedFocus),
+      // PHB §5 + DMG — hydrate in-flight crafting projects. Defaults to
+      // [] so callers can rely on the array always being present even
+      // when the row predates the column.
+      craftingProjects: hydrateCraftingProjects(character.craftingProjects),
     },
   ];
 
@@ -219,6 +276,10 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
     // whether to call equip_focus / unequip_focus or pass freeHand=false
     // when both hands are occupied AND no focus is held.
     equippedFocus: hydrateFocus(character.equippedFocus) ?? null,
+    // PHB §5 + DMG: master sees in-flight crafting projects so it can
+    // narrate downtime progress (e.g. "you've already spent 12 days on
+    // your longsword — 18 to go") and decide which project to address.
+    craftingProjects: hydrateCraftingProjects(character.craftingProjects),
     spellSlots: buildSpellSlotsView(character.spellcasting as Character['spellcasting'], stateRow.spellSlotsUsed),
   });
 

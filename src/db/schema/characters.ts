@@ -1,6 +1,6 @@
 import { pgTable, text, integer, jsonb, uuid, timestamp, index, boolean } from 'drizzle-orm/pg-core';
 import { users } from './users';
-import type { ClassLevel, EquippedFocus, Senses } from '@/engine/types';
+import type { ClassLevel, CraftingProject, EquippedFocus, Senses } from '@/engine/types';
 
 export const characters = pgTable(
   'characters',
@@ -83,6 +83,16 @@ export const characters = pgTable(
      * component validation.
      */
     equippedFocus: jsonb('equipped_focus').$type<EquippedFocus | null>().default(null),
+    /**
+     * PHB §5 + DMG crafting rules: in-flight crafting projects pinned to
+     * the PC. Each entry is a `{ id, recipeSlug, kind, daysRemaining,
+     * gpSpent, startedRound? }` record. Default `[]` so legacy rows
+     * survive the migration; the snapshot hydrator coerces null/missing
+     * to an empty array. Mutations: start_crafting (append),
+     * progress_crafting (decrement days/increment gp), complete_crafting
+     * (remove + emit add_inventory), cancel_crafting (remove).
+     */
+    craftingProjects: jsonb('crafting_projects').$type<CraftingProject[]>().notNull().default([]),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

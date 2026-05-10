@@ -12,6 +12,7 @@ import {
 import type {
   ClassLevel,
   ConditionInstance,
+  CraftingProject,
   DiceRoll,
   Mutation,
   TurnState,
@@ -1037,6 +1038,117 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
       }
       break;
     }
+    case 'start_crafting': {
+      // Phase 12 (PHB §5 + DMG): append the project to
+      // characters.crafting_projects. Idempotent on id collision (a
+      // duplicate id is silently ignored — the master is responsible
+      // for generating fresh ids per project).
+      if (m.characterId !== ctx.characterId) break;
+      const [c] = await tx
+        .select({ projects: charactersTable.craftingProjects })
+        .from(charactersTable)
+        .where(eq(charactersTable.id, m.characterId))
+        .limit(1);
+      if (!c) break;
+      const cur = asProjectsArray(c.projects);
+      if (cur.some((p) => p.id === m.project.id)) break; // idempotent
+      const next: CraftingProject[] = [...cur, sanitizeProject(m.project)];
+      await tx
+        .update(charactersTable)
+        .set({ craftingProjects: next, updatedAt: new Date() })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
+    case 'progress_crafting': {
+      // Phase 12: decrement daysRemaining by daysSpent (clamp at 0),
+      // optionally add gpDelta to gpSpent. Silent no-op when the
+      // project id isn't present (re-applying a stale event log
+      // shouldn't crash; the tool layer reports the error).
+      if (m.characterId !== ctx.characterId) break;
+      const [c] = await tx
+        .select({ projects: charactersTable.craftingProjects })
+        .from(charactersTable)
+        .where(eq(charactersTable.id, m.characterId))
+        .limit(1);
+      if (!c) break;
+      const cur = asProjectsArray(c.projects);
+      const idx = cur.findIndex((p) => p.id === m.projectId);
+      if (idx < 0) break;
+      const project = cur[idx]!;
+      const daysSpent = Math.max(0, Math.floor(m.daysSpent));
+      const gpDelta = Math.max(0, Math.floor(m.gpDelta ?? 0));
+      const updated: CraftingProject = {
+        ...project,
+        daysRemaining: Math.max(0, project.daysRemaining - daysSpent),
+        gpSpent: project.gpSpent + gpDelta,
+      };
+      const next = cur.map((p, i) => (i === idx ? updated : p));
+      await tx
+        .update(charactersTable)
+        .set({ craftingProjects: next, updatedAt: new Date() })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
+    case 'complete_crafting': {
+      // Phase 12: validate project exists + daysRemaining === 0,
+      // remove from craftingProjects, and ALSO update the inventory
+      // (qty +1 for the recipe slug) — chaining the add_inventory
+      // side-effect inside the same transaction so the project's
+      // disappearance can never be observed without the resulting item.
+      if (m.characterId !== ctx.characterId) break;
+      const [c] = await tx
+        .select({
+          projects: charactersTable.craftingProjects,
+          inventory: charactersTable.inventory,
+        })
+        .from(charactersTable)
+        .where(eq(charactersTable.id, m.characterId))
+        .limit(1);
+      if (!c) break;
+      const cur = asProjectsArray(c.projects);
+      const idx = cur.findIndex((p) => p.id === m.projectId);
+      if (idx < 0) break;
+      const project = cur[idx]!;
+      // The applicator stays permissive: if the master skipped the
+      // tool-level validation and emitted complete_crafting too early,
+      // we still drop the project (to keep the event log replayable)
+      // but DO NOT add the item — the master is responsible for the
+      // narrative reset.
+      const ready = project.daysRemaining <= 0;
+      const remainingProjects = cur.filter((_, i) => i !== idx);
+      const nextInventory = ready
+        ? mergeInventoryAdd(c.inventory ?? [], project.recipeSlug, 1)
+        : c.inventory ?? [];
+      await tx
+        .update(charactersTable)
+        .set({
+          craftingProjects: remainingProjects,
+          inventory: nextInventory,
+          updatedAt: new Date(),
+        })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
+    case 'cancel_crafting': {
+      // Phase 12: remove the project from craftingProjects with no
+      // refund and no inventory side-effect. Silent no-op when the id
+      // is not present.
+      if (m.characterId !== ctx.characterId) break;
+      const [c] = await tx
+        .select({ projects: charactersTable.craftingProjects })
+        .from(charactersTable)
+        .where(eq(charactersTable.id, m.characterId))
+        .limit(1);
+      if (!c) break;
+      const cur = asProjectsArray(c.projects);
+      const next = cur.filter((p) => p.id !== m.projectId);
+      if (next.length === cur.length) break; // nothing changed
+      await tx
+        .update(charactersTable)
+        .set({ craftingProjects: next, updatedAt: new Date() })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
   }
 }
 
@@ -1070,6 +1182,52 @@ function mergeInventoryRemove(inv: unknown, slug: string, qty: number): InvRow[]
   return safe
     .map((it) => (it.slug === slug ? { ...it, qty: it.qty - safeQty } : it))
     .filter((it) => it.qty > 0);
+}
+
+/**
+ * Coerce whatever the jsonb crafting_projects column returned into a clean
+ * `CraftingProject[]`. Drops malformed entries defensively so a corrupt
+ * row can't bring down the applicator (mirrors the snapshot hydrator).
+ */
+function asProjectsArray(raw: unknown): CraftingProject[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CraftingProject[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const r = item as Partial<CraftingProject>;
+    if (typeof r.id !== 'string' || !r.id) continue;
+    if (typeof r.recipeSlug !== 'string' || !r.recipeSlug) continue;
+    if (typeof r.kind !== 'string') continue;
+    if (typeof r.daysRemaining !== 'number') continue;
+    if (typeof r.gpSpent !== 'number') continue;
+    out.push({
+      id: r.id,
+      recipeSlug: r.recipeSlug,
+      kind: r.kind,
+      daysRemaining: Math.max(0, Math.floor(r.daysRemaining)),
+      gpSpent: Math.max(0, Math.floor(r.gpSpent)),
+      ...(typeof r.startedRound === 'number'
+        ? { startedRound: Math.floor(r.startedRound) }
+        : {}),
+    });
+  }
+  return out;
+}
+
+/** Normalise a project payload coming in via a `start_crafting` mutation
+ *  so days/gp are non-negative integers and stray fields are dropped. */
+function sanitizeProject(p: CraftingProject): CraftingProject {
+  const out: CraftingProject = {
+    id: p.id,
+    recipeSlug: p.recipeSlug,
+    kind: p.kind,
+    daysRemaining: Math.max(0, Math.floor(p.daysRemaining)),
+    gpSpent: Math.max(0, Math.floor(p.gpSpent)),
+  };
+  if (typeof p.startedRound === 'number') {
+    out.startedRound = Math.floor(p.startedRound);
+  }
+  return out;
 }
 
 /**
