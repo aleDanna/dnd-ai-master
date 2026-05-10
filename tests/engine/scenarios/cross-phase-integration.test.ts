@@ -22,8 +22,6 @@ import type {
   ConditionInstance,
   EngineState,
   Mutation,
-  Position,
-  TurnState,
 } from '@/engine/types';
 
 /**
