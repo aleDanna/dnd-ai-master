@@ -260,7 +260,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
   },
 };
 
-function resolveCharacterId(state: EngineState, actorRef: unknown): string {
+export function resolveCharacterId(state: EngineState, actorRef: unknown): string {
   if (typeof actorRef === 'string' && actorRef === 'player_character' && state.characters.length === 1) {
     return state.characters[0]!.id;
   }
