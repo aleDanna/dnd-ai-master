@@ -1025,4 +1025,50 @@ describe('applyMutations', () => {
       expect(bolt).toBeUndefined();
     });
   });
+
+  describe('spellcasting focus (PHB §8.4)', () => {
+    it('set_focus persists characters.equipped_focus', async () => {
+      await applyMutations(SESSION_ID, [
+        {
+          op: 'set_focus',
+          characterId: PC_ID,
+          focus: { kind: 'arcane', itemSlug: 'crystal-orb' },
+        },
+      ], []);
+      const [c] = await db
+        .select({ equippedFocus: characters.equippedFocus })
+        .from(characters)
+        .where(eq(characters.id, PC_ID))
+        .limit(1);
+      expect(c!.equippedFocus).toEqual({ kind: 'arcane', itemSlug: 'crystal-orb' });
+    });
+
+    it('set_focus overwrites the previous focus (idempotent for same value)', async () => {
+      await applyMutations(SESSION_ID, [
+        {
+          op: 'set_focus',
+          characterId: PC_ID,
+          focus: { kind: 'holy', itemSlug: 'amulet-of-light' },
+        },
+      ], []);
+      const [c] = await db
+        .select({ equippedFocus: characters.equippedFocus })
+        .from(characters)
+        .where(eq(characters.id, PC_ID))
+        .limit(1);
+      expect(c!.equippedFocus).toEqual({ kind: 'holy', itemSlug: 'amulet-of-light' });
+    });
+
+    it('unset_focus clears characters.equipped_focus', async () => {
+      await applyMutations(SESSION_ID, [
+        { op: 'unset_focus', characterId: PC_ID },
+      ], []);
+      const [c] = await db
+        .select({ equippedFocus: characters.equippedFocus })
+        .from(characters)
+        .where(eq(characters.id, PC_ID))
+        .limit(1);
+      expect(c!.equippedFocus).toBeNull();
+    });
+  });
 });

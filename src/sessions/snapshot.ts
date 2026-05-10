@@ -14,11 +14,29 @@ import type {
   ConcentrationState,
   EngineState,
   ActorRuntimeState,
+  EquippedFocus,
+  FocusKind,
   TonalFrame,
   EngagementProfile,
 } from '@/engine/types';
 import { isValidTonalFrame, isValidEngagementProfile } from '@/engine/npc-tonal';
 import type { SnapshotForModel } from './types';
+
+/** Defensive guard: drop legacy/garbage focus values so component validation doesn't crash. */
+const VALID_FOCUS_KINDS: ReadonlySet<FocusKind> = new Set([
+  'arcane',
+  'druidic',
+  'holy',
+  'instrument',
+]);
+
+function hydrateFocus(raw: unknown): EquippedFocus | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as { kind?: unknown; itemSlug?: unknown };
+  if (typeof r.kind !== 'string' || typeof r.itemSlug !== 'string') return undefined;
+  if (!VALID_FOCUS_KINDS.has(r.kind as FocusKind)) return undefined;
+  return { kind: r.kind as FocusKind, itemSlug: r.itemSlug };
+}
 
 export async function buildSnapshot(sessionId: string, userId: string): Promise<SnapshotForModel> {
   const [session] = await db
@@ -64,6 +82,10 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
       // PHB §6.4 — hydrate the optional Senses column. NULL → undefined so
       // the engine type's optional field reads as absent.
       senses: character.senses ?? undefined,
+      // PHB §8.4 — hydrate the equipped focus. We validate the kind
+      // against the FocusKind union so a corrupt/legacy value can't
+      // crash component validation downstream.
+      equippedFocus: hydrateFocus(character.equippedFocus),
     },
   ];
 
@@ -149,6 +171,10 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
     // PHB §10.1: master sees the current attunement list so it can self-check
     // the cap (max 3) before calling `attune`.
     attunedItems: Array.isArray(character.attunedItems) ? character.attunedItems : [],
+    // PHB §8.4: master sees the currently held focus so it can decide
+    // whether to call equip_focus / unequip_focus or pass freeHand=false
+    // when both hands are occupied AND no focus is held.
+    equippedFocus: hydrateFocus(character.equippedFocus) ?? null,
     spellSlots: buildSpellSlotsView(character.spellcasting as Character['spellcasting'], stateRow.spellSlotsUsed),
   });
 

@@ -811,6 +811,25 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
       }
       break;
     }
+    case 'set_focus': {
+      // PHB §8.4: persist the held focus on the PC. Overwrites any
+      // existing focus — the tool layer is responsible for declaring
+      // a single coherent state per cast.
+      await tx
+        .update(charactersTable)
+        .set({ equippedFocus: m.focus, updatedAt: new Date() })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
+    case 'unset_focus': {
+      // PHB §8.4: clear the focus. Idempotent — writing NULL when
+      // already NULL is a harmless no-op at the SQL level.
+      await tx
+        .update(charactersTable)
+        .set({ equippedFocus: null, updatedAt: new Date() })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
     case 'consume_ammo': {
       // PHB §9.4 — decrement inventory[ammoSlug].qty by qty. PC-only:
       // monsters/NPCs don't track inventory in the engine state.

@@ -1,6 +1,6 @@
 import { pgTable, text, integer, jsonb, uuid, timestamp, index, boolean } from 'drizzle-orm/pg-core';
 import { users } from './users';
-import type { Senses } from '@/engine/types';
+import type { EquippedFocus, Senses } from '@/engine/types';
 
 export const characters = pgTable(
   'characters',
@@ -66,6 +66,14 @@ export const characters = pgTable(
      * race/feature derivation or the master via set_senses.
      */
     senses: jsonb('senses').$type<Senses | null>().default(null),
+    /**
+     * PHB §8.4 — currently held spellcasting focus. NULL when the PC
+     * has no focus declared. The shape is `{ kind, itemSlug }`; the
+     * snapshot validates the kind defensively (drops if outside the
+     * arcane/druidic/holy/instrument set) so legacy data can't crash
+     * component validation.
+     */
+    equippedFocus: jsonb('equipped_focus').$type<EquippedFocus | null>().default(null),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
