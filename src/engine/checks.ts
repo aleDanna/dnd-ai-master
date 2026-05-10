@@ -1,7 +1,9 @@
-import type { Ability, ActionResult, Character, Skill } from './types';
+import type { Ability, ActionResult, ActorRuntimeState, Character, CoverLevel, Mutation, Skill } from './types';
 import { abilityModifier, savingThrowBonus, skillBonus, passiveScore } from './modifiers';
 import { rollD20 } from './dice';
 import { defaultRng, type Rng } from './rand';
+import { getEffectsForActor } from './condition-effects';
+import { coverDexSaveBonus } from './combat/cover';
 
 export interface AbilityCheckInput {
   char: Character;
@@ -10,6 +12,14 @@ export interface AbilityCheckInput {
   dc: number;
   advantage?: boolean;
   disadvantage?: boolean;
+  /** Optional runtime state — when present, the resolver applies condition/exhaustion effects. */
+  runtime?: ActorRuntimeState;
+  /**
+   * PHB §18.1: when true the PC spends Inspiration for ADV on this check
+   * (consumed regardless of outcome). Errors with 'no_inspiration' if the
+   * PC doesn't have Inspiration.
+   */
+  useInspiration?: boolean;
 }
 
 export function abilityCheck(input: AbilityCheckInput, rng: Rng = defaultRng): ActionResult<{ dc: number }> {
@@ -21,12 +31,38 @@ export function abilityCheck(input: AbilityCheckInput, rng: Rng = defaultRng): A
   } else {
     return { ok: false, error: 'abilityCheck: must provide skill or ability', rolls: [], mutations: [] };
   }
-  const roll = rollD20({ advantage: input.advantage, disadvantage: input.disadvantage, modifier }, rng);
+  // PHB §18.1: validate Inspiration presence before rolling — no rolls
+  // happen on a no_inspiration error.
+  if (input.useInspiration && !input.char.inspiration) {
+    return { ok: false, error: 'no_inspiration', rolls: [], mutations: [] };
+  }
+  const fx = getEffectsForActor(input.runtime?.conditions ?? [], {
+    exhaustionLevel: input.runtime?.exhaustionLevel,
+  });
+  // PHB §3.5 Help: a 'helped' beneficiary gets ADV on the next d20 (consumed
+  // on first use, regardless of pass/fail). Detect on the runtime here.
+  const helpedActor = (input.runtime?.conditions ?? []).some((c) => c.slug === 'helped');
+  const advantage = !!input.advantage || helpedActor || !!input.useInspiration;
+  const disadvantage = !!input.disadvantage || fx.abilityCheckDisadvantage;
+  const roll = rollD20({ advantage, disadvantage, modifier }, rng);
+  const mutations: Mutation[] = [];
+  if (helpedActor) {
+    mutations.push({
+      op: 'remove_condition',
+      actorId: input.char.id,
+      conditionSlug: 'helped',
+    });
+  }
+  if (input.useInspiration) {
+    // Spend regardless of outcome — PHB: "spend Inspiration to gain ADV on
+    // ONE roll" (consumed on first use).
+    mutations.push({ op: 'spend_inspiration', characterId: input.char.id });
+  }
   return {
     ok: roll.total >= input.dc,
     data: { dc: input.dc },
     rolls: [roll],
-    mutations: [],
+    mutations,
   };
 }
 
@@ -36,16 +72,69 @@ export interface SavingThrowInput {
   dc: number;
   advantage?: boolean;
   disadvantage?: boolean;
+  /** Optional runtime state — when present, the resolver applies condition/exhaustion effects. */
+  runtime?: ActorRuntimeState;
+  /**
+   * PHB §18.1: when true the PC spends Inspiration for ADV on this save
+   * (consumed regardless of outcome). Errors with 'no_inspiration' if the
+   * PC doesn't have Inspiration.
+   */
+  useInspiration?: boolean;
+  /**
+   * PHB §3.12 — cover behind which the saver sits when the AoE originates
+   * from the OTHER side of that cover (e.g. fireball through a doorway).
+   * Adds the cover bonus (+2/+5) to the save modifier ONLY when ability
+   * is 'DEX'. Other abilities ignore cover.
+   */
+  cover?: CoverLevel;
 }
 
-export function savingThrow(input: SavingThrowInput, rng: Rng = defaultRng): ActionResult<{ dc: number }> {
-  const modifier = savingThrowBonus(input.char, input.ability);
-  const roll = rollD20({ advantage: input.advantage, disadvantage: input.disadvantage, modifier }, rng);
+export function savingThrow(
+  input: SavingThrowInput,
+  rng: Rng = defaultRng,
+): ActionResult<{ dc: number; autoFailed?: boolean }> {
+  // Validate Inspiration first — no rolls happen on a no_inspiration error
+  // (and we don't want to short-circuit through the auto-fail branch with
+  // an invalid use claim).
+  if (input.useInspiration && !input.char.inspiration) {
+    return { ok: false, error: 'no_inspiration', rolls: [], mutations: [] };
+  }
+  const fx = getEffectsForActor(input.runtime?.conditions ?? [], {
+    exhaustionLevel: input.runtime?.exhaustionLevel,
+  });
+  if (fx.saveAutoFail[input.ability]) {
+    // PHB: even if the save auto-fails (e.g. STR/DEX while paralyzed),
+    // spending Inspiration on it still consumes the resource — the player
+    // declared the spend before learning about the auto-fail. Mirror that.
+    const muts: Mutation[] = [];
+    if (input.useInspiration) {
+      muts.push({ op: 'spend_inspiration', characterId: input.char.id });
+    }
+    return {
+      ok: false,
+      data: { dc: input.dc, autoFailed: true },
+      rolls: [],
+      mutations: muts,
+    };
+  }
+  // PHB §3.12 — cover bonus applies to DEX saves only. For other abilities
+  // the bonus is silently ignored (cover doesn't help against a domination
+  // spell or a poison spreading through your bloodstream).
+  const coverBonus =
+    input.ability === 'DEX' && input.cover ? coverDexSaveBonus(input.cover) : 0;
+  const modifier = savingThrowBonus(input.char, input.ability) + coverBonus;
+  const advantage = !!input.advantage || !!input.useInspiration;
+  const disadvantage = !!input.disadvantage || fx.saveDisadvantage[input.ability];
+  const roll = rollD20({ advantage, disadvantage, modifier }, rng);
+  const mutations: Mutation[] = [];
+  if (input.useInspiration) {
+    mutations.push({ op: 'spend_inspiration', characterId: input.char.id });
+  }
   return {
     ok: roll.total >= input.dc,
     data: { dc: input.dc },
     rolls: [roll],
-    mutations: [],
+    mutations,
   };
 }
 

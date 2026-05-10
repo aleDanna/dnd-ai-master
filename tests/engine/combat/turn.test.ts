@@ -29,6 +29,46 @@ describe('endTurn', () => {
   });
 });
 
+describe('endTurn — emits start_turn for next actor', () => {
+  it('emits advance_turn AND start_turn for the next actor in order', () => {
+    const combat: CombatState = {
+      round: 1,
+      currentIdx: 0,
+      turnOrder: [
+        { actorId: 'pc1', initiative: 15 },
+        { actorId: 'm1', initiative: 12 },
+      ],
+    };
+    const result = endTurn({ combat });
+    const ops = result.mutations.map((m) => m.op);
+    expect(ops).toContain('advance_turn');
+    expect(ops).toContain('start_turn');
+    expect(ops.indexOf('advance_turn')).toBeLessThan(ops.indexOf('start_turn'));
+    const startTurn = result.mutations.find((m) => m.op === 'start_turn');
+    if (startTurn?.op === 'start_turn') {
+      expect(startTurn.actorId).toBe('m1');
+    }
+  });
+
+  it('start_turn at round wrap targets the first actor in order', () => {
+    const combat: CombatState = {
+      round: 1,
+      currentIdx: 1, // last actor in order
+      turnOrder: [
+        { actorId: 'pc1', initiative: 15 },
+        { actorId: 'm1', initiative: 12 },
+      ],
+    };
+    const result = endTurn({ combat });
+    const startTurn = result.mutations.find((m) => m.op === 'start_turn');
+    if (startTurn?.op === 'start_turn') {
+      expect(startTurn.actorId).toBe('pc1');
+    }
+    expect(result.data?.newRound).toBe(true);
+    expect(result.data?.round).toBe(2);
+  });
+});
+
 describe('tickConditions', () => {
   it('decrements duration of round-counted conditions for current actor', () => {
     const runtime: ActorRuntimeState = {

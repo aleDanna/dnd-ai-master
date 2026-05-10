@@ -15,6 +15,7 @@ export const ttsCache = pgTable(
       .references(() => sessionMessages.id, { onDelete: 'cascade' }),
     voice: text('voice').notNull(),
     audioMp3: bytea('audio_mp3').notNull(),
+    provider: text('provider').notNull().default('openai'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

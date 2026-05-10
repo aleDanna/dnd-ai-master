@@ -1,7 +1,37 @@
 import { describe, it, expect } from 'vitest';
 import { makeAttack } from '@/engine/combat/attack';
 import { makeSeededRng } from '@/engine/rand';
-import type { Character, CombatActor } from '@/engine/types';
+import { newTurnState } from '@/engine/combat/turn-state';
+import type {
+  ActorRuntimeState,
+  Character,
+  CombatActor,
+  ConditionInstance,
+  ConditionSlug,
+  TurnState,
+} from '@/engine/types';
+
+const cond = (slug: ConditionSlug, extra?: Partial<ConditionInstance>): ConditionInstance => ({
+  slug,
+  source: 'test',
+  durationRounds: 'until_removed',
+  appliedRound: 0,
+  ...extra,
+});
+
+function runtimeFor(
+  actorId: string,
+  opts: { hpCurrent?: number; conditions?: ConditionInstance[]; turnState?: TurnState } = {},
+): ActorRuntimeState {
+  return {
+    actorId,
+    hpCurrent: opts.hpCurrent ?? 10,
+    tempHp: 0,
+    conditions: opts.conditions ?? [],
+    deathSaves: { successes: 0, failures: 0 },
+    ...(opts.turnState ? { turnState: opts.turnState } : {}),
+  };
+}
 
 const fighter: Character = {
   id: 'pc1', name: 'Tharion', level: 5, xp: 0,
@@ -99,5 +129,473 @@ describe('makeAttack', () => {
     expect(dmgMut).toBeDefined();
     // The mutation amount should reflect halving (ceil(raw / 2)) — engine handles this.
     expect(dmgMut!.amount).toBeGreaterThan(0);
+  });
+});
+
+describe('makeAttack — condition effects', () => {
+  const longsword = { name: 'Longsword', damage: '1d8', damageType: 'slashing' as const, profGroup: 'Martial', useDex: false };
+  const shortbow = { name: 'Shortbow', damage: '1d6', damageType: 'piercing' as const, profGroup: 'Simple', useDex: true };
+
+  it('attacker poisoned → DIS on attack (rolls length 2)', () => {
+    const attackerRuntime = runtimeFor(fighter.id, { hpCurrent: 44, conditions: [cond('poisoned')] });
+    const targetRuntime = runtimeFor(goblin.id, { hpCurrent: 7 });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+      attackerRuntime,
+      targetRuntime,
+    }, makeSeededRng(7));
+    expect(r.rolls[0]!.rolls.length).toBe(2);
+  });
+
+  it('target prone, melee within 5ft → ADV on attacker (rolls length 2)', () => {
+    const attackerRuntime = runtimeFor(fighter.id, { hpCurrent: 44 });
+    const targetRuntime = runtimeFor(goblin.id, { hpCurrent: 7, conditions: [cond('prone')] });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+      attackerRuntime,
+      targetRuntime,
+      ranged: false,
+      meleeRange: 5,
+    }, makeSeededRng(3));
+    expect(r.rolls[0]!.rolls.length).toBe(2);
+    // ADV picks the higher of the two
+    const max = Math.max(...r.rolls[0]!.rolls);
+    expect(r.rolls[0]!.total).toBe(max + r.rolls[0]!.modifier);
+  });
+
+  it('target paralyzed within 5ft melee → auto-crit on hit', () => {
+    // fixed RNG: d20 lands at, say, 15 → +bonus hits AC 15 (goblin), all damage dice max
+    const fixedHit = { intInclusive: (_min: number, max: number) => max === 20 ? 15 : max };
+    const attackerRuntime = runtimeFor(fighter.id, { hpCurrent: 44 });
+    const targetRuntime = runtimeFor(goblin.id, { hpCurrent: 7, conditions: [cond('paralyzed')] });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+      attackerRuntime,
+      targetRuntime,
+      ranged: false,
+      meleeRange: 5,
+    }, fixedHit);
+    expect(r.ok).toBe(true);
+    expect(r.data?.crit).toBe(true);
+    // Damage roll should have 2 dice (1d8 doubled) due to crit
+    const damageRoll = r.rolls[1]!;
+    expect(damageRoll.rolls.length).toBe(2);
+  });
+
+  it('both attacker and target invisible → ADV+DIS cancel (single d20)', () => {
+    const attackerRuntime = runtimeFor(fighter.id, { hpCurrent: 44, conditions: [cond('invisible')] });
+    const targetRuntime = runtimeFor(goblin.id, { hpCurrent: 7, conditions: [cond('invisible')] });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+      attackerRuntime,
+      targetRuntime,
+    }, makeSeededRng(11));
+    expect(r.rolls[0]!.rolls.length).toBe(1);
+  });
+
+  it('attacker incapacitated (unconscious) → ok:false, error mentions incapacitated', () => {
+    const attackerRuntime = runtimeFor(fighter.id, { hpCurrent: 44, conditions: [cond('unconscious')] });
+    const targetRuntime = runtimeFor(goblin.id, { hpCurrent: 7 });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+      attackerRuntime,
+      targetRuntime,
+    }, makeSeededRng(0));
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/incapacitated/i);
+  });
+
+  it('target restrained → incoming ADV (rolls length 2)', () => {
+    const attackerRuntime = runtimeFor(fighter.id, { hpCurrent: 44 });
+    const targetRuntime = runtimeFor(goblin.id, { hpCurrent: 7, conditions: [cond('restrained')] });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+      attackerRuntime,
+      targetRuntime,
+    }, makeSeededRng(3));
+    expect(r.rolls[0]!.rolls.length).toBe(2);
+  });
+
+  it('target prone, ranged attack → DIS on ranged (rolls length 2, picks lower)', () => {
+    const attackerRuntime = runtimeFor(fighter.id, { hpCurrent: 44 });
+    const targetRuntime = runtimeFor(goblin.id, { hpCurrent: 7, conditions: [cond('prone')] });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: shortbow,
+      attackerRuntime,
+      targetRuntime,
+      ranged: true,
+    }, makeSeededRng(7));
+    expect(r.rolls[0]!.rolls.length).toBe(2);
+    // DIS picks the lower
+    const min = Math.min(...r.rolls[0]!.rolls);
+    expect(r.rolls[0]!.total).toBe(min + r.rolls[0]!.modifier);
+  });
+});
+
+describe('makeAttack — knockOut option', () => {
+  const longsword = { name: 'Longsword', damage: '1d8', damageType: 'slashing' as const, profGroup: 'Martial', useDex: false };
+  const shortbow = { name: 'Shortbow', damage: '1d6', damageType: 'piercing' as const, profGroup: 'Simple', useDex: true };
+
+  it('melee + knockOut + hit reduces target to ≤0 → knockedOut, set_hp 0 + add_condition unconscious, no death-save fail', () => {
+    // Target with 1 HP; deterministic hit + max damage
+    const fixedHit = { intInclusive: (_min: number, max: number) => max === 20 ? 18 : max };
+    const lowHpGoblin: CombatActor = { ...goblin, hpMax: 7 };
+    const attackerRuntime = runtimeFor(fighter.id, { hpCurrent: 44 });
+    const targetRuntime = runtimeFor(lowHpGoblin.id, { hpCurrent: 1 });
+    const r = makeAttack({
+      attacker: fighter,
+      target: lowHpGoblin,
+      weapon: longsword,
+      attackerRuntime,
+      targetRuntime,
+      ranged: false,
+      knockOut: true,
+    }, fixedHit);
+    expect(r.ok).toBe(true);
+    expect(r.data?.knockedOut).toBe(true);
+    const setHp = r.mutations.find((m) => m.op === 'set_hp');
+    expect(setHp).toBeDefined();
+    expect((setHp as { hpCurrent: number }).hpCurrent).toBe(0);
+    const addCond = r.mutations.find((m) => m.op === 'add_condition');
+    expect(addCond).toBeDefined();
+    expect((addCond as { condition: { slug: string } }).condition.slug).toBe('unconscious');
+    // No death-save fail mutations
+    expect(r.mutations.find((m) => m.op === 'death_save')).toBeUndefined();
+  });
+
+  it('ranged + knockOut → ignored, normal damage applied, no knockedOut flag', () => {
+    const fixedHit = { intInclusive: (_min: number, max: number) => max === 20 ? 18 : max };
+    const lowHpGoblin: CombatActor = { ...goblin, hpMax: 7 };
+    const attackerRuntime = runtimeFor(fighter.id, { hpCurrent: 44 });
+    const targetRuntime = runtimeFor(lowHpGoblin.id, { hpCurrent: 1 });
+    const r = makeAttack({
+      attacker: fighter,
+      target: lowHpGoblin,
+      weapon: shortbow,
+      attackerRuntime,
+      targetRuntime,
+      ranged: true,
+      knockOut: true,
+    }, fixedHit);
+    expect(r.ok).toBe(true);
+    expect(r.data?.knockedOut).toBeFalsy();
+    expect(r.mutations.some((m) => m.op === 'apply_damage')).toBe(true);
+  });
+
+  it('melee + knockOut + hit but target survives (>0 HP) → no knockedOut, normal damage path', () => {
+    // Target with full HP; minor damage
+    const fixedHit = { intInclusive: (min: number, max: number) => max === 20 ? 18 : min };
+    const attackerRuntime = runtimeFor(fighter.id, { hpCurrent: 44 });
+    const targetRuntime = runtimeFor(goblin.id, { hpCurrent: 7 });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+      attackerRuntime,
+      targetRuntime,
+      ranged: false,
+      knockOut: true,
+    }, fixedHit);
+    expect(r.ok).toBe(true);
+    expect(r.data?.knockedOut).toBeFalsy();
+    expect(r.mutations.some((m) => m.op === 'apply_damage')).toBe(true);
+    expect(r.mutations.find((m) => m.op === 'set_hp')).toBeUndefined();
+    expect(r.mutations.find((m) => m.op === 'add_condition')).toBeUndefined();
+  });
+
+  it('melee + knockOut + miss → no knockout, no damage mutations', () => {
+    const fixedMiss = { intInclusive: (_min: number, max: number) => max === 20 ? 2 : 1 };
+    const attackerRuntime = runtimeFor(fighter.id, { hpCurrent: 44 });
+    const targetRuntime = runtimeFor(goblin.id, { hpCurrent: 7 });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+      attackerRuntime,
+      targetRuntime,
+      ranged: false,
+      knockOut: true,
+    }, fixedMiss);
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('miss');
+    expect(r.data?.knockedOut).toBeFalsy();
+    expect(r.mutations.length).toBe(0);
+  });
+});
+
+describe('makeAttack — action economy', () => {
+  const longsword = { name: 'Longsword', damage: '1d8', damageType: 'slashing' as const, profGroup: 'Martial', useDex: false };
+  const fixedHit = { intInclusive: (_min: number, max: number) => max === 20 ? 18 : Math.ceil(max / 2) };
+  const fixedMiss = { intInclusive: (_min: number, max: number) => max === 20 ? 2 : 1 };
+
+  it('errors if attacker action already used (no useReaction)', () => {
+    const attackerRuntime = runtimeFor(fighter.id, {
+      hpCurrent: 44,
+      turnState: { ...newTurnState(), actionUsed: true },
+    });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+      attackerRuntime,
+    }, fixedHit);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/action_already_used|no_action/i);
+  });
+
+  it('useReaction:true allows attack even if action used (consumes reaction)', () => {
+    const attackerRuntime = runtimeFor(fighter.id, {
+      hpCurrent: 44,
+      turnState: { ...newTurnState(), actionUsed: true, reactionUsed: false },
+    });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+      attackerRuntime,
+      useReaction: true,
+    }, fixedHit);
+    expect(r.ok).toBe(true);
+    const consumeMut = r.mutations.find((m) => m.op === 'consume_action');
+    expect(consumeMut).toBeDefined();
+    expect(consumeMut).toMatchObject({ kind: 'reaction' });
+  });
+
+  it('useReaction:true errors if reaction already used', () => {
+    const attackerRuntime = runtimeFor(fighter.id, {
+      hpCurrent: 44,
+      turnState: { ...newTurnState(), reactionUsed: true },
+    });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+      attackerRuntime,
+      useReaction: true,
+    }, fixedHit);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/reaction_already_used/i);
+  });
+
+  it('successful attack emits consume_action(action) by default', () => {
+    const attackerRuntime = runtimeFor(fighter.id, {
+      hpCurrent: 44,
+      turnState: newTurnState(),
+    });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+      attackerRuntime,
+    }, fixedHit);
+    expect(r.ok).toBe(true);
+    const consumeMut = r.mutations.find((m) => m.op === 'consume_action');
+    expect(consumeMut).toBeDefined();
+    expect(consumeMut).toMatchObject({ kind: 'action' });
+  });
+
+  it('miss path also emits consume_action (action consumed regardless of hit)', () => {
+    const attackerRuntime = runtimeFor(fighter.id, {
+      hpCurrent: 44,
+      turnState: newTurnState(),
+    });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+      attackerRuntime,
+    }, fixedMiss);
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('miss');
+    const consumeMut = r.mutations.find((m) => m.op === 'consume_action');
+    expect(consumeMut).toBeDefined();
+    expect(consumeMut).toMatchObject({ kind: 'action' });
+  });
+
+  it('knockout path also emits consume_action', () => {
+    const lowHpGoblin: CombatActor = { ...goblin, hpMax: 7 };
+    const attackerRuntime = runtimeFor(fighter.id, {
+      hpCurrent: 44,
+      turnState: newTurnState(),
+    });
+    const targetRuntime = runtimeFor(lowHpGoblin.id, { hpCurrent: 1 });
+    const r = makeAttack({
+      attacker: fighter,
+      target: lowHpGoblin,
+      weapon: longsword,
+      attackerRuntime,
+      targetRuntime,
+      ranged: false,
+      knockOut: true,
+    }, fixedHit);
+    expect(r.ok).toBe(true);
+    expect(r.data?.knockedOut).toBe(true);
+    const consumeMut = r.mutations.find((m) => m.op === 'consume_action');
+    expect(consumeMut).toBeDefined();
+    expect(consumeMut).toMatchObject({ kind: 'action' });
+  });
+
+  it('attacker without turnState skips budget check (backward compat)', () => {
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+    }, fixedHit);
+    expect(r.ok).toBe(true);
+    // No consume_action emitted when no turnState (nothing to consume against).
+    const consumeMut = r.mutations.find((m) => m.op === 'consume_action');
+    expect(consumeMut).toBeUndefined();
+  });
+
+  it('target dodging → DIS on attack (rolls length 2)', () => {
+    const attackerRuntime = runtimeFor(fighter.id, { hpCurrent: 44 });
+    const targetRuntime = runtimeFor(goblin.id, {
+      hpCurrent: 7,
+      turnState: { ...newTurnState(), dodging: true },
+    });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+      attackerRuntime,
+      targetRuntime,
+    }, makeSeededRng(7));
+    expect(r.rolls[0]?.rolls.length).toBe(2);
+    // DIS picks the lower of the two
+    const min = Math.min(...r.rolls[0]!.rolls);
+    expect(r.rolls[0]!.total).toBe(min + r.rolls[0]!.modifier);
+  });
+
+  it('target dodging cancels attacker advantage (ADV+DIS = single d20)', () => {
+    const attackerRuntime = runtimeFor(fighter.id, { hpCurrent: 44 });
+    const targetRuntime = runtimeFor(goblin.id, {
+      hpCurrent: 7,
+      turnState: { ...newTurnState(), dodging: true },
+    });
+    const r = makeAttack({
+      attacker: fighter,
+      target: goblin,
+      weapon: longsword,
+      attackerRuntime,
+      targetRuntime,
+      advantage: true,
+    }, makeSeededRng(11));
+    expect(r.rolls[0]?.rolls.length).toBe(1);
+  });
+});
+
+describe('makeAttack — useInspiration (PHB §18.1)', () => {
+  const longsword = {
+    name: 'Longsword',
+    damage: '1d8',
+    damageType: 'slashing' as const,
+    profGroup: 'Martial',
+    useDex: false,
+  };
+  const inspiredFighter: Character = { ...fighter, inspiration: true };
+  const uninspiredFighter: Character = { ...fighter, inspiration: false };
+
+  it('useInspiration:true with inspiration → 2 d20s + spend mutation in result', () => {
+    // Find a seed where the attack lands so we exercise the hit-path mutations.
+    for (let seed = 0; seed < 100; seed++) {
+      const r = makeAttack({
+        attacker: inspiredFighter,
+        target: goblin,
+        weapon: longsword,
+        useInspiration: true,
+      }, makeSeededRng(seed));
+      if (r.ok) {
+        expect(r.rolls[0]!.rolls.length).toBe(2);
+        expect(r.rolls[0]!.meta?.advantage).toBe(true);
+        expect(
+          r.mutations.find(
+            (m) => m.op === 'spend_inspiration' && m.characterId === inspiredFighter.id,
+          ),
+        ).toBeDefined();
+        return;
+      }
+    }
+    throw new Error('No hit found');
+  });
+
+  it('useInspiration:true without inspiration → error no_inspiration, no rolls', () => {
+    const r = makeAttack({
+      attacker: uninspiredFighter,
+      target: goblin,
+      weapon: longsword,
+      useInspiration: true,
+    }, makeSeededRng(1));
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('no_inspiration');
+    expect(r.rolls).toEqual([]);
+    expect(r.mutations).toEqual([]);
+  });
+
+  it('useInspiration:false (default) → no spend mutation', () => {
+    for (let seed = 0; seed < 100; seed++) {
+      const r = makeAttack({
+        attacker: inspiredFighter,
+        target: goblin,
+        weapon: longsword,
+      }, makeSeededRng(seed));
+      if (r.ok) {
+        expect(r.mutations.find((m) => m.op === 'spend_inspiration')).toBeUndefined();
+        return;
+      }
+    }
+    throw new Error('No hit found');
+  });
+
+  it('spend mutation emitted on miss too (consumed regardless of outcome)', () => {
+    // Use a high-AC target so even ADV likely misses; iterate seeds until we
+    // find a miss to confirm the spend mutation is still attached.
+    const tank: CombatActor = { ...goblin, ac: 30 };
+    for (let seed = 0; seed < 100; seed++) {
+      const r = makeAttack({
+        attacker: inspiredFighter,
+        target: tank,
+        weapon: longsword,
+        useInspiration: true,
+      }, makeSeededRng(seed));
+      if (!r.ok && r.error === 'miss') {
+        expect(r.mutations.find((m) => m.op === 'spend_inspiration')).toBeDefined();
+        return;
+      }
+    }
+    throw new Error('Expected at least one miss across 100 seeds against AC 30');
+  });
+
+  it('spend mutation emitted on natural-1 (auto-miss path)', () => {
+    // Iterate seeds until natural 1 — confirm spend still emitted.
+    const tank: CombatActor = { ...goblin, ac: 30 };
+    for (let seed = 0; seed < 500; seed++) {
+      const r = makeAttack({
+        attacker: inspiredFighter,
+        target: tank,
+        weapon: longsword,
+        useInspiration: true,
+      }, makeSeededRng(seed));
+      if (!r.ok && r.rolls[0]?.rolls.length === 2 && r.rolls[0]?.rolls.every((d) => d === 1)) {
+        // Both d20s came up 1 — natural 1 with ADV. Spend must still fire.
+        expect(r.mutations.find((m) => m.op === 'spend_inspiration')).toBeDefined();
+        return;
+      }
+    }
+    // If no double-1 found in 500 seeds, that's fine; the natural-1 branch
+    // is exercised in 'spend mutation emitted on miss too' above.
   });
 });

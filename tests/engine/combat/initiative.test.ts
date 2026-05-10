@@ -39,4 +39,25 @@ describe('rollInitiative', () => {
     // Both rolled 10. PC has DEX 16, goblin has DEX 14, so PC first.
     expect(r.data!.turnOrder[0]!.actorId).toBe('pc1');
   });
+
+  // Phase 3 hotfix: roll_initiative must emit a start_turn for the first actor
+  // so their action-economy budget is initialised. Without this, turnOrder[0]
+  // silently bypasses the budget guard for their first attack/cast.
+  it('emits start_turn for turnOrder[0] (hotfix #3)', () => {
+    const r = rollInitiative({ pcs: [pc], monsters: [goblin] }, makeSeededRng(42));
+    const startTurn = r.mutations.find((m) => m.op === 'start_turn');
+    expect(startTurn).toBeDefined();
+    if (startTurn?.op === 'start_turn') {
+      expect(startTurn.actorId).toBe(r.data?.turnOrder[0]?.actorId);
+    }
+  });
+
+  it('start_turn is emitted AFTER set_combat (hotfix #3)', () => {
+    const r = rollInitiative({ pcs: [pc], monsters: [goblin] }, makeSeededRng(7));
+    const ops = r.mutations.map((m) => m.op);
+    const setCombatIdx = ops.indexOf('set_combat');
+    const startTurnIdx = ops.indexOf('start_turn');
+    expect(setCombatIdx).toBeGreaterThanOrEqual(0);
+    expect(startTurnIdx).toBeGreaterThan(setCombatIdx);
+  });
 });

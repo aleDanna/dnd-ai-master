@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { TOOL_HANDLERS } from '@/engine';
+import { longRest } from '@/engine/rests';
 import type { EngineState, Character, Mutation } from '@/engine';
 
 function applyMutation(state: EngineState, m: Mutation): EngineState {
@@ -106,7 +107,10 @@ describe('full rest cycle', () => {
     state = applyAll(state, restR.mutations);
     expect(state.runtime.pc1!.resourcesUsed!.action_surge).toBe(1);   // still used
 
-    const longR = TOOL_HANDLERS['long_rest']!(state, { actor: 'player_character' });
+    // long_rest is a DB-handler in Phase 4 (it reads session_state for the
+    // §5.2 24h cooldown); call the pure engine function directly here.
+    const longR = longRest({ char: fighter, runtime: state.runtime.pc1! });
+    expect(longR.ok).toBe(true);
     state = applyAll(state, longR.mutations);
     expect(state.runtime.pc1!.resourcesUsed!.action_surge).toBe(0);   // restored
     expect(state.runtime.pc1!.hpCurrent).toBe(44);

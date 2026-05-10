@@ -1,5 +1,6 @@
 'use client';
 import { Eyebrow } from '@/components/ui/eyebrow';
+import { Chip } from '@/components/ui/chip';
 import { CombatTracker } from './combat-tracker';
 import { XpBar } from './xp-bar';
 import { RebuildMemoryButton } from '@/components/rebuild-memory-button';
@@ -14,11 +15,27 @@ export interface MechanicsPaneProps {
   pcHpMax: number;
   pcLevel: number;
   pcXp: number;
+  /** PC speed in ft. Used by the combat tracker for the movement budget display. */
+  pcSpeed?: number;
   /** Forwarded to CombatTracker for the manual "End combat" escape hatch. */
   onEndCombat?: () => void;
 }
 
-export function MechanicsPane({ sessionId, state, actors, pcCharacterId, pcName, pcHpMax, pcLevel, pcXp, onEndCombat }: MechanicsPaneProps) {
+const PACE_LABEL: Record<'fast' | 'normal' | 'slow', string> = {
+  fast: 'Fast (4 mi/h, -5 PP)',
+  normal: 'Normal (3 mi/h)',
+  slow: 'Slow (2 mi/h, stealth)',
+};
+
+const LIGHT_LABEL: Record<'bright' | 'dim' | 'darkness', string> = {
+  bright: 'Bright',
+  dim: 'Dim',
+  darkness: 'Darkness',
+};
+
+export function MechanicsPane({ sessionId, state, actors, pcCharacterId, pcName, pcHpMax, pcLevel, pcXp, pcSpeed, onEndCombat }: MechanicsPaneProps) {
+  const travel = state.travel;
+  const showTravel = travel != null && (travel.pace || travel.lightLevel);
   return (
     <aside
       style={{
@@ -38,6 +55,19 @@ export function MechanicsPane({ sessionId, state, actors, pcCharacterId, pcName,
       }}
     >
       <XpBar level={pcLevel} xp={pcXp} />
+      {showTravel && (
+        <section>
+          <Eyebrow style={{ marginBottom: 6 }}>Travel</Eyebrow>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {travel.pace && <Chip tone="neutral">Pace: {PACE_LABEL[travel.pace]}</Chip>}
+            {travel.lightLevel && (
+              <Chip tone={travel.lightLevel === 'darkness' ? 'ember' : travel.lightLevel === 'dim' ? 'warn' : 'gold'}>
+                Light: {LIGHT_LABEL[travel.lightLevel]}
+              </Chip>
+            )}
+          </div>
+        </section>
+      )}
       <CombatTracker
         state={state}
         actors={actors}
@@ -45,6 +75,10 @@ export function MechanicsPane({ sessionId, state, actors, pcCharacterId, pcName,
         pcName={pcName}
         pcHpCurrent={state.hpCurrent}
         pcHpMax={pcHpMax}
+        pcSpeed={pcSpeed}
+        pcTurnState={state.turnState}
+        pcPosition={state.position}
+        pcConditions={state.conditions}
         onEndCombat={onEndCombat}
       />
       <section>

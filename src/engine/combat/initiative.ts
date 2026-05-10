@@ -34,6 +34,13 @@ export function rollInitiative(input: InitiativeInput, rng: Rng = defaultRng): A
   const combat: CombatState = { round: 1, turnOrder, currentIdx: 0 };
   const mutations: Mutation[] = [{ op: 'set_combat', combat }];
 
+  // Phase 3 hotfix: emit start_turn for the first actor so their turnState
+  // (action-economy budget) is initialised. Without this, turnOrder[0]'s
+  // first turn silently bypasses the budget guard for attack/cast calls.
+  if (turnOrder.length > 0) {
+    mutations.push({ op: 'start_turn', actorId: turnOrder[0]!.actorId });
+  }
+
   return {
     ok: true,
     data: { turnOrder },

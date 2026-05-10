@@ -152,3 +152,138 @@ describe('buildMasterSystemPrompt — out-of-character convention', () => {
     expect(text).toMatch(/Do NOT call.*roll_d20/i);
   });
 });
+
+describe('buildMasterSystemPrompt — NPC Three-Beat static section', () => {
+  it('includes the NPC Three-Beat block in the tool contract', () => {
+    const out = buildMasterSystemPrompt(baseInput);
+    const text = out.system.map((b) => b.text).join('\n\n');
+    expect(text).toMatch(/NPC Three-Beat \(Master Handbook §11.1\)/);
+    expect(text).toMatch(/\bWant\b/);
+    expect(text).toMatch(/\bFear\b/);
+    expect(text).toMatch(/\bQuirk\b/);
+    expect(text).toMatch(/\bAttitude\b/);
+    expect(text).toMatch(/update_npc_beats/);
+  });
+
+  it('explains all 8 tonal frames somewhere in the static prompt', () => {
+    const out = buildMasterSystemPrompt(baseInput);
+    const text = out.system.map((b) => b.text).join('\n\n');
+    for (const frame of [
+      'high_heroic',
+      'sword_sorcery',
+      'dark',
+      'mythic',
+      'cosmic_horror',
+      'swashbuckling',
+      'wuxia',
+      'steampunk',
+    ]) {
+      expect(text).toContain(frame);
+    }
+  });
+
+  it('mentions all 7 engagement profiles', () => {
+    const out = buildMasterSystemPrompt(baseInput);
+    const text = out.system.map((b) => b.text).join('\n\n');
+    for (const profile of [
+      'acting',
+      'fighting',
+      'instigating',
+      'optimizing',
+      'problem_solving',
+      'storytelling',
+      'exploring',
+    ]) {
+      expect(text).toContain(profile);
+    }
+  });
+
+  it('has Italian guidance for the new tools', () => {
+    const out = buildMasterSystemPrompt(baseInput);
+    const text = out.system.map((b) => b.text).join('\n\n');
+    expect(text).toMatch(/Italiano:/);
+    expect(text).toMatch(/update_npc_beats/);
+    expect(text).toMatch(/tonal frame/i);
+  });
+});
+
+describe('buildMasterSystemPrompt — dynamic Campaign Tonal Frame block', () => {
+  it('does NOT inject the block when tonalFrame is unset', () => {
+    const out = buildMasterSystemPrompt(baseInput);
+    const texts = out.system.map((b) => b.text);
+    expect(texts.some((t) => t.startsWith('## Campaign Tonal Frame'))).toBe(false);
+  });
+
+  it('injects the block with frame name + guidance when tonalFrame is set', () => {
+    const out = buildMasterSystemPrompt({ ...baseInput, tonalFrame: 'dark' });
+    const texts = out.system.map((b) => b.text);
+    const block = texts.find((t) => t.startsWith('## Campaign Tonal Frame'));
+    expect(block).toBeDefined();
+    expect(block).toContain('`dark`');
+    // Guidance text from TONAL_FRAME_GUIDANCE.dark
+    expect(block).toMatch(/dying|delaying|Berserk|Bloodborne|body horror/i);
+    expect(block).toMatch(/lens/);
+  });
+
+  it('uses the correct guidance for each frame', () => {
+    const cosmic = buildMasterSystemPrompt({ ...baseInput, tonalFrame: 'cosmic_horror' });
+    const cosmicBlock = cosmic.system
+      .map((b) => b.text)
+      .find((t) => t.startsWith('## Campaign Tonal Frame'));
+    expect(cosmicBlock).toMatch(/Lovecraft|sanity|dread|unknowable|indifferent/i);
+
+    const heroic = buildMasterSystemPrompt({ ...baseInput, tonalFrame: 'high_heroic' });
+    const heroicBlock = heroic.system
+      .map((b) => b.text)
+      .find((t) => t.startsWith('## Campaign Tonal Frame'));
+    expect(heroicBlock).toMatch(/heroes|kingdom|magic|LotR|triumph|noble/i);
+  });
+
+  it('places the dynamic block AFTER the cached static prefix', () => {
+    const out = buildMasterSystemPrompt({ ...baseInput, tonalFrame: 'mythic' });
+    const blockIdx = out.system.findIndex((b) =>
+      b.text.startsWith('## Campaign Tonal Frame'),
+    );
+    expect(blockIdx).toBeGreaterThanOrEqual(3);
+    // The block itself is per-session, NOT cached.
+    expect(out.system[blockIdx]!.cache_control).toBeUndefined();
+  });
+});
+
+describe('buildMasterSystemPrompt — dynamic Player Engagement Hint block', () => {
+  it('does NOT inject the block when engagementProfile is unset', () => {
+    const out = buildMasterSystemPrompt(baseInput);
+    const texts = out.system.map((b) => b.text);
+    expect(texts.some((t) => t.startsWith('## Player Engagement Hint'))).toBe(false);
+  });
+
+  it('does NOT inject the block when engagementProfile is empty array', () => {
+    const out = buildMasterSystemPrompt({ ...baseInput, engagementProfile: [] });
+    const texts = out.system.map((b) => b.text);
+    expect(texts.some((t) => t.startsWith('## Player Engagement Hint'))).toBe(false);
+  });
+
+  it('injects the block with detected profiles when non-empty', () => {
+    const out = buildMasterSystemPrompt({
+      ...baseInput,
+      engagementProfile: ['exploring', 'storytelling'],
+    });
+    const texts = out.system.map((b) => b.text);
+    const block = texts.find((t) => t.startsWith('## Player Engagement Hint'));
+    expect(block).toBeDefined();
+    expect(block).toContain('exploring');
+    expect(block).toContain('storytelling');
+    expect(block).toMatch(/Lean into scenes/i);
+  });
+
+  it('injects block alongside the tonal frame block when both are set', () => {
+    const out = buildMasterSystemPrompt({
+      ...baseInput,
+      tonalFrame: 'sword_sorcery',
+      engagementProfile: ['fighting'],
+    });
+    const texts = out.system.map((b) => b.text);
+    expect(texts.some((t) => t.startsWith('## Campaign Tonal Frame'))).toBe(true);
+    expect(texts.some((t) => t.startsWith('## Player Engagement Hint'))).toBe(true);
+  });
+});
