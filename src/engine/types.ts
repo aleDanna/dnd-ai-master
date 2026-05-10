@@ -260,6 +260,15 @@ export interface TurnState {
   readied?: { trigger: string; action: string };
 }
 
+// ─── Cover (PHB §3.12) ─────────────────────────────────────────────────────
+
+/**
+ * PHB §3.12 — degree of cover between attacker and target. The same bonus
+ * applies to AC (vs attacks) and to DEX saves (vs effects originating from
+ * the cover side). 'total' makes the target untargettable.
+ */
+export type CoverLevel = 'none' | 'half' | 'three-quarters' | 'total';
+
 export interface Position {
   /** Abstract distance band from the action focus. */
   band: 'engaged' | 'near' | 'far' | 'distant';

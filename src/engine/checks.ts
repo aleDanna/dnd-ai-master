@@ -1,8 +1,9 @@
-import type { Ability, ActionResult, ActorRuntimeState, Character, Mutation, Skill } from './types';
+import type { Ability, ActionResult, ActorRuntimeState, Character, CoverLevel, Mutation, Skill } from './types';
 import { abilityModifier, savingThrowBonus, skillBonus, passiveScore } from './modifiers';
 import { rollD20 } from './dice';
 import { defaultRng, type Rng } from './rand';
 import { getEffectsForActor } from './condition-effects';
+import { coverDexSaveBonus } from './combat/cover';
 
 export interface AbilityCheckInput {
   char: Character;
@@ -79,6 +80,13 @@ export interface SavingThrowInput {
    * PC doesn't have Inspiration.
    */
   useInspiration?: boolean;
+  /**
+   * PHB §3.12 — cover behind which the saver sits when the AoE originates
+   * from the OTHER side of that cover (e.g. fireball through a doorway).
+   * Adds the cover bonus (+2/+5) to the save modifier ONLY when ability
+   * is 'DEX'. Other abilities ignore cover.
+   */
+  cover?: CoverLevel;
 }
 
 export function savingThrow(
@@ -109,7 +117,12 @@ export function savingThrow(
       mutations: muts,
     };
   }
-  const modifier = savingThrowBonus(input.char, input.ability);
+  // PHB §3.12 — cover bonus applies to DEX saves only. For other abilities
+  // the bonus is silently ignored (cover doesn't help against a domination
+  // spell or a poison spreading through your bloodstream).
+  const coverBonus =
+    input.ability === 'DEX' && input.cover ? coverDexSaveBonus(input.cover) : 0;
+  const modifier = savingThrowBonus(input.char, input.ability) + coverBonus;
   const advantage = !!input.advantage || !!input.useInspiration;
   const disadvantage = !!input.disadvantage || fx.saveDisadvantage[input.ability];
   const roll = rollD20({ advantage, disadvantage, modifier }, rng);

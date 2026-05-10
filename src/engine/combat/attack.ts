@@ -1,9 +1,10 @@
-import type { ActionResult, ActorRuntimeState, Character, CombatActor, ConditionInstance, DamageType, Mutation } from '../types';
+import type { ActionResult, ActorRuntimeState, Character, CombatActor, ConditionInstance, CoverLevel, DamageType, Mutation } from '../types';
 import { attackBonus, abilityModifier } from '../modifiers';
 import { rollD20, rollDamage } from '../dice';
 import { defaultRng, type Rng } from '../rand';
 import { getEffectsForActor } from '../condition-effects';
 import { canConsumeAction } from './turn-state';
+import { coverAcBonus, isTotalCover } from './cover';
 
 export interface WeaponSpec {
   name: string;
@@ -50,6 +51,12 @@ export interface MakeAttackInput {
    * 'no_inspiration' if the attacker doesn't have Inspiration to spend.
    */
   useInspiration?: boolean;
+  /**
+   * PHB §3.12: degree of cover protecting the target. half/three-quarters
+   * add +2/+5 to effective AC; 'total' short-circuits with
+   * 'target_in_total_cover' WITHOUT consuming the action.
+   */
+  cover?: CoverLevel;
 }
 
 export interface MakeAttackResultData {
@@ -74,6 +81,18 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
     return {
       ok: false,
       error: 'attacker incapacitated',
+      rolls: [],
+      mutations: [],
+    };
+  }
+
+  // PHB §3.12 — total cover means the target cannot be targeted at all.
+  // Short-circuit BEFORE consuming any action: the attacker doesn't even
+  // get to try the attack.
+  if (isTotalCover(input.cover)) {
+    return {
+      ok: false,
+      error: 'target_in_total_cover',
       rolls: [],
       mutations: [],
     };
@@ -179,7 +198,10 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
     };
   }
   const naturalCrit = natural === 20;
-  const hit = naturalCrit || attackRoll.total >= input.target.ac;
+  // PHB §3.12 — half/three-quarters cover bumps the effective AC by +2/+5.
+  // Total cover is short-circuited above, so coverAcBonus is finite here.
+  const effectiveAc = input.target.ac + coverAcBonus(input.cover ?? 'none');
+  const hit = naturalCrit || attackRoll.total >= effectiveAc;
   if (!hit) {
     const missMuts: Mutation[] = [];
     if (consumeActionMut) missMuts.push(consumeActionMut);

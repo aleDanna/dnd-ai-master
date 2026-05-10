@@ -46,7 +46,7 @@ const ALWAYS_ON: AnthropicTool[] = [
   {
     name: 'saving_throw',
     description:
-      "Resolve a saving throw of a given ability against a DC. Pass useInspiration:true to spend Inspiration for ADV (PHB §18.1; consumed regardless of outcome).",
+      "Resolve a saving throw of a given ability against a DC. Pass useInspiration:true to spend Inspiration for ADV (PHB §18.1; consumed regardless of outcome). Pass cover for DEX saves vs AoE through cover (PHB §3.12).",
     input_schema: {
       type: 'object',
       required: ['actor', 'ability', 'dc'],
@@ -60,6 +60,12 @@ const ALWAYS_ON: AnthropicTool[] = [
           type: 'boolean',
           description:
             'PHB §18.1: spend Inspiration for ADV on this saving throw (consumed regardless of outcome). Errors with no_inspiration if the PC has no Inspiration.',
+        },
+        cover: {
+          type: 'string',
+          enum: ['none', 'half', 'three-quarters', 'total'],
+          description:
+            "PHB §3.12: cover the saver sits behind when the AoE comes from the OTHER side. Adds +0/+2/+5 to DEX saves only (other abilities ignore it).",
         },
       },
     } as never,
@@ -102,6 +108,12 @@ const ALWAYS_ON: AnthropicTool[] = [
           type: 'boolean',
           description:
             "PHB §18.1: the attacker spends Inspiration for ADV on this attack (consumed regardless of hit/miss). Errors with no_inspiration if the attacker isn't inspired.",
+        },
+        cover: {
+          type: 'string',
+          enum: ['none', 'half', 'three-quarters', 'total'],
+          description:
+            "PHB §3.12: cover protecting the target. half: +2 AC, three-quarters: +5 AC, total: errors target_in_total_cover (no action consumed).",
         },
       },
     } as never,

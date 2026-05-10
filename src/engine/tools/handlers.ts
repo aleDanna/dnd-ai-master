@@ -101,6 +101,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       disadvantage: input.disadvantage === true,
       runtime,
       useInspiration: input.useInspiration === true,
+      cover: typeof input.cover === 'string' ? (input.cover as never) : undefined,
     });
   },
 
@@ -137,6 +138,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       meleeRange: typeof input.meleeRange === 'number' ? input.meleeRange : undefined,
       knockOut: input.knockOut === true,
       useInspiration: input.useInspiration === true,
+      cover: typeof input.cover === 'string' ? (input.cover as never) : undefined,
     });
   },
 
