@@ -77,7 +77,7 @@ const ALWAYS_ON: AnthropicTool[] = [
   },
   {
     name: 'make_attack',
-    description: 'Resolve a weapon attack from one combatant against another. Returns hit/miss, damage, dice breakdown.',
+    description: 'Resolve a weapon attack from one combatant against another. Returns hit/miss, damage, dice breakdown. Supports cover (PHB §3.12) and weapon reach/loading/ammunition (PHB §9.4).',
     input_schema: {
       type: 'object',
       required: ['attacker', 'target', 'weapon'],
@@ -93,10 +93,29 @@ const ALWAYS_ON: AnthropicTool[] = [
             damageType: DAMAGE_TYPE_ENUM,
             profGroup: { type: 'string' },
             useDex: { type: 'boolean' },
+            properties: {
+              type: 'array',
+              items: { type: 'string' },
+              description:
+                "PHB §9.4 weapon properties (any subset): 'finesse'|'heavy'|'light'|'loading'|'reach'|'thrown'|'two-handed'|'versatile'|'ammunition'. The engine reads 'reach' (10ft melee), 'loading' (one shot/turn), 'ammunition' (consumes ammoSlug).",
+            },
+            ammoSlug: {
+              type: 'string',
+              description:
+                "PHB §9.4 — inventory slug of the ammunition consumed per attack (when properties includes 'ammunition'). Examples: 'arrow', 'crossbow-bolt'.",
+            },
+            range: {
+              type: 'object',
+              properties: {
+                normal: { type: 'number' },
+                long: { type: 'number' },
+              },
+              description: 'Range bands in feet for ranged/thrown weapons.',
+            },
           },
         },
         ranged: { type: 'boolean', description: 'True for ranged weapon attacks. Defaults to false (melee).' },
-        meleeRange: { type: 'number', description: 'Melee reach in feet. Defaults to 5. Only consulted when ranged is false.' },
+        meleeRange: { type: 'number', description: 'Distance in feet to the target. Defaults to weapon reach (5ft / 10ft for reach). Out-of-reach errors with out_of_reach.' },
         knockOut: {
           type: 'boolean',
           description:

@@ -129,6 +129,20 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
         damageType: weaponInput.damageType as never,
         profGroup: String(weaponInput.profGroup),
         useDex: weaponInput.useDex === true,
+        properties: Array.isArray(weaponInput.properties)
+          ? (weaponInput.properties as unknown[]).filter(
+              (p): p is string => typeof p === 'string',
+            )
+          : undefined,
+        ammoSlug:
+          typeof weaponInput.ammoSlug === 'string' ? weaponInput.ammoSlug : undefined,
+        range:
+          weaponInput.range && typeof weaponInput.range === 'object'
+            ? {
+                normal: Number((weaponInput.range as { normal?: unknown }).normal ?? 0),
+                long: Number((weaponInput.range as { long?: unknown }).long ?? 0),
+              }
+            : undefined,
       },
       advantage: input.advantage === true,
       disadvantage: input.disadvantage === true,

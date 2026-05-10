@@ -258,6 +258,12 @@ export interface TurnState {
   dashed: boolean;
   /** Stored Ready action: trigger description + planned action. Cleared on next start_turn. */
   readied?: { trigger: string; action: string };
+  /**
+   * PHB §9.4 — set true after the actor fires a 'loading' weapon this turn.
+   * Blocks subsequent loading-weapon shots in the same turn (one per
+   * action/bonus/reaction). Reset by start_turn / newTurnState.
+   */
+  loadingShotUsed?: boolean;
 }
 
 // ─── Cover (PHB §3.12) ─────────────────────────────────────────────────────
@@ -479,7 +485,15 @@ export type Mutation =
   // existing NPC codex entry (kind='npc', matched by slug). Partial
   // updates merge with existing values; null/undefined fields are left
   // unchanged.
-  | { op: 'update_npc_beats'; npcSlug: string; beats: NPCBeats };
+  | { op: 'update_npc_beats'; npcSlug: string; beats: NPCBeats }
+  // PHB §9.4 — set turnState.loadingShotUsed = true (PC or NPC actor).
+  // Used after an attack with a 'loading' weapon to block subsequent
+  // shots within the same turn. Reset on start_turn.
+  | { op: 'mark_loading_shot'; actorId: string }
+  // PHB §9.4 — decrement inventory[ammoSlug].qty by qty (default 1) on
+  // a successful resolution of an ammunition weapon attack. Removes the
+  // entry if qty reaches 0. PC-only.
+  | { op: 'consume_ammo'; characterId: string; ammoSlug: string; qty: number };
 
 // ─── Action results ────────────────────────────────────────────────────────
 

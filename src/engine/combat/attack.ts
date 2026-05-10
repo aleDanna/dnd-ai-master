@@ -5,6 +5,7 @@ import { defaultRng, type Rng } from '../rand';
 import { getEffectsForActor } from '../condition-effects';
 import { canConsumeAction } from './turn-state';
 import { coverAcBonus, isTotalCover } from './cover';
+import { isAmmunition, isLoading, meleeReachFor } from './weapon-properties';
 
 export interface WeaponSpec {
   name: string;
@@ -12,6 +13,27 @@ export interface WeaponSpec {
   damageType: DamageType;
   profGroup: string;       // proficiency group
   useDex: boolean;         // use DEX instead of STR for to-hit and damage
+  /**
+   * PHB §9.4 weapon properties: any subset of
+   * 'finesse'|'heavy'|'light'|'loading'|'reach'|'thrown'|'two-handed'|
+   * 'versatile'|'ammunition'|'special'|'monk'|'silvered'.
+   * Optional for backward compatibility — consumers fall back to "no
+   * properties" semantics (5ft melee reach, no loading, no ammunition,
+   * non-light, etc.).
+   */
+  properties?: string[];
+  /**
+   * PHB §9.4 — inventory slug of the ammunition consumed per attack
+   * (when properties includes 'ammunition'). Examples: 'arrow',
+   * 'crossbow-bolt', 'sling-bullet'.
+   */
+  ammoSlug?: string;
+  /**
+   * Range bands for ranged/thrown weapons (in feet). normal = no DIS;
+   * normal..long = DIS on attack. Optional; omitted weapons default to
+   * narrative-driven range (engine doesn't enforce range bands today).
+   */
+  range?: { normal: number; long: number };
 }
 
 export interface MakeAttackInput {
@@ -112,12 +134,39 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
     ? { op: 'spend_inspiration', characterId: input.attacker.id }
     : null;
 
+  const attackerTurnState = input.attackerRuntime?.turnState;
+
+  // PHB §9.4 — loading weapons may only fire once per turn (across action,
+  // bonus, or reaction). Reactions on a different actor's turn are
+  // unaffected (turnState resets each start_turn). The block applies to
+  // the SAME actor's subsequent shot in the SAME turn.
+  if (
+    isLoading(input.weapon) &&
+    attackerTurnState?.loadingShotUsed &&
+    !input.isExtraAttack
+  ) {
+    return { ok: false, error: 'loading_shot_already_used', rolls: [], mutations: [] };
+  }
+
+  // PHB §9.4 — ammunition: weapon must specify an ammoSlug, attacker must
+  // have ≥1 of that ammo in inventory.
+  if (isAmmunition(input.weapon)) {
+    const ammoSlug = input.weapon.ammoSlug;
+    if (!ammoSlug) {
+      return { ok: false, error: 'weapon_missing_ammoSlug', rolls: [], mutations: [] };
+    }
+    const inv = input.attacker.inventory ?? [];
+    const ammoItem = inv.find((it) => it.slug === ammoSlug);
+    if (!ammoItem || ammoItem.qty < 1) {
+      return { ok: false, error: 'out_of_ammo', rolls: [], mutations: [] };
+    }
+  }
+
   // Action-economy budget check (PHB §3.9). Skipped if attacker has no turnState
   // (backward compat for callers that don't yet track action economy). Also
   // skipped when this is an Extra Attack / Multiattack follow-up: PHB §10 says
   // a single Attack action grants multiple swings, so the budget was already
   // paid by the first attack of the turn.
-  const attackerTurnState = input.attackerRuntime?.turnState;
   const actionKind: 'action' | 'reaction' = input.useReaction ? 'reaction' : 'action';
   if (
     !input.isExtraAttack &&
@@ -139,6 +188,22 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
       ? { op: 'consume_action', actorId: input.attacker.id, kind: actionKind }
       : null;
 
+  // PHB §9.4 — emitted on every successful resolution (hit/miss/crit) when
+  // the weapon is ammunition-based. Refused attacks (out_of_ammo,
+  // out_of_reach, total cover) do NOT consume.
+  const consumeAmmoMut: Mutation | null =
+    isAmmunition(input.weapon) && input.weapon.ammoSlug
+      ? { op: 'consume_ammo', characterId: input.attacker.id, ammoSlug: input.weapon.ammoSlug, qty: 1 }
+      : null;
+
+  // PHB §9.4 — sets loadingShotUsed=true so the next attack with a loading
+  // weapon by the same actor in the same turn errors out. Only emitted on
+  // successful resolution (consistent with consume_ammo).
+  const markLoadingMut: Mutation | null =
+    isLoading(input.weapon) && attackerTurnState && !input.isExtraAttack
+      ? { op: 'mark_loading_shot', actorId: input.attacker.id }
+      : null;
+
   // PHB §3.5 Help: a 'helped' beneficiary gets ADV on the next d20 (consumed
   // on first use, regardless of hit/miss). Detect on the attacker, and
   // schedule a remove_condition mutation in the result paths below.
@@ -153,7 +218,16 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
   const targetDodging = input.targetRuntime?.turnState?.dodging ?? false;
 
   const isMelee = !input.ranged;
-  const meleeWithin5 = isMelee && (input.meleeRange ?? 5) <= 5;
+  const reach = meleeReachFor(input.weapon);
+  const effectiveMeleeRange = input.meleeRange ?? reach;
+  // PHB §9.4 — out-of-reach melee attacks short-circuit without consuming
+  // the action (the swing never happens).
+  if (isMelee && effectiveMeleeRange > reach) {
+    return { ok: false, error: 'out_of_reach', rolls: [], mutations: [] };
+  }
+  // The 5ft-only effects (auto-crit on paralyzed, prone melee ADV) keep
+  // their literal-5ft meaning regardless of reach.
+  const meleeWithin5 = isMelee && effectiveMeleeRange <= 5;
 
   // OR all sources of advantage / disadvantage.
   let advantage =
@@ -189,6 +263,8 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
     if (consumeActionMut) missMuts.push(consumeActionMut);
     if (consumeHelpedMut) missMuts.push(consumeHelpedMut);
     if (spendInspirationMut) missMuts.push(spendInspirationMut);
+    if (consumeAmmoMut) missMuts.push(consumeAmmoMut);
+    if (markLoadingMut) missMuts.push(markLoadingMut);
     return {
       ok: false,
       error: 'miss',
@@ -207,6 +283,8 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
     if (consumeActionMut) missMuts.push(consumeActionMut);
     if (consumeHelpedMut) missMuts.push(consumeHelpedMut);
     if (spendInspirationMut) missMuts.push(spendInspirationMut);
+    if (consumeAmmoMut) missMuts.push(consumeAmmoMut);
+    if (markLoadingMut) missMuts.push(markLoadingMut);
     return {
       ok: false,
       error: 'miss',
@@ -246,6 +324,8 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
       if (consumeActionMut) mutations.push(consumeActionMut);
       if (consumeHelpedMut) mutations.push(consumeHelpedMut);
       if (spendInspirationMut) mutations.push(spendInspirationMut);
+      if (consumeAmmoMut) mutations.push(consumeAmmoMut);
+      if (markLoadingMut) mutations.push(markLoadingMut);
       return {
         ok: true,
         data: { hit: true, crit, rawDamage, finalDamage, knockedOut: true },
@@ -262,6 +342,8 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
   if (consumeActionMut) mutations.push(consumeActionMut);
   if (consumeHelpedMut) mutations.push(consumeHelpedMut);
   if (spendInspirationMut) mutations.push(spendInspirationMut);
+  if (consumeAmmoMut) mutations.push(consumeAmmoMut);
+  if (markLoadingMut) mutations.push(markLoadingMut);
 
   return {
     ok: true,

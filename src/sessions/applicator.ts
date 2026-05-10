@@ -765,6 +765,66 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
         );
       break;
     }
+    case 'mark_loading_shot': {
+      // PHB §9.4 — set turnState.loadingShotUsed=true on the actor's
+      // current turn. Mirror the load+write pattern used by consume_action.
+      const isPc = m.actorId === ctx.characterId;
+      if (isPc) {
+        const [s] = await tx
+          .select()
+          .from(sessionStateTable)
+          .where(eq(sessionStateTable.sessionId, sessionId))
+          .limit(1);
+        if (!s) break;
+        const current = (s.turnState as TurnState | null) ?? newTurnState();
+        const updated: TurnState = { ...current, loadingShotUsed: true };
+        await tx
+          .update(sessionStateTable)
+          .set({ turnState: updated })
+          .where(eq(sessionStateTable.sessionId, sessionId));
+      } else {
+        const [a] = await tx
+          .select()
+          .from(combatActorsTable)
+          .where(
+            and(
+              eq(combatActorsTable.sessionId, sessionId),
+              eq(combatActorsTable.id, m.actorId),
+            ),
+          )
+          .limit(1);
+        if (!a) break;
+        const current = (a.turnState as TurnState | null) ?? newTurnState();
+        const updated: TurnState = { ...current, loadingShotUsed: true };
+        await tx
+          .update(combatActorsTable)
+          .set({ turnState: updated })
+          .where(
+            and(
+              eq(combatActorsTable.sessionId, sessionId),
+              eq(combatActorsTable.id, m.actorId),
+            ),
+          );
+      }
+      break;
+    }
+    case 'consume_ammo': {
+      // PHB §9.4 — decrement inventory[ammoSlug].qty by qty. PC-only:
+      // monsters/NPCs don't track inventory in the engine state.
+      if (m.characterId !== ctx.characterId) break;
+      const [c] = await tx
+        .select({ inventory: charactersTable.inventory })
+        .from(charactersTable)
+        .where(eq(charactersTable.id, m.characterId))
+        .limit(1);
+      if (!c) break;
+      const next = mergeInventoryRemove(c.inventory ?? [], m.ammoSlug, m.qty);
+      await tx
+        .update(charactersTable)
+        .set({ inventory: next, updatedAt: new Date() })
+        .where(eq(charactersTable.id, m.characterId));
+      break;
+    }
   }
 }
 

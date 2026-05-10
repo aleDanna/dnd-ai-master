@@ -969,4 +969,53 @@ describe('applyMutations', () => {
       expect(a2!.senses).toEqual({ blindsightFt: 30, tremorsenseFt: 15 });
     });
   });
+
+  describe('weapon-property mutations (PHB §9.4)', () => {
+    it('mark_loading_shot on the PC sets sessionState.turnState.loadingShotUsed', async () => {
+      // Reset the PC turnState to a fresh, untouched value first.
+      await applyMutations(SESSION_ID, [{ op: 'start_turn', actorId: PC_ID }], []);
+      await applyMutations(SESSION_ID, [{ op: 'mark_loading_shot', actorId: PC_ID }], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect((s!.turnState as { loadingShotUsed?: boolean } | null)?.loadingShotUsed).toBe(true);
+    });
+
+    it('start_turn resets loadingShotUsed back to false (fresh turn)', async () => {
+      // Mark, then start a fresh turn — should reset.
+      await applyMutations(SESSION_ID, [{ op: 'mark_loading_shot', actorId: PC_ID }], []);
+      await applyMutations(SESSION_ID, [{ op: 'start_turn', actorId: PC_ID }], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      const ts = s!.turnState as { loadingShotUsed?: boolean } | null;
+      expect(ts?.loadingShotUsed).toBeFalsy();
+    });
+
+    it('mark_loading_shot on a combat actor (NPC) sets combat_actors.turnState.loadingShotUsed', async () => {
+      await applyMutations(SESSION_ID, [{ op: 'start_turn', actorId: MONSTER_ID }], []);
+      await applyMutations(SESSION_ID, [{ op: 'mark_loading_shot', actorId: MONSTER_ID }], []);
+      const [a] = await db.select().from(combatActors).where(eq(combatActors.id, MONSTER_ID)).limit(1);
+      expect((a!.turnState as { loadingShotUsed?: boolean } | null)?.loadingShotUsed).toBe(true);
+    });
+
+    it('consume_ammo decrements characters.inventory[ammoSlug].qty', async () => {
+      // Seed the PC with crossbow bolts.
+      await applyMutations(SESSION_ID, [
+        { op: 'add_inventory', characterId: PC_ID, itemSlug: 'crossbow-bolt', qty: 5 },
+      ], []);
+      await applyMutations(SESSION_ID, [
+        { op: 'consume_ammo', characterId: PC_ID, ammoSlug: 'crossbow-bolt', qty: 1 },
+      ], []);
+      const [c] = await db.select({ inv: characters.inventory }).from(characters).where(eq(characters.id, PC_ID)).limit(1);
+      const bolt = (c!.inv as { slug: string; qty: number }[]).find((it) => it.slug === 'crossbow-bolt');
+      expect(bolt?.qty).toBe(4);
+    });
+
+    it('consume_ammo to zero removes the entry from inventory', async () => {
+      // After previous test we have 4 bolts; consume 4 → entry removed.
+      await applyMutations(SESSION_ID, [
+        { op: 'consume_ammo', characterId: PC_ID, ammoSlug: 'crossbow-bolt', qty: 4 },
+      ], []);
+      const [c] = await db.select({ inv: characters.inventory }).from(characters).where(eq(characters.id, PC_ID)).limit(1);
+      const bolt = (c!.inv as { slug: string; qty: number }[]).find((it) => it.slug === 'crossbow-bolt');
+      expect(bolt).toBeUndefined();
+    });
+  });
 });
