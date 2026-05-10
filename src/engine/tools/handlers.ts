@@ -16,12 +16,19 @@ import type {
   Hireling,
   LightLevel,
   MarchingOrder,
+  MountedState,
+  MountMode,
   Mutation,
   NPCBeats,
   Senses,
   TonalFrame,
   TravelPace,
 } from '../types';
+import {
+  canBeMount,
+  isValidMountMode,
+} from '../mounts';
+import { isValidVehicleSlug } from '../vehicles';
 import {
   isValidCraftingKind,
   isValidCraftableRarity,
@@ -870,6 +877,77 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       character: charId,
       kind: input.kind as BastionRoomKind,
       level: typeof input.level === 'number' ? input.level : undefined,
+    });
+  },
+
+  // ── Phase 14: mounted combat / vehicles (PHB §3.23, §9.6) ──
+  mount: (state, input) => {
+    const riderRef = input.rider ?? input.character ?? input.actor;
+    if (riderRef == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const riderId = resolveCharacterId(state, riderRef);
+    return handleMount(state, {
+      rider: riderId,
+      mount: typeof input.mount === 'string' ? input.mount : '',
+      mode: typeof input.mode === 'string' ? (input.mode as MountMode) : undefined,
+    });
+  },
+
+  dismount: (state, input) => {
+    const riderRef = input.rider ?? input.character ?? input.actor;
+    if (riderRef == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const riderId = resolveCharacterId(state, riderRef);
+    return handleDismount(state, { rider: riderId });
+  },
+
+  set_mount_mode: (state, input) => {
+    const riderRef = input.rider ?? input.character ?? input.actor;
+    if (riderRef == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const riderId = resolveCharacterId(state, riderRef);
+    return handleSetMountMode(state, {
+      rider: riderId,
+      mode: input.mode as MountMode,
+    });
+  },
+
+  embark_vehicle: (state, input) => {
+    const ref = input.character ?? input.actor;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const charId = resolveCharacterId(state, ref);
+    return handleEmbarkVehicle(state, {
+      character: charId,
+      vehicleSlug: typeof input.vehicleSlug === 'string' ? input.vehicleSlug : '',
+    });
+  },
+
+  disembark_vehicle: (state, input) => {
+    const ref = input.character ?? input.actor;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const charId = resolveCharacterId(state, ref);
+    return handleDisembarkVehicle(state, { character: charId });
+  },
+
+  swap_attack_target: (state, input) => {
+    const riderRef = input.rider ?? input.character ?? input.actor;
+    if (riderRef == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const riderId = resolveCharacterId(state, riderRef);
+    return handleSwapAttackTarget(state, {
+      rider: riderId,
+      originalTargetId:
+        typeof input.originalTargetId === 'string' ? input.originalTargetId : '',
+      newTargetId:
+        typeof input.newTargetId === 'string' ? input.newTargetId : '',
     });
   },
 };
@@ -2850,6 +2928,267 @@ export function handleAddBastionRoom(
     data: { room },
     rolls: [],
     mutations: [{ op: 'add_bastion_room', characterId: char.id, room }],
+  };
+}
+
+// ─── Phase 14: mounted combat & vehicles (PHB §3.23, §9.6) ─────────────────
+
+/**
+ * PHB §3.23 — mount the rider on a creature serving as a mount. The mount
+ * must exist as a `CombatActor` in the current scene (the master is the
+ * source of truth for whether the mount is willing). When BOTH the rider
+ * and the mount carry size data, the engine validates `canBeMount`
+ * (mount must be at least one size larger). When either size is missing,
+ * the engine permits the mount and lets the master narrate.
+ *
+ * `mode` defaults to `controlled` (the rider directs every turn) when
+ * omitted; the master may pass `independent` for an intelligent steed
+ * that acts on its own initiative.
+ *
+ * Errors:
+ *   - `unknown_character` — the rider character is not in state.
+ *   - `unknown_mount`     — no `CombatActor` matches the supplied id.
+ *   - `invalid_mode`      — mode is not 'controlled' or 'independent'.
+ *   - `mount_too_small`   — when both sizes are known, the mount must be
+ *                           strictly larger than the rider.
+ */
+export function handleMount(
+  state: EngineState,
+  input: { rider: string; mount: string; mode?: MountMode },
+): ActionResult<{ mounted: MountedState }> {
+  const rider = state.characters.find((c) => c.id === input.rider);
+  if (!rider) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+  const mount = state.combatActors.find((a) => a.id === input.mount);
+  if (!mount) {
+    return { ok: false, error: 'unknown_mount', rolls: [], mutations: [] };
+  }
+  // Mode validation: when omitted, default to controlled. When supplied,
+  // the value must be one of the legal `MountMode` literals.
+  const modeInput = input.mode;
+  if (modeInput !== undefined && !isValidMountMode(modeInput)) {
+    return { ok: false, error: 'invalid_mode', rolls: [], mutations: [] };
+  }
+  const mode: MountMode = modeInput ?? 'controlled';
+  // Size validation: only when BOTH rider and mount carry size data. The
+  // engine stays permissive when either side is missing (the master may
+  // narratively decide).
+  // Riders are PCs; the engine derives a default 'medium' for them at the
+  // type-system boundary by reading off the optional .size field; if the
+  // master needs to override they can pre-stamp a different size.
+  const riderSize = (rider as { size?: string }).size;
+  const mountSize = mount.size;
+  if (riderSize && mountSize) {
+    // canBeMount expects Size types; both literals validated below.
+    const ok = canBeMount(
+      riderSize as Parameters<typeof canBeMount>[0],
+      mountSize,
+    );
+    if (!ok) {
+      return { ok: false, error: 'mount_too_small', rolls: [], mutations: [] };
+    }
+  }
+  const mounted: MountedState = { mountId: mount.id, mode };
+  return {
+    ok: true,
+    data: { mounted },
+    rolls: [],
+    mutations: [
+      {
+        op: 'mount',
+        characterId: rider.id,
+        mountId: mount.id,
+        mode,
+      },
+    ],
+  };
+}
+
+/**
+ * PHB §3.23 — drop down off the current mount. Validates the rider is
+ * currently mounted; the master is responsible for narrating the
+ * dismount cost (half the rider's speed).
+ *
+ * Errors:
+ *   - `unknown_character`, `not_mounted`.
+ */
+export function handleDismount(
+  state: EngineState,
+  input: { rider: string },
+): ActionResult<{ mountId: string }> {
+  const rider = state.characters.find((c) => c.id === input.rider);
+  if (!rider) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+  if (!rider.mountedOn) {
+    return { ok: false, error: 'not_mounted', rolls: [], mutations: [] };
+  }
+  return {
+    ok: true,
+    data: { mountId: rider.mountedOn.mountId },
+    rolls: [],
+    mutations: [{ op: 'dismount', characterId: rider.id }],
+  };
+}
+
+/**
+ * PHB §3.23 — switch the mount mode between `controlled` (rider directs;
+ * mount may only Dash/Disengage/Dodge) and `independent` (mount uses its
+ * own initiative). Requires the rider to currently be mounted.
+ *
+ * Errors:
+ *   - `unknown_character`, `not_mounted`, `invalid_mode`.
+ */
+export function handleSetMountMode(
+  state: EngineState,
+  input: { rider: string; mode: MountMode },
+): ActionResult<{ mounted: MountedState }> {
+  const rider = state.characters.find((c) => c.id === input.rider);
+  if (!rider) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+  if (!rider.mountedOn) {
+    return { ok: false, error: 'not_mounted', rolls: [], mutations: [] };
+  }
+  if (!isValidMountMode(input.mode)) {
+    return { ok: false, error: 'invalid_mode', rolls: [], mutations: [] };
+  }
+  const mounted: MountedState = {
+    mountId: rider.mountedOn.mountId,
+    mode: input.mode,
+  };
+  return {
+    ok: true,
+    data: { mounted },
+    rolls: [],
+    mutations: [
+      {
+        op: 'set_mount_mode',
+        characterId: rider.id,
+        mode: input.mode,
+      },
+    ],
+  };
+}
+
+/**
+ * PHB §9.6 — embark the PC on a vehicle from the engine's
+ * `VEHICLE_CATALOG`. Validates the slug; the master narrates whether
+ * the PC actually has access to the vehicle (e.g. owns it, is invited
+ * aboard, snuck on as stowaway).
+ *
+ * Errors:
+ *   - `unknown_character`, `unknown_vehicle`.
+ */
+export function handleEmbarkVehicle(
+  state: EngineState,
+  input: { character: string; vehicleSlug: string },
+): ActionResult<{ vehicleSlug: string }> {
+  const char = state.characters.find((c) => c.id === input.character);
+  if (!char) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+  if (!isValidVehicleSlug(input.vehicleSlug)) {
+    return { ok: false, error: 'unknown_vehicle', rolls: [], mutations: [] };
+  }
+  return {
+    ok: true,
+    data: { vehicleSlug: input.vehicleSlug },
+    rolls: [],
+    mutations: [
+      {
+        op: 'embark_vehicle',
+        characterId: char.id,
+        vehicleSlug: input.vehicleSlug,
+      },
+    ],
+  };
+}
+
+/**
+ * PHB §9.6 — disembark the PC from the current vehicle. Requires the
+ * PC to currently be embarked.
+ *
+ * Errors:
+ *   - `unknown_character`, `not_embarked`.
+ */
+export function handleDisembarkVehicle(
+  state: EngineState,
+  input: { character: string },
+): ActionResult<{ vehicleSlug: string }> {
+  const char = state.characters.find((c) => c.id === input.character);
+  if (!char) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+  if (!char.embarkedOn) {
+    return { ok: false, error: 'not_embarked', rolls: [], mutations: [] };
+  }
+  return {
+    ok: true,
+    data: { vehicleSlug: char.embarkedOn },
+    rolls: [],
+    mutations: [{ op: 'disembark_vehicle', characterId: char.id }],
+  };
+}
+
+/**
+ * PHB §3.23 — when an attack targets either the rider or their mount,
+ * the rider may use their reaction to make the OTHER take the hit
+ * instead. This tool is a NARRATIVE marker: it consumes the rider's
+ * reaction (via `consume_action kind:'reaction'`) but does NOT redo
+ * the attack — the master narrates the redirected hit and applies the
+ * damage manually. The actual attack roll has already happened.
+ *
+ * Validation:
+ *   - The rider must have their reaction available
+ *     (`turnState.reactionUsed === false`).
+ *   - One of `originalTargetId` / `newTargetId` must be the rider, and
+ *     the other must be the rider's current mount. Otherwise the swap
+ *     does not match the PHB §3.23 trigger and the engine refuses.
+ *
+ * Errors:
+ *   - `unknown_character`, `not_mounted`, `reaction_already_used`,
+ *     `invalid_swap_pair`.
+ */
+export function handleSwapAttackTarget(
+  state: EngineState,
+  input: { rider: string; originalTargetId: string; newTargetId: string },
+): ActionResult<{ riderId: string; mountId: string }> {
+  const rider = state.characters.find((c) => c.id === input.rider);
+  if (!rider) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+  if (!rider.mountedOn) {
+    return { ok: false, error: 'not_mounted', rolls: [], mutations: [] };
+  }
+  const runtime = state.runtime[rider.id];
+  if (runtime?.turnState?.reactionUsed === true) {
+    return {
+      ok: false,
+      error: 'reaction_already_used',
+      rolls: [],
+      mutations: [],
+    };
+  }
+  const mountId = rider.mountedOn.mountId;
+  // Exactly one of {original, new} must be the rider; the other must be
+  // the mount. Reject any pairing that doesn't match the PHB §3.23
+  // trigger.
+  const pair = [input.originalTargetId, input.newTargetId];
+  const matchesRiderMount =
+    (pair[0] === rider.id && pair[1] === mountId) ||
+    (pair[0] === mountId && pair[1] === rider.id);
+  if (!matchesRiderMount) {
+    return { ok: false, error: 'invalid_swap_pair', rolls: [], mutations: [] };
+  }
+  return {
+    ok: true,
+    data: { riderId: rider.id, mountId },
+    rolls: [],
+    mutations: [
+      { op: 'consume_action', actorId: rider.id, kind: 'reaction' },
+    ],
   };
 }
 

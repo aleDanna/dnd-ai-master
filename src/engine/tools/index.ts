@@ -1130,6 +1130,114 @@ const ALWAYS_ON: AnthropicTool[] = [
       },
     } as never,
   },
+  // ── Phase 14: mounted combat & vehicles (PHB §3.23, §9.6) ──
+  {
+    name: 'mount',
+    description:
+      "PHB §3.23 mounted combat: place the rider on a willing creature serving as a mount. The mount must be a `CombatActor` already in the scene and (when sizes are known) at least one size larger than the rider. `mode` defaults to `controlled` (rider directs every turn; mount may only Dash/Disengage/Dodge); pass `independent` for an intelligent steed that uses its own initiative and acts as it wishes. Mounting costs half the rider's speed (the master is responsible for narrating that movement cost). Errors: unknown_character, unknown_mount, invalid_mode, mount_too_small.",
+    input_schema: {
+      type: 'object',
+      required: ['rider', 'mount'],
+      properties: {
+        rider: { type: 'string', description: "Rider id (the PC's character id)." },
+        mount: { type: 'string', description: 'Mount id (a `CombatActor` in the scene).' },
+        mode: {
+          type: 'string',
+          enum: ['controlled', 'independent'],
+          default: 'controlled',
+          description:
+            "controlled = rider directs (mount limited to Dash/Disengage/Dodge); independent = mount acts on its own initiative.",
+        },
+      },
+    } as never,
+  },
+  {
+    name: 'dismount',
+    description:
+      "PHB §3.23 mounted combat: drop down off the current mount. Costs half the rider's speed (the master narrates that cost separately via consume_movement). Errors: unknown_character, not_mounted.",
+    input_schema: {
+      type: 'object',
+      required: ['rider'],
+      properties: {
+        rider: { type: 'string', description: 'Rider id.' },
+      },
+    } as never,
+  },
+  {
+    name: 'set_mount_mode',
+    description:
+      "PHB §3.23 mounted combat: switch the mount's mode between `controlled` and `independent`. The rider must already be mounted. Errors: unknown_character, not_mounted, invalid_mode.",
+    input_schema: {
+      type: 'object',
+      required: ['rider', 'mode'],
+      properties: {
+        rider: { type: 'string', description: 'Rider id.' },
+        mode: {
+          type: 'string',
+          enum: ['controlled', 'independent'],
+          description: 'Target mount mode.',
+        },
+      },
+    } as never,
+  },
+  {
+    name: 'embark_vehicle',
+    description:
+      "PHB §9.6 + DMG ships: the PC embarks on a catalogued vehicle. Slugs:\n  - Mundane (PHB §9.6): `cart`, `sled`, `wagon`, `carriage` — speed depends on the draft animal.\n  - Ships (DMG / Ghosts of Saltmarsh): `rowboat`, `sailing-ship`, `galley`, `longship`, `warship` — full combat stats (AC/HP/damage threshold/crew).\n  - Air: `airship` — flying vessel (80 ft, AC 13).\nThe master is responsible for narrative ownership (does the PC own / borrow / sneak aboard the vehicle?). Errors: unknown_character, unknown_vehicle.",
+    input_schema: {
+      type: 'object',
+      required: ['character', 'vehicleSlug'],
+      properties: {
+        character: ACTOR_ID,
+        vehicleSlug: {
+          type: 'string',
+          enum: [
+            'cart',
+            'sled',
+            'wagon',
+            'carriage',
+            'rowboat',
+            'sailing-ship',
+            'galley',
+            'longship',
+            'warship',
+            'airship',
+          ],
+          description: 'Catalogued vehicle slug.',
+        },
+      },
+    } as never,
+  },
+  {
+    name: 'disembark_vehicle',
+    description:
+      "PHB §9.6: the PC steps off the current vehicle. Errors: unknown_character, not_embarked.",
+    input_schema: {
+      type: 'object',
+      required: ['character'],
+      properties: { character: ACTOR_ID },
+    } as never,
+  },
+  {
+    name: 'swap_attack_target',
+    description:
+      "PHB §3.23 mounted combat reaction: when an attack targets EITHER the rider OR their mount, the rider may use their REACTION to make the OTHER take the hit instead. The engine consumes the rider's reaction and emits no damage — the master narrates the redirected hit and applies damage manually (the attack roll has already been made). One of {originalTargetId, newTargetId} must be the rider, the other must be the rider's current mount. Errors: unknown_character, not_mounted, reaction_already_used, invalid_swap_pair.",
+    input_schema: {
+      type: 'object',
+      required: ['rider', 'originalTargetId', 'newTargetId'],
+      properties: {
+        rider: { type: 'string', description: 'Rider id.' },
+        originalTargetId: {
+          type: 'string',
+          description: 'Original target of the attack — must be rider or mount.',
+        },
+        newTargetId: {
+          type: 'string',
+          description: 'Target after the swap — must be the OTHER of rider/mount.',
+        },
+      },
+    } as never,
+  },
 ];
 
 /**
