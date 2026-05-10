@@ -787,6 +787,93 @@ const ALWAYS_ON: AnthropicTool[] = [
       },
     } as never,
   },
+  // ── Phase 11: class features (PHB §10) ──
+  {
+    name: 'use_class_feature',
+    description:
+      "Generic class-feature consumption. Validates the feature exists on the actor and has uses remaining; emits use_class_feature mutation. Prefer the dedicated tools (start_rage / use_action_surge / use_channel_divinity / grant_bardic_inspiration / use_lay_on_hands) when available — they layer the right side-effects on top. Errors: unknown_actor, feature_not_found, no_uses_remaining.",
+    input_schema: {
+      type: 'object',
+      required: ['actor', 'featureSlug'],
+      properties: {
+        actor: ACTOR_ID,
+        featureSlug: { type: 'string', description: 'Feature slug from the actor\'s features[] list (e.g. "second_wind", "ki", "wild_shape").' },
+        uses: { type: 'integer', minimum: 1, default: 1, description: 'Number of uses to consume (default 1).' },
+      },
+    } as never,
+  },
+  {
+    name: 'start_rage',
+    description:
+      "PHB Barbarian: enter Rage. Validates the actor has the rage feature with uses remaining and at least 1 barbarian level. Emits use_class_feature(rage) + add_condition('raging', 10 rounds). The combat layer reads the 'raging' condition for the +rage_damage bonus on melee STR weapon attacks AND for resistance to bludgeoning/piercing/slashing damage. Use end_rage to drop early. Errors: unknown_actor, not_barbarian, feature_not_found, no_uses_remaining.",
+    input_schema: {
+      type: 'object',
+      required: ['actor'],
+      properties: { actor: ACTOR_ID },
+    } as never,
+  },
+  {
+    name: 'end_rage',
+    description:
+      "PHB Barbarian: end Rage manually before its 10-round duration expires. Idempotent: succeeds with no mutations when the actor isn't currently raging.",
+    input_schema: {
+      type: 'object',
+      required: ['actor'],
+      properties: { actor: ACTOR_ID },
+    } as never,
+  },
+  {
+    name: 'use_action_surge',
+    description:
+      "PHB Fighter: Action Surge. Validates the actor is a fighter L2+ with the action_surge feature and uses remaining. Emits use_class_feature(action_surge) + reset_action_for_surge (clears turnState.actionUsed so the fighter can take another action this turn — bonus action and reaction are NOT touched). Errors: unknown_actor, not_fighter, feature_not_found, no_uses_remaining.",
+    input_schema: {
+      type: 'object',
+      required: ['actor'],
+      properties: { actor: ACTOR_ID },
+    } as never,
+  },
+  {
+    name: 'use_channel_divinity',
+    description:
+      "PHB Cleric/Paladin: Channel Divinity. Validates the actor is a cleric or paladin with the channel_divinity feature and uses remaining. The `effect` is a narrative string (turn_undead, sacred_weapon, divine_sense, etc.) — the engine only consumes the use; follow up with the appropriate tool calls for any mechanical consequence (e.g. add_condition('sacred_weapon') for the +CHA-mod attack bonus). Errors: unknown_actor, not_cleric_or_paladin, feature_not_found, no_uses_remaining.",
+    input_schema: {
+      type: 'object',
+      required: ['actor'],
+      properties: {
+        actor: ACTOR_ID,
+        effect: { type: 'string', description: 'Narrative effect name (turn_undead, sacred_weapon, divine_sense, etc.).' },
+      },
+    } as never,
+  },
+  {
+    name: 'grant_bardic_inspiration',
+    description:
+      "PHB Bard: grant Bardic Inspiration to an ally as a bonus action. Validates the actor is a bard L1+ with the bardic_inspiration feature and uses remaining. The die size is computed from the bard's level (d6 L1-4, d8 L5-9, d10 L10-14, d12 L15+) unless an explicit dieSize is passed. Emits use_class_feature + add_condition('bardic_inspired') on the target with the die size encoded in `source` (e.g. 'bardic_inspiration:d8'). Errors: unknown_actor, not_bard, feature_not_found, no_uses_remaining, unknown_target, invalid_die_size.",
+    input_schema: {
+      type: 'object',
+      required: ['actor', 'targetId'],
+      properties: {
+        actor: ACTOR_ID,
+        targetId: { type: 'string', description: 'Recipient of the inspiration die. Must be a known actor (PC or combat actor).' },
+        dieSize: { type: 'integer', enum: [6, 8, 10, 12], description: 'Override the level-based die size. Most callers should omit this.' },
+      },
+    } as never,
+  },
+  {
+    name: 'use_lay_on_hands',
+    description:
+      "PHB Paladin: Lay on Hands. Validates the actor is a paladin L1+ with the lay_on_hands feature. Pool = 5 × paladin_level; track spent on resourcesUsed['lay_on_hands']. `points` heal the target HP-by-HP; `curePoison: true` costs a flat 5 from the pool AND removes 'poisoned' from the target. Both can combine in one call as long as `points + (curePoison ? 5 : 0) <= remaining`. Pool refills on long rest. Errors: unknown_actor, not_paladin, feature_not_found, unknown_target, invalid_points, nothing_to_do, insufficient_pool.",
+    input_schema: {
+      type: 'object',
+      required: ['actor', 'targetId'],
+      properties: {
+        actor: ACTOR_ID,
+        targetId: { type: 'string', description: 'Target of the heal/cure. Must be a known actor (PC or combat actor).' },
+        points: { type: 'integer', minimum: 0, default: 0, description: 'HP to heal (consumes that many points from the pool).' },
+        curePoison: { type: 'boolean', default: false, description: 'If true, costs 5 from the pool and removes the poisoned condition.' },
+      },
+    } as never,
+  },
 ];
 
 /**

@@ -651,6 +651,57 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
     const beats = (input.beats as Partial<NPCBeats> | undefined) ?? {};
     return handleUpdateNPCBeats({ npcSlug, beats });
   },
+
+  // Phase 11 — class features wiring.
+  use_class_feature: (state, input) => {
+    return handleUseClassFeature(state, {
+      actor: String(input.actor ?? input.actorId ?? ''),
+      featureSlug: String(input.featureSlug ?? ''),
+      uses: typeof input.uses === 'number' ? input.uses : undefined,
+    });
+  },
+
+  start_rage: (state, input) => {
+    return handleStartRage(state, {
+      actor: String(input.actor ?? input.actorId ?? ''),
+    });
+  },
+
+  end_rage: (state, input) => {
+    return handleEndRage(state, {
+      actor: String(input.actor ?? input.actorId ?? ''),
+    });
+  },
+
+  use_action_surge: (state, input) => {
+    return handleUseActionSurge(state, {
+      actor: String(input.actor ?? input.actorId ?? ''),
+    });
+  },
+
+  use_channel_divinity: (state, input) => {
+    return handleUseChannelDivinity(state, {
+      actor: String(input.actor ?? input.actorId ?? ''),
+      effect: typeof input.effect === 'string' ? input.effect : undefined,
+    });
+  },
+
+  grant_bardic_inspiration: (state, input) => {
+    return handleGrantBardicInspiration(state, {
+      actor: String(input.actor ?? input.actorId ?? ''),
+      targetId: String(input.targetId ?? input.target ?? ''),
+      dieSize: typeof input.dieSize === 'number' ? input.dieSize : undefined,
+    });
+  },
+
+  use_lay_on_hands: (state, input) => {
+    return handleUseLayOnHands(state, {
+      actor: String(input.actor ?? input.actorId ?? ''),
+      targetId: String(input.targetId ?? input.target ?? ''),
+      points: typeof input.points === 'number' ? input.points : undefined,
+      curePoison: input.curePoison === true,
+    });
+  },
 };
 
 // ─── Pure death-save / stabilize handlers ──────────────────────────────────
@@ -1604,6 +1655,386 @@ export function handleApplySuffocation(
         },
       },
     ],
+  };
+}
+
+// ─── Phase 11 — Class Features (PHB §10) ─────────────────────────────────
+//
+// 6 dedicated handlers + 1 generic. Each validates the feature exists on
+// the actor, that uses-remaining permits the call, and emits the right
+// mutations. All are pure (no DB) so the AI master tool loop can drive
+// them deterministically.
+
+import {
+  bardicInspirationDie,
+  classLevel,
+  layOnHandsPool,
+} from '../class-features';
+
+/**
+ * Resolve the FeatureInstance + uses-remaining for a (character, slug)
+ * pair. Returns null when the feature isn't on the character.
+ */
+function resolveFeature(
+  state: EngineState,
+  characterId: string,
+  featureSlug: string,
+): { usesMax: number | 'unlimited'; used: number; remaining: number } | null {
+  const char = state.characters.find((c) => c.id === characterId);
+  if (!char) return null;
+  const f = char.features.find((feat) => feat.slug === featureSlug);
+  if (!f) return null;
+  const used = state.runtime[characterId]?.resourcesUsed?.[featureSlug] ?? 0;
+  const remaining =
+    f.usesMax === 'unlimited' ? Number.POSITIVE_INFINITY : Math.max(0, f.usesMax - used);
+  return { usesMax: f.usesMax, used, remaining };
+}
+
+/**
+ * Generic class-feature consumption. Validates the feature exists on the
+ * character and has enough uses remaining; emits a use_class_feature
+ * mutation. For specific features (rage, lay on hands) the dedicated
+ * handlers are preferred — they layer additional state changes on top.
+ *
+ * Errors:
+ * - `unknown_actor` — the actor id is not a known character.
+ * - `feature_not_found` — the character does not have the feature.
+ * - `no_uses_remaining` — uses-remaining < requested uses.
+ */
+export function handleUseClassFeature(
+  state: EngineState,
+  input: { actor: string; featureSlug: string; uses?: number },
+): ActionResult<{ featureSlug: string; usesConsumed: number; remainingAfter: number }> {
+  const charId = resolveCharacterId(state, input.actor);
+  const char = state.characters.find((c) => c.id === charId);
+  if (!char) return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
+  const slug = String(input.featureSlug || '').trim();
+  if (!slug) return { ok: false, error: 'feature_not_found', rolls: [], mutations: [] };
+  const info = resolveFeature(state, charId, slug);
+  if (!info) return { ok: false, error: 'feature_not_found', rolls: [], mutations: [] };
+  const uses = Math.max(1, Math.floor(input.uses ?? 1));
+  if (info.remaining < uses) {
+    return { ok: false, error: 'no_uses_remaining', rolls: [], mutations: [] };
+  }
+  return {
+    ok: true,
+    data: {
+      featureSlug: slug,
+      usesConsumed: uses,
+      remainingAfter: info.remaining === Number.POSITIVE_INFINITY ? Infinity : info.remaining - uses,
+    },
+    rolls: [],
+    mutations: [{ op: 'use_class_feature', actorId: char.id, featureSlug: slug, uses }],
+  };
+}
+
+/**
+ * PHB Barbarian: enter Rage. Validates the actor has the rage feature with
+ * uses remaining and at least 1 barbarian level. Emits use_class_feature
+ * + add_condition('raging', 10 rounds). The combat layer reads the
+ * 'raging' condition for damage bonus / resistance / STR ADV; the
+ * resourcesUsed counter tracks per-day uses (recharged on long rest).
+ *
+ * Errors:
+ * - `unknown_actor`, `feature_not_found`, `no_uses_remaining` — same as
+ *   handleUseClassFeature.
+ * - `not_barbarian` — actor has no levels in the barbarian class.
+ */
+export function handleStartRage(
+  state: EngineState,
+  input: { actor: string },
+): ActionResult<{ barbLevel: number; durationRounds: number }> {
+  const charId = resolveCharacterId(state, input.actor);
+  const char = state.characters.find((c) => c.id === charId);
+  if (!char) return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
+  const barbLevel = classLevel(char, 'barbarian');
+  if (barbLevel < 1) {
+    return { ok: false, error: 'not_barbarian', rolls: [], mutations: [] };
+  }
+  const info = resolveFeature(state, charId, 'rage');
+  if (!info) return { ok: false, error: 'feature_not_found', rolls: [], mutations: [] };
+  if (info.remaining < 1) {
+    return { ok: false, error: 'no_uses_remaining', rolls: [], mutations: [] };
+  }
+  return {
+    ok: true,
+    data: { barbLevel, durationRounds: 10 },
+    rolls: [],
+    mutations: [
+      { op: 'use_class_feature', actorId: char.id, featureSlug: 'rage', uses: 1 },
+      {
+        op: 'add_condition',
+        actorId: char.id,
+        condition: {
+          slug: 'raging',
+          source: 'rage',
+          durationRounds: 10,
+          appliedRound: state.combat?.round ?? 0,
+        },
+      },
+    ],
+  };
+}
+
+/**
+ * PHB Barbarian: end Rage manually before its 10-round duration expires.
+ * Idempotent: returns ok:true with no mutations when the actor isn't
+ * currently raging.
+ */
+export function handleEndRage(
+  state: EngineState,
+  input: { actor: string },
+): ActionResult<{ wasRaging: boolean }> {
+  const charId = resolveCharacterId(state, input.actor);
+  const char = state.characters.find((c) => c.id === charId);
+  if (!char) return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
+  const rt = state.runtime[charId];
+  const wasRaging = (rt?.conditions ?? []).some((c) => c.slug === 'raging');
+  if (!wasRaging) {
+    return { ok: true, data: { wasRaging: false }, rolls: [], mutations: [] };
+  }
+  return {
+    ok: true,
+    data: { wasRaging: true },
+    rolls: [],
+    mutations: [{ op: 'remove_condition', actorId: char.id, conditionSlug: 'raging' }],
+  };
+}
+
+/**
+ * PHB Fighter: Action Surge. Validates the actor is a fighter L2+ with the
+ * action_surge feature and uses remaining. Emits use_class_feature +
+ * reset_action_for_surge (clears turnState.actionUsed so the fighter can
+ * take another action this turn). Bonus action and reaction are NOT
+ * touched.
+ *
+ * Errors:
+ * - `unknown_actor`, `feature_not_found`, `no_uses_remaining`.
+ * - `not_fighter` — actor has no fighter levels.
+ */
+export function handleUseActionSurge(
+  state: EngineState,
+  input: { actor: string },
+): ActionResult<{ fighterLevel: number }> {
+  const charId = resolveCharacterId(state, input.actor);
+  const char = state.characters.find((c) => c.id === charId);
+  if (!char) return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
+  const fighterLevel = classLevel(char, 'fighter');
+  if (fighterLevel < 1) {
+    return { ok: false, error: 'not_fighter', rolls: [], mutations: [] };
+  }
+  const info = resolveFeature(state, charId, 'action_surge');
+  if (!info) return { ok: false, error: 'feature_not_found', rolls: [], mutations: [] };
+  if (info.remaining < 1) {
+    return { ok: false, error: 'no_uses_remaining', rolls: [], mutations: [] };
+  }
+  return {
+    ok: true,
+    data: { fighterLevel },
+    rolls: [],
+    mutations: [
+      { op: 'use_class_feature', actorId: char.id, featureSlug: 'action_surge', uses: 1 },
+      { op: 'reset_action_for_surge', actorId: char.id },
+    ],
+  };
+}
+
+/**
+ * PHB Cleric/Paladin: Channel Divinity. Validates the actor is a cleric
+ * or paladin with the channel_divinity feature and uses remaining.
+ * `effect` is a narrative string (turn_undead, sacred_weapon, etc.) —
+ * the engine consumes the use only; the actual mechanical consequence
+ * is up to the master to follow up with the appropriate tool calls
+ * (e.g. add_condition('sacred_weapon') for Sacred Weapon).
+ *
+ * Errors:
+ * - `unknown_actor`, `feature_not_found`, `no_uses_remaining`.
+ * - `not_cleric_or_paladin` — actor has no cleric/paladin levels.
+ */
+export function handleUseChannelDivinity(
+  state: EngineState,
+  input: { actor: string; effect?: string },
+): ActionResult<{ effect: string; classSlug: 'cleric' | 'paladin' }> {
+  const charId = resolveCharacterId(state, input.actor);
+  const char = state.characters.find((c) => c.id === charId);
+  if (!char) return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
+  const clericLevel = classLevel(char, 'cleric');
+  const paladinLevel = classLevel(char, 'paladin');
+  if (clericLevel < 1 && paladinLevel < 1) {
+    return { ok: false, error: 'not_cleric_or_paladin', rolls: [], mutations: [] };
+  }
+  const info = resolveFeature(state, charId, 'channel_divinity');
+  if (!info) return { ok: false, error: 'feature_not_found', rolls: [], mutations: [] };
+  if (info.remaining < 1) {
+    return { ok: false, error: 'no_uses_remaining', rolls: [], mutations: [] };
+  }
+  // Pick the higher-level class as the "primary" for narrative purposes.
+  const classSlug: 'cleric' | 'paladin' = clericLevel >= paladinLevel ? 'cleric' : 'paladin';
+  const effect = String(input.effect ?? '').trim() || 'unspecified';
+  return {
+    ok: true,
+    data: { effect, classSlug },
+    rolls: [],
+    mutations: [
+      { op: 'use_class_feature', actorId: char.id, featureSlug: 'channel_divinity', uses: 1 },
+    ],
+  };
+}
+
+/**
+ * PHB Bard: grant Bardic Inspiration to an ally. Validates the actor is a
+ * bard L1+ with the bardic_inspiration feature and uses remaining.
+ * Computes the die size from the bard's level if not supplied. Emits
+ * use_class_feature + add_condition('bardic_inspired') on the target with
+ * the die size encoded in `source` (e.g. "bardic_inspiration:d8") so the
+ * snapshot/UI can surface it.
+ *
+ * Errors:
+ * - `unknown_actor`, `feature_not_found`, `no_uses_remaining`.
+ * - `not_bard` — actor has no bard levels.
+ * - `unknown_target` — the target id is not a known character/combat actor.
+ * - `invalid_die_size` — explicit dieSize is not 6/8/10/12.
+ */
+export function handleGrantBardicInspiration(
+  state: EngineState,
+  input: { actor: string; targetId: string; dieSize?: number },
+): ActionResult<{ bardLevel: number; dieSize: 6 | 8 | 10 | 12 }> {
+  const charId = resolveCharacterId(state, input.actor);
+  const char = state.characters.find((c) => c.id === charId);
+  if (!char) return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
+  const bardLevel = classLevel(char, 'bard');
+  if (bardLevel < 1) {
+    return { ok: false, error: 'not_bard', rolls: [], mutations: [] };
+  }
+  const info = resolveFeature(state, charId, 'bardic_inspiration');
+  if (!info) return { ok: false, error: 'feature_not_found', rolls: [], mutations: [] };
+  if (info.remaining < 1) {
+    return { ok: false, error: 'no_uses_remaining', rolls: [], mutations: [] };
+  }
+  const targetId = String(input.targetId ?? '').trim();
+  if (!targetId) {
+    return { ok: false, error: 'unknown_target', rolls: [], mutations: [] };
+  }
+  const targetExists =
+    state.characters.some((c) => c.id === targetId) ||
+    state.combatActors.some((a) => a.id === targetId);
+  if (!targetExists) {
+    return { ok: false, error: 'unknown_target', rolls: [], mutations: [] };
+  }
+  let dieSize: 6 | 8 | 10 | 12;
+  if (input.dieSize == null) {
+    dieSize = bardicInspirationDie(bardLevel);
+  } else {
+    if (input.dieSize !== 6 && input.dieSize !== 8 && input.dieSize !== 10 && input.dieSize !== 12) {
+      return { ok: false, error: 'invalid_die_size', rolls: [], mutations: [] };
+    }
+    dieSize = input.dieSize;
+  }
+  return {
+    ok: true,
+    data: { bardLevel, dieSize },
+    rolls: [],
+    mutations: [
+      { op: 'use_class_feature', actorId: char.id, featureSlug: 'bardic_inspiration', uses: 1 },
+      {
+        op: 'add_condition',
+        actorId: targetId,
+        condition: {
+          slug: 'bardic_inspired',
+          source: `bardic_inspiration:d${dieSize}`,
+          // PHB Bardic Inspiration: lasts 10 minutes (100 combat rounds at 6sec/round).
+          // We use 100 as a practical proxy; the master may remove it manually.
+          durationRounds: 100,
+          appliedRound: state.combat?.round ?? 0,
+        },
+      },
+    ],
+  };
+}
+
+/**
+ * PHB Paladin: Lay on Hands. Validates the actor is a paladin L1+ with
+ * the lay_on_hands feature and a sufficient pool. The pool is
+ * 5 × paladin_level; the spent counter lives at
+ * runtime.resourcesUsed['lay_on_hands']. `points` are added to the target's
+ * HP; `curePoison: true` costs a flat 5 from the pool AND removes the
+ * 'poisoned' condition from the target.
+ *
+ * Both actions can be combined in a single call as long as
+ * `points + (curePoison ? 5 : 0) <= remaining`.
+ *
+ * Errors:
+ * - `unknown_actor`, `feature_not_found`.
+ * - `not_paladin` — actor has no paladin levels.
+ * - `unknown_target` — target id not found.
+ * - `invalid_points` — points < 0.
+ * - `nothing_to_do` — points is 0 and curePoison is false.
+ * - `insufficient_pool` — total cost exceeds remaining pool.
+ */
+export function handleUseLayOnHands(
+  state: EngineState,
+  input: { actor: string; targetId: string; points?: number; curePoison?: boolean },
+): ActionResult<{
+  paladinLevel: number;
+  pointsHealed: number;
+  curedPoison: boolean;
+  poolBefore: number;
+  poolAfter: number;
+}> {
+  const charId = resolveCharacterId(state, input.actor);
+  const char = state.characters.find((c) => c.id === charId);
+  if (!char) return { ok: false, error: 'unknown_actor', rolls: [], mutations: [] };
+  const paladinLevel = classLevel(char, 'paladin');
+  if (paladinLevel < 1) {
+    return { ok: false, error: 'not_paladin', rolls: [], mutations: [] };
+  }
+  const info = resolveFeature(state, charId, 'lay_on_hands');
+  if (!info) return { ok: false, error: 'feature_not_found', rolls: [], mutations: [] };
+  const targetId = String(input.targetId ?? '').trim();
+  if (!targetId) {
+    return { ok: false, error: 'unknown_target', rolls: [], mutations: [] };
+  }
+  const targetExists =
+    state.characters.some((c) => c.id === targetId) ||
+    state.combatActors.some((a) => a.id === targetId);
+  if (!targetExists) {
+    return { ok: false, error: 'unknown_target', rolls: [], mutations: [] };
+  }
+  const points = Math.floor(input.points ?? 0);
+  if (points < 0) {
+    return { ok: false, error: 'invalid_points', rolls: [], mutations: [] };
+  }
+  const curePoison = input.curePoison === true;
+  if (points === 0 && !curePoison) {
+    return { ok: false, error: 'nothing_to_do', rolls: [], mutations: [] };
+  }
+  const pool = layOnHandsPool(paladinLevel);
+  const spent = state.runtime[charId]?.resourcesUsed?.['lay_on_hands'] ?? 0;
+  const remaining = pool - spent;
+  const cost = points + (curePoison ? 5 : 0);
+  if (cost > remaining) {
+    return { ok: false, error: 'insufficient_pool', rolls: [], mutations: [] };
+  }
+  const muts: Mutation[] = [];
+  if (points > 0) {
+    muts.push({ op: 'heal', actorId: targetId, amount: points });
+  }
+  if (curePoison) {
+    muts.push({ op: 'remove_condition', actorId: targetId, conditionSlug: 'poisoned' });
+  }
+  // Track spent pool. We use modify_lay_on_hands_pool for a clear log entry.
+  muts.push({ op: 'modify_lay_on_hands_pool', actorId: char.id, delta: cost });
+  return {
+    ok: true,
+    data: {
+      paladinLevel,
+      pointsHealed: points,
+      curedPoison: curePoison,
+      poolBefore: remaining,
+      poolAfter: remaining - cost,
+    },
+    rolls: [],
+    mutations: muts,
   };
 }
 
