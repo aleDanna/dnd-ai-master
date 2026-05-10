@@ -29,13 +29,37 @@ export type ConditionSlug =
   // it through the normal apply_condition / remove_condition flow.
   | 'silenced';
 
+/**
+ * PHB §2.5 — multi-class breakdown entry. A PC's `Character.classes` is an
+ * array of these; the FIRST entry is always the starting class. The sum of
+ * `level` across entries equals `Character.level`. A subclass slug may be
+ * attached to an entry (e.g., 'eldritch-knight' on a 'fighter') to drive
+ * downstream casting rules (PHB §13.2 third-caster handling).
+ */
+export interface ClassLevel {
+  /** Class slug (one of the 12 PHB classes). */
+  slug: string;
+  /** Levels accumulated in this class (>= 1). */
+  level: number;
+  /** Optional subclass / archetype slug. */
+  subclass?: string;
+}
+
 export interface Character {
   id: string;
   name: string;
   level: number;
   /** Cumulative XP earned. D&D 5e: 0 at level 1, 300 at level 2, 900 at level 3, ... */
   xp: number;
+  /** Primary class slug (legacy alias for `classes?.[0]?.slug`). Always populated. */
   classSlug: string;
+  /**
+   * PHB §2.5 — full multi-class breakdown. The first entry is the
+   * starting class (matches `classSlug`). Optional so legacy snapshots
+   * without the column continue to typecheck — the snapshot hydrator
+   * backfills it from `classSlug` + `level` when missing.
+   */
+  classes?: ClassLevel[];
   raceSlug: string;
   backgroundSlug: string;
   abilities: Record<Ability, number>;
@@ -490,6 +514,12 @@ export type Mutation =
   | { op: 'set_equipped'; characterId: string; itemSlug: string; equipped: boolean }
   | { op: 'recompute_ac'; characterId: string; newAc: number }
   | { op: 'level_up'; characterId: string; newLevel: number; hpDelta: number; newSlots?: Partial<Record<1|2|3|4|5|6|7|8|9, number>> }
+  // PHB §2.5 — add (or re-level) one level of a class. If the slug already
+  // appears in `characters.classes`, that entry's level is incremented; the
+  // entry's subclass is overwritten when `subclass` is supplied. Otherwise a
+  // new entry is appended. The applicator updates `characters.level` to be
+  // the sum of all class levels.
+  | { op: 'add_class_level'; characterId: string; classSlug: string; subclass?: string }
   | { op: 'award_xp'; characterId: string; amount: number; reason?: string }
   | { op: 'death_save'; actorId: string; success: boolean; isCrit?: boolean }
   | { op: 'reset_death_saves'; actorId: string }
