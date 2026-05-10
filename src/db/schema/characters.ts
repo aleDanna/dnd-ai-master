@@ -145,12 +145,26 @@ export const characters = pgTable(
      * embark_vehicle (overwrite), disembark_vehicle (clear).
      */
     embarkedOn: text('embarked_on'),
+    /**
+     * Per-campaign character isolation: when a session is created, the
+     * selected character is deep-copied and the copy gets `templateId` =
+     * the original character's id. The copy ("instance") is what the
+     * session mutates — level, xp, inventory, spells, etc. The template
+     * stays pristine so it can be reused in another campaign without
+     * carrying over progression.
+     *
+     * - NULL → this row is a template (shown in character lists).
+     * - non-NULL → this row is an instance bound to one session (hidden
+     *   from the user-facing list; only the linked session reads it).
+     */
+    templateId: uuid('template_id'),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     userIdx: index('characters_user_idx').on(t.userId),
+    templateIdx: index('characters_template_idx').on(t.templateId),
   }),
 );
 

@@ -15,7 +15,11 @@ export default async function NewSessionPage() {
   const myChars = await db
     .select()
     .from(characters)
-    .where(and(eq(characters.userId, userId), isNull(characters.deletedAt)));
+    .where(and(
+      eq(characters.userId, userId),
+      isNull(characters.deletedAt),
+      isNull(characters.templateId),  // hide per-session instance forks
+    ));
 
   return <NewSessionClient characters={myChars.map((c) => ({ id: c.id, name: c.name, raceSlug: c.raceSlug, classSlug: c.classSlug, level: c.level }))} />;
 }

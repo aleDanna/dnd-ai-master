@@ -23,7 +23,11 @@ export default async function HubPage() {
   const myChars = await db
     .select()
     .from(charactersTable)
-    .where(and(eq(charactersTable.userId, userId), isNull(charactersTable.deletedAt)));
+    .where(and(
+      eq(charactersTable.userId, userId),
+      isNull(charactersTable.deletedAt),
+      isNull(charactersTable.templateId),  // hide per-session instance forks
+    ));
 
   const recentSessions = await db
     .select({ session: sessionsTable, character: charactersTable })

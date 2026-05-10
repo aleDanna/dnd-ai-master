@@ -85,7 +85,11 @@ export async function listMyCharacters(userId: string) {
   return db
     .select()
     .from(charactersTable)
-    .where(and(eq(charactersTable.userId, userId), isNull(charactersTable.deletedAt)));
+    .where(and(
+      eq(charactersTable.userId, userId),
+      isNull(charactersTable.deletedAt),
+      isNull(charactersTable.templateId),  // hide per-session instance forks
+    ));
 }
 
 export async function getMyCharacter(userId: string, id: string) {
