@@ -32,6 +32,33 @@ export interface CombatActorRow {
   initiative: number;
   isAlive: boolean;
   conditions: { slug: string; source: string; durationRounds: number | 'until_removed'; appliedRound: number }[];
+  /** PHB §9.2 — per-turn action economy budget (combat). Optional for back-compat. */
+  turnState?: {
+    actionUsed: boolean;
+    bonusUsed: boolean;
+    reactionUsed: boolean;
+    movementSpentFt: number;
+    freeInteractionsUsed: number;
+    dodging: boolean;
+    disengaged: boolean;
+    dashed: boolean;
+    loadingShotUsed?: boolean;
+    offHandAttackUsed?: boolean;
+    readied?: { trigger: string; action: string };
+  };
+  /** PHB §3.5 — abstract distance band + engagement (combat). Optional for back-compat. */
+  position?: {
+    band: 'engaged' | 'near' | 'far' | 'distant';
+    engagedWith: string[];
+  };
+  /** PHB §6.4 — special senses (range in feet). Optional. */
+  senses?: {
+    darkvisionFt?: number;
+    blindsightFt?: number;
+    tremorsenseFt?: number;
+    truesightFt?: number;
+    passivePerception?: number;
+  };
 }
 
 export interface SessionRow {
@@ -58,6 +85,32 @@ export interface SessionStateRow {
   scene: string;
   sceneImageVersion: number;
   sceneImagePrompt: string | null;
+  /** PHB §6 — exploration/travel context. Optional; when null/undefined the
+   * session is in plain combat or default exploration without explicit travel. */
+  travel?: {
+    pace?: 'fast' | 'normal' | 'slow';
+    lightLevel?: 'bright' | 'dim' | 'darkness';
+    marchingOrder?: { front: string[]; middle: string[]; back: string[] };
+  };
+  /** PHB §9.2 — PC's per-turn action economy budget. Optional. */
+  turnState?: {
+    actionUsed: boolean;
+    bonusUsed: boolean;
+    reactionUsed: boolean;
+    movementSpentFt: number;
+    freeInteractionsUsed: number;
+    dodging: boolean;
+    disengaged: boolean;
+    dashed: boolean;
+    loadingShotUsed?: boolean;
+    offHandAttackUsed?: boolean;
+    readied?: { trigger: string; action: string };
+  };
+  /** PHB §3.5 — PC's abstract distance band + engagement. Optional. */
+  position?: {
+    band: 'engaged' | 'near' | 'far' | 'distant';
+    engagedWith: string[];
+  };
 }
 
 /** Mutable subset of the character row that the right-pane UI cares about
@@ -75,6 +128,22 @@ export interface CharacterPatch {
   inventory: { slug: string; qty: number; equipped: boolean }[];
   spellcasting: unknown;
   features: unknown;
+  /** PHB §18.1 Inspiration. */
+  inspiration?: boolean;
+  /** PHB §10.1 attunement (capped at 3). */
+  attunedItems?: string[];
+  /** PHB §8.4 currently held spellcasting focus. */
+  equippedFocus?: { kind: 'arcane' | 'druidic' | 'holy' | 'instrument'; itemSlug: string };
+  /** PHB §2.5 multi-class breakdown. The first entry is the starting class. */
+  classes?: { slug: string; level: number; subclass?: string }[];
+  /** PHB §6.4 special senses. */
+  senses?: {
+    darkvisionFt?: number;
+    blindsightFt?: number;
+    tremorsenseFt?: number;
+    truesightFt?: number;
+    passivePerception?: number;
+  };
 }
 
 export interface StateSnapshot {
