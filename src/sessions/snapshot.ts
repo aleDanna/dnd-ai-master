@@ -10,6 +10,7 @@ import {
 } from '@/db/schema';
 import type {
   Character,
+  ClassLevel,
   CombatActor,
   ConcentrationState,
   EngineState,
@@ -38,6 +39,37 @@ function hydrateFocus(raw: unknown): EquippedFocus | undefined {
   return { kind: r.kind as FocusKind, itemSlug: r.itemSlug };
 }
 
+/**
+ * PHB §2.5 — hydrate the `classes` jsonb column. Validates each entry has a
+ * string `slug` and a positive integer `level`; drops malformed entries
+ * defensively. If the column is empty or has no valid entries, backfill a
+ * single entry from the legacy `classSlug` + `level` fields so downstream
+ * code can rely on `classes[0]` always existing.
+ */
+function hydrateClasses(
+  raw: unknown,
+  fallbackClassSlug: string,
+  fallbackLevel: number,
+): ClassLevel[] {
+  if (Array.isArray(raw)) {
+    const clean: ClassLevel[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== 'object') continue;
+      const r = item as { slug?: unknown; level?: unknown; subclass?: unknown };
+      if (typeof r.slug !== 'string' || !r.slug) continue;
+      const lvl = typeof r.level === 'number' && r.level >= 1 ? Math.floor(r.level) : null;
+      if (lvl == null) continue;
+      const entry: ClassLevel = { slug: r.slug, level: lvl };
+      if (typeof r.subclass === 'string' && r.subclass) entry.subclass = r.subclass;
+      clean.push(entry);
+    }
+    if (clean.length > 0) return clean;
+  }
+  // Legacy / empty column: backfill from classSlug + level so the engine
+  // always sees a single-class breakdown that matches the row.
+  return [{ slug: fallbackClassSlug, level: Math.max(1, Math.floor(fallbackLevel || 1)) }];
+}
+
 export async function buildSnapshot(sessionId: string, userId: string): Promise<SnapshotForModel> {
   const [session] = await db
     .select()
@@ -54,13 +86,21 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
 
   const actorRows = await db.select().from(combatActorsTable).where(eq(combatActorsTable.sessionId, sessionId));
 
+  // PHB §2.5 — hydrate the multi-class breakdown. We backfill from the legacy
+  // classSlug+level when the column is empty so downstream engine code can
+  // always rely on `classes[0]`. The primary classSlug stays as the legacy
+  // alias for callers that don't yet read `classes`.
+  const classes = hydrateClasses(character.classes, character.classSlug, character.level);
+  const primaryClassSlug = classes[0]?.slug ?? character.classSlug;
+
   const characters: Character[] = [
     {
       id: character.id,
       name: character.name,
       level: character.level,
       xp: character.xp,
-      classSlug: character.classSlug,
+      classSlug: primaryClassSlug,
+      classes,
       raceSlug: character.raceSlug,
       backgroundSlug: character.backgroundSlug,
       abilities: character.abilities,
@@ -158,7 +198,11 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
     name: character.name,
     level: character.level,
     xp: character.xp,
-    class: character.classSlug,
+    class: primaryClassSlug,
+    // PHB §2.5: always show the full multi-class breakdown; for a single-
+    // class PC this is just `[{slug, level}]`. The master uses this to gate
+    // multiclass actions and combine spell slots.
+    classes,
     race: character.raceSlug,
     hp: `${stateRow.hpCurrent}/${character.hpMax}`,
     ac: character.ac,

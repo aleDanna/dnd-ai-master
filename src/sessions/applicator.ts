@@ -10,6 +10,7 @@ import {
   type DiceLogInsert,
 } from '@/db/schema';
 import type {
+  ClassLevel,
   ConditionInstance,
   DiceRoll,
   Mutation,
@@ -322,6 +323,65 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
           await tx.update(sessionStateTable).set({ hpCurrent: healed }).where(eq(sessionStateTable.sessionId, sessionId));
         }
       }
+      break;
+    }
+    case 'add_class_level': {
+      // PHB §2.5: append a new class entry, or increment an existing one.
+      // The applicator stays permissive (no prereq check — the tool layer
+      // validates) so a replayed event log re-applies cleanly. Updates
+      // `characters.level` to be the sum of all class levels and aligns
+      // `class_slug` with classes[0].slug.
+      const [c] = await tx
+        .select({
+          classes: charactersTable.classes,
+          classSlug: charactersTable.classSlug,
+          level: charactersTable.level,
+        })
+        .from(charactersTable)
+        .where(eq(charactersTable.id, m.characterId))
+        .limit(1);
+      if (!c) break;
+
+      // Hydrate the existing breakdown — backfill from classSlug+level when
+      // empty so we never lose the starting class.
+      let current: ClassLevel[] = Array.isArray(c.classes) && c.classes.length > 0
+        ? (c.classes as ClassLevel[]).filter(
+            (cl): cl is ClassLevel =>
+              !!cl && typeof cl.slug === 'string' && typeof cl.level === 'number',
+          )
+        : [];
+      if (current.length === 0) {
+        current = [{ slug: c.classSlug, level: Math.max(1, c.level || 1) }];
+      }
+
+      const idx = current.findIndex((cl) => cl.slug === m.classSlug);
+      let next: ClassLevel[];
+      if (idx >= 0) {
+        const existing = current[idx]!;
+        const updated: ClassLevel = {
+          ...existing,
+          level: existing.level + 1,
+        };
+        if (m.subclass) updated.subclass = m.subclass;
+        next = current.map((cl, i) => (i === idx ? updated : cl));
+      } else {
+        const fresh: ClassLevel = { slug: m.classSlug, level: 1 };
+        if (m.subclass) fresh.subclass = m.subclass;
+        next = [...current, fresh];
+      }
+
+      const newTotalLevel = next.reduce((sum, cl) => sum + Math.max(1, cl.level), 0);
+      const newPrimarySlug = next[0]?.slug ?? c.classSlug;
+
+      await tx
+        .update(charactersTable)
+        .set({
+          classes: next,
+          classSlug: newPrimarySlug,
+          level: newTotalLevel,
+          updatedAt: new Date(),
+        })
+        .where(eq(charactersTable.id, m.characterId));
       break;
     }
     case 'add_inventory': {

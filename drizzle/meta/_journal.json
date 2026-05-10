@@ -134,6 +134,13 @@
       "when": 1778416870208,
       "tag": "0018_blushing_hercules",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1778419675273,
+      "tag": "0019_dark_nightshade",
+      "breakpoints": true
     }
   ]
 }

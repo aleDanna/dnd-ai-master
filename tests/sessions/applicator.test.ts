@@ -1071,4 +1071,78 @@ describe('applyMutations', () => {
       expect(c!.equippedFocus).toBeNull();
     });
   });
+
+  describe('add_class_level (PHB §2.5)', () => {
+    it('appends a new class entry, increments level total, leaves classSlug as starter', async () => {
+      // Reset the row to a clean fighter level 5 baseline so this test is
+      // deterministic regardless of ordering with the level_up test above.
+      await db
+        .update(characters)
+        .set({ classes: [], classSlug: 'fighter', level: 5 })
+        .where(eq(characters.id, PC_ID));
+
+      await applyMutations(
+        SESSION_ID,
+        [{ op: 'add_class_level', characterId: PC_ID, classSlug: 'wizard' }],
+        [],
+      );
+
+      const [c] = await db
+        .select({
+          classes: characters.classes,
+          classSlug: characters.classSlug,
+          level: characters.level,
+        })
+        .from(characters)
+        .where(eq(characters.id, PC_ID))
+        .limit(1);
+      // Backfill from classSlug+level + new wizard entry → fighter 5 + wizard 1 = 6.
+      expect(c!.classes).toEqual([
+        { slug: 'fighter', level: 5 },
+        { slug: 'wizard', level: 1 },
+      ]);
+      expect(c!.classSlug).toBe('fighter');
+      expect(c!.level).toBe(6);
+    });
+
+    it('increments an existing class entry instead of duplicating', async () => {
+      // Re-run add_class_level for fighter — should bump fighter to 6.
+      await applyMutations(
+        SESSION_ID,
+        [{ op: 'add_class_level', characterId: PC_ID, classSlug: 'fighter' }],
+        [],
+      );
+      const [c] = await db
+        .select({ classes: characters.classes, level: characters.level })
+        .from(characters)
+        .where(eq(characters.id, PC_ID))
+        .limit(1);
+      expect(c!.classes).toEqual([
+        { slug: 'fighter', level: 6 },
+        { slug: 'wizard', level: 1 },
+      ]);
+      expect(c!.level).toBe(7);
+    });
+
+    it('attaches subclass when supplied', async () => {
+      await db
+        .update(characters)
+        .set({ classes: [{ slug: 'fighter', level: 2 }], classSlug: 'fighter', level: 2 })
+        .where(eq(characters.id, PC_ID));
+
+      await applyMutations(
+        SESSION_ID,
+        [{ op: 'add_class_level', characterId: PC_ID, classSlug: 'fighter', subclass: 'eldritch-knight' }],
+        [],
+      );
+      const [c] = await db
+        .select({ classes: characters.classes })
+        .from(characters)
+        .where(eq(characters.id, PC_ID))
+        .limit(1);
+      expect(c!.classes).toEqual([
+        { slug: 'fighter', level: 3, subclass: 'eldritch-knight' },
+      ]);
+    });
+  });
 });

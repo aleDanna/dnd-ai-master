@@ -1,6 +1,6 @@
 import { pgTable, text, integer, jsonb, uuid, timestamp, index, boolean } from 'drizzle-orm/pg-core';
 import { users } from './users';
-import type { EquippedFocus, Senses } from '@/engine/types';
+import type { ClassLevel, EquippedFocus, Senses } from '@/engine/types';
 
 export const characters = pgTable(
   'characters',
@@ -12,6 +12,15 @@ export const characters = pgTable(
     xp: integer('xp').notNull().default(0),
     raceSlug: text('race_slug').notNull(),
     classSlug: text('class_slug').notNull(),
+    /**
+     * PHB §2.5 — full multi-class breakdown. Each entry is a
+     * `{ slug, level, subclass? }` record; the FIRST entry is the starting
+     * class (matches `classSlug`). The sum of `level` across entries equals
+     * the row's top-level `level`. Default `[]` so legacy single-class rows
+     * survive the migration; the snapshot hydrator backfills the array from
+     * `classSlug` + `level` when empty.
+     */
+    classes: jsonb('classes').$type<ClassLevel[]>().notNull().default([]),
     backgroundSlug: text('background_slug').notNull(),
     abilities: jsonb('abilities').$type<{ STR: number; DEX: number; CON: number; INT: number; WIS: number; CHA: number }>().notNull(),
     proficiencyBonus: integer('proficiency_bonus').notNull(),
