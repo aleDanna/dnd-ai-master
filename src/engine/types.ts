@@ -27,7 +27,12 @@ export type ConditionSlug =
   // is a no-op (the gating is enforced by the component validator inside
   // `castSpell`); kept as a condition slug so the master can apply/remove
   // it through the normal apply_condition / remove_condition flow.
-  | 'silenced';
+  | 'silenced'
+  // Phase 11 — class-feature condition markers. These are NOT strict SRD
+  // conditions; they tag mechanical state the engine consults at the right
+  // resolution site (rage damage/resistance/STR ADV; bardic die granted to
+  // an ally; sacred weapon attack-roll bonus; channel-divinity used flag).
+  | 'raging' | 'bardic_inspired' | 'sacred_weapon' | 'channel_divinity_used';
 
 /**
  * PHB §2.5 — multi-class breakdown entry. A PC's `Character.classes` is an
@@ -348,6 +353,12 @@ export interface TurnState {
    * same turn. Reset by start_turn / newTurnState.
    */
   offHandAttackUsed?: boolean;
+  /**
+   * PHB Rogue Sneak Attack — set true after the rogue lands Sneak Attack
+   * extra dice on a hit this turn. Blocks subsequent sneak attack uses
+   * the SAME turn (per the once-per-turn rule). Reset by start_turn.
+   */
+  sneakAttackUsed?: boolean;
 }
 
 // ─── Cover (PHB §3.12) ─────────────────────────────────────────────────────
@@ -597,7 +608,31 @@ export type Mutation =
   | { op: 'set_focus'; characterId: string; focus: EquippedFocus }
   // PHB §8.4 — clear the PC's currently held focus. Idempotent (no-op
   // when no focus is currently set).
-  | { op: 'unset_focus'; characterId: string };
+  | { op: 'unset_focus'; characterId: string }
+  // Phase 11 — generic class-feature consumption. Increments
+  // runtime.resourcesUsed[featureSlug] by `uses` (default 1). Used by
+  // the start_rage / use_action_surge / use_channel_divinity /
+  // grant_bardic_inspiration / use_class_feature tools. Validation
+  // (uses-remaining vs usesMax) is done at the tool layer; the
+  // applicator stays permissive so a replayed event log applies cleanly.
+  | { op: 'use_class_feature'; actorId: string; featureSlug: string; uses?: number }
+  // Phase 11 — counter-mutation, decrements
+  // runtime.resourcesUsed[featureSlug] (used by short_rest / long_rest
+  // for class features that recharge between rests).
+  | { op: 'restore_class_feature'; actorId: string; featureSlug: string; uses?: number }
+  // Phase 11 — Lay on Hands pool tracker. The Paladin's pool is
+  // 5 × paladin level (PHB Paladin Lay on Hands). The engine tracks the
+  // SPENT amount on `runtime.resourcesUsed['lay_on_hands']`; remaining =
+  // max - spent. delta is positive when spending (increases the spent
+  // counter), negative on long rest (resets to 0 via restore_class_feature
+  // or this op with a negative delta).
+  | { op: 'modify_lay_on_hands_pool'; actorId: string; delta: number }
+  // Phase 11 — Sneak Attack once-per-turn marker. Sets
+  // turnState.sneakAttackUsed = true. Reset by start_turn.
+  | { op: 'mark_sneak_attack'; actorId: string }
+  // Phase 11 — Action Surge: reset turnState.actionUsed to false so the
+  // fighter can take another action this turn.
+  | { op: 'reset_action_for_surge'; actorId: string };
 
 // ─── Action results ────────────────────────────────────────────────────────
 

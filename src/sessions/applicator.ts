@@ -907,6 +907,136 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
         .where(eq(charactersTable.id, m.characterId));
       break;
     }
+    case 'use_class_feature':
+    case 'restore_class_feature':
+    case 'modify_lay_on_hands_pool': {
+      // Phase 11 — class-feature resource bookkeeping. Mirrors the
+      // use_resource / restore_resource handler but exposed under a
+      // dedicated mutation op so the AI Master's tool calls stay
+      // semantically distinct (a "rage start" is more readable than a
+      // generic "use_resource:rage" log entry). PC-only: monsters/NPCs
+      // don't track per-feature resources in session_state.
+      if (m.actorId !== ctx.characterId) break;
+      const [s] = await tx
+        .select()
+        .from(sessionStateTable)
+        .where(eq(sessionStateTable.sessionId, sessionId))
+        .limit(1);
+      if (!s) break;
+      const used = { ...(s.resourcesUsed as Record<string, number>) };
+      if (m.op === 'use_class_feature') {
+        const inc = Math.max(1, Math.floor(m.uses ?? 1));
+        used[m.featureSlug] = (used[m.featureSlug] ?? 0) + inc;
+      } else if (m.op === 'restore_class_feature') {
+        const dec = Math.max(1, Math.floor(m.uses ?? 1));
+        const cur = used[m.featureSlug] ?? 0;
+        const next = Math.max(0, cur - dec);
+        if (next === 0) delete used[m.featureSlug];
+        else used[m.featureSlug] = next;
+      } else {
+        // modify_lay_on_hands_pool — delta is added to the spent counter.
+        // Negative delta restores the pool (used by long_rest); positive
+        // delta consumes it (used by use_lay_on_hands).
+        const delta = Math.floor(m.delta);
+        const cur = used['lay_on_hands'] ?? 0;
+        const next = Math.max(0, cur + delta);
+        if (next === 0) delete used['lay_on_hands'];
+        else used['lay_on_hands'] = next;
+      }
+      await tx
+        .update(sessionStateTable)
+        .set({ resourcesUsed: used })
+        .where(eq(sessionStateTable.sessionId, sessionId));
+      break;
+    }
+    case 'mark_sneak_attack': {
+      // Phase 11 — once-per-turn Sneak Attack marker on the actor's
+      // current turnState. Mirrors mark_loading_shot.
+      const isPc = m.actorId === ctx.characterId;
+      if (isPc) {
+        const [s] = await tx
+          .select()
+          .from(sessionStateTable)
+          .where(eq(sessionStateTable.sessionId, sessionId))
+          .limit(1);
+        if (!s) break;
+        const current = (s.turnState as TurnState | null) ?? newTurnState();
+        const updated: TurnState = { ...current, sneakAttackUsed: true };
+        await tx
+          .update(sessionStateTable)
+          .set({ turnState: updated })
+          .where(eq(sessionStateTable.sessionId, sessionId));
+      } else {
+        const [a] = await tx
+          .select()
+          .from(combatActorsTable)
+          .where(
+            and(
+              eq(combatActorsTable.sessionId, sessionId),
+              eq(combatActorsTable.id, m.actorId),
+            ),
+          )
+          .limit(1);
+        if (!a) break;
+        const current = (a.turnState as TurnState | null) ?? newTurnState();
+        const updated: TurnState = { ...current, sneakAttackUsed: true };
+        await tx
+          .update(combatActorsTable)
+          .set({ turnState: updated })
+          .where(
+            and(
+              eq(combatActorsTable.sessionId, sessionId),
+              eq(combatActorsTable.id, m.actorId),
+            ),
+          );
+      }
+      break;
+    }
+    case 'reset_action_for_surge': {
+      // Phase 11 — Fighter Action Surge: clears turnState.actionUsed so
+      // the fighter can take another action this turn. The bonus action
+      // and reaction budgets are NOT touched (Action Surge gives one
+      // additional ACTION). Mirror the load+write pattern of consume_action.
+      const isPc = m.actorId === ctx.characterId;
+      if (isPc) {
+        const [s] = await tx
+          .select()
+          .from(sessionStateTable)
+          .where(eq(sessionStateTable.sessionId, sessionId))
+          .limit(1);
+        if (!s) break;
+        const current = (s.turnState as TurnState | null) ?? newTurnState();
+        const updated: TurnState = { ...current, actionUsed: false };
+        await tx
+          .update(sessionStateTable)
+          .set({ turnState: updated })
+          .where(eq(sessionStateTable.sessionId, sessionId));
+      } else {
+        const [a] = await tx
+          .select()
+          .from(combatActorsTable)
+          .where(
+            and(
+              eq(combatActorsTable.sessionId, sessionId),
+              eq(combatActorsTable.id, m.actorId),
+            ),
+          )
+          .limit(1);
+        if (!a) break;
+        const current = (a.turnState as TurnState | null) ?? newTurnState();
+        const updated: TurnState = { ...current, actionUsed: false };
+        await tx
+          .update(combatActorsTable)
+          .set({ turnState: updated })
+          .where(
+            and(
+              eq(combatActorsTable.sessionId, sessionId),
+              eq(combatActorsTable.id, m.actorId),
+            ),
+          );
+      }
+      break;
+    }
   }
 }
 

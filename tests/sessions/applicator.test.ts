@@ -1145,4 +1145,115 @@ describe('applyMutations', () => {
       ]);
     });
   });
+
+  describe('class-feature mutations (Phase 11)', () => {
+    it('use_class_feature increments resourcesUsed by uses (default 1)', async () => {
+      // Reset the resourcesUsed bag for this test.
+      await db
+        .update(sessionState)
+        .set({ resourcesUsed: {} })
+        .where(eq(sessionState.sessionId, SESSION_ID));
+
+      await applyMutations(
+        SESSION_ID,
+        [{ op: 'use_class_feature', actorId: PC_ID, featureSlug: 'rage' }],
+        [],
+      );
+      let [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect((s!.resourcesUsed as Record<string, number>)['rage']).toBe(1);
+
+      // Increment with explicit uses=2.
+      await applyMutations(
+        SESSION_ID,
+        [{ op: 'use_class_feature', actorId: PC_ID, featureSlug: 'rage', uses: 2 }],
+        [],
+      );
+      [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect((s!.resourcesUsed as Record<string, number>)['rage']).toBe(3);
+    });
+
+    it('restore_class_feature decrements resourcesUsed and clears entry at 0', async () => {
+      await db
+        .update(sessionState)
+        .set({ resourcesUsed: { action_surge: 1 } })
+        .where(eq(sessionState.sessionId, SESSION_ID));
+
+      await applyMutations(
+        SESSION_ID,
+        [{ op: 'restore_class_feature', actorId: PC_ID, featureSlug: 'action_surge' }],
+        [],
+      );
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      const used = s!.resourcesUsed as Record<string, number>;
+      // Either deleted entry or 0 (the applicator deletes on hit-zero — assert deletion).
+      expect(used['action_surge']).toBeUndefined();
+    });
+
+    it('modify_lay_on_hands_pool with positive delta increments spent', async () => {
+      await db
+        .update(sessionState)
+        .set({ resourcesUsed: {} })
+        .where(eq(sessionState.sessionId, SESSION_ID));
+
+      await applyMutations(
+        SESSION_ID,
+        [{ op: 'modify_lay_on_hands_pool', actorId: PC_ID, delta: 10 }],
+        [],
+      );
+      let [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect((s!.resourcesUsed as Record<string, number>)['lay_on_hands']).toBe(10);
+
+      // Negative delta restores (e.g., long rest).
+      await applyMutations(
+        SESSION_ID,
+        [{ op: 'modify_lay_on_hands_pool', actorId: PC_ID, delta: -10 }],
+        [],
+      );
+      [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect((s!.resourcesUsed as Record<string, number>)['lay_on_hands']).toBeUndefined();
+    });
+
+    it('mark_sneak_attack on the PC sets sessionState.turnState.sneakAttackUsed', async () => {
+      await applyMutations(SESSION_ID, [{ op: 'start_turn', actorId: PC_ID }], []);
+      await applyMutations(SESSION_ID, [{ op: 'mark_sneak_attack', actorId: PC_ID }], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect((s!.turnState as { sneakAttackUsed?: boolean } | null)?.sneakAttackUsed).toBe(true);
+    });
+
+    it('start_turn resets sneakAttackUsed back to undefined/false', async () => {
+      await applyMutations(SESSION_ID, [{ op: 'mark_sneak_attack', actorId: PC_ID }], []);
+      await applyMutations(SESSION_ID, [{ op: 'start_turn', actorId: PC_ID }], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      const ts = s!.turnState as { sneakAttackUsed?: boolean } | null;
+      expect(ts?.sneakAttackUsed).toBeFalsy();
+    });
+
+    it('reset_action_for_surge clears actionUsed without touching bonus/reaction', async () => {
+      // Start fresh, then mark actionUsed and bonusUsed via consume_action.
+      await applyMutations(
+        SESSION_ID,
+        [
+          { op: 'start_turn', actorId: PC_ID },
+          { op: 'consume_action', actorId: PC_ID, kind: 'action' },
+          { op: 'consume_action', actorId: PC_ID, kind: 'bonus' },
+        ],
+        [],
+      );
+      let [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      let ts = s!.turnState as { actionUsed: boolean; bonusUsed: boolean };
+      expect(ts.actionUsed).toBe(true);
+      expect(ts.bonusUsed).toBe(true);
+
+      // Now Action Surge: action resets, bonus stays consumed.
+      await applyMutations(
+        SESSION_ID,
+        [{ op: 'reset_action_for_surge', actorId: PC_ID }],
+        [],
+      );
+      [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      ts = s!.turnState as { actionUsed: boolean; bonusUsed: boolean };
+      expect(ts.actionUsed).toBe(false);
+      expect(ts.bonusUsed).toBe(true);
+    });
+  });
 });

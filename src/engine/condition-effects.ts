@@ -146,6 +146,14 @@ const APPLIERS: Record<Exclude<ConditionSlug, 'exhaustion'>, (f: ConditionEffect
   // spells is handled by the component validator inside `castSpell`. This
   // applier is intentionally a no-op so the static flag table stays clean.
   silenced: () => { /* V-component gating handled at cast site */ },
+  // Phase 11 — class feature markers. The mechanical consequences (rage
+  // STR ADV / damage bonus / resistance, bardic die granted, sacred weapon
+  // attack bonus, channel divinity used) are all applied at the right
+  // resolution site (combat/damage/check), not via the static flag table.
+  raging: () => { /* +damage / resistance / STR ADV applied in combat layer */ },
+  bardic_inspired: () => { /* die granted to recipient — consumed manually */ },
+  sacred_weapon: () => { /* +CHA mod attack bonus applied at attack site */ },
+  channel_divinity_used: () => { /* marker only — feature-use already tracked via resourcesUsed */ },
 };
 
 function applyExhaustion(f: ConditionEffectFlags, level: number): void {
