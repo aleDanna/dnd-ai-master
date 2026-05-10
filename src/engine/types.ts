@@ -154,6 +154,49 @@ export interface Character {
    * `set_bastion` is called for the first time.
    */
   bastion?: Bastion;
+  /**
+   * PHB §3.23 — when set, the PC is currently mounted on a creature
+   * (typically a `CombatActor` registered for the scene). Contains the
+   * mount's actor id and the current mount mode (controlled/independent).
+   * Cleared via `dismount`; updated via `set_mount_mode`. Optional so
+   * legacy snapshots without the column still typecheck.
+   */
+  mountedOn?: MountedState;
+  /**
+   * PHB §9.6 — when set, the PC is embarked on a vehicle (catalogued
+   * via `VEHICLE_CATALOG` in `engine/vehicles.ts`). Stored as the
+   * vehicle slug; the engine looks up stats on demand. Optional so
+   * legacy snapshots without the column still typecheck — cleared via
+   * `disembark_vehicle`.
+   */
+  embarkedOn?: string;
+}
+
+// ─── Mounted combat & vehicles (PHB §3.23, §9.6) ──────────────────────────
+
+/**
+ * PHB §1 / monster manual sizing. The ladder (smallest → largest) drives
+ * the "must be at least one size larger" rule for serving as a mount
+ * (PHB §3.23).
+ */
+export type Size = 'tiny' | 'small' | 'medium' | 'large' | 'huge' | 'gargantuan';
+
+/**
+ * PHB §3.23 — a mount can be `controlled` (acts on rider's initiative,
+ * may only take Dash/Disengage/Dodge — rider directs everything else)
+ * or `independent` (acts on its own initiative, decides its own actions
+ * — typical for an intelligent steed).
+ */
+export type MountMode = 'controlled' | 'independent';
+
+/**
+ * PHB §3.23 — mounted state pinned on a `Character`. Holds the id of the
+ * mount creature (a `CombatActor`) and the current mode. Cleared on
+ * dismount; updated via `set_mount_mode`.
+ */
+export interface MountedState {
+  mountId: string;
+  mode: MountMode;
 }
 
 // ─── Downtime, hirelings & bastion (PHB §6 + 2024 PHB Bastion) ─────────────
@@ -502,6 +545,13 @@ export interface CombatActor {
    * on normal sight.
    */
   senses?: Senses;
+  /**
+   * PHB §1 / monster manual sizing — used by mounted-combat rules
+   * (PHB §3.23) so the engine can validate `canBeMount`. Optional so
+   * legacy actors without a size still typecheck; the master may be
+   * lenient when one of the two creatures lacks size data.
+   */
+  size?: Size;
 }
 
 // ─── Engine state (runtime-only — Plan D will persist this) ────────────────
@@ -879,7 +929,22 @@ export type Mutation =
   | { op: 'set_bastion'; characterId: string; bastion: Bastion | null }
   // Phase 13 — Append a room to `bastion.rooms`. Silent no-op when the
   // PC has no bastion (the master must call `set_bastion` first).
-  | { op: 'add_bastion_room'; characterId: string; room: BastionRoom };
+  | { op: 'add_bastion_room'; characterId: string; room: BastionRoom }
+  // Phase 14 (PHB §3.23) — mount the rider on a mount creature. The
+  // applicator overwrites `characters.mounted_on` with `{ mountId, mode }`.
+  // Default mode is 'controlled' if omitted (the tool layer fills it in).
+  | { op: 'mount'; characterId: string; mountId: string; mode?: MountMode }
+  // Phase 14 — clear `characters.mounted_on`. Idempotent (no-op when not
+  // currently mounted).
+  | { op: 'dismount'; characterId: string }
+  // Phase 14 — update the `mode` field of the existing mount state. Silent
+  // no-op when the PC is not currently mounted.
+  | { op: 'set_mount_mode'; characterId: string; mode: MountMode }
+  // Phase 14 (PHB §9.6) — embark the PC on a vehicle by slug. The
+  // applicator overwrites `characters.embarked_on`.
+  | { op: 'embark_vehicle'; characterId: string; vehicleSlug: string }
+  // Phase 14 — clear `characters.embarked_on`. Idempotent.
+  | { op: 'disembark_vehicle'; characterId: string };
 
 // ─── Action results ────────────────────────────────────────────────────────
 
