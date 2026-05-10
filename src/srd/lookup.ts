@@ -11,20 +11,26 @@ export async function lookupSpell(slug: string) {
 }
 
 /**
- * Fetch ritual + concentration + castingTime for a spell. Returns undefined if
- * the spell isn't in the SRD table. Used by the cast_spell tool to:
+ * Fetch ritual + concentration + castingTime + components for a spell. Returns
+ * undefined if the spell isn't in the SRD table. Used by the cast_spell tool to:
  *   - validate `asRitual` casts (PHB §8.13: only ritual-tagged spells are eligible),
- *   - drive action-economy consumption (`castingTime` → action / bonus / reaction).
- * Defaults `castingTime` to '1 action' when the SRD column is null/empty.
+ *   - drive action-economy consumption (`castingTime` → action / bonus / reaction),
+ *   - drive PHB §8.3 component validation (V/S/M parsed from the components string).
+ * Defaults `castingTime` to '1 action' when the SRD column is null/empty;
+ * defaults `components` to an empty string (no validation requested).
  */
 export async function lookupSpellMeta(
   slug: string,
-): Promise<{ ritual: boolean; concentration: boolean; castingTime: string } | undefined> {
+): Promise<
+  | { ritual: boolean; concentration: boolean; castingTime: string; components: string }
+  | undefined
+> {
   const rows = await db
     .select({
       ritual: srdSpell.ritual,
       concentration: srdSpell.concentration,
       castingTime: srdSpell.castingTime,
+      components: srdSpell.components,
     })
     .from(srdSpell)
     .where(eq(srdSpell.slug, slug))
@@ -35,6 +41,7 @@ export async function lookupSpellMeta(
     ritual: !!row.ritual,
     concentration: !!row.concentration,
     castingTime: row.castingTime ?? '1 action',
+    components: row.components ?? '',
   };
 }
 

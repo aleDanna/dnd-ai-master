@@ -5,6 +5,11 @@ import { bindingFor } from './spells/spell-data';
 import { ARCHETYPE_HANDLERS } from './spells/archetypes';
 import { startConcentrationMutations } from './spells/concentration';
 import { canConsumeAction } from './combat/turn-state';
+import {
+  parseComponents,
+  validateComponents,
+  focusKindForClass,
+} from './spells/components';
 
 type LeveledSlot = 1|2|3|4|5|6|7|8|9;
 type SlotLevel = 0 | LeveledSlot;
@@ -24,8 +29,29 @@ export interface CastSpellInput {
    * Optional spell metadata. `castingTime` (e.g. '1 action', '1 bonus action',
    * '1 reaction', '1 minute') drives action-economy budget consumption and
    * PHB §8.5 enforcement when present. Defaults to a '1 action' assumption.
+   * `components` is the PHB-style components string (e.g. "V S M (silver dust
+   * worth 25 gp)"); when present, we validate V/S/M before consuming the
+   * slot so refused casts don't burn resources.
    */
-  spellMeta?: { ritual?: boolean; concentration?: boolean; castingTime?: string };
+  spellMeta?: {
+    ritual?: boolean;
+    concentration?: boolean;
+    castingTime?: string;
+    components?: string;
+  };
+  /**
+   * PHB §8.3-8.4 — caster has at least one free hand for the somatic
+   * gesture. Defaults to true at the call site (the master is
+   * responsible for setting false when both hands are visibly occupied
+   * AND no focus is held).
+   */
+  freeHand?: boolean;
+  /**
+   * PHB §8.3 — caster has the spell's material in inventory (for spells
+   * with explicit material costs). Defaults to true (the master decides
+   * narratively; the engine assumes possession unless told otherwise).
+   */
+  hasMaterial?: boolean;
 }
 
 /**
@@ -94,6 +120,36 @@ export function castSpell(input: CastSpellInput, rng: RngArg = defaultRng): Acti
   const minSlot = binding?.minSlot ?? 0;
   if (input.slotLevel < minSlot) {
     return { ok: false, error: 'slot_too_low', rolls: [], mutations: [] };
+  }
+
+  // PHB §8.3 — V/S/M component validation. We run this BEFORE the action
+  // economy and slot checks so a refused cast doesn't burn either. The
+  // components string is optional; if absent (legacy callers, unknown
+  // spells), we skip validation entirely. `freeHand` and `hasMaterial`
+  // default to true — the master is the source of truth for hand state
+  // and material possession.
+  if (input.spellMeta?.components) {
+    const components = parseComponents(input.spellMeta.components);
+    const equippedFocus = input.caster.equippedFocus;
+    const focusKind = focusKindForClass(input.caster.classSlug);
+    const canUseFocus =
+      !!equippedFocus && !!focusKind && focusKind === equippedFocus.kind;
+    const componentError = validateComponents({
+      components,
+      casterConditions: input.runtime.conditions,
+      freeHand: input.freeHand ?? true,
+      equippedFocus,
+      hasMaterial: input.hasMaterial ?? true,
+      canUseFocus,
+    });
+    if (componentError) {
+      return {
+        ok: false,
+        error: `component_${componentError}`,
+        rolls: [],
+        mutations: [],
+      };
+    }
   }
 
   // ACTION ECONOMY (PHB §3.9 + §8.5). Check BEFORE slot consumption so we don't

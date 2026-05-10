@@ -421,3 +421,142 @@ describe('castSpell — action economy integration', () => {
     expect(r.ok).toBe(true);  // cantrip exception
   });
 });
+
+describe('castSpell — component validation (PHB §8.3-8.4)', () => {
+  it('silenced caster cannot cast V spell — returns component_silenced', () => {
+    const c = pcCaster({ spellsKnown: ['fire-bolt'] });
+    const runtime: ActorRuntimeState = {
+      ...runtimeFor(c),
+      conditions: [
+        { slug: 'silenced', source: 'gag', durationRounds: 'until_removed', appliedRound: 0 },
+      ],
+    };
+    const r = castSpell({
+      caster: c, runtime, spellSlug: 'fire-bolt', slotLevel: 0,
+      targets: [{ id: 'm1', ac: 10 }],
+      spellMeta: { components: 'V S M (a tiny torch)' },
+    }, () => 0.5);
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('component_silenced');
+    // No slot consumed (it's a cantrip), no mutations / damage applied.
+    expect(r.mutations).toEqual([]);
+  });
+
+  it('component validation runs BEFORE slot consume — leveled spell with no hand and no focus refused without burning slot', () => {
+    const c = pcCaster({ spellsKnown: ['magic-missile'] });
+    const runtime = runtimeFor(c);
+    const r = castSpell({
+      caster: c, runtime, spellSlug: 'magic-missile', slotLevel: 1,
+      targets: [{ id: 'm1', ac: 10 }],
+      spellMeta: { components: 'V S M (a piece of phosphorus or wychwood, or a glowworm)' },
+      freeHand: false,
+    }, () => 0.5);
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('component_no_free_hand');
+    expect(r.mutations).toEqual([]);
+  });
+
+  it('focus replaces non-costly material — wizard with arcane focus casts S+M spell with no hand and no possession', () => {
+    const c: Character = {
+      ...pcCaster({ spellsKnown: ['fire-bolt'] }),
+      classSlug: 'wizard',
+      equippedFocus: { kind: 'arcane', itemSlug: 'crystal-orb' },
+    };
+    const runtime = runtimeFor(c);
+    const r = castSpell({
+      caster: c, runtime, spellSlug: 'fire-bolt', slotLevel: 0,
+      targets: [{ id: 'm1', ac: 10 }],
+      spellMeta: { components: 'V S M (a sprig of mistletoe)' },
+      freeHand: false,
+      hasMaterial: false,
+    }, () => 0.5);
+    expect(r.ok).toBe(true);
+  });
+
+  it('costly material requires actual possession even with focus', () => {
+    const c: Character = {
+      ...pcCaster({ spellsKnown: ['fireball'] }),
+      classSlug: 'wizard',
+      equippedFocus: { kind: 'arcane', itemSlug: 'crystal-orb' },
+    };
+    const runtime = runtimeFor(c);
+    const r = castSpell({
+      caster: c, runtime, spellSlug: 'fireball', slotLevel: 3,
+      targets: [{ id: 'm1' }],
+      spellMeta: { components: 'V S M (diamond dust worth 25 gp, consumed)' },
+      freeHand: false,
+      hasMaterial: false,
+    }, () => 0.5);
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('component_missing_material');
+  });
+
+  it('hasMaterial: true (default) bypasses material check', () => {
+    const c: Character = pcCaster({ spellsKnown: ['fire-bolt'] });
+    const runtime = runtimeFor(c);
+    const r = castSpell({
+      caster: c, runtime, spellSlug: 'fire-bolt', slotLevel: 0,
+      targets: [{ id: 'm1', ac: 10 }],
+      spellMeta: { components: 'V S M (a tiny torch)' },
+      // hasMaterial omitted → defaults true
+    }, () => 0.5);
+    expect(r.ok).toBe(true);
+  });
+
+  it('S-only spell (e.g., shield) does not check verbal/material', () => {
+    const c: Character = {
+      ...pcCaster({ spellsKnown: ['shield'] }),
+      classSlug: 'wizard',
+    };
+    const runtime: ActorRuntimeState = {
+      ...runtimeFor(c),
+      conditions: [
+        { slug: 'silenced', source: 'gag', durationRounds: 'until_removed', appliedRound: 0 },
+      ],
+    };
+    // Shield in PHB is V S — but we're testing a hypothetical S-only here.
+    const r = castSpell({
+      caster: c, runtime, spellSlug: 'shield', slotLevel: 1,
+      targets: [{ id: c.id }],
+      spellMeta: { components: 'S' },
+      freeHand: true,
+      hasMaterial: false,
+    }, () => 0.5);
+    expect(r.ok).toBe(true);
+  });
+
+  it('non-caster class with focus has canUseFocus=false — somatic still requires hand', () => {
+    // A fighter who picked up an "arcane focus" but has no spellcasting class
+    // shouldn't get focus benefits. classSlug='fighter' → focusKindForClass returns null.
+    const c: Character = {
+      ...pcCaster({ spellsKnown: ['fire-bolt'] }),
+      classSlug: 'fighter', // no focus kind
+      equippedFocus: { kind: 'arcane', itemSlug: 'orb' },
+    };
+    const runtime = runtimeFor(c);
+    const r = castSpell({
+      caster: c, runtime, spellSlug: 'fire-bolt', slotLevel: 0,
+      targets: [{ id: 'm1', ac: 10 }],
+      spellMeta: { components: 'V S' },
+      freeHand: false,
+    }, () => 0.5);
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('component_no_free_hand');
+  });
+
+  it('legacy callers without components meta skip validation entirely', () => {
+    const c = pcCaster({ spellsKnown: ['fire-bolt'] });
+    const runtime: ActorRuntimeState = {
+      ...runtimeFor(c),
+      conditions: [
+        { slug: 'silenced', source: 'gag', durationRounds: 'until_removed', appliedRound: 0 },
+      ],
+    };
+    const r = castSpell({
+      caster: c, runtime, spellSlug: 'fire-bolt', slotLevel: 0,
+      targets: [{ id: 'm1', ac: 10 }],
+      // No spellMeta.components — should NOT validate.
+    }, () => 0.5);
+    expect(r.ok).toBe(true);
+  });
+});
