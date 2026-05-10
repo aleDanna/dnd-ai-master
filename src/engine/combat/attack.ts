@@ -5,7 +5,7 @@ import { defaultRng, type Rng } from '../rand';
 import { getEffectsForActor } from '../condition-effects';
 import { canConsumeAction } from './turn-state';
 import { coverAcBonus, isTotalCover } from './cover';
-import { isAmmunition, isLoading, meleeReachFor } from './weapon-properties';
+import { isAmmunition, isLight, isLoading, meleeReachFor } from './weapon-properties';
 
 export interface WeaponSpec {
   name: string;
@@ -79,6 +79,17 @@ export interface MakeAttackInput {
    * 'target_in_total_cover' WITHOUT consuming the action.
    */
   cover?: CoverLevel;
+  /**
+   * PHB §3.15: when true, this is the bonus-action off-hand attack of
+   * two-weapon fighting. Requires:
+   *   - weapon has the 'light' property
+   *   - actor's turnState.actionUsed === true (Attack action this turn)
+   *   - turnState.bonusUsed === false
+   *   - turnState.offHandAttackUsed === false
+   * Damage formula does NOT add the ability modifier when positive
+   * (PHB exception: negative modifiers DO apply).
+   */
+  offHand?: boolean;
 }
 
 export interface MakeAttackResultData {
@@ -136,6 +147,23 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
 
   const attackerTurnState = input.attackerRuntime?.turnState;
 
+  // PHB §3.15 — two-weapon fighting validation. Run BEFORE the standard
+  // action-economy check because off-hand uses bonus action, not action.
+  if (input.offHand) {
+    if (!isLight(input.weapon)) {
+      return { ok: false, error: 'offhand_requires_light_weapon', rolls: [], mutations: [] };
+    }
+    if (!attackerTurnState?.actionUsed) {
+      return { ok: false, error: 'offhand_requires_attack_action', rolls: [], mutations: [] };
+    }
+    if (attackerTurnState.bonusUsed) {
+      return { ok: false, error: 'bonus_already_used', rolls: [], mutations: [] };
+    }
+    if (attackerTurnState.offHandAttackUsed) {
+      return { ok: false, error: 'offhand_already_used', rolls: [], mutations: [] };
+    }
+  }
+
   // PHB §9.4 — loading weapons may only fire once per turn (across action,
   // bonus, or reaction). Reactions on a different actor's turn are
   // unaffected (turnState resets each start_turn). The block applies to
@@ -167,7 +195,11 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
   // skipped when this is an Extra Attack / Multiattack follow-up: PHB §10 says
   // a single Attack action grants multiple swings, so the budget was already
   // paid by the first attack of the turn.
-  const actionKind: 'action' | 'reaction' = input.useReaction ? 'reaction' : 'action';
+  const actionKind: 'action' | 'bonus' | 'reaction' = input.offHand
+    ? 'bonus'
+    : input.useReaction
+      ? 'reaction'
+      : 'action';
   if (
     !input.isExtraAttack &&
     attackerTurnState &&
@@ -175,7 +207,12 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
   ) {
     return {
       ok: false,
-      error: actionKind === 'reaction' ? 'reaction_already_used' : 'action_already_used',
+      error:
+        actionKind === 'reaction'
+          ? 'reaction_already_used'
+          : actionKind === 'bonus'
+            ? 'bonus_already_used'
+            : 'action_already_used',
       rolls: [],
       mutations: [],
     };
@@ -203,6 +240,11 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
     isLoading(input.weapon) && attackerTurnState && !input.isExtraAttack
       ? { op: 'mark_loading_shot', actorId: input.attacker.id }
       : null;
+
+  // PHB §3.15 — sets offHandAttackUsed=true alongside consume_action(bonus).
+  const markOffHandMut: Mutation | null = input.offHand
+    ? { op: 'mark_offhand_attack', actorId: input.attacker.id }
+    : null;
 
   // PHB §3.5 Help: a 'helped' beneficiary gets ADV on the next d20 (consumed
   // on first use, regardless of hit/miss). Detect on the attacker, and
@@ -265,6 +307,7 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
     if (spendInspirationMut) missMuts.push(spendInspirationMut);
     if (consumeAmmoMut) missMuts.push(consumeAmmoMut);
     if (markLoadingMut) missMuts.push(markLoadingMut);
+    if (markOffHandMut) missMuts.push(markOffHandMut);
     return {
       ok: false,
       error: 'miss',
@@ -285,6 +328,7 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
     if (spendInspirationMut) missMuts.push(spendInspirationMut);
     if (consumeAmmoMut) missMuts.push(consumeAmmoMut);
     if (markLoadingMut) missMuts.push(markLoadingMut);
+    if (markOffHandMut) missMuts.push(markOffHandMut);
     return {
       ok: false,
       error: 'miss',
@@ -298,8 +342,16 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
   const autoCrit = meleeWithin5 && fxTarget.incomingMeleeWithin5ftAutoCrit;
   const crit = naturalCrit || autoCrit;
 
-  const damageMod = abilityModifier(input.weapon.useDex ? input.attacker.abilities.DEX : input.attacker.abilities.STR);
-  const damageFormula = `${input.weapon.damage}${damageMod >= 0 ? '+' : ''}${damageMod}`;
+  const rawDamageMod = abilityModifier(
+    input.weapon.useDex ? input.attacker.abilities.DEX : input.attacker.abilities.STR,
+  );
+  // PHB §3.15: off-hand bonus attack does NOT add the ability modifier to
+  // damage UNLESS the modifier is negative (the negative still applies).
+  const damageMod = input.offHand && rawDamageMod >= 0 ? 0 : rawDamageMod;
+  const damageFormula =
+    damageMod === 0
+      ? input.weapon.damage
+      : `${input.weapon.damage}${damageMod > 0 ? '+' : ''}${damageMod}`;
   const damageRoll = rollDamage(damageFormula, { crit }, rng);
   const rawDamage = Math.max(0, damageRoll.total);
   const finalDamage = applyDamageModifiers(rawDamage, input.weapon.damageType, input.target);
@@ -326,6 +378,7 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
       if (spendInspirationMut) mutations.push(spendInspirationMut);
       if (consumeAmmoMut) mutations.push(consumeAmmoMut);
       if (markLoadingMut) mutations.push(markLoadingMut);
+      if (markOffHandMut) mutations.push(markOffHandMut);
       return {
         ok: true,
         data: { hit: true, crit, rawDamage, finalDamage, knockedOut: true },
@@ -344,6 +397,7 @@ export function makeAttack(input: MakeAttackInput, rng: Rng = defaultRng): Actio
   if (spendInspirationMut) mutations.push(spendInspirationMut);
   if (consumeAmmoMut) mutations.push(consumeAmmoMut);
   if (markLoadingMut) mutations.push(markLoadingMut);
+  if (markOffHandMut) mutations.push(markOffHandMut);
 
   return {
     ok: true,

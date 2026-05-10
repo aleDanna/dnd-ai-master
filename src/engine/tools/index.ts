@@ -134,6 +134,11 @@ const ALWAYS_ON: AnthropicTool[] = [
           description:
             "PHB §3.12: cover protecting the target. half: +2 AC, three-quarters: +5 AC, total: errors target_in_total_cover (no action consumed).",
         },
+        offHand: {
+          type: 'boolean',
+          description:
+            "PHB §3.15: this is the bonus-action off-hand attack of two-weapon fighting. Requires weapon has 'light' property and the attacker already used their Attack action this turn. Damage does NOT add ability mod (unless negative).",
+        },
       },
     } as never,
   },

@@ -765,9 +765,12 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
         );
       break;
     }
-    case 'mark_loading_shot': {
-      // PHB §9.4 — set turnState.loadingShotUsed=true on the actor's
+    case 'mark_loading_shot':
+    case 'mark_offhand_attack': {
+      // PHB §9.4 / §3.15 — set a turnState boolean flag on the actor's
       // current turn. Mirror the load+write pattern used by consume_action.
+      const flag: 'loadingShotUsed' | 'offHandAttackUsed' =
+        m.op === 'mark_loading_shot' ? 'loadingShotUsed' : 'offHandAttackUsed';
       const isPc = m.actorId === ctx.characterId;
       if (isPc) {
         const [s] = await tx
@@ -777,7 +780,7 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
           .limit(1);
         if (!s) break;
         const current = (s.turnState as TurnState | null) ?? newTurnState();
-        const updated: TurnState = { ...current, loadingShotUsed: true };
+        const updated: TurnState = { ...current, [flag]: true };
         await tx
           .update(sessionStateTable)
           .set({ turnState: updated })
@@ -795,7 +798,7 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
           .limit(1);
         if (!a) break;
         const current = (a.turnState as TurnState | null) ?? newTurnState();
-        const updated: TurnState = { ...current, loadingShotUsed: true };
+        const updated: TurnState = { ...current, [flag]: true };
         await tx
           .update(combatActorsTable)
           .set({ turnState: updated })

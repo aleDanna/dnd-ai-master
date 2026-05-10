@@ -153,6 +153,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       knockOut: input.knockOut === true,
       useInspiration: input.useInspiration === true,
       cover: typeof input.cover === 'string' ? (input.cover as never) : undefined,
+      offHand: input.offHand === true,
     });
   },
 

@@ -995,6 +995,13 @@ describe('applyMutations', () => {
       expect((a!.turnState as { loadingShotUsed?: boolean } | null)?.loadingShotUsed).toBe(true);
     });
 
+    it('mark_offhand_attack on the PC sets sessionState.turnState.offHandAttackUsed (PHB §3.15)', async () => {
+      await applyMutations(SESSION_ID, [{ op: 'start_turn', actorId: PC_ID }], []);
+      await applyMutations(SESSION_ID, [{ op: 'mark_offhand_attack', actorId: PC_ID }], []);
+      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
+      expect((s!.turnState as { offHandAttackUsed?: boolean } | null)?.offHandAttackUsed).toBe(true);
+    });
+
     it('consume_ammo decrements characters.inventory[ammoSlug].qty', async () => {
       // Seed the PC with crossbow bolts.
       await applyMutations(SESSION_ID, [

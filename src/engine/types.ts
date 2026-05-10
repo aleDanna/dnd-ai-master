@@ -264,6 +264,12 @@ export interface TurnState {
    * action/bonus/reaction). Reset by start_turn / newTurnState.
    */
   loadingShotUsed?: boolean;
+  /**
+   * PHB §3.15 — set true after the actor performs the bonus-action off-hand
+   * attack of two-weapon fighting. Blocks subsequent off-hand attacks in the
+   * same turn. Reset by start_turn / newTurnState.
+   */
+  offHandAttackUsed?: boolean;
 }
 
 // ─── Cover (PHB §3.12) ─────────────────────────────────────────────────────
@@ -490,6 +496,10 @@ export type Mutation =
   // Used after an attack with a 'loading' weapon to block subsequent
   // shots within the same turn. Reset on start_turn.
   | { op: 'mark_loading_shot'; actorId: string }
+  // PHB §3.15 — set turnState.offHandAttackUsed = true. Emitted alongside
+  // a `consume_action kind:'bonus'` from the off-hand attack of two-weapon
+  // fighting. Reset on start_turn.
+  | { op: 'mark_offhand_attack'; actorId: string }
   // PHB §9.4 — decrement inventory[ammoSlug].qty by qty (default 1) on
   // a successful resolution of an ammunition weapon attack. Removes the
   // entry if qty reaches 0. PC-only.
