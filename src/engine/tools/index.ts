@@ -874,6 +874,105 @@ const ALWAYS_ON: AnthropicTool[] = [
       },
     } as never,
   },
+  // ── Phase 12: crafting / downtime (PHB §5 + DMG) ──
+  {
+    name: 'start_crafting',
+    description:
+      "PHB §5 + DMG crafting rules: kick off a downtime crafting project. The engine computes the required days + gp from the kind: 'item' uses itemPriceGp (days = ceil(P × 2), gp = ceil(P / 2)); 'magic_item' uses rarity (common 4/50, uncommon 20/200, rare 100/2000, very_rare 500/20000, legendary 2500/100000); 'scroll' uses spellLevel (cantrip 1/15; L1+ days = max(2, 2L), gp = L²·25 + 25); 'potion' uses spellLevel bracketed onto magic-item rarity (≤1 common, 2-3 uncommon, 4-5 rare, 6+ very_rare). The project is appended to character.craftingProjects with daysRemaining = days, gpSpent = 0, and a fresh id. Errors: unknown_character, invalid_recipe_slug, invalid_kind, invalid_item_price, invalid_rarity, invalid_spell_level.",
+    input_schema: {
+      type: 'object',
+      required: ['character', 'recipeSlug', 'kind'],
+      properties: {
+        character: ACTOR_ID,
+        recipeSlug: {
+          type: 'string',
+          description:
+            'Slug of the resulting item (e.g. "longsword", "potion-of-healing", "scroll-of-fireball"). Lower-case; must match an SRD/codex entry the master will narrate later.',
+        },
+        kind: {
+          type: 'string',
+          enum: ['item', 'magic_item', 'scroll', 'potion'],
+          description:
+            "Category of crafting project. Drives which sub-input is required: 'item' → itemPriceGp; 'magic_item' → rarity; 'scroll'/'potion' → spellLevel.",
+        },
+        itemPriceGp: {
+          type: 'number',
+          minimum: 0,
+          description: "List price in gp (only for kind='item'). E.g. longsword = 15 gp.",
+        },
+        rarity: {
+          type: 'string',
+          enum: ['common', 'uncommon', 'rare', 'very_rare', 'legendary'],
+          description: "Magic-item rarity (only for kind='magic_item'). Artifacts are not craftable.",
+        },
+        spellLevel: {
+          type: 'integer',
+          minimum: 0,
+          maximum: 9,
+          description: "Spell level the scroll/potion captures (only for kind='scroll' or 'potion'). Cantrips = 0.",
+        },
+        projectId: {
+          type: 'string',
+          description: 'Optional explicit project id (otherwise the engine generates a UUID). Useful for tests.',
+        },
+        startedRound: {
+          type: 'integer',
+          minimum: 0,
+          description: 'Optional bookkeeping: the combat/narrative round the project starts in.',
+        },
+      },
+    } as never,
+  },
+  {
+    name: 'progress_crafting',
+    description:
+      'PHB §5 + DMG crafting: advance an in-flight project by `daysSpent` calendar days, optionally committing `gpDelta` more gp toward the material cost. The engine clamps `daysRemaining` at 0 and adds `gpDelta` (default 0) to `gpSpent`. Re-applying with `daysSpent: 0` is a no-op. Errors: unknown_character, unknown_project, invalid_days.',
+    input_schema: {
+      type: 'object',
+      required: ['character', 'projectId', 'daysSpent'],
+      properties: {
+        character: ACTOR_ID,
+        projectId: { type: 'string', description: 'Project id from `start_crafting`.' },
+        daysSpent: {
+          type: 'integer',
+          minimum: 0,
+          description: 'Number of downtime days the PC dedicated to this project.',
+        },
+        gpDelta: {
+          type: 'integer',
+          minimum: 0,
+          default: 0,
+          description: 'Optional gp committed in this progress chunk (cumulates with prior gpSpent).',
+        },
+      },
+    } as never,
+  },
+  {
+    name: 'complete_crafting',
+    description:
+      'PHB §5 + DMG crafting: finalise a project once `daysRemaining` reaches 0. The engine removes the project AND adds the recipe slug to inventory (qty +1) in the same transaction. Errors: unknown_character, unknown_project, not_ready (still has days remaining — call progress_crafting first).',
+    input_schema: {
+      type: 'object',
+      required: ['character', 'projectId'],
+      properties: {
+        character: ACTOR_ID,
+        projectId: { type: 'string', description: 'Project id from `start_crafting`.' },
+      },
+    } as never,
+  },
+  {
+    name: 'cancel_crafting',
+    description:
+      'PHB §5 + DMG crafting: abandon a project. The engine drops it from `character.craftingProjects` with NO refund and NO inventory side-effect. Permissive: succeeds with `cancelled:false` (no mutation) if the id is not present. Errors: unknown_character only.',
+    input_schema: {
+      type: 'object',
+      required: ['character', 'projectId'],
+      properties: {
+        character: ACTOR_ID,
+        projectId: { type: 'string', description: 'Project id from `start_crafting`.' },
+      },
+    } as never,
+  },
 ];
 
 /**

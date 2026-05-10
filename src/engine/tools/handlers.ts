@@ -1,5 +1,7 @@
 import type {
   ActionResult,
+  CraftingKind,
+  CraftingProject,
   DiceRoll,
   EngagementProfile,
   EngineState,
@@ -13,6 +15,17 @@ import type {
   TonalFrame,
   TravelPace,
 } from '../types';
+import {
+  isValidCraftingKind,
+  isValidCraftableRarity,
+  magicItemCraftingRequirements,
+  nonMagicalCraftingRequirements,
+  potionCraftingRequirements,
+  scrollCraftingRequirements,
+  type CraftableRarity,
+  type CraftingRequirements,
+  type CraftingSpellLevel,
+} from '../crafting';
 import {
   isValidTonalFrame,
   isValidEngagementProfile,
@@ -700,6 +713,66 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       targetId: String(input.targetId ?? input.target ?? ''),
       points: typeof input.points === 'number' ? input.points : undefined,
       curePoison: input.curePoison === true,
+    });
+  },
+
+  // Phase 12 — crafting (PHB §5 + DMG)
+  start_crafting: (state, input) => {
+    const ref = input.character ?? input.actor;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const charId = resolveCharacterId(state, ref);
+    return handleStartCrafting(state, {
+      character: charId,
+      recipeSlug: typeof input.recipeSlug === 'string' ? input.recipeSlug : '',
+      kind: input.kind as CraftingKind,
+      itemPriceGp: typeof input.itemPriceGp === 'number' ? input.itemPriceGp : undefined,
+      rarity:
+        typeof input.rarity === 'string' ? (input.rarity as CraftableRarity) : undefined,
+      spellLevel:
+        typeof input.spellLevel === 'number' ? (input.spellLevel as CraftingSpellLevel) : undefined,
+      projectId: typeof input.projectId === 'string' ? input.projectId : undefined,
+      startedRound:
+        typeof input.startedRound === 'number' ? input.startedRound : undefined,
+    });
+  },
+
+  progress_crafting: (state, input) => {
+    const ref = input.character ?? input.actor;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const charId = resolveCharacterId(state, ref);
+    return handleProgressCrafting(state, {
+      character: charId,
+      projectId: typeof input.projectId === 'string' ? input.projectId : '',
+      daysSpent: typeof input.daysSpent === 'number' ? input.daysSpent : 0,
+      gpDelta: typeof input.gpDelta === 'number' ? input.gpDelta : undefined,
+    });
+  },
+
+  complete_crafting: (state, input) => {
+    const ref = input.character ?? input.actor;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const charId = resolveCharacterId(state, ref);
+    return handleCompleteCrafting(state, {
+      character: charId,
+      projectId: typeof input.projectId === 'string' ? input.projectId : '',
+    });
+  },
+
+  cancel_crafting: (state, input) => {
+    const ref = input.character ?? input.actor;
+    if (ref == null) {
+      return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+    }
+    const charId = resolveCharacterId(state, ref);
+    return handleCancelCrafting(state, {
+      character: charId,
+      projectId: typeof input.projectId === 'string' ? input.projectId : '',
     });
   },
 };
@@ -2134,6 +2207,273 @@ export function handleUpdateNPCBeats(
     data: { npcSlug: input.npcSlug, beats: cleaned },
     rolls: [],
     mutations: [{ op: 'update_npc_beats', npcSlug: input.npcSlug, beats: cleaned }],
+  };
+}
+
+// ─── Crafting (PHB §5 + DMG, Phase 12) ─────────────────────────────────────
+
+/**
+ * Compute the crafting requirements for a given kind. Branches on
+ * `kind` and validates the kind-specific input is present + sane.
+ * Returns a discriminated result so callers can surface a tool error
+ * instead of throwing.
+ */
+function computeCraftingRequirements(input: {
+  kind: CraftingKind;
+  itemPriceGp?: number;
+  rarity?: CraftableRarity;
+  spellLevel?: CraftingSpellLevel;
+}):
+  | { ok: true; req: CraftingRequirements }
+  | { ok: false; error: string } {
+  switch (input.kind) {
+    case 'item': {
+      const price = input.itemPriceGp ?? 0;
+      if (typeof price !== 'number' || !Number.isFinite(price) || price < 0) {
+        return { ok: false, error: 'invalid_item_price' };
+      }
+      return { ok: true, req: nonMagicalCraftingRequirements(price) };
+    }
+    case 'magic_item': {
+      if (!isValidCraftableRarity(input.rarity)) {
+        return { ok: false, error: 'invalid_rarity' };
+      }
+      return { ok: true, req: magicItemCraftingRequirements(input.rarity) };
+    }
+    case 'scroll': {
+      const lvl = input.spellLevel;
+      if (typeof lvl !== 'number' || !Number.isInteger(lvl) || lvl < 0 || lvl > 9) {
+        return { ok: false, error: 'invalid_spell_level' };
+      }
+      return { ok: true, req: scrollCraftingRequirements(lvl as CraftingSpellLevel) };
+    }
+    case 'potion': {
+      // Potion accepts spell level 0 by default (treated as common).
+      const lvl = input.spellLevel ?? 0;
+      if (typeof lvl !== 'number' || !Number.isInteger(lvl) || lvl < 0 || lvl > 9) {
+        return { ok: false, error: 'invalid_spell_level' };
+      }
+      return { ok: true, req: potionCraftingRequirements(lvl as CraftingSpellLevel) };
+    }
+  }
+}
+
+/** Generate a unique-enough project id without depending on crypto APIs. */
+function generateProjectId(recipeSlug: string): string {
+  const cryptoApi: { randomUUID?: () => string } | undefined =
+    typeof globalThis !== 'undefined'
+      ? ((globalThis as { crypto?: { randomUUID?: () => string } }).crypto ?? undefined)
+      : undefined;
+  if (cryptoApi && typeof cryptoApi.randomUUID === 'function') {
+    return cryptoApi.randomUUID();
+  }
+  // Fallback: slug + timestamp + random suffix. Good enough for tests/dev
+  // where crypto.randomUUID is missing; the applicator is idempotent on
+  // duplicate ids so collisions don't corrupt state.
+  const ts = Date.now().toString(36);
+  const rnd = Math.floor(Math.random() * 1_000_000).toString(36);
+  return `${recipeSlug || 'project'}-${ts}-${rnd}`;
+}
+
+/**
+ * PHB §5 + DMG: kick off a crafting project. Validates the kind and the
+ * kind-specific inputs, computes the requirements, generates a project
+ * id, and emits `start_crafting`.
+ *
+ * Errors:
+ *   - `unknown_character` — character not found.
+ *   - `invalid_recipe_slug` — empty/whitespace-only slug.
+ *   - `invalid_kind` — kind not in {item, magic_item, scroll, potion}.
+ *   - `invalid_item_price` / `invalid_rarity` / `invalid_spell_level`
+ *     — kind-specific input missing or out of range.
+ */
+export function handleStartCrafting(
+  state: EngineState,
+  input: {
+    character: string;
+    recipeSlug: string;
+    kind: CraftingKind;
+    itemPriceGp?: number;
+    rarity?: CraftableRarity;
+    spellLevel?: CraftingSpellLevel;
+    projectId?: string;
+    startedRound?: number;
+  },
+): ActionResult<{ project: CraftingProject }> {
+  const char = state.characters.find((c) => c.id === input.character);
+  if (!char) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+  const recipeSlug = (input.recipeSlug ?? '').trim().toLowerCase();
+  if (!recipeSlug) {
+    return { ok: false, error: 'invalid_recipe_slug', rolls: [], mutations: [] };
+  }
+  if (!isValidCraftingKind(input.kind)) {
+    return { ok: false, error: 'invalid_kind', rolls: [], mutations: [] };
+  }
+
+  const reqRes = computeCraftingRequirements({
+    kind: input.kind,
+    itemPriceGp: input.itemPriceGp,
+    rarity: input.rarity,
+    spellLevel: input.spellLevel,
+  });
+  if (!reqRes.ok) {
+    return { ok: false, error: reqRes.error, rolls: [], mutations: [] };
+  }
+
+  const project: CraftingProject = {
+    id:
+      typeof input.projectId === 'string' && input.projectId.trim()
+        ? input.projectId.trim()
+        : generateProjectId(recipeSlug),
+    recipeSlug,
+    kind: input.kind,
+    daysRemaining: reqRes.req.daysRequired,
+    gpSpent: 0,
+  };
+  if (typeof input.startedRound === 'number' && Number.isFinite(input.startedRound)) {
+    project.startedRound = Math.floor(input.startedRound);
+  }
+
+  return {
+    ok: true,
+    data: { project },
+    rolls: [],
+    mutations: [
+      {
+        op: 'start_crafting',
+        characterId: char.id,
+        project,
+      },
+    ],
+  };
+}
+
+/**
+ * PHB §5 + DMG: advance an in-flight crafting project by `daysSpent`
+ * days, optionally committing `gpDelta` more gp to materials.
+ *
+ * Errors:
+ *   - `unknown_character`, `unknown_project`, `invalid_days`.
+ */
+export function handleProgressCrafting(
+  state: EngineState,
+  input: {
+    character: string;
+    projectId: string;
+    daysSpent: number;
+    gpDelta?: number;
+  },
+): ActionResult<{ projectId: string; daysSpent: number; gpDelta: number }> {
+  const char = state.characters.find((c) => c.id === input.character);
+  if (!char) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+  const projects = char.craftingProjects ?? [];
+  const project = projects.find((p) => p.id === input.projectId);
+  if (!project) {
+    return { ok: false, error: 'unknown_project', rolls: [], mutations: [] };
+  }
+  if (
+    typeof input.daysSpent !== 'number' ||
+    !Number.isFinite(input.daysSpent) ||
+    input.daysSpent < 0
+  ) {
+    return { ok: false, error: 'invalid_days', rolls: [], mutations: [] };
+  }
+  const gpDelta = Math.max(0, Math.floor(input.gpDelta ?? 0));
+  const daysSpent = Math.floor(input.daysSpent);
+  return {
+    ok: true,
+    data: { projectId: project.id, daysSpent, gpDelta },
+    rolls: [],
+    mutations: [
+      {
+        op: 'progress_crafting',
+        characterId: char.id,
+        projectId: project.id,
+        daysSpent,
+        gpDelta,
+      },
+    ],
+  };
+}
+
+/**
+ * PHB §5 + DMG: finalise a crafting project once the days remaining hit
+ * zero. The applicator removes the project AND adds the recipe slug to
+ * inventory; from the tool layer's perspective we just emit the
+ * `complete_crafting` mutation.
+ *
+ * Errors:
+ *   - `unknown_character`, `unknown_project`, `not_ready` (the project
+ *     still has days remaining).
+ */
+export function handleCompleteCrafting(
+  state: EngineState,
+  input: { character: string; projectId: string },
+): ActionResult<{ project: CraftingProject }> {
+  const char = state.characters.find((c) => c.id === input.character);
+  if (!char) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+  const projects = char.craftingProjects ?? [];
+  const project = projects.find((p) => p.id === input.projectId);
+  if (!project) {
+    return { ok: false, error: 'unknown_project', rolls: [], mutations: [] };
+  }
+  if (project.daysRemaining > 0) {
+    return { ok: false, error: 'not_ready', rolls: [], mutations: [] };
+  }
+  return {
+    ok: true,
+    data: { project },
+    rolls: [],
+    mutations: [
+      {
+        op: 'complete_crafting',
+        characterId: char.id,
+        projectId: project.id,
+      },
+    ],
+  };
+}
+
+/**
+ * PHB §5 + DMG: abandon a crafting project. No refund, no inventory
+ * side-effect. Permissive: succeeds with `cancelled:false` if the id is
+ * not present (master can call this without first verifying state).
+ */
+export function handleCancelCrafting(
+  state: EngineState,
+  input: { character: string; projectId: string },
+): ActionResult<{ cancelled: boolean }> {
+  const char = state.characters.find((c) => c.id === input.character);
+  if (!char) {
+    return { ok: false, error: 'unknown_character', rolls: [], mutations: [] };
+  }
+  const projects = char.craftingProjects ?? [];
+  const project = projects.find((p) => p.id === input.projectId);
+  if (!project) {
+    return {
+      ok: true,
+      data: { cancelled: false },
+      rolls: [],
+      mutations: [],
+    };
+  }
+  return {
+    ok: true,
+    data: { cancelled: true },
+    rolls: [],
+    mutations: [
+      {
+        op: 'cancel_crafting',
+        characterId: char.id,
+        projectId: project.id,
+      },
+    ],
   };
 }
 
