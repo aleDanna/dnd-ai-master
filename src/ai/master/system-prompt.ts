@@ -874,6 +874,81 @@ rimuove il progetto e aggiunge l'oggetto all'inventario), e
 \`cancel_crafting\` (annulla, nessun rimborso). Il master narra la
 fucina, l'inchiostro che si asciuga, l'alambicco che borbotta.
 
+### Stronghold + Downtime + Hirelings (PHB §6, 2024 PHB Bastion)
+
+The PC can spend downtime between adventures on long-running, non-combat
+projects, retain hirelings, and own a property (a Bastion).
+
+**Downtime activities** (PHB §6) — engine defaults the days/check:
+- \`practicing_profession\` → 5 days; earns lifestyle expenses for the week
+  (master may roll a tool/skill check on completion to upgrade the gain).
+- \`recuperating\` → 3 days, then DC 15 CON save → ends one disease or poison.
+- \`researching\` → 1 day per piece of info, DC 15 INT (Investigation) check.
+- \`training\` → 250 days at 1 gp/day → learn a new language or tool prof.
+- \`crafting\` → routed through Phase 12's \`start_crafting\` (NOT through
+  this tool — the kind exists in the union for completeness only).
+
+Tools:
+- \`start_downtime_activity({ character, activity, days? })\` — appends
+  a \`DowntimeActivity\` to \`character.downtimeActivities\` with a
+  stable id and the engine-default day count (override via \`days\` only
+  if narratively necessary).
+- \`complete_downtime_activity({ character, activityId })\` — REMOVES
+  the activity. The Master narrates the actual outcome (success, fail,
+  partial) and rolls any save/check the activity calls for.
+
+**Hirelings** (PHB §6):
+- \`skilled\`   = 2 gp/day (artisans, scribes, mercenaries).
+- \`unskilled\` = 2 sp/day (laborers, porters).
+
+Tools:
+- \`hire({ character, kind, count, days })\` — engine computes the
+  total cost (\`gp\`, \`sp\`) and stamps a \`Hireling\` record on
+  \`character.hirelings\`. The engine does NOT auto-deduct currency —
+  the master must \`remove_item({ slug: 'gp', qty })\` separately if
+  the master wants to enforce the wage in inventory.
+- \`dismiss_hireling({ character, hireId })\` — release the engagement.
+
+**Bastion** (2024 PHB simplified): the PC may own a base property:
+- \`modest\`    → small house/cottage, 2 default rooms, 2 defenders.
+- \`fortified\` → keep, 4 default rooms, 8 defenders.
+- \`castle\`    → 7 default rooms (with bumped levels), 30 defenders.
+
+Default rooms come from the engine: \`kitchen\`/\`storage\` for modest;
++ \`armory\`/\`training\` for fortified; + \`library\`/\`shrine\`/\`guesthouse\`
+for castle.
+
+Tools:
+- \`set_bastion({ character, name, fortification })\` — establish
+  (or replace) the bastion using engine defaults.
+- \`add_bastion_room({ character, kind, level? })\` — append a room
+  (\`workshop\`, \`library\`, \`armory\`, \`stable\`, \`garden\`, \`storage\`,
+  \`training\`, \`shrine\`, \`kitchen\`, \`guesthouse\`); \`level\` defaults
+  to 1 (basic), max 3 (master).
+
+Errors:
+- \`unknown_character\` — character mismatch.
+- \`invalid_activity\`, \`invalid_kind\`, \`invalid_count\`, \`invalid_days\`,
+  \`invalid_fortification\`, \`invalid_room_kind\`, \`invalid_room_level\`,
+  \`invalid_name\` — bad inputs.
+- \`unknown_activity\`, \`unknown_hireling\`, \`no_bastion\` — id mismatch.
+
+---
+
+Italiano: Phase 13 aggiunge downtime, mercenari, e bastion.
+Le **attività di downtime** (PHB §6) sono gestite via
+\`start_downtime_activity\` (5 valori: practicing_profession,
+recuperating, researching, training, crafting — l'ultimo è solo un tag
+narrativo: il vero crafting passa da Phase 12). Il master narra l'esito
+e tira eventuali save/check al \`complete_downtime_activity\`.
+I **mercenari** (\`hire\` / \`dismiss_hireling\`) costano 2 gp/giorno
+(skilled) o 2 sp/giorno (unskilled); l'engine calcola il totale ma NON
+deduce automaticamente le monete. Il **bastion** (\`set_bastion\` con
+tier modest/fortified/castle) usa i default dell'engine per stanze e
+difensori; \`add_bastion_room\` aggiunge stanze (workshop, library,
+armory, stable, garden, storage, training, shrine, kitchen, guesthouse;
+livello 1-3).
+
 ### Out-of-character (OOC) questions
 
 When a player message begins with "!", it is OUT OF CHARACTER — the
