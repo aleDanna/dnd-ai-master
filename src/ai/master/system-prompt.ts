@@ -808,6 +808,72 @@ poi chiama il tool dell'effetto specifico). Bardic Inspiration
 Lay on Hands (\`use_lay_on_hands({ targetId, points?, curePoison? })\` —
 pool = 5 × livello paladino).
 
+### Magic Item Creation & Crafting (PHB §5, DMG crafting rules)
+
+The PC can craft items, magic items, scrolls, and potions during downtime.
+The engine tracks projects on \`character.craftingProjects\` (an array of
+\`{ id, recipeSlug, kind, daysRemaining, gpSpent, startedRound? }\`).
+
+**Tools**:
+- \`start_crafting({ character, recipeSlug, kind, ... })\` — kicks off a
+  project. \`kind\` is one of \`'item' | 'magic_item' | 'scroll' | 'potion'\`,
+  and the kind decides which extra field is required:
+  - \`'item'\` → \`itemPriceGp\` (PHB list price)
+  - \`'magic_item'\` → \`rarity\` (\`common\` | \`uncommon\` | \`rare\` |
+    \`very_rare\` | \`legendary\` — artifacts are NOT craftable)
+  - \`'scroll'\` → \`spellLevel\` (0..9 — cantrip = 0)
+  - \`'potion'\` → \`spellLevel\` (0..9, optional; defaults to 0/common)
+- \`progress_crafting({ character, projectId, daysSpent, gpDelta? })\` —
+  advance the project by N days (and optionally commit more gp).
+- \`complete_crafting({ character, projectId })\` — when
+  \`daysRemaining === 0\`, removes the project AND adds \`recipeSlug\` to
+  inventory (qty +1) in the same transaction. Errors with \`not_ready\`
+  if the project still has days left.
+- \`cancel_crafting({ character, projectId })\` — abandon (no refund, no
+  inventory side-effect).
+
+**Days/GP requirements** the engine computes for you:
+
+| Kind | Days | GP cost |
+|---|---|---|
+| Non-magical item @ price P gp | ceil(P × 2) | ceil(P / 2) |
+| Common magic item | 4 | 50 |
+| Uncommon magic item | 20 | 200 |
+| Rare magic item | 100 | 2,000 |
+| Very rare magic item | 500 | 20,000 |
+| Legendary magic item | 2,500 | 100,000 |
+| Cantrip scroll | 1 | 15 |
+| Spell scroll @ level N (1..9) | max(2, 2N) | N² × 25 + 25 |
+| Potion @ spell level N | matches magic-item tier (≤1=common, 2-3=uncommon, 4-5=rare, 6+=very rare) | |
+
+The Master narrates the actual crafting work (the smoke from the forge,
+the drying of the parchment ink, the alchemical bubbling). Multi-day
+projects can be advanced in chunks via \`progress_crafting\` — typical
+flow: start → progress (one or more chunks) → complete.
+
+The PC is responsible for spending the gp narratively: deduct it from
+the inventory's \`gp\` entry via \`remove_item\` BEFORE \`start_crafting\`,
+or as part of the progress chunks via \`gpDelta\`. The engine does NOT
+auto-deduct currency — that's a master-side decision.
+
+Errors:
+- \`unknown_character\`, \`unknown_project\` — id mismatch.
+- \`invalid_recipe_slug\`, \`invalid_kind\`, \`invalid_item_price\`,
+  \`invalid_rarity\`, \`invalid_spell_level\` — bad inputs.
+- \`not_ready\` — \`complete_crafting\` called before days reached 0.
+
+---
+
+Italiano: Phase 12 aggiunge il sistema di crafting. La PG può creare
+oggetti non magici, oggetti magici, pergamene, e pozioni durante il
+tempo di downtime. L'engine traccia i progetti su
+\`character.craftingProjects\`. I tool sono \`start_crafting\` (avvia un
+progetto, calcola giorni/gp dal kind), \`progress_crafting\` (avanza N
+giorni, opzionale gpDelta), \`complete_crafting\` (a daysRemaining=0
+rimuove il progetto e aggiunge l'oggetto all'inventario), e
+\`cancel_crafting\` (annulla, nessun rimborso). Il master narra la
+fucina, l'inchiostro che si asciuga, l'alambicco che borbotta.
+
 ### Out-of-character (OOC) questions
 
 When a player message begins with "!", it is OUT OF CHARACTER — the
