@@ -7,6 +7,8 @@ import {
 } from '@/db/schema';
 import { isCurrencySlug } from './catalog';
 
+export type InventoryItemKind = 'weapon' | 'armor' | 'gear' | 'currency' | 'named_item' | 'unknown';
+
 // Each row in `character.inventory` is a `{slug, qty, equipped}` triple. To
 // produce the master-facing snapshot we enrich each entry with the catalog
 // metadata (name, damage, AC formula, …) so the master doesn't need to
@@ -118,7 +120,7 @@ export interface MasterInventoryView {
   slug: string;
   qty: number;
   equipped?: boolean;
-  kind: EnrichedInventoryItem['kind'];
+  kind: InventoryItemKind;
   name?: string;
   damage?: string;            // weapon
   damageType?: string;        // weapon

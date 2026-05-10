@@ -260,7 +260,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
   },
 };
 
-function resolveCharacterId(state: EngineState, actorRef: unknown): string {
+export function resolveCharacterId(state: EngineState, actorRef: unknown): string {
   if (typeof actorRef === 'string' && actorRef === 'player_character' && state.characters.length === 1) {
     return state.characters[0]!.id;
   }
@@ -268,9 +268,11 @@ function resolveCharacterId(state: EngineState, actorRef: unknown): string {
 }
 
 import { lookupCodex } from './lookup-codex';
+import { addNarrativeItem } from './add-narrative-item';
 
 export interface DbToolCtx {
   sessionId: string;
+  state: EngineState;
 }
 
 export type DbToolHandler = (
@@ -280,4 +282,5 @@ export type DbToolHandler = (
 
 export const TOOL_HANDLERS_DB: Record<string, DbToolHandler> = {
   lookup_codex: (ctx, input) => lookupCodex(ctx, input),
+  add_narrative_item: (ctx, input) => addNarrativeItem(ctx, input),
 };

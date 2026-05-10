@@ -211,6 +211,20 @@ const ALWAYS_ON: AnthropicTool[] = [
     } as never,
   },
   {
+    name: 'add_narrative_item',
+    description:
+      "Add a purely-narrative item to the player's inventory (a note, a letter, a strange amulet of unknown power, a holy symbol of an unknown saint, a memento). The item appears in inventory tagged '(narrativo)' and has no mechanical effect (no AC, no damage, no usable action). Use this ONLY for flavor; for weapons, armor, potions, ammo, or anything with stats use `add_item` with an SRD slug. The slug is auto-derived from `name`; if the same slug already exists in the codex this turn, the existing entry is reused (no overwrite). Treat narrative items as non-equippable (do NOT call equip on them).",
+    input_schema: {
+      type: 'object',
+      required: ['name'],
+      properties: {
+        name: { type: 'string', minLength: 1, maxLength: 80, description: 'Display name as the player will see it (e.g. "Strano amuleto di osso").' },
+        description: { type: 'string', maxLength: 120, description: 'Optional flavor description; helps the master remember the item on later turns. Truncated at 120 chars.' },
+        qty: { type: 'integer', minimum: 1, default: 1 },
+      },
+    } as never,
+  },
+  {
     name: 'remove_item',
     description:
       'Remove some quantity of an item from the player\'s inventory. Use when the player consumes a potion, spends gold, drops gear, etc. The item is dropped from inventory entirely when its qty reaches 0.',

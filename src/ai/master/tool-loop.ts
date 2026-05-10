@@ -135,7 +135,7 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
           result = { ok: false, error: 'missing_session_for_db_tool', rolls: [], mutations: [] };
         } else {
           try {
-            result = await dbHandler({ sessionId }, tu.input);
+            result = await dbHandler({ sessionId, state }, tu.input);
           } catch (e) {
             result = { ok: false, error: e instanceof Error ? e.message : String(e), rolls: [], mutations: [] };
           }

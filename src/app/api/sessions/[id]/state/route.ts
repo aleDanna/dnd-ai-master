@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions, sessionState, combatActors, characters } from '@/db/schema';
+import { enrichInventoryItems, formatEnrichedForMaster } from '@/srd/enrich-inventory';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
@@ -105,10 +106,19 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
             .from(characters)
             .where(eq(characters.id, session.characterId))
             .limit(1);
-          const payload = JSON.stringify({ session, state, actors, character });
+
+          // Enriched view for the left-pane UI: lets the client display narrative
+          // items by name + (narrativo) suffix without a per-item codex lookup.
+          // Empty inventory short-circuits to skip the round-trip.
+          const enrichedInventory = character && character.inventory.length > 0
+            ? formatEnrichedForMaster(await enrichInventoryItems(character.inventory, { sessionId }))
+            : [];
+
+          const characterWithEnriched = character ? { ...character, enrichedInventory } : null;
+          const payload = JSON.stringify({ session, state, actors, character: characterWithEnriched });
           if (payload !== last) {
             try {
-              send('snapshot', { session, state, actors, character });
+              send('snapshot', { session, state, actors, character: characterWithEnriched });
             } catch {
               // client disconnected; stop polling
               closed = true;
