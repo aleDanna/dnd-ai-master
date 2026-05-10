@@ -142,6 +142,10 @@ const APPLIERS: Record<Exclude<ConditionSlug, 'exhaustion'>, (f: ConditionEffect
   flying: () => { /* movement mode handled at movement layer */ },
   'mage-armored': () => { /* AC base override handled at AC compute */ },
   helped: () => { /* PHB §3.5: advantage on next d20 — handled at roll site */ },
+  // PHB §8.3: silenced creatures cannot speak; the gating of Verbal-component
+  // spells is handled by the component validator inside `castSpell`. This
+  // applier is intentionally a no-op so the static flag table stays clean.
+  silenced: () => { /* V-component gating handled at cast site */ },
 };
 
 function applyExhaustion(f: ConditionEffectFlags, level: number): void {

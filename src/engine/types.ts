@@ -21,7 +21,13 @@ export type ConditionSlug =
   | 'incapacitated' | 'invisible' | 'paralyzed' | 'petrified' | 'poisoned'
   | 'prone' | 'restrained' | 'stunned' | 'unconscious' | 'exhaustion'
   // Mechanical buff markers (not strict SRD conditions, but tracked as condition-like state)
-  | 'blessed' | 'baned' | 'shielded' | 'flying' | 'mage-armored' | 'helped';
+  | 'blessed' | 'baned' | 'shielded' | 'flying' | 'mage-armored' | 'helped'
+  // PHB §8.3 — gates verbal-component spellcasting; the silenced creature
+  // cannot speak so any spell with a Verbal component fails. The applier
+  // is a no-op (the gating is enforced by the component validator inside
+  // `castSpell`); kept as a condition slug so the master can apply/remove
+  // it through the normal apply_condition / remove_condition flow.
+  | 'silenced';
 
 export interface Character {
   id: string;
@@ -72,6 +78,15 @@ export interface Character {
    * applicator/snapshot default it to absent.
    */
   senses?: Senses;
+  /**
+   * PHB §8.4 — currently held spellcasting focus. When set, the focus
+   * satisfies the somatic free-hand requirement AND substitutes any
+   * non-costly material component (a focus does NOT replace consumed
+   * or gp-priced materials). Optional: many casters never bother
+   * declaring a focus, in which case component validation falls back
+   * to free-hand + explicit material possession.
+   */
+  equippedFocus?: EquippedFocus;
 }
 
 // ─── Exploration: travel pace, light, senses, marching order (PHB §6) ──────
@@ -127,6 +142,45 @@ export interface SpellcastingState {
   slotsMax: Partial<Record<1|2|3|4|5|6|7|8|9, number>>;
   spellsKnown: string[];          // slugs
   spellsPrepared: string[];       // slugs (subset of known, for prep casters)
+}
+
+// ─── Spell components & spellcasting focus (PHB §8.3, §8.4) ───────────────
+
+/**
+ * PHB §8.3 — parsed Verbal/Somatic/Material flags for a spell. Computed
+ * by `parseComponents` over the SRD components string (e.g. "V S M (a
+ * sprig of mistletoe)"). Stored on results, not persisted.
+ */
+export interface SpellComponents {
+  verbal: boolean;
+  somatic: boolean;
+  material: boolean;
+  /** Free-text material description (e.g. "silver dust 25 gp consumed", "a sprig of mistletoe"). */
+  materialDescription?: string;
+  /** True if material has explicit cost (gp/sp/etc) or is consumed — focus cannot replace. */
+  materialCostly?: boolean;
+}
+
+/**
+ * PHB §8.4 — kind of spellcasting focus. Each kind matches a specific
+ * subset of the 12 PHB classes (see `focusKindForClass` in
+ * `engine/spells/components.ts`):
+ *   - arcane: sorcerer / warlock / wizard
+ *   - druidic: druid / ranger
+ *   - holy:   cleric / paladin
+ *   - instrument: bard
+ */
+export type FocusKind = 'arcane' | 'druidic' | 'holy' | 'instrument';
+
+/**
+ * PHB §8.4 — currently held focus on a Character. The kind must match
+ * the caster's class via `focusKindForClass`; otherwise the focus
+ * provides NO benefit during component validation.
+ */
+export interface EquippedFocus {
+  kind: FocusKind;
+  /** Inventory slug of the held focus (the engine validates it before set_focus). */
+  itemSlug: string;
 }
 
 export interface FeatureInstance {
@@ -503,7 +557,17 @@ export type Mutation =
   // PHB §9.4 — decrement inventory[ammoSlug].qty by qty (default 1) on
   // a successful resolution of an ammunition weapon attack. Removes the
   // entry if qty reaches 0. PC-only.
-  | { op: 'consume_ammo'; characterId: string; ammoSlug: string; qty: number };
+  | { op: 'consume_ammo'; characterId: string; ammoSlug: string; qty: number }
+  // PHB §8.4 — set the PC's currently held spellcasting focus. The kind
+  // is one of arcane/druidic/holy/instrument (validated at the tool
+  // layer); the itemSlug must be in the PC's inventory. The applicator
+  // overwrites any existing focus; the engine does not enforce class
+  // eligibility (focus-vs-class match is checked at component-validation
+  // time so the PC may "carry" an unsuitable focus narratively).
+  | { op: 'set_focus'; characterId: string; focus: EquippedFocus }
+  // PHB §8.4 — clear the PC's currently held focus. Idempotent (no-op
+  // when no focus is currently set).
+  | { op: 'unset_focus'; characterId: string };
 
 // ─── Action results ────────────────────────────────────────────────────────
 
