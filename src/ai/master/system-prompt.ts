@@ -349,6 +349,67 @@ Italiano: Se hai lanciato uno spell come bonus action questo turno, l'unico
 altro spell che puoi lanciare è un cantrip con casting time di 1 action.
 Il motore enforza la regola.
 
+### Cover & Weapon Properties (PHB §3.12, §9.4)
+
+**Cover** (PHB §3.12): when an obstacle partly hides the target from the
+attacker, pass \`cover\` to \`make_attack\`:
+- \`'half'\` (low wall, large furniture, narrow tree, an ally in the way): +2 AC.
+- \`'three-quarters'\` (portcullis, arrow slit, thick tree): +5 AC.
+- \`'total'\`: cannot be targeted at all. Tool returns
+  \`error: 'target_in_total_cover'\` and consumes NO action — the attacker
+  doesn't even try the swing. Re-narrate or move to a new line of sight.
+
+The same numeric bonus applies to DEX saves vs AoE that originates from
+the OTHER side of the cover (fireball through a doorway, dragon breath
+past a stone pillar). Pass \`cover\` to \`saving_throw\` when
+\`ability: 'DEX'\` — STR/CON/INT/WIS/CHA saves silently ignore cover.
+
+Natural 20 still crits through partial cover. Total cover is the only
+case where the attack is refused outright.
+
+**Weapon properties** (PHB §9.4): pass \`weapon.properties\` (any subset of
+\`'finesse' | 'heavy' | 'light' | 'loading' | 'reach' | 'thrown' |
+'two-handed' | 'versatile' | 'ammunition'\`) plus \`weapon.ammoSlug\` and
+optional \`weapon.range\` for ranged/thrown. The engine reads:
+- **reach**: melee reach is 10ft instead of 5ft. \`make_attack\` defaults
+  \`meleeRange\` to the weapon's reach — explicit \`meleeRange\` outside
+  reach errors \`out_of_reach\` (no consumption).
+- **loading** (light/heavy crossbow): only one shot per turn across
+  action/bonus/reaction. Subsequent shots error
+  \`loading_shot_already_used\`. The flag resets on \`start_turn\`.
+- **ammunition**: each successful resolution decrements
+  \`inventory[ammoSlug]\` by 1. Errors \`out_of_ammo\` if missing,
+  \`weapon_missing_ammoSlug\` if the weapon declares ammunition with no
+  slug. Recovery is narrative (PHB: half on a 1-min search post-combat).
+
+### Two-Weapon Fighting (PHB §3.15)
+
+When the PC has \`light\` melee weapons in BOTH hands, after taking the
+Attack action they may use a bonus action to attack with the off-hand.
+Pass \`offHand: true\` to \`make_attack\`. The engine validates:
+- weapon must have the \`light\` property → else
+  \`offhand_requires_light_weapon\`.
+- attacker's \`turnState.actionUsed === true\` (Attack action this turn)
+  → else \`offhand_requires_attack_action\`.
+- bonus action and offhand-attack must not have been used yet → else
+  \`bonus_already_used\` / \`offhand_already_used\`.
+
+The engine consumes the BONUS action (not the action) and emits a
+\`mark_offhand_attack\` mutation. Damage does NOT add the ability
+modifier (PHB exception: a NEGATIVE modifier still applies — a STR-8
+PC's off-hand dagger rolls 1d4-1, not 1d4).
+
+---
+
+Italiano: il **cover** (\`cover\`) modifica AC (\`half\` +2, \`three-quarters\`
++5, \`total\` impossibile colpire — nessuna azione consumata) e i tiri
+salvezza DEX. Le **weapon properties**: \`reach\` allunga il melee a 10ft;
+\`loading\` blocca un secondo colpo nello stesso turno; \`ammunition\`
+consuma una unità di \`ammoSlug\` dall'inventario per ogni colpo
+risolto. **Two-Weapon Fighting**: \`offHand: true\` su un'arma \`light\`
+DOPO l'Attack action consuma la bonus action e non somma il modifier
+positivo al danno.
+
 ### Inspiration & Survival (PHB §18.1, §6.3, §6.7)
 
 **Inspiration**: when the PC roleplays exceptionally well, completes a memorable
