@@ -5,6 +5,8 @@ import { db } from '@/db/client';
 import { sessions, sessionState, characters } from '@/db/schema';
 import { ensureUser } from '@/db/users';
 import { checkQuotas } from '@/ai/master/quotas';
+import { abilityModifier } from '@/engine/modifiers';
+import { deriveLevel1Spellcasting } from '@/characters/derive';
 
 export async function GET() {
   const { userId } = await auth();
@@ -48,24 +50,70 @@ export async function POST(req: NextRequest) {
   // happen under normal flow but keeps re-creation idempotent if the
   // client retries.
   let sessionCharacterId: string;
+  let instanceHpMax: number;
+  let instanceHitDiceMax: number;
   if (template.templateId) {
     sessionCharacterId = template.id;
+    instanceHpMax = template.hpMax;
+    instanceHitDiceMax = template.hitDiceMax;
   } else {
+    // Reset all per-campaign mutable fields to a fresh Level-1 state. The
+    // template might already be contaminated by previous bug-era sessions
+    // (level-ups, loot, attunement, etc. were written back to the
+    // template). Forking the contaminated state into a new campaign would
+    // hand the player a level-2 wizard with a longsword — exactly the
+    // bug the user reported. So when we fork, we override the mutable
+    // fields with their L1 derived values; identity / abilities / race /
+    // class / background (the static "template" parts) are preserved.
+    const conMod = abilityModifier(template.abilities.CON);
+    const dexMod = abilityModifier(template.abilities.DEX);
+    const freshHpMax = template.hitDieSize + conMod;
+    const freshAc = 10 + dexMod;
+    const freshSpellcasting = deriveLevel1Spellcasting(template.classSlug, template.abilities, 2);
+
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { id: _ignore, createdAt: _c, updatedAt: _u, ...templateData } = template;
     const [instance] = await db
       .insert(characters)
-      .values({ ...templateData, templateId: template.id })
+      .values({
+        ...templateData,
+        templateId: template.id,
+        // ── Reset progression / state to L1 fresh ──
+        level: 1,
+        xp: 0,
+        proficiencyBonus: 2,
+        hpMax: freshHpMax,
+        ac: freshAc,
+        hitDiceMax: 1,
+        classes: [{ slug: template.classSlug, level: 1 }],
+        spellcasting: freshSpellcasting,
+        spellsKnown: freshSpellcasting?.spellsKnown ?? [],
+        features: [],
+        inventory: [],
+        // ── Reset Phase 4-14 fields ──
+        inspiration: false,
+        attunedItems: [],
+        senses: null,
+        equippedFocus: null,
+        craftingProjects: [],
+        downtimeActivities: [],
+        hirelings: [],
+        bastion: null,
+        mountedOn: null,
+        embarkedOn: null,
+      })
       .returning();
     if (!instance) return NextResponse.json({ error: 'fork-failed' }, { status: 500 });
     sessionCharacterId = instance.id;
+    instanceHpMax = freshHpMax;
+    instanceHitDiceMax = 1;
   }
 
   const [session] = await db.insert(sessions).values({ userId, characterId: sessionCharacterId, premise: body.premise }).returning();
   await db.insert(sessionState).values({
     sessionId: session!.id,
-    hpCurrent: template.hpMax,
-    hitDiceRemaining: template.hitDiceMax,
+    hpCurrent: instanceHpMax,
+    hitDiceRemaining: instanceHitDiceMax,
   });
   return NextResponse.json({ id: session!.id });
 }
