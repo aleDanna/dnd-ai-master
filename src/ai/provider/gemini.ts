@@ -1,4 +1,4 @@
-import { GoogleGenAI, FunctionCallingConfigMode } from '@google/genai';
+import { GoogleGenAI, FunctionCallingConfigMode, HarmCategory, HarmBlockThreshold } from '@google/genai';
 import type {
   CompleteMessageInput,
   CompleteMessageOutput,
@@ -20,6 +20,24 @@ import { recordUsage } from '@/ai/master/usage';
 
 const MASTER_MODEL = process.env.GEMINI_MASTER_MODEL ?? 'gemini-2.5-pro';
 const LANGUAGE_MODEL = process.env.GEMINI_LANGUAGE_MODEL ?? 'gemini-2.5-flash-lite';
+
+/**
+ * Relaxed safety thresholds. D&D narration regularly contains implied violence
+ * ("you slash the goblin", "blood pools on the stone"), and Gemini's default
+ * BLOCK_MEDIUM_AND_ABOVE flags those scenes — the response comes back with
+ * finishReason='SAFETY' and zero content parts, which the memory extractor
+ * then logs as `extractor.bad_json` with an empty sample.
+ *
+ * BLOCK_ONLY_HIGH still blocks egregious content (graphic torture, hate, etc.)
+ * but lets normal heroic-fantasy combat through. This is appropriate for a
+ * D&D table where the genre baseline is "you fight monsters".
+ */
+const SAFETY_SETTINGS = [
+  { category: HarmCategory.HARM_CATEGORY_HARASSMENT,        threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,       threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+];
 
 const TRIVIAL_TOKENS = new Set(['ok', 'yes', 'no', 'sì', 'si', 'k', 'np']);
 function isTrivial(text: string): boolean {
@@ -77,8 +95,23 @@ export class GeminiProvider implements MasterProvider {
         ...(systemInstruction ? { systemInstruction } : {}),
         ...(functionDeclarations.length ? { tools: [{ functionDeclarations }] } : {}),
         maxOutputTokens: input.maxTokens ?? 4096,
+        safetySettings: SAFETY_SETTINGS,
       },
     }))) as GeminiResponse;
+
+    // Make safety blocks visible. When finishReason is 'SAFETY' or 'BLOCKLIST'
+    // the response has no content parts, and callers downstream (memory
+    // extractor, etc.) silently produce empty output. Logging here lets the
+    // user spot why a turn / chapter came back empty without enabling a debug
+    // build.
+    const finishReason = response.candidates?.[0]?.finishReason;
+    if (finishReason && finishReason !== 'STOP' && finishReason !== 'MAX_TOKENS') {
+      console.warn('gemini.completeMessage.unusual_finish', {
+        finishReason,
+        partCount: response.candidates?.[0]?.content?.parts?.length ?? 0,
+        model: input.model ?? MASTER_MODEL,
+      });
+    }
 
     const contentBlocks = geminiResponseToContentBlocks(response);
     const hasFunctionCall = contentBlocks.some((b) => b.type === 'tool_use');
@@ -107,6 +140,7 @@ export class GeminiProvider implements MasterProvider {
             }],
           },
           maxOutputTokens: 8,
+          safetySettings: SAFETY_SETTINGS,
         },
       }))) as GeminiResponse;
       if (input.userId) {
@@ -146,6 +180,7 @@ export class GeminiProvider implements MasterProvider {
           },
         },
         maxOutputTokens: 1024,
+        safetySettings: SAFETY_SETTINGS,
       },
     }))) as GeminiResponse;
 

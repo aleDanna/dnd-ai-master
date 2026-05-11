@@ -70,8 +70,20 @@ export async function GET(
     audioBytes = out.bytes;
     mimeType = out.mimeType;
   } catch (e) {
-    const err = e as { status?: number; message?: string };
+    const err = e as { status?: number; message?: string; stack?: string };
     const status = typeof err.status === 'number' ? err.status : 500;
+    // Log the real error server-side so diagnosing failures (wrong model name,
+    // missing API key, vendor-specific limits) doesn't require enabling debug
+    // builds. The client only sees the message; the stack stays on the server.
+    console.error('tts.synth_failed', {
+      provider,
+      voice,
+      model,
+      messageId,
+      status,
+      message: err.message,
+      stack: err.stack?.split('\n').slice(0, 6).join('\n'),
+    });
     return NextResponse.json(
       { error: err.message ?? 'tts-failed', upstreamStatus: status },
       { status: status === 429 ? 429 : 500 },

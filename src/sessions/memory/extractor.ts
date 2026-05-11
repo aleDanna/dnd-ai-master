@@ -304,7 +304,19 @@ async function runExtraction(sessionId: string, providerName?: ProviderName): Pr
     .join('');
   const raw = parseModelOutput(text);
   if (!raw) {
-    console.warn('extractor.bad_json', { sessionId, mode: ctx.mode, sample: text.slice(0, 200) });
+    // Distinguish "empty response" (provider returned nothing — typically
+    // Gemini's safety filter on D&D combat scenes) from "non-JSON" (model
+    // wrote prose around the JSON). The provider-side warn now logs the
+    // finishReason when relevant; this complements it with the extractor's
+    // own context (mode, sample).
+    console.warn('extractor.bad_json', {
+      sessionId,
+      mode: ctx.mode,
+      sample: text.slice(0, 200),
+      contentBlockCount: response.contentBlocks.length,
+      stopReason: response.stopReason,
+      empty: text.length === 0,
+    });
     return;
   }
 

@@ -91,12 +91,23 @@ async function synthesizeGemini(input: SynthesizeInput): Promise<SynthesizeOutpu
   const model = input.model ?? GEMINI_TTS_MODEL;
   const voiceName = input.voice ?? GEMINI_TTS_VOICE;
 
-  // The TTS preview models are accessed via the same generateContent endpoint
-  // as text gen, with responseModalities=['AUDIO'] + speechConfig. The SDK
-  // typings don't expose speechConfig at the time of writing, so we cast.
+  // Gemini TTS interprets `contents` as a prompt to RESPOND to, not as text
+  // to read. Master narration that ends with "Cosa fai? Vuoi: 1. … 2. …"
+  // triggers Gemini's INVALID_ARGUMENT — "Model tried to generate text, but
+  // it should only be used for TTS." We wrap the actual text in an explicit
+  // narrator instruction so the model commits to audio output regardless of
+  // how prompty the content looks. The instruction stays in English: the
+  // model follows English narrator cues reliably while still synthesizing
+  // the body text in its own language (Italian / French / …).
+  const prompt =
+    'Read the following text aloud verbatim as a narrator. ' +
+    'Do not respond, do not ask questions, do not generate any text — ' +
+    'only synthesize speech of the exact text below.\n\n---\n\n' +
+    input.text;
+
   const res = (await client.models.generateContent({
     model,
-    contents: [{ role: 'user', parts: [{ text: input.text }] }],
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
     config: {
       responseModalities: ['AUDIO'],
       speechConfig: {
