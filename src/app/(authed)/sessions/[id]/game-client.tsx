@@ -230,20 +230,39 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
     void fetch(`/api/sessions/${sessionId}/end-combat`, { method: 'POST' });
   }, [sessionId]);
 
+  // Derive the latest master message id as a stable scalar so the autoplay
+  // effect doesn't fire on every messages-array-reference change (the
+  // optimistic insert + the fetchSessionData refetch produce two distinct
+  // array refs for the same logical message, causing the previous version
+  // of this effect to race itself: fetch #1 in flight, ref update cancels
+  // it, fetch #2 starts, second cleanup interrupts #2 mid-play — net
+  // result was "a volte il TTS non parte" because the audio was preempted
+  // before it could actually start).
+  const latestMasterMsgId = React.useMemo<string | null>(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]!;
+      if (m.role === 'master' && !m.id.startsWith('temp-')) return m.id;
+    }
+    return null;
+  }, [messages]);
+
+  // Track the in-flight target so a same-id re-entry (e.g. dev double-mount
+  // in StrictMode) doesn't kick off a duplicate fetch.
+  const inFlightTtsRef = React.useRef<string | null>(null);
+
   // Auto-play the latest persisted master message when the toggle is on.
-  // Reliability fix: only mark a message as "autoplayed" AFTER audio.play()
-  // resolves. If the fetch / decode / browser-autoplay-policy blocks the
-  // playback, the ref stays clear so a subsequent effect run (e.g. user
-  // clicks something granting permission, or the messages array refreshes)
-  // can try again instead of silently giving up forever.
+  // - Re-runs ONLY when latestMasterMsgId changes (stable scalar).
+  // - lastAutoplayedRef is set after audio.play() resolves, so browser
+  //   autoplay-policy blocks (NotAllowedError on the first message before
+  //   any user gesture) don't permanently disable autoplay — the next
+  //   message will retry naturally.
   React.useEffect(() => {
     if (!autoplay) return;
-    const newest = [...messages]
-      .reverse()
-      .find((m) => m.role === 'master' && !m.id.startsWith('temp-'));
-    if (!newest) return;
-    if (lastAutoplayedRef.current === newest.id) return;
-    const target = newest.id;
+    if (!latestMasterMsgId) return;
+    if (lastAutoplayedRef.current === latestMasterMsgId) return;
+    if (inFlightTtsRef.current === latestMasterMsgId) return;
+    const target = latestMasterMsgId;
+    inFlightTtsRef.current = target;
 
     let cancelled = false;
     void (async () => {
@@ -269,13 +288,15 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
         // click the Listen button manually OR a subsequent message attempt
         // (after they've interacted with the page) auto-plays cleanly.
         console.warn('tts.autoplay.failed', e instanceof Error ? e.message : e);
+      } finally {
+        if (inFlightTtsRef.current === target) inFlightTtsRef.current = null;
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [messages, autoplay, sessionId]);
+  }, [latestMasterMsgId, autoplay, sessionId]);
 
   if (!liveState) {
     return (
