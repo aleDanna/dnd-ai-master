@@ -5,7 +5,15 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Eyebrow } from '@/components/ui/eyebrow';
 import { Icon } from '@/components/ui/icon';
-import { TTS_VOICES, TTS_MODELS, type TtsModel, isValidTtsModel } from '@/lib/tts-voices';
+import {
+  TTS_PROVIDERS,
+  type TtsProvider,
+  voicesForProvider as ttsVoicesFor,
+  modelsForProvider as ttsModelsFor,
+  defaultVoiceForProvider as ttsDefaultVoiceFor,
+  defaultModelForProvider as ttsDefaultModelFor,
+  isValidTtsProvider,
+} from '@/lib/tts-voices';
 import {
   modelsForProvider,
   defaultModelForProvider,
@@ -20,11 +28,20 @@ export interface SettingsClientProps {
   initialPreferences: Required<UserPreferences>;
 }
 
-/** Short, user-facing blurb per OpenAI TTS model. */
-const TTS_MODEL_BLURBS: Record<TtsModel, string> = {
+/** Short, user-facing blurb per TTS model (OpenAI + Gemini). */
+const TTS_MODEL_BLURBS: Record<string, string> = {
+  // OpenAI
   'gpt-4o-mini-tts': 'Newer, voice-steering supported',
   'tts-1': 'Lower latency, slightly less natural',
   'tts-1-hd': 'Higher fidelity, slower & pricier',
+  // Gemini
+  'gemini-2.5-flash-preview-tts': 'Faster, cheaper',
+  'gemini-2.5-pro-preview-tts': 'Higher fidelity, slower',
+};
+
+const TTS_PROVIDER_LABELS: Record<TtsProvider, string> = {
+  openai: 'OpenAI',
+  gemini: 'Gemini',
 };
 
 export function SettingsClient({ initialPreferences }: SettingsClientProps) {
@@ -64,9 +81,19 @@ export function SettingsClient({ initialPreferences }: SettingsClientProps) {
 
   const onTtsModelChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
     const value = e.target.value;
-    if (!isValidTtsModel(value)) return;
     setPrefs((p) => ({ ...p, ttsModel: value }));
     void save({ ttsModel: value });
+  };
+
+  /** Cascading update: switching provider also resets voice + model to that
+   *  provider's defaults, so the cross-namespace inputs never land in an
+   *  inconsistent state (e.g. OpenAI provider + Gemini voice name). */
+  const onTtsProviderChange = (next: TtsProvider): void => {
+    if (!isValidTtsProvider(next) || next === prefs.ttsProvider) return;
+    const nextVoice = ttsDefaultVoiceFor(next);
+    const nextModel = ttsDefaultModelFor(next);
+    setPrefs((p) => ({ ...p, ttsProvider: next, ttsVoice: nextVoice, ttsModel: nextModel }));
+    void save({ ttsProvider: next, ttsVoice: nextVoice, ttsModel: nextModel });
   };
 
   const onAutoplayToggle = (): void => {
@@ -235,11 +262,43 @@ export function SettingsClient({ initialPreferences }: SettingsClientProps) {
           <Eyebrow>Voice</Eyebrow>
           <h2 style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>Master voice (TTS)</h2>
           <p style={{ marginTop: 4, fontSize: 13, color: 'var(--fg-muted)' }}>
-            OpenAI text-to-speech. Applies to every &ldquo;Listen&rdquo; click and to auto-play. Changing the model invalidates cached audio for past messages — they&apos;ll re-synthesize on the next click.
+            Provider for text-to-speech. Anthropic has no audio endpoint so the choice is OpenAI or Gemini — independent of which provider drives the master narration. Switching invalidates cached audio for past messages; they re-synthesize on the next click.
           </p>
         </div>
+
+        {/* Provider pills */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <label style={{ fontSize: 13, color: 'var(--fg-muted)', minWidth: 60 }}>
+            Provider
+          </label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {TTS_PROVIDERS.map((p) => (
+              <button
+                key={p}
+                onClick={() => onTtsProviderChange(p)}
+                disabled={busy}
+                aria-pressed={prefs.ttsProvider === p}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 999,
+                  background: prefs.ttsProvider === p ? 'var(--arcane)' : 'var(--bg-card)',
+                  color: prefs.ttsProvider === p ? 'var(--bone)' : 'var(--fg)',
+                  border: '1px solid ' + (prefs.ttsProvider === p ? 'var(--arcane)' : 'var(--border)'),
+                  cursor: busy ? 'wait' : 'pointer',
+                  fontFamily: 'inherit',
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                {TTS_PROVIDER_LABELS[p]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Model dropdown filtered by current provider */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <label htmlFor="ttsModel" style={{ fontSize: 13, color: 'var(--fg-muted)', minWidth: 48 }}>
+          <label htmlFor="ttsModel" style={{ fontSize: 13, color: 'var(--fg-muted)', minWidth: 60 }}>
             Model
           </label>
           <select
@@ -258,15 +317,18 @@ export function SettingsClient({ initialPreferences }: SettingsClientProps) {
               fontSize: 14,
             }}
           >
-            {TTS_MODELS.map((m) => (
+            {ttsModelsFor(prefs.ttsProvider).map((m) => (
               <option key={m} value={m}>
-                {m} — {TTS_MODEL_BLURBS[m]}
+                {m}
+                {TTS_MODEL_BLURBS[m] ? ` — ${TTS_MODEL_BLURBS[m]}` : ''}
               </option>
             ))}
           </select>
         </div>
+
+        {/* Voice dropdown filtered by current provider */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <label htmlFor="ttsVoice" style={{ fontSize: 13, color: 'var(--fg-muted)', minWidth: 48 }}>
+          <label htmlFor="ttsVoice" style={{ fontSize: 13, color: 'var(--fg-muted)', minWidth: 60 }}>
             Voice
           </label>
           <select
@@ -285,7 +347,7 @@ export function SettingsClient({ initialPreferences }: SettingsClientProps) {
               fontSize: 14,
             }}
           >
-            {TTS_VOICES.map((v) => (
+            {ttsVoicesFor(prefs.ttsProvider).map((v) => (
               <option key={v} value={v}>
                 {v}
               </option>

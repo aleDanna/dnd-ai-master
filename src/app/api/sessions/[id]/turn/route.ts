@@ -196,7 +196,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (result.finalText.trim()) {
           const [mm] = await db.insert(sessionMessages).values({ sessionId, role: 'master', content: result.finalText }).returning();
           waitUntil(
-            extractMemory(sessionId).catch((e) => {
+            extractMemory(sessionId, userPrefs.aiProvider).catch((e) => {
               console.error('memory.extract.fire_and_forget', e instanceof Error ? e.message : String(e));
             }),
           );

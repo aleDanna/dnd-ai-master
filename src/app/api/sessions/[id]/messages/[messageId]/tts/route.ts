@@ -33,15 +33,18 @@ export async function GET(
     return NextResponse.json({ error: 'tts-master-only' }, { status: 400 });
   }
 
-  // Resolve user-preferred voice + model. Cache is keyed by (message, voice, model)
-  // so switching either invalidates the cache entry for this message only.
+  // Resolve user-preferred provider + voice + model. Cache key is
+  // (message, voice, model); voice/model namespaces are disjoint across
+  // providers, so we don't need provider in the PK. We do store provider +
+  // mimeType as columns so the route can return the right Content-Type.
   const prefs = await getResolvedPreferences(userId);
+  const provider = prefs.ttsProvider;
   const voice = prefs.ttsVoice;
   const model = prefs.ttsModel;
 
   // Cache hit?
   const [cached] = await db
-    .select({ audioMp3: ttsCache.audioMp3 })
+    .select({ audioMp3: ttsCache.audioMp3, mimeType: ttsCache.mimeType })
     .from(ttsCache)
     .where(
       and(eq(ttsCache.messageId, messageId), eq(ttsCache.voice, voice), eq(ttsCache.model, model)),
@@ -51,7 +54,7 @@ export async function GET(
   if (cached) {
     return new Response(new Uint8Array(cached.audioMp3), {
       headers: {
-        'Content-Type': 'audio/mpeg',
+        'Content-Type': cached.mimeType,
         'Cache-Control': 'private, max-age=3600',
         'Content-Length': String(cached.audioMp3.byteLength),
         'X-Tts-Cache': 'HIT',
@@ -61,8 +64,11 @@ export async function GET(
 
   // Cache miss — synthesize, store, return
   let audioBytes: ArrayBuffer;
+  let mimeType: string;
   try {
-    audioBytes = await synthesizeSpeech({ text: message.content, voice, model });
+    const out = await synthesizeSpeech({ text: message.content, provider, voice, model });
+    audioBytes = out.bytes;
+    mimeType = out.mimeType;
   } catch (e) {
     const err = e as { status?: number; message?: string };
     const status = typeof err.status === 'number' ? err.status : 500;
@@ -76,7 +82,7 @@ export async function GET(
   try {
     await db
       .insert(ttsCache)
-      .values({ messageId, voice, model, audioMp3: Buffer.from(audioBytes) })
+      .values({ messageId, voice, model, provider, mimeType, audioMp3: Buffer.from(audioBytes) })
       .onConflictDoNothing();
   } catch {
     // Cache write failures should never break playback.
@@ -84,7 +90,7 @@ export async function GET(
 
   return new Response(audioBytes, {
     headers: {
-      'Content-Type': 'audio/mpeg',
+      'Content-Type': mimeType,
       'Cache-Control': 'private, max-age=3600',
       'Content-Length': String(audioBytes.byteLength),
       'X-Tts-Cache': 'MISS',

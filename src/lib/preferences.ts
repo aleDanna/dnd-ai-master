@@ -3,7 +3,21 @@ import { db } from '@/db/client';
 import { users, type UserPreferences } from '@/db/schema';
 
 export type { UserPreferences };
-export { TTS_VOICES, type TtsVoice, isValidTtsVoice, TTS_MODELS, type TtsModel, isValidTtsModel } from './tts-voices';
+export {
+  TTS_VOICES, type TtsVoice, isValidTtsVoice,
+  TTS_MODELS, type TtsModel, isValidTtsModel,
+  TTS_PROVIDERS, type TtsProvider, isValidTtsProvider,
+  voicesForProvider, modelsForProvider,
+  defaultVoiceForProvider, defaultModelForProvider,
+  isValidVoiceForProvider, isValidModelForProvider,
+} from './tts-voices';
+import {
+  defaultVoiceForProvider as ttsVoiceDefault,
+  defaultModelForProvider as ttsModelDefault,
+  voicesForProvider as ttsVoicesFor,
+  modelsForProvider as ttsModelsFor,
+  type TtsProvider,
+} from './tts-voices';
 
 /**
  * Defaults are merged on top of stored prefs at read time. Provider/model defaults
@@ -33,11 +47,29 @@ function envDefaultImageModel(provider: 'openai' | 'gemini'): string {
   return process.env.OPENAI_IMAGE_MODEL ?? 'gpt-image-1';
 }
 
-function envDefaultTtsModel(): string {
-  return process.env.OPENAI_TTS_MODEL ?? 'gpt-4o-mini-tts';
+function envDefaultTtsProvider(): TtsProvider {
+  const raw = (process.env.TTS_PROVIDER ?? '').trim().toLowerCase();
+  return raw === 'gemini' ? 'gemini' : 'openai';
+}
+
+/** Per-provider env-overridable model default. Falls back to the static
+ *  per-provider default if no env var is set. */
+function envDefaultTtsModel(provider: TtsProvider): string {
+  if (provider === 'gemini') {
+    return process.env.GEMINI_TTS_MODEL ?? ttsModelDefault('gemini');
+  }
+  return process.env.OPENAI_TTS_MODEL ?? ttsModelDefault('openai');
+}
+
+function envDefaultTtsVoice(provider: TtsProvider): string {
+  if (provider === 'gemini') {
+    return process.env.GEMINI_TTS_VOICE ?? ttsVoiceDefault('gemini');
+  }
+  return process.env.OPENAI_TTS_VOICE ?? ttsVoiceDefault('openai');
 }
 
 export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
+  ttsProvider: 'openai',
   ttsVoice: 'onyx',
   ttsModel: 'gpt-4o-mini-tts',
   ttsAutoplay: false,
@@ -78,9 +110,25 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
   const imageStyleCustom = prefs.imageStyleCustom ?? DEFAULT_PREFERENCES.imageStyleCustom;
   const imageProvider = prefs.imageProvider ?? envDefaultImageProvider();
   const imageModel = prefs.imageModel ?? envDefaultImageModel(imageProvider);
+  // TTS triplet — provider drives the namespace for voice and model. If the
+  // stored voice/model doesn't match the current provider (e.g. user just
+  // switched provider but UI never persisted the cascade), fall back to that
+  // provider's default rather than handing OpenAI a Gemini voice name.
+  const ttsProvider = prefs.ttsProvider ?? envDefaultTtsProvider();
+  const storedVoice = prefs.ttsVoice;
+  const storedModel = prefs.ttsModel;
+  const ttsVoice =
+    storedVoice && ttsVoicesFor(ttsProvider).includes(storedVoice)
+      ? storedVoice
+      : envDefaultTtsVoice(ttsProvider);
+  const ttsModel =
+    storedModel && ttsModelsFor(ttsProvider).includes(storedModel)
+      ? storedModel
+      : envDefaultTtsModel(ttsProvider);
   return {
-    ttsVoice: prefs.ttsVoice ?? DEFAULT_PREFERENCES.ttsVoice,
-    ttsModel: prefs.ttsModel ?? envDefaultTtsModel(),
+    ttsProvider,
+    ttsVoice,
+    ttsModel,
     ttsAutoplay: prefs.ttsAutoplay ?? DEFAULT_PREFERENCES.ttsAutoplay,
     manualRolls: prefs.manualRolls ?? DEFAULT_PREFERENCES.manualRolls,
     aiProvider: provider,

@@ -1,0 +1,1 @@
+ALTER TABLE "tts_cache" ADD COLUMN "mime_type" text DEFAULT 'audio/mpeg' NOT NULL;

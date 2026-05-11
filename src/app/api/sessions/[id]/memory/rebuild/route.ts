@@ -3,6 +3,7 @@ import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions } from '@/db/schema';
 import { rebuildMemoryStream } from '@/sessions/memory/extractor';
+import { getResolvedPreferences } from '@/lib/preferences';
 
 export async function POST(
   _req: Request,
@@ -19,11 +20,13 @@ export async function POST(
     .limit(1);
   if (!session) return json({ error: 'not-found' }, 404);
 
+  const prefs = await getResolvedPreferences(userId);
+
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
       try {
-        for await (const evt of rebuildMemoryStream(sessionId)) {
+        for await (const evt of rebuildMemoryStream(sessionId, prefs.aiProvider)) {
           if (evt.event === 'error') {
             controller.enqueue(
               encoder.encode(`event: error\ndata: ${JSON.stringify(evt.data)}\n\n`),

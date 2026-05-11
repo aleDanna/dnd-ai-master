@@ -2,10 +2,16 @@ import { sql } from 'drizzle-orm';
 import { pgTable, text, timestamp, jsonb } from 'drizzle-orm/pg-core';
 
 export interface UserPreferences {
-  /** OpenAI TTS voice slug. Defaults to env / 'onyx' if unset. */
+  /** TTS provider. 'openai' or 'gemini'. Anthropic has no TTS endpoint, so
+   *  this list is independent of `aiProvider`. Defaults to env TTS_PROVIDER
+   *  / 'openai' if unset. */
+  ttsProvider?: 'openai' | 'gemini';
+  /** TTS voice slug. Namespace depends on `ttsProvider` — OpenAI uses
+   *  alloy/onyx/…, Gemini uses Aoede/Kore/…. Defaults per-provider. */
   ttsVoice?: string;
-  /** OpenAI TTS model slug ('gpt-4o-mini-tts' | 'tts-1' | 'tts-1-hd'). Defaults to
-   *  env OPENAI_TTS_MODEL / 'gpt-4o-mini-tts' if unset. */
+  /** TTS model slug. OpenAI: gpt-4o-mini-tts / tts-1 / tts-1-hd.
+   *  Gemini: gemini-2.5-flash-preview-tts / gemini-2.5-pro-preview-tts.
+   *  Defaults per-provider. */
   ttsModel?: string;
   /** When true, the master's response is auto-played after each turn. Default false. */
   ttsAutoplay?: boolean;

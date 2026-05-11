@@ -15,7 +15,7 @@ import {
   formatMessagesForExtractor,
 } from './prompt';
 import type { CodexUpsert, ExtractorMode, MemoryPatch } from './types';
-import { getMasterProvider } from '@/ai/provider';
+import { getMasterProvider, getProviderByName, type ProviderName } from '@/ai/provider';
 import type { MasterProvider } from '@/ai/provider/types';
 
 const CHAPTER_SIZE = 40;
@@ -26,8 +26,9 @@ export function __setExtractorProviderForTest(p: MasterProvider | null): void {
   _override = p;
 }
 
-function provider(): MasterProvider {
-  return _override ?? getMasterProvider();
+function provider(name?: ProviderName): MasterProvider {
+  if (_override) return _override;
+  return name ? getProviderByName(name) : getMasterProvider();
 }
 
 /** Memory-lock TTL. Each successful acquire/renew sets the expiry this far in
@@ -215,6 +216,7 @@ function parseModelOutput(text: string): RawPatch | null {
  * will see `tryLock` fail and skip — desired behavior. */
 export async function* rebuildMemoryStream(
   sessionId: string,
+  providerName?: ProviderName,
 ): AsyncGenerator<{ event: 'chapter_done' | 'complete' | 'error'; data: unknown }, void, unknown> {
   const holder = await tryAcquireMemoryLock(sessionId);
   if (!holder) {
@@ -236,7 +238,7 @@ export async function* rebuildMemoryStream(
         yield { event: 'error', data: { reason: 'lock_lost' } };
         return;
       }
-      await runExtraction(sessionId);
+      await runExtraction(sessionId, providerName);
       yield { event: 'chapter_done', data: { index: i, total: totalChapters } };
     }
     yield { event: 'complete', data: { totalChapters } };
@@ -245,17 +247,22 @@ export async function* rebuildMemoryStream(
   }
 }
 
-export async function extractMemory(sessionId: string): Promise<void> {
+/** Run a single extractor pass for `sessionId`. The optional `providerName`
+ * forces the call to use the user's preferred AI provider — without it the
+ * extractor falls back to the env-level MASTER_PROVIDER, which on this
+ * deployment defaults to Anthropic and surfaces as "ANTHROPIC_API_KEY not set"
+ * for users on OpenAI/Gemini. The turn route passes it through. */
+export async function extractMemory(sessionId: string, providerName?: ProviderName): Promise<void> {
   const holder = await tryAcquireMemoryLock(sessionId);
   if (!holder) return;
   try {
-    await runExtraction(sessionId);
+    await runExtraction(sessionId, providerName);
   } finally {
     await releaseMemoryLock(sessionId, holder);
   }
 }
 
-async function runExtraction(sessionId: string): Promise<void> {
+async function runExtraction(sessionId: string, providerName?: ProviderName): Promise<void> {
   const ctx = await buildContext(sessionId);
   if (!ctx) return;
 
@@ -278,7 +285,7 @@ async function runExtraction(sessionId: string): Promise<void> {
 
   let response;
   try {
-    response = await provider().completeMessage({
+    response = await provider(providerName).completeMessage({
       model: process.env.MEMORY_EXTRACTOR_MODEL,
       systemBlocks: [{ type: 'text', text: sys }],
       messages: [{ role: 'user', content: userText }],

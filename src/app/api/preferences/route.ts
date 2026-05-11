@@ -6,6 +6,7 @@ import {
   updateUserPreferences,
   isValidTtsVoice,
   isValidTtsModel,
+  isValidTtsProvider,
   type UserPreferences,
 } from '@/lib/preferences';
 import {
@@ -35,6 +36,15 @@ export async function PUT(req: NextRequest) {
   }
 
   const patch: Partial<UserPreferences> = {};
+  if ('ttsProvider' in body) {
+    if (body.ttsProvider === undefined || body.ttsProvider === null) {
+      patch.ttsProvider = undefined;
+    } else if (!isValidTtsProvider(body.ttsProvider)) {
+      return NextResponse.json({ error: 'invalid-ttsProvider' }, { status: 400 });
+    } else {
+      patch.ttsProvider = body.ttsProvider;
+    }
+  }
   if ('ttsVoice' in body) {
     if (body.ttsVoice === undefined || body.ttsVoice === null) {
       // Caller wants to reset to default — drop the key
