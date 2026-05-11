@@ -183,6 +183,13 @@
       "when": 1778518483066,
       "tag": "0025_flaky_scorpion",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1778519102115,
+      "tag": "0026_pink_mojo",
+      "breakpoints": true
     }
   ]
 }

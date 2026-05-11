@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, gt } from 'drizzle-orm';
 import { db } from '@/db/client';
 import {
   sessionState as sessionStateTable,
@@ -7,6 +7,7 @@ import {
   sessions as sessionsTable,
   characters as charactersTable,
   codexEntities as codexEntitiesTable,
+  inventoryGrants as inventoryGrantsTable,
   type DiceLogInsert,
 } from '@/db/schema';
 import type {
@@ -56,18 +57,19 @@ async function loadContext(tx: Tx, sessionId: string): Promise<SessionContext | 
  *
  * The AI master sometimes emits two `add_item` tool calls for the same loot
  * inside the same turn (re-narrating "you pick up X", calling the tool twice
- * via successive tool-uses, or re-emitting after a tool error). The original
- * additive behaviour of `add_inventory` then doubled the qty on the player's
- * sheet — reported as "mi ha aggiunto 2 volte gli oggetti raccolti".
+ * via successive tool-uses, or re-emitting after a tool error). Same-turn
+ * de-dup keeps only the FIRST `add_inventory` for each (characterId, itemSlug)
+ * pair within a single applyMutations() call.
  *
- * Same-turn de-dup keeps only the FIRST `add_inventory` for each
- * (characterId, itemSlug) pair. Cross-turn de-dup is out of scope — the
- * prompt's "NOT idempotent" rule plus the inventory snapshot the master
- * sees every turn is the right tool there.
+ * Cross-turn duplication (the master re-narrating the same loot one or two
+ * turns later) is handled separately inside the `add_inventory` case using
+ * the `inventory_grants` log — that path keys on (sessionId, characterId,
+ * itemSlug, qty) inside a recent time window so legitimate later pickups
+ * with a different quantity still apply.
  *
- * Note: `qty` is NOT summed across duplicate calls. If the master meant to
- * grant the loot twice, it should pass `qty: 2` in a single call. The
- * conservative choice prevents accidental duplication; deliberate
+ * Note: `qty` is NOT summed across same-turn duplicate calls. If the master
+ * meant to grant the loot twice, it should pass `qty: 2` in a single call.
+ * The conservative choice prevents accidental duplication; deliberate
  * stacking still works.
  */
 function dedupeAddInventory(mutations: Mutation[]): Mutation[] {
@@ -83,6 +85,15 @@ function dedupeAddInventory(mutations: Mutation[]): Mutation[] {
   }
   return out;
 }
+
+/**
+ * How recently is "too recent" for an identical (character, itemSlug, qty)
+ * add_inventory mutation to be considered a duplicate of the previous one.
+ * 10 minutes is long enough to cover several player+master turns even with
+ * thinking pauses, but short enough that "you find a second healing potion
+ * twenty minutes later" still applies.
+ */
+const CROSS_TURN_DEDUP_WINDOW_MS = 10 * 60 * 1000;
 
 export async function applyMutations(sessionId: string, mutations: Mutation[], rolls: DiceRoll[]): Promise<void> {
   const deduped = dedupeAddInventory(mutations);
@@ -429,10 +440,48 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
       break;
     }
     case 'add_inventory': {
+      // Cross-turn dedup. The master sometimes re-narrates the same loot in a
+      // following turn and re-emits add_inventory; without this guard the
+      // player's inventory doubles. We look up the `inventory_grants` log for
+      // the same (sessionId, characterId, itemSlug, qty) tuple inside a recent
+      // time window — if it's there, treat as a duplicate and skip.
+      const threshold = new Date(Date.now() - CROSS_TURN_DEDUP_WINDOW_MS);
+      const [recentGrant] = await tx
+        .select({ id: inventoryGrantsTable.id })
+        .from(inventoryGrantsTable)
+        .where(
+          and(
+            eq(inventoryGrantsTable.sessionId, sessionId),
+            eq(inventoryGrantsTable.characterId, m.characterId),
+            eq(inventoryGrantsTable.itemSlug, m.itemSlug),
+            eq(inventoryGrantsTable.qty, m.qty),
+            gt(inventoryGrantsTable.createdAt, threshold),
+          ),
+        )
+        .limit(1);
+      if (recentGrant) {
+        // Suppress, but log so we can spot if the heuristic ever fires on a
+        // legitimate "player picks up the same thing twice in quick succession".
+        console.warn('applicator.add_inventory.cross_turn_suppressed', {
+          sessionId,
+          characterId: m.characterId,
+          itemSlug: m.itemSlug,
+          qty: m.qty,
+        });
+        break;
+      }
       const [c] = await tx.select({ inventory: charactersTable.inventory }).from(charactersTable).where(eq(charactersTable.id, m.characterId)).limit(1);
       if (!c) break;
       const next = mergeInventoryAdd(c.inventory ?? [], m.itemSlug, m.qty);
       await tx.update(charactersTable).set({ inventory: next, updatedAt: new Date() }).where(eq(charactersTable.id, m.characterId));
+      // Record the grant after the inventory write succeeded. The same
+      // transaction means a rollback would undo the log row too.
+      await tx.insert(inventoryGrantsTable).values({
+        sessionId,
+        characterId: m.characterId,
+        itemSlug: m.itemSlug,
+        qty: m.qty,
+      });
       break;
     }
     case 'remove_inventory': {
