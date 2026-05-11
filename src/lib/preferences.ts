@@ -3,7 +3,7 @@ import { db } from '@/db/client';
 import { users, type UserPreferences } from '@/db/schema';
 
 export type { UserPreferences };
-export { TTS_VOICES, type TtsVoice, isValidTtsVoice } from './tts-voices';
+export { TTS_VOICES, type TtsVoice, isValidTtsVoice, TTS_MODELS, type TtsModel, isValidTtsModel } from './tts-voices';
 
 /**
  * Defaults are merged on top of stored prefs at read time. Provider/model defaults
@@ -33,8 +33,13 @@ function envDefaultImageModel(provider: 'openai' | 'gemini'): string {
   return process.env.OPENAI_IMAGE_MODEL ?? 'gpt-image-1';
 }
 
+function envDefaultTtsModel(): string {
+  return process.env.OPENAI_TTS_MODEL ?? 'gpt-4o-mini-tts';
+}
+
 export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   ttsVoice: 'onyx',
+  ttsModel: 'gpt-4o-mini-tts',
   ttsAutoplay: false,
   manualRolls: false,
   // These are set lazily inside getResolvedPreferences so the env values are read
@@ -75,6 +80,7 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
   const imageModel = prefs.imageModel ?? envDefaultImageModel(imageProvider);
   return {
     ttsVoice: prefs.ttsVoice ?? DEFAULT_PREFERENCES.ttsVoice,
+    ttsModel: prefs.ttsModel ?? envDefaultTtsModel(),
     ttsAutoplay: prefs.ttsAutoplay ?? DEFAULT_PREFERENCES.ttsAutoplay,
     manualRolls: prefs.manualRolls ?? DEFAULT_PREFERENCES.manualRolls,
     aiProvider: provider,

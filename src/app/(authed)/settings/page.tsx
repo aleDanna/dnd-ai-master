@@ -11,7 +11,6 @@ export default async function SettingsPage() {
   await ensureUser(userId);
 
   const prefs = await getResolvedPreferences(userId);
-  const ttsModel = process.env.OPENAI_TTS_MODEL ?? 'gpt-4o-mini-tts';
 
-  return <SettingsClient initialPreferences={prefs} ttsModel={ttsModel} />;
+  return <SettingsClient initialPreferences={prefs} />;
 }

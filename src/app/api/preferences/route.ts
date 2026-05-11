@@ -5,6 +5,7 @@ import {
   getUserPreferences,
   updateUserPreferences,
   isValidTtsVoice,
+  isValidTtsModel,
   type UserPreferences,
 } from '@/lib/preferences';
 import {
@@ -42,6 +43,15 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'invalid-ttsVoice' }, { status: 400 });
     } else {
       patch.ttsVoice = body.ttsVoice;
+    }
+  }
+  if ('ttsModel' in body) {
+    if (body.ttsModel === undefined || body.ttsModel === null) {
+      patch.ttsModel = undefined;
+    } else if (!isValidTtsModel(body.ttsModel)) {
+      return NextResponse.json({ error: 'invalid-ttsModel' }, { status: 400 });
+    } else {
+      patch.ttsModel = body.ttsModel;
     }
   }
   if ('ttsAutoplay' in body) {

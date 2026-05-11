@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Eyebrow } from '@/components/ui/eyebrow';
 import { Icon } from '@/components/ui/icon';
-import { TTS_VOICES } from '@/lib/tts-voices';
+import { TTS_VOICES, TTS_MODELS, type TtsModel, isValidTtsModel } from '@/lib/tts-voices';
 import {
   modelsForProvider,
   defaultModelForProvider,
@@ -18,10 +18,16 @@ import type { UserPreferences } from '@/db/schema/users';
 
 export interface SettingsClientProps {
   initialPreferences: Required<UserPreferences>;
-  ttsModel: string;
 }
 
-export function SettingsClient({ initialPreferences, ttsModel }: SettingsClientProps) {
+/** Short, user-facing blurb per OpenAI TTS model. */
+const TTS_MODEL_BLURBS: Record<TtsModel, string> = {
+  'gpt-4o-mini-tts': 'Newer, voice-steering supported',
+  'tts-1': 'Lower latency, slightly less natural',
+  'tts-1-hd': 'Higher fidelity, slower & pricier',
+};
+
+export function SettingsClient({ initialPreferences }: SettingsClientProps) {
   const [prefs, setPrefs] = React.useState<Required<UserPreferences>>(initialPreferences);
   const [busy, setBusy] = React.useState(false);
   const [savedOnce, setSavedOnce] = React.useState(false);
@@ -54,6 +60,13 @@ export function SettingsClient({ initialPreferences, ttsModel }: SettingsClientP
     const value = e.target.value;
     setPrefs((p) => ({ ...p, ttsVoice: value }));
     void save({ ttsVoice: value });
+  };
+
+  const onTtsModelChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
+    const value = e.target.value;
+    if (!isValidTtsModel(value)) return;
+    setPrefs((p) => ({ ...p, ttsModel: value }));
+    void save({ ttsModel: value });
   };
 
   const onAutoplayToggle = (): void => {
@@ -222,11 +235,38 @@ export function SettingsClient({ initialPreferences, ttsModel }: SettingsClientP
           <Eyebrow>Voice</Eyebrow>
           <h2 style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>Master voice (TTS)</h2>
           <p style={{ marginTop: 4, fontSize: 13, color: 'var(--fg-muted)' }}>
-            OpenAI <code style={{ fontFamily: 'var(--font-mono)' }}>{ttsModel}</code>. Applies to every &ldquo;Listen&rdquo; click on the master&apos;s messages.
+            OpenAI text-to-speech. Applies to every &ldquo;Listen&rdquo; click and to auto-play. Changing the model invalidates cached audio for past messages — they&apos;ll re-synthesize on the next click.
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <label htmlFor="ttsVoice" style={{ fontSize: 13, color: 'var(--fg-muted)' }}>
+          <label htmlFor="ttsModel" style={{ fontSize: 13, color: 'var(--fg-muted)', minWidth: 48 }}>
+            Model
+          </label>
+          <select
+            id="ttsModel"
+            value={prefs.ttsModel}
+            onChange={onTtsModelChange}
+            disabled={busy}
+            style={{
+              flex: 1,
+              padding: '8px 12px',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-strong)',
+              borderRadius: 8,
+              color: 'var(--fg)',
+              fontFamily: 'var(--font-ui)',
+              fontSize: 14,
+            }}
+          >
+            {TTS_MODELS.map((m) => (
+              <option key={m} value={m}>
+                {m} — {TTS_MODEL_BLURBS[m]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <label htmlFor="ttsVoice" style={{ fontSize: 13, color: 'var(--fg-muted)', minWidth: 48 }}>
             Voice
           </label>
           <select

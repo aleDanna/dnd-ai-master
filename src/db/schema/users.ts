@@ -4,6 +4,9 @@ import { pgTable, text, timestamp, jsonb } from 'drizzle-orm/pg-core';
 export interface UserPreferences {
   /** OpenAI TTS voice slug. Defaults to env / 'onyx' if unset. */
   ttsVoice?: string;
+  /** OpenAI TTS model slug ('gpt-4o-mini-tts' | 'tts-1' | 'tts-1-hd'). Defaults to
+   *  env OPENAI_TTS_MODEL / 'gpt-4o-mini-tts' if unset. */
+  ttsModel?: string;
   /** When true, the master's response is auto-played after each turn. Default false. */
   ttsAutoplay?: boolean;
   /**

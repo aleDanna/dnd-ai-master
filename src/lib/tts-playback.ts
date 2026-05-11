@@ -15,10 +15,41 @@ let activeMessageId: string | null = null;
 type Listener = (audio: HTMLAudioElement | null, messageId: string | null) => void;
 const listeners = new Set<Listener>();
 
+// Separate "loading" channel: while the autoplay coordinator (or any other
+// caller) is fetching+decoding the TTS bytes for a message, it can mark that
+// message id as loading so the per-message TtsButton can render a spinner
+// instead of the stale "Listen" label. Cleared when the audio actually
+// starts playing (setActiveAudio) or when the fetch fails / is cancelled.
+let loadingMessageId: string | null = null;
+type LoadingListener = (messageId: string | null) => void;
+const loadingListeners = new Set<LoadingListener>();
+
+export function setLoadingMessageId(messageId: string | null): void {
+  if (loadingMessageId === messageId) return;
+  loadingMessageId = messageId;
+  for (const l of loadingListeners) l(messageId);
+}
+
+export function getLoadingMessageId(): string | null {
+  return loadingMessageId;
+}
+
+export function subscribeLoading(fn: LoadingListener): () => void {
+  loadingListeners.add(fn);
+  return () => {
+    loadingListeners.delete(fn);
+  };
+}
+
 export function setActiveAudio(audio: HTMLAudioElement | null, messageId?: string | null): void {
   const prev = activeAudio;
   activeAudio = audio;
   activeMessageId = audio ? (messageId ?? null) : null;
+  // Audio is now playing (or cleared) — clear the loading flag if it matched.
+  if (audio && messageId && loadingMessageId === messageId) {
+    loadingMessageId = null;
+    for (const l of loadingListeners) l(null);
+  }
   if (prev && prev !== audio) {
     try {
       prev.pause();
@@ -48,5 +79,7 @@ export function subscribePlayback(fn: Listener): () => void {
 export function _resetForTests(): void {
   activeAudio = null;
   activeMessageId = null;
+  loadingMessageId = null;
   listeners.clear();
+  loadingListeners.clear();
 }

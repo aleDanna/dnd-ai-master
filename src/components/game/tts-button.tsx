@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Icon } from '@/components/ui/icon';
 import { SpinningDie } from './spinning-die';
-import { setActiveAudio, subscribePlayback, getActiveAudio, getActiveMessageId } from '@/lib/tts-playback';
+import { setActiveAudio, subscribePlayback, getActiveAudio, getActiveMessageId, subscribeLoading, getLoadingMessageId } from '@/lib/tts-playback';
 
 export interface TtsButtonProps {
   sessionId: string;
@@ -36,8 +36,13 @@ export function TtsButton({ sessionId, messageId }: TtsButtonProps) {
 
   // Mount-time adoption: if the page-level autoplay coordinator already
   // started an audio for OUR messageId before we mounted, pick it up so the
-  // initial render shows "Pause" instead of a stale "Listen".
+  // initial render shows "Pause" instead of a stale "Listen". Also adopt the
+  // loading state if the autoplay is mid-fetch.
   React.useEffect(() => {
+    if (getLoadingMessageId() === messageId) {
+      setState('loading');
+      return undefined;
+    }
     if (getActiveMessageId() === messageId) {
       const audio = getActiveAudio();
       if (audio && !audio.paused) {
@@ -49,6 +54,21 @@ export function TtsButton({ sessionId, messageId }: TtsButtonProps) {
       }
     }
     return undefined;
+  }, [messageId]);
+
+  // Subscribe to the loading channel so the button reflects in-flight TTS
+  // fetches kicked off by the autoplay coordinator (not from a user click).
+  React.useEffect(() => {
+    return subscribeLoading((loadingMsgId) => {
+      if (loadingMsgId === messageId) {
+        setState((s) => (s === 'playing' ? s : 'loading'));
+      } else if (loadingMsgId === null) {
+        // Loading finished or moved to another message. Only clear our state
+        // if we were the one showing "loading" — don't stomp on a playing
+        // state set by setActiveAudio that fires concurrently.
+        setState((s) => (s === 'loading' ? 'idle' : s));
+      }
+    });
   }, [messageId]);
 
   // Live coordination:
@@ -126,7 +146,7 @@ export function TtsButton({ sessionId, messageId }: TtsButtonProps) {
   };
 
   const label =
-    state === 'playing' ? 'Pause' : state === 'loading' ? 'Loading…' : state === 'error' ? 'Retry' : 'Listen';
+    state === 'playing' ? 'Pause' : state === 'loading' ? 'Generando…' : state === 'error' ? 'Retry' : 'Listen';
 
   return (
     <button

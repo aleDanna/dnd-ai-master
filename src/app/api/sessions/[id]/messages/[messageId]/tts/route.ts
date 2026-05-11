@@ -33,15 +33,19 @@ export async function GET(
     return NextResponse.json({ error: 'tts-master-only' }, { status: 400 });
   }
 
-  // Resolve user-preferred voice
+  // Resolve user-preferred voice + model. Cache is keyed by (message, voice, model)
+  // so switching either invalidates the cache entry for this message only.
   const prefs = await getResolvedPreferences(userId);
   const voice = prefs.ttsVoice;
+  const model = prefs.ttsModel;
 
   // Cache hit?
   const [cached] = await db
     .select({ audioMp3: ttsCache.audioMp3 })
     .from(ttsCache)
-    .where(and(eq(ttsCache.messageId, messageId), eq(ttsCache.voice, voice)))
+    .where(
+      and(eq(ttsCache.messageId, messageId), eq(ttsCache.voice, voice), eq(ttsCache.model, model)),
+    )
     .limit(1);
 
   if (cached) {
@@ -58,7 +62,7 @@ export async function GET(
   // Cache miss — synthesize, store, return
   let audioBytes: ArrayBuffer;
   try {
-    audioBytes = await synthesizeSpeech({ text: message.content, voice });
+    audioBytes = await synthesizeSpeech({ text: message.content, voice, model });
   } catch (e) {
     const err = e as { status?: number; message?: string };
     const status = typeof err.status === 'number' ? err.status : 500;
@@ -72,7 +76,7 @@ export async function GET(
   try {
     await db
       .insert(ttsCache)
-      .values({ messageId, voice, audioMp3: Buffer.from(audioBytes) })
+      .values({ messageId, voice, model, audioMp3: Buffer.from(audioBytes) })
       .onConflictDoNothing();
   } catch {
     // Cache write failures should never break playback.

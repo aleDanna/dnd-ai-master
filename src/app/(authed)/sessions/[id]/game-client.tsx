@@ -14,7 +14,7 @@ import { useSessionState } from '@/sessions/use-session-state';
 import { AutoplayToggle } from '@/components/game/autoplay-toggle';
 import { SettingsLink } from '@/components/ui/settings-link';
 import { MemoryStatusBanner } from '@/components/memory-status-banner';
-import { setActiveAudio, getActiveAudio } from '@/lib/tts-playback';
+import { setActiveAudio, getActiveAudio, setLoadingMessageId } from '@/lib/tts-playback';
 import type { Character } from '@/engine/types';
 import type { CombatActorRow, MessageRow, SessionRow, SessionStateRow } from '@/sessions/client-types';
 import type { MasterInventoryView } from '@/srd/enrich-inventory';
@@ -263,6 +263,11 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
     if (inFlightTtsRef.current === latestMasterMsgId) return;
     const target = latestMasterMsgId;
     inFlightTtsRef.current = target;
+    // Broadcast loading state so the TtsButton under this specific message
+    // shows a "Generating…" spinner instead of the stale "Listen" label
+    // while we fetch + decode. Cleared by setActiveAudio (when audio plays)
+    // or by the finally{} block (on cancel / error).
+    setLoadingMessageId(target);
 
     let cancelled = false;
     void (async () => {
@@ -278,7 +283,8 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
           URL.revokeObjectURL(url);
         };
         // Tag with the messageId so the TtsButton for this message can adopt
-        // the audio and show "Pause" while it plays.
+        // the audio and show "Pause" while it plays. setActiveAudio auto-
+        // clears the loading flag for this target.
         setActiveAudio(audio, target);
         await audio.play();
         if (!cancelled) lastAutoplayedRef.current = target;
@@ -290,6 +296,9 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
         console.warn('tts.autoplay.failed', e instanceof Error ? e.message : e);
       } finally {
         if (inFlightTtsRef.current === target) inFlightTtsRef.current = null;
+        // Best-effort clear: setActiveAudio already cleared it on success,
+        // but if we cancelled/errored before play() this catches it.
+        setLoadingMessageId(null);
       }
     })();
 
