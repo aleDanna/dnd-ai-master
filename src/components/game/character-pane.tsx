@@ -35,10 +35,12 @@ export function CharacterPane({ character, state, enrichedInventory }: Character
         flexDirection: 'column',
         gap: 14,
         flexShrink: 0,
-        alignSelf: 'flex-start',
+        // Span the viewport vertically (minus the 56px sticky topbar) instead
+        // of collapsing to content. The pane scrolls internally when its
+        // sections overflow, but the chrome itself always reaches the bottom.
         position: 'sticky',
         top: 56,
-        maxHeight: 'calc(100vh - 56px)',
+        height: 'calc(100vh - 56px)',
         overflowY: 'auto',
       }}
     >

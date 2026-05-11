@@ -47,10 +47,12 @@ export function MechanicsPane({ sessionId, state, actors, pcCharacterId, pcName,
         flexDirection: 'column',
         gap: 18,
         flexShrink: 0,
-        alignSelf: 'flex-start',
+        // Span the viewport vertically (minus the 56px sticky topbar) instead
+        // of collapsing to content. Internal overflow scrolls; the chrome
+        // always reaches the bottom edge.
         position: 'sticky',
         top: 56,
-        maxHeight: 'calc(100vh - 56px)',
+        height: 'calc(100vh - 56px)',
         overflowY: 'auto',
       }}
     >
