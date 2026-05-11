@@ -29,8 +29,9 @@ export async function generateAndPersist(
   expectedVersion: number,
   provider: ImageProvider = 'openai',
   model?: string,
+  characterAppearance?: string,
 ): Promise<GenerateResult> {
-  const fullPrompt = buildImagePrompt(visualPrompt, styleText);
+  const fullPrompt = buildImagePrompt(visualPrompt, styleText, characterAppearance);
   const result =
     provider === 'gemini'
       ? await generateBytesGemini(fullPrompt, model)

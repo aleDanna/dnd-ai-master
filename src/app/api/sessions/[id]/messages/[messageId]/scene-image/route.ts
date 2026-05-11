@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { sessions, sessionMessages, sessionState } from '@/db/schema';
+import { sessions, sessionMessages, sessionState, characters } from '@/db/schema';
 import { getResolvedPreferences } from '@/lib/preferences';
-import { resolveStyleText } from '@/ai/master/image-style';
+import { resolveStyleText, buildCharacterAppearance } from '@/ai/master/image-style';
 import { generateAndPersist } from '@/sessions/scene-image-job';
 
 /**
@@ -27,16 +27,24 @@ export async function POST(
   if (!userId) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   const { id: sessionId, messageId } = await params;
 
-  // Ownership + role check in a single round-trip.
+  // Ownership + role check + character lookup in a single round-trip. The
+  // character payload (name, race, class, identity) feeds the image prompt
+  // so the rendered scene features the actual protagonist rather than a
+  // generic adventurer (PHB §17: PC identity informs the visual portrayal).
   const [row] = await db
     .select({
       messageRole: sessionMessages.role,
       messageContent: sessionMessages.content,
       currentVersion: sessionState.sceneImageVersion,
+      charName: characters.name,
+      charRaceSlug: characters.raceSlug,
+      charClassSlug: characters.classSlug,
+      charIdentity: characters.identity,
     })
     .from(sessions)
     .innerJoin(sessionMessages, eq(sessionMessages.sessionId, sessions.id))
     .innerJoin(sessionState, eq(sessionState.sessionId, sessions.id))
+    .innerJoin(characters, eq(characters.id, sessions.characterId))
     .where(and(
       eq(sessions.id, sessionId),
       eq(sessions.userId, userId),
@@ -58,6 +66,12 @@ export async function POST(
     return NextResponse.json({ error: 'image-generation-disabled' }, { status: 403 });
   }
   const styleText = resolveStyleText(prefs);
+  const characterAppearance = buildCharacterAppearance({
+    name: row.charName,
+    raceSlug: row.charRaceSlug,
+    classSlug: row.charClassSlug,
+    identity: row.charIdentity,
+  });
   const nextVersion = row.currentVersion + 1;
 
   const result = await generateAndPersist(
@@ -67,6 +81,7 @@ export async function POST(
     nextVersion,
     prefs.imageProvider,
     prefs.imageModel,
+    characterAppearance,
   );
 
   if (!result.ok) {
