@@ -51,11 +51,45 @@ async function loadContext(tx: Tx, sessionId: string): Promise<SessionContext | 
   return { characterId: s.characterId, hpMax: c.hpMax };
 }
 
+/**
+ * Defensive de-dup of `add_inventory` mutations within a single batch.
+ *
+ * The AI master sometimes emits two `add_item` tool calls for the same loot
+ * inside the same turn (re-narrating "you pick up X", calling the tool twice
+ * via successive tool-uses, or re-emitting after a tool error). The original
+ * additive behaviour of `add_inventory` then doubled the qty on the player's
+ * sheet — reported as "mi ha aggiunto 2 volte gli oggetti raccolti".
+ *
+ * Same-turn de-dup keeps only the FIRST `add_inventory` for each
+ * (characterId, itemSlug) pair. Cross-turn de-dup is out of scope — the
+ * prompt's "NOT idempotent" rule plus the inventory snapshot the master
+ * sees every turn is the right tool there.
+ *
+ * Note: `qty` is NOT summed across duplicate calls. If the master meant to
+ * grant the loot twice, it should pass `qty: 2` in a single call. The
+ * conservative choice prevents accidental duplication; deliberate
+ * stacking still works.
+ */
+function dedupeAddInventory(mutations: Mutation[]): Mutation[] {
+  const seen = new Set<string>();
+  const out: Mutation[] = [];
+  for (const m of mutations) {
+    if (m.op === 'add_inventory') {
+      const key = `${m.characterId}::${m.itemSlug}`;
+      if (seen.has(key)) continue;  // skip duplicate; first call wins
+      seen.add(key);
+    }
+    out.push(m);
+  }
+  return out;
+}
+
 export async function applyMutations(sessionId: string, mutations: Mutation[], rolls: DiceRoll[]): Promise<void> {
+  const deduped = dedupeAddInventory(mutations);
   await db.transaction(async (tx) => {
     const ctx = await loadContext(tx, sessionId);
     if (!ctx) return;
-    for (const m of mutations) {
+    for (const m of deduped) {
       await applyOne(tx, sessionId, ctx, m);
     }
     if (rolls.length) {
