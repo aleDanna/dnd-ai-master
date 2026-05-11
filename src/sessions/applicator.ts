@@ -30,6 +30,7 @@ import type {
 import { isValidMountMode } from '@/engine/mounts';
 import { isValidVehicleSlug } from '@/engine/vehicles';
 import { newTurnState, consumeAction, spendMovement } from '@/engine/combat/turn-state';
+import { isCurrencySlug, payCurrency } from './currency';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -487,7 +488,31 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
     case 'remove_inventory': {
       const [c] = await tx.select({ inventory: charactersTable.inventory }).from(charactersTable).where(eq(charactersTable.id, m.characterId)).limit(1);
       if (!c) break;
-      const next = mergeInventoryRemove(c.inventory ?? [], m.itemSlug, m.qty);
+      const inv = asInvArray(c.inventory);
+      // Currency payments need cross-denomination accounting. Paying 3 gp out
+      // of a pile that holds only sp/cp is a "make change" operation, not a
+      // no-op. payCurrency() either subtracts directly (denominations
+      // preserved) or redistributes the entire coin pile in cp value.
+      let next: InvRow[];
+      if (isCurrencySlug(m.itemSlug)) {
+        const result = payCurrency(inv, m.itemSlug, m.qty);
+        if (!result.ok) {
+          // Insufficient total wealth across all denominations. Don't silently
+          // drain what little the player has — log it and skip; the master
+          // sees the unchanged inventory snapshot next turn and can react.
+          console.warn('applicator.remove_inventory.insufficient_currency', {
+            characterId: m.characterId,
+            slug: m.itemSlug,
+            qty: m.qty,
+            needCp: result.needCp,
+            haveCp: result.haveCp,
+          });
+          break;
+        }
+        next = result.next;
+      } else {
+        next = mergeInventoryRemove(inv, m.itemSlug, m.qty);
+      }
       await tx.update(charactersTable).set({ inventory: next, updatedAt: new Date() }).where(eq(charactersTable.id, m.characterId));
       break;
     }
