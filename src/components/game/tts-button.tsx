@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Icon } from '@/components/ui/icon';
 import { SpinningDie } from './spinning-die';
-import { setActiveAudio, subscribePlayback } from '@/lib/tts-playback';
+import { setActiveAudio, subscribePlayback, getActiveAudio, getActiveMessageId } from '@/lib/tts-playback';
 
 export interface TtsButtonProps {
   sessionId: string;
@@ -15,6 +15,10 @@ type State = 'idle' | 'loading' | 'playing' | 'error';
  * Small inline play/pause button for synthesizing and playing back the master's text.
  * Caches the blob URL across plays in the same component lifetime; revokes on unmount.
  * Each first-play hits /api/sessions/[id]/messages/[messageId]/tts which calls OpenAI.
+ *
+ * When the page-level auto-play coordinator starts an audio tagged with our
+ * messageId, we adopt that audio so clicking the button pauses it (UI shows
+ * "Pause" instead of the stale "Listen").
  */
 export function TtsButton({ sessionId, messageId }: TtsButtonProps) {
   const [state, setState] = React.useState<State>('idle');
@@ -24,20 +28,52 @@ export function TtsButton({ sessionId, messageId }: TtsButtonProps) {
 
   React.useEffect(
     () => () => {
-      audioRef.current?.pause();
+      // Only clean up if we own the audio — autoplay coordinator owns its own.
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
     },
     [],
   );
 
-  // If another player (manual or autoplay) takes over, drop our visual "playing" state.
+  // Mount-time adoption: if the page-level autoplay coordinator already
+  // started an audio for OUR messageId before we mounted, pick it up so the
+  // initial render shows "Pause" instead of a stale "Listen".
   React.useEffect(() => {
-    return subscribePlayback((active) => {
+    if (getActiveMessageId() === messageId) {
+      const audio = getActiveAudio();
+      if (audio && !audio.paused) {
+        audioRef.current = audio;
+        setState('playing');
+        const onEnded = () => setState('idle');
+        audio.addEventListener('ended', onEnded, { once: true });
+        return () => audio.removeEventListener('ended', onEnded);
+      }
+    }
+    return undefined;
+  }, [messageId]);
+
+  // Live coordination:
+  //  - If a NEW audio is registered for OUR messageId, adopt it so the button
+  //    reflects "Pause" while the autoplay coordinator drives the playback.
+  //  - If a different audio is registered, drop our visual "playing" state.
+  React.useEffect(() => {
+    return subscribePlayback((active, activeMsgId) => {
+      if (active && activeMsgId === messageId) {
+        audioRef.current = active;
+        setState('playing');
+        const onEnded = () => {
+          if (audioRef.current === active) {
+            audioRef.current = null;
+            setState('idle');
+          }
+        };
+        active.addEventListener('ended', onEnded, { once: true });
+        return;
+      }
       if (audioRef.current && active !== audioRef.current) {
         setState((s) => (s === 'playing' ? 'idle' : s));
       }
     });
-  }, []);
+  }, [messageId]);
 
   const playFromUrl = (url: string): void => {
     const audio = new Audio(url);
@@ -48,7 +84,7 @@ export function TtsButton({ sessionId, messageId }: TtsButtonProps) {
       setError('playback-failed');
     };
     setState('playing');
-    setActiveAudio(audio);
+    setActiveAudio(audio, messageId);
     void audio.play().catch(() => {
       setState('error');
       setError('playback-blocked');

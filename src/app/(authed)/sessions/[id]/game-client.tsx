@@ -231,6 +231,11 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
   }, [sessionId]);
 
   // Auto-play the latest persisted master message when the toggle is on.
+  // Reliability fix: only mark a message as "autoplayed" AFTER audio.play()
+  // resolves. If the fetch / decode / browser-autoplay-policy blocks the
+  // playback, the ref stays clear so a subsequent effect run (e.g. user
+  // clicks something granting permission, or the messages array refreshes)
+  // can try again instead of silently giving up forever.
   React.useEffect(() => {
     if (!autoplay) return;
     const newest = [...messages]
@@ -238,25 +243,38 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
       .find((m) => m.role === 'master' && !m.id.startsWith('temp-'));
     if (!newest) return;
     if (lastAutoplayedRef.current === newest.id) return;
-    lastAutoplayedRef.current = newest.id;
+    const target = newest.id;
 
+    let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch(`/api/sessions/${sessionId}/messages/${newest.id}/tts`);
-        if (!res.ok) return; // silent — UI can still play manually via the Listen button
+        const res = await fetch(`/api/sessions/${sessionId}/messages/${target}/tts`);
+        if (cancelled || !res.ok) return;
         const blob = await res.blob();
+        if (cancelled) return;
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
         audio.onended = () => {
           if (getActiveAudio() === audio) setActiveAudio(null);
           URL.revokeObjectURL(url);
         };
-        setActiveAudio(audio);
+        // Tag with the messageId so the TtsButton for this message can adopt
+        // the audio and show "Pause" while it plays.
+        setActiveAudio(audio, target);
         await audio.play();
-      } catch {
-        // Network / decode error — keep the manual Listen button as a fallback.
+        if (!cancelled) lastAutoplayedRef.current = target;
+      } catch (e) {
+        // Most common: browser autoplay policy (NotAllowedError) before user
+        // gesture. Keep lastAutoplayedRef untouched so the user can either
+        // click the Listen button manually OR a subsequent message attempt
+        // (after they've interacted with the page) auto-plays cleanly.
+        console.warn('tts.autoplay.failed', e instanceof Error ? e.message : e);
       }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [messages, autoplay, sessionId]);
 
   if (!liveState) {
