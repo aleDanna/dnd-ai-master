@@ -19,7 +19,7 @@ export interface NarrativeMessage {
   id?: string;
   role: 'master' | 'player' | 'system';
   content: string;
-  tools?: { name: string; ok: boolean; error?: string; rolls: { formula: string; total: number }[] }[];
+  tools?: { name: string; ok: boolean; error?: string; rolls: { formula: string; total: number; rolls?: number[] }[] }[];
 }
 
 export interface NarrativePaneProps {
@@ -391,15 +391,28 @@ function MessageView({
                 onAnyRollEnd={onAnyRollEnd}
               />
             )}
-            {m.tools?.map((t, i) => (
-              <ToolPill
-                key={i}
-                toolName={t.name}
-                formula={t.rolls[0]?.formula}
-                result={t.rolls[0] ? `${t.rolls[0].total}` : undefined}
-                status={t.ok ? 'ok' : 'error'}
-              />
-            ))}
+            {m.tools?.map((t, i) => {
+              const r = t.rolls[0];
+              // Transparency: show the raw die rolls so the player can audit the
+              // total. "1d20+5 [13] → 18" makes it clear the engine rolled 13 on
+              // the d20 and added the +5 modifier. "1d20+5 [8,15] ADV → 20" shows
+              // both dice rolled with advantage (the engine picked 15, the max).
+              let formula = r?.formula;
+              if (r?.rolls && r.rolls.length > 0) {
+                const adv = r.rolls.length === 2;
+                const list = `[${r.rolls.join(',')}]${adv ? ' ADV/DIS' : ''}`;
+                formula = formula ? `${formula} ${list}` : list;
+              }
+              return (
+                <ToolPill
+                  key={i}
+                  toolName={t.name}
+                  formula={formula}
+                  result={r ? `${r.total}` : undefined}
+                  status={t.ok ? 'ok' : 'error'}
+                />
+              );
+            })}
           </div>
         )}
       </div>
@@ -475,7 +488,7 @@ function mergeMessages(history: MessageRow[], live: TurnEvent[]): NarrativeMessa
     else if (ev.type === 'tool_use_start') pendingNames[ev.toolUseId] = ev.name;
     else if (ev.type === 'tool_use_end') {
       const name = pendingNames[ev.toolUseId] ?? 'tool';
-      liveTools.push({ name, ok: ev.ok, error: ev.error, rolls: ev.rolls.map((r) => ({ formula: r.formula, total: r.total })) });
+      liveTools.push({ name, ok: ev.ok, error: ev.error, rolls: ev.rolls.map((r) => ({ formula: r.formula, total: r.total, rolls: r.rolls })) });
     }
   }
   if (liveText || liveTools.length) {
