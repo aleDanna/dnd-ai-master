@@ -96,6 +96,14 @@ export class GeminiProvider implements MasterProvider {
         ...(functionDeclarations.length ? { tools: [{ functionDeclarations }] } : {}),
         maxOutputTokens: input.maxTokens ?? 4096,
         safetySettings: SAFETY_SETTINGS,
+        // Gemini 2.5 spends output tokens on internal "thinking" before
+        // emitting visible content. When the caller asks for a specific
+        // thinking budget (structured-extraction tasks like the memory
+        // extractor), cap it so it can't eat the entire maxOutputTokens.
+        // Without this, observed: stopReason='max_tokens', contentBlockCount=0.
+        ...(typeof input.geminiThinkingBudget === 'number'
+          ? { thinkingConfig: { thinkingBudget: input.geminiThinkingBudget } }
+          : {}),
       },
     }))) as GeminiResponse;
 

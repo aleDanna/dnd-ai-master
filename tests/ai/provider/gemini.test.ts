@@ -11,6 +11,21 @@ vi.mock('@google/genai', () => {
     // The mock just needs an object with that property so the provider's
     // `mode: FunctionCallingConfigMode.ANY` assignment doesn't read undefined.
     FunctionCallingConfigMode: { ANY: 'ANY', NONE: 'NONE', AUTO: 'AUTO', MODE_UNSPECIFIED: 'MODE_UNSPECIFIED' },
+    // The provider also imports HarmCategory/HarmBlockThreshold for the
+    // SAFETY_SETTINGS constant. Mock them as plain string-keyed enums so
+    // the imports resolve at module load.
+    HarmCategory: {
+      HARM_CATEGORY_HARASSMENT: 'HARM_CATEGORY_HARASSMENT',
+      HARM_CATEGORY_HATE_SPEECH: 'HARM_CATEGORY_HATE_SPEECH',
+      HARM_CATEGORY_SEXUALLY_EXPLICIT: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+      HARM_CATEGORY_DANGEROUS_CONTENT: 'HARM_CATEGORY_DANGEROUS_CONTENT',
+    },
+    HarmBlockThreshold: {
+      BLOCK_ONLY_HIGH: 'BLOCK_ONLY_HIGH',
+      BLOCK_MEDIUM_AND_ABOVE: 'BLOCK_MEDIUM_AND_ABOVE',
+      BLOCK_LOW_AND_ABOVE: 'BLOCK_LOW_AND_ABOVE',
+      BLOCK_NONE: 'BLOCK_NONE',
+    },
   };
 });
 

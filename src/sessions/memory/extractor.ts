@@ -290,8 +290,19 @@ async function runExtraction(sessionId: string, providerName?: ProviderName): Pr
       systemBlocks: [{ type: 'text', text: sys }],
       messages: [{ role: 'user', content: userText }],
       tools: [],
-      maxTokens: 2000,
+      // 8192 gives Gemini 2.5 enough room to think AND produce the JSON.
+      // The extractor output is bounded (~1500 tokens for a typical chapter
+      // with upserts + summary); the extra headroom is for Gemini's internal
+      // reasoning pass.
+      maxTokens: 8192,
       sessionId,
+      // Cap Gemini thinking so it can't eat the entire output budget on a
+      // complex chapter. 1024 tokens of reasoning is plenty for structured
+      // JSON extraction, and leaves ~7K for the actual JSON payload.
+      // No-op on Anthropic/OpenAI. Observed live: rebuild was stuck because
+      // thinking consumed all 2000 tokens of the older maxTokens budget,
+      // and the response came back with zero content blocks.
+      geminiThinkingBudget: 1024,
     });
   } catch (e) {
     console.error('extractor.provider_error', e instanceof Error ? e.message : String(e));

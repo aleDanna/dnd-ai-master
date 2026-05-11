@@ -32,6 +32,21 @@ export interface CompleteMessageInput {
   maxTokens?: number;
   /** Optional, used as OpenAI prompt_cache_key for cache affinity. */
   sessionId?: string;
+  /**
+   * Gemini-specific: cap the internal "thinking" token budget. Anthropic and
+   * OpenAI ignore this. Gemini 2.5 spends output tokens on internal reasoning
+   * before emitting visible content, and on structured tasks like the memory
+   * extractor that reasoning can consume the entire `maxTokens` budget and
+   * leave zero content (observed: stopReason=max_tokens, contentBlockCount=0).
+   *
+   * Pass a small positive integer (e.g. 1024) to bound thinking; the
+   * remaining maxTokens budget is then available for actual JSON output.
+   * Passing 0 disables thinking entirely BUT errors on models that require it
+   * (gemini-2.5-pro returns "Budget 0 is invalid. This model only works in
+   * thinking mode."), so prefer a positive cap unless you know the target
+   * model supports disable.
+   */
+  geminiThinkingBudget?: number;
 }
 
 export type ContentBlock =
