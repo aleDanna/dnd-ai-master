@@ -54,6 +54,13 @@ export function MechanicsPane({ sessionId, state, actors, pcCharacterId, pcName,
         overflowY: 'auto',
       }}
     >
+      {/* Memoria sits at the top so the player can trigger a codex rebuild
+          without scrolling past HP / scene / inventory. Useful after a crash
+          mid-turn left the extractor behind. */}
+      <section>
+        <Eyebrow style={{ marginBottom: 6 }}>Memoria</Eyebrow>
+        <RebuildMemoryButton sessionId={sessionId} />
+      </section>
       <XpBar level={pcLevel} xp={pcXp} />
       {showTravel && (
         <section>
@@ -104,10 +111,6 @@ export function MechanicsPane({ sessionId, state, actors, pcCharacterId, pcName,
         <div style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 14, lineHeight: 1.55, color: 'var(--fg-muted)' }}>
           {state.scene || 'No scene set yet.'}
         </div>
-      </section>
-      <section>
-        <Eyebrow style={{ marginBottom: 6 }}>Memoria</Eyebrow>
-        <RebuildMemoryButton sessionId={sessionId} />
       </section>
     </aside>
   );
