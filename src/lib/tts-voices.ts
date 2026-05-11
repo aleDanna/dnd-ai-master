@@ -18,6 +18,8 @@ export function isValidTtsProvider(value: unknown): value is TtsProvider {
 
 // ── OpenAI ─────────────────────────────────────────────────────────────────
 
+/** Full set of OpenAI TTS voices across all models. Individual models support
+ *  a subset — see OPENAI_VOICES_BY_MODEL for the precise mapping. */
 export const OPENAI_TTS_VOICES = [
   'alloy',
   'ash',
@@ -38,6 +40,19 @@ export type OpenAITtsVoice = (typeof OPENAI_TTS_VOICES)[number];
  *  - tts-1-hd:        higher fidelity at the cost of latency + price */
 export const OPENAI_TTS_MODELS = ['gpt-4o-mini-tts', 'tts-1', 'tts-1-hd'] as const;
 export type OpenAITtsModel = (typeof OPENAI_TTS_MODELS)[number];
+
+/**
+ * Per-model voice support for OpenAI. NOT every voice works with every model.
+ * The legacy tts-1 / tts-1-hd models predate the gpt-4o-mini-tts release and
+ * never gained the `ballad` voice — passing it returns 400 INVALID_ENUM.
+ *
+ * Source: OpenAI's audio.speech.create API reference, voice enum per model.
+ */
+export const OPENAI_VOICES_BY_MODEL: Record<OpenAITtsModel, readonly string[]> = {
+  'gpt-4o-mini-tts': OPENAI_TTS_VOICES,                                          // all 10
+  'tts-1':           ['alloy', 'ash', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer'],   // 9 — no ballad
+  'tts-1-hd':        ['alloy', 'ash', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer'],   // 9 — no ballad
+};
 
 // ── Gemini ─────────────────────────────────────────────────────────────────
 
@@ -111,13 +126,30 @@ export function voicesForProvider(provider: TtsProvider): readonly string[] {
   return provider === 'gemini' ? GEMINI_TTS_VOICES : OPENAI_TTS_VOICES;
 }
 
+/** Per-model voice list. Use this for UI dropdowns and validation — the
+ *  per-provider list is too lenient for OpenAI (ballad doesn't work on tts-1). */
+export function voicesForModel(provider: TtsProvider, model: string): readonly string[] {
+  if (provider === 'gemini') return GEMINI_TTS_VOICES;
+  if (model in OPENAI_VOICES_BY_MODEL) return OPENAI_VOICES_BY_MODEL[model as OpenAITtsModel];
+  return OPENAI_TTS_VOICES;
+}
+
 export function modelsForProvider(provider: TtsProvider): readonly string[] {
   return provider === 'gemini' ? GEMINI_TTS_MODELS : OPENAI_TTS_MODELS;
 }
 
-/** Default voice slug for a given provider. Picked for narration quality. */
+/** Default voice slug for a given provider. Picked for narration quality —
+ *  'onyx' is supported by every OpenAI model. */
 export function defaultVoiceForProvider(provider: TtsProvider): string {
   return provider === 'gemini' ? 'Kore' : 'onyx';
+}
+
+/** Default voice for a (provider, model) pair. Used when cascading after a
+ *  model change leaves the stored voice unsupported by the new model. */
+export function defaultVoiceForModel(provider: TtsProvider, model: string): string {
+  const allowed = voicesForModel(provider, model);
+  const fallback = defaultVoiceForProvider(provider);
+  return allowed.includes(fallback) ? fallback : (allowed[0] ?? fallback);
 }
 
 /** Default model slug for a given provider. */
@@ -128,6 +160,11 @@ export function defaultModelForProvider(provider: TtsProvider): string {
 export function isValidVoiceForProvider(value: unknown, provider: TtsProvider): boolean {
   if (typeof value !== 'string') return false;
   return voicesForProvider(provider).includes(value);
+}
+
+export function isValidVoiceForModel(value: unknown, provider: TtsProvider, model: string): boolean {
+  if (typeof value !== 'string') return false;
+  return voicesForModel(provider, model).includes(value);
 }
 
 export function isValidModelForProvider(value: unknown, provider: TtsProvider): boolean {

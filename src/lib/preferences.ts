@@ -7,14 +7,14 @@ export {
   TTS_VOICES, type TtsVoice, isValidTtsVoice,
   TTS_MODELS, type TtsModel, isValidTtsModel,
   TTS_PROVIDERS, type TtsProvider, isValidTtsProvider,
-  voicesForProvider, modelsForProvider,
-  defaultVoiceForProvider, defaultModelForProvider,
-  isValidVoiceForProvider, isValidModelForProvider,
+  voicesForProvider, voicesForModel, modelsForProvider,
+  defaultVoiceForProvider, defaultVoiceForModel, defaultModelForProvider,
+  isValidVoiceForProvider, isValidVoiceForModel, isValidModelForProvider,
 } from './tts-voices';
 import {
-  defaultVoiceForProvider as ttsVoiceDefault,
+  defaultVoiceForModel as ttsVoiceDefaultForModel,
   defaultModelForProvider as ttsModelDefault,
-  voicesForProvider as ttsVoicesFor,
+  voicesForModel as ttsVoicesForModel,
   modelsForProvider as ttsModelsFor,
   type TtsProvider,
 } from './tts-voices';
@@ -61,11 +61,17 @@ function envDefaultTtsModel(provider: TtsProvider): string {
   return process.env.OPENAI_TTS_MODEL ?? ttsModelDefault('openai');
 }
 
-function envDefaultTtsVoice(provider: TtsProvider): string {
-  if (provider === 'gemini') {
-    return process.env.GEMINI_TTS_VOICE ?? ttsVoiceDefault('gemini');
+/** Env-overridable default voice for a given (provider, model) pair. The
+ *  model matters for OpenAI because some voices (e.g. ballad) only exist on
+ *  gpt-4o-mini-tts — the legacy tts-1/tts-1-hd models reject them. */
+function envDefaultTtsVoice(provider: TtsProvider, model: string): string {
+  const envOverride = provider === 'gemini' ? process.env.GEMINI_TTS_VOICE : process.env.OPENAI_TTS_VOICE;
+  // Honour the env override only if it's actually supported by the model in
+  // play — otherwise it would force every user onto an invalid voice.
+  if (envOverride && ttsVoicesForModel(provider, model).includes(envOverride)) {
+    return envOverride;
   }
-  return process.env.OPENAI_TTS_VOICE ?? ttsVoiceDefault('openai');
+  return ttsVoiceDefaultForModel(provider, model);
 }
 
 export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
@@ -110,21 +116,21 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
   const imageStyleCustom = prefs.imageStyleCustom ?? DEFAULT_PREFERENCES.imageStyleCustom;
   const imageProvider = prefs.imageProvider ?? envDefaultImageProvider();
   const imageModel = prefs.imageModel ?? envDefaultImageModel(imageProvider);
-  // TTS triplet — provider drives the namespace for voice and model. If the
-  // stored voice/model doesn't match the current provider (e.g. user just
-  // switched provider but UI never persisted the cascade), fall back to that
-  // provider's default rather than handing OpenAI a Gemini voice name.
+  // TTS triplet — provider drives the namespace; (provider, model) drives the
+  // namespace for voice. Voice support is model-specific on OpenAI: 'ballad'
+  // only works on gpt-4o-mini-tts and the legacy tts-1 / tts-1-hd reject it
+  // with 400. Resolve model first, then voice against that model.
   const ttsProvider = prefs.ttsProvider ?? envDefaultTtsProvider();
-  const storedVoice = prefs.ttsVoice;
   const storedModel = prefs.ttsModel;
-  const ttsVoice =
-    storedVoice && ttsVoicesFor(ttsProvider).includes(storedVoice)
-      ? storedVoice
-      : envDefaultTtsVoice(ttsProvider);
   const ttsModel =
     storedModel && ttsModelsFor(ttsProvider).includes(storedModel)
       ? storedModel
       : envDefaultTtsModel(ttsProvider);
+  const storedVoice = prefs.ttsVoice;
+  const ttsVoice =
+    storedVoice && ttsVoicesForModel(ttsProvider, ttsModel).includes(storedVoice)
+      ? storedVoice
+      : envDefaultTtsVoice(ttsProvider, ttsModel);
   return {
     ttsProvider,
     ttsVoice,

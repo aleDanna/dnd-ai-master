@@ -8,9 +8,9 @@ import { Icon } from '@/components/ui/icon';
 import {
   TTS_PROVIDERS,
   type TtsProvider,
-  voicesForProvider as ttsVoicesFor,
+  voicesForModel as ttsVoicesForModel,
   modelsForProvider as ttsModelsFor,
-  defaultVoiceForProvider as ttsDefaultVoiceFor,
+  defaultVoiceForModel as ttsDefaultVoiceForModel,
   defaultModelForProvider as ttsDefaultModelFor,
   isValidTtsProvider,
 } from '@/lib/tts-voices';
@@ -79,19 +79,25 @@ export function SettingsClient({ initialPreferences }: SettingsClientProps) {
     void save({ ttsVoice: value });
   };
 
+  /** Switching model can invalidate the current voice (e.g. moving from
+   *  gpt-4o-mini-tts to tts-1 strips 'ballad'). When that happens we cascade
+   *  the voice to the new model's default; otherwise we keep the user's pick. */
   const onTtsModelChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
-    const value = e.target.value;
-    setPrefs((p) => ({ ...p, ttsModel: value }));
-    void save({ ttsModel: value });
+    const nextModel = e.target.value;
+    const allowedVoices = ttsVoicesForModel(prefs.ttsProvider, nextModel);
+    const keepVoice = allowedVoices.includes(prefs.ttsVoice);
+    const nextVoice = keepVoice ? prefs.ttsVoice : ttsDefaultVoiceForModel(prefs.ttsProvider, nextModel);
+    setPrefs((p) => ({ ...p, ttsModel: nextModel, ttsVoice: nextVoice }));
+    void save(keepVoice ? { ttsModel: nextModel } : { ttsModel: nextModel, ttsVoice: nextVoice });
   };
 
-  /** Cascading update: switching provider also resets voice + model to that
-   *  provider's defaults, so the cross-namespace inputs never land in an
+  /** Cascading update: switching provider resets both voice and model to
+   *  that provider's defaults so the cross-namespace inputs never land in an
    *  inconsistent state (e.g. OpenAI provider + Gemini voice name). */
   const onTtsProviderChange = (next: TtsProvider): void => {
     if (!isValidTtsProvider(next) || next === prefs.ttsProvider) return;
-    const nextVoice = ttsDefaultVoiceFor(next);
     const nextModel = ttsDefaultModelFor(next);
+    const nextVoice = ttsDefaultVoiceForModel(next, nextModel);
     setPrefs((p) => ({ ...p, ttsProvider: next, ttsVoice: nextVoice, ttsModel: nextModel }));
     void save({ ttsProvider: next, ttsVoice: nextVoice, ttsModel: nextModel });
   };
@@ -347,7 +353,7 @@ export function SettingsClient({ initialPreferences }: SettingsClientProps) {
               fontSize: 14,
             }}
           >
-            {ttsVoicesFor(prefs.ttsProvider).map((v) => (
+            {ttsVoicesForModel(prefs.ttsProvider, prefs.ttsModel).map((v) => (
               <option key={v} value={v}>
                 {v}
               </option>
