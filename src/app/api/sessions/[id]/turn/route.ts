@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eq, and, desc, isNull, isNotNull, sql } from 'drizzle-orm';
 import type Anthropic from '@anthropic-ai/sdk';
@@ -50,6 +50,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // in the chat UI with no recoverable signal.
   let campaign: typeof campaigns.$inferSelect;
   let lockHolder: string;
+  let currentTurnSeq = 0;
   try {
     const [turnRow] = await db
       .select({ session: sessions, campaign: campaigns })
@@ -59,6 +60,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .limit(1);
     if (!turnRow) return jsonResponse({ error: 'not-found' }, 404);
     campaign = turnRow.campaign;
+    currentTurnSeq = turnRow.session.turnSeq ?? 0;
 
     // Multiplayer permission check — only the current player may POST a turn.
     // Solo sessions always have currentPlayerCharacterId pointing to the
@@ -106,12 +108,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
   }
 
-  const stream = new ReadableStream({
-    async start(controller) {
-      const send = (event: string, data: unknown): void => {
-        controller.enqueue(new TextEncoder().encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
-      };
-      const t0 = Date.now();
+  // Run the master loop in the background so the HTTP response can return
+  // 202 immediately. Clients receive real-time updates via the /stream SSE
+  // channel (Tasks 20-22). The SSE response and `send()` helper are removed;
+  // all events now flow through notifySession / pg_notify.
+  waitUntil(
+    (async () => {
       try {
         // 0. Resolve per-user prefs once — drive provider/model + behavior flags from here.
         const userPrefs = await getResolvedPreferences(userId);
@@ -120,8 +122,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // (no real player text exists yet; the master is opening the scene
         // from the campaign premise).
         if (!isBegin) {
-          const [pm] = await db.insert(sessionMessages).values({ sessionId, role: 'player', content: body!.message! }).returning();
-          send('player_message_persisted', { type: 'player_message_persisted', messageId: pm!.id });
+          await db.insert(sessionMessages).values({ sessionId, role: 'player', content: body!.message! });
         }
 
         // 2. Language detection if not pinned (uses the user's chosen provider).
@@ -193,7 +194,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             .map((m) => ({ role: m.role === 'master' ? 'assistant' : 'user', content: m.content }));
         }
 
-        // 5. Run the tool loop — events flush as they happen via onEvent
+        // 5. Run the tool loop — events forwarded to SSE subscribers via notifySession.
         // Provider + model are resolved from user prefs (with env fallback) so each
         // user can pick their own AI without redeploying.
         const provider = getProviderByName(userPrefs.aiProvider);
@@ -218,12 +219,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             });
           },
           onEvent: (ev) => {
-            send(ev.type, ev);
             // Broadcast narrative chunks to all SSE subscribers on the session
-            // channel so party members not in the active SSE tab still see the
-            // master typing in real-time. We use messageId:'' as a sentinel
-            // meaning "pending" — the final messageId arrives in the 'message'
-            // notification below once the master row is persisted.
+            // channel so party members receive the master typing in real-time.
+            // messageId:'' is a sentinel meaning "pending" — the real messageId
+            // arrives in the 'message' notification once the row is persisted.
             if (ev.type === 'narrative_delta') {
               notifySession(sessionId, { type: 'message-chunk', messageId: '', text: ev.text }).catch(
                 (e) => console.warn('notifySession(message-chunk) failed:', e instanceof Error ? e.message : String(e)),
@@ -283,8 +282,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // 7. Persist master message — only if it actually has content. An
         // empty finalText typically means a tool call failed and the master
         // never got to write narration; persisting an empty row leaves a
-        // ghost "THE MASTER" bubble in the chat with no body. Surface that
-        // as a turn_error instead so the player sees a recoverable signal.
+        // ghost "THE MASTER" bubble in the chat with no body.
         if (result.finalText.trim()) {
           const [mm] = await db.insert(sessionMessages).values({ sessionId, role: 'master', content: result.finalText }).returning();
           // Notify SSE subscribers that a final master message is persisted.
@@ -298,28 +296,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               console.error('memory.extract.fire_and_forget', e instanceof Error ? e.message : String(e));
             }),
           );
-          send('turn_complete', { type: 'turn_complete', messageId: mm!.id, durationMs: Date.now() - t0, toolCallCount: result.toolCallCount, truncated: result.truncated, timedOut: result.timedOut });
         } else {
-          send('turn_error', { type: 'turn_error', reason: 'empty_response', recoverable: true });
+          console.warn('turn produced empty response', { sessionId });
         }
       } catch (e) {
-        send('turn_error', { type: 'turn_error', reason: e instanceof Error ? e.message : 'unknown', recoverable: false });
+        console.error('turn background task failed', e instanceof Error ? e.message : String(e));
       } finally {
         await touchCampaign(campaign.id);
         await releaseTurnLock(sessionId, lockHolder);
-        controller.close();
       }
-    },
-  });
+    })(),
+  );
 
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      'X-Accel-Buffering': 'no',
-    },
-  });
+  return NextResponse.json({ ok: true, turnSeq: currentTurnSeq + 1 }, { status: 202 });
 }
 
 function jsonResponse(body: unknown, status: number): Response {
