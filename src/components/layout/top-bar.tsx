@@ -31,7 +31,7 @@ export function TopBar({ mode = 'Solo' }: TopBarProps) {
       </Link>
       <nav style={{ marginLeft: 24, display: 'flex', gap: 4 }}>
         {[
-          { label: 'Campaigns', href: '/hub' },
+          { label: 'Campaigns', href: '/campaigns' },
           { label: 'Characters', href: '/hub' },
         ].map((n) => (
           <Link
