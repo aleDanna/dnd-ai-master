@@ -57,40 +57,50 @@ export function DeleteCardButton({ endpoint, confirmText, onDeleted, stopLinkPro
       disabled={busy}
       title={error ?? 'Delete'}
       aria-label="Delete"
+      // Anchored via `style.position` so we beat any z-index stacking from
+      // sibling content; `zIndex: 2` keeps us above accent borders and the
+      // card's box-shadow.
       style={{
         position: 'absolute',
         top: 8,
         right: 8,
-        width: 26,
-        height: 26,
+        zIndex: 2,
+        width: 28,
+        height: 28,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: 0,
-        background: error ? 'rgba(196, 95, 71, 0.18)' : 'rgba(20, 16, 28, 0.72)',
-        border: '1px solid ' + (error ? 'var(--ember)' : 'var(--border)'),
+        // Stronger default contrast — the previous 55% opacity + muted text
+        // on a dark card was almost invisible, leading users to think the
+        // affordance didn't exist. Now: solid dark fill, brighter foreground,
+        // visible border. Hover bumps to ember red (destructive intent).
+        background: error ? 'rgba(196, 95, 71, 0.22)' : 'var(--bg-sunken)',
+        border: '1px solid ' + (error ? 'var(--ember)' : 'var(--border-strong)'),
         borderRadius: 999,
-        color: error ? 'var(--ember)' : 'var(--fg-muted)',
+        color: error ? 'var(--ember)' : 'var(--fg)',
         cursor: busy ? 'wait' : 'pointer',
-        opacity: 0.55,
-        transition: 'opacity 150ms ease-out, background 150ms ease-out, color 150ms ease-out',
+        opacity: 0.92,
+        transition: 'opacity 150ms ease-out, background 150ms ease-out, color 150ms ease-out, border-color 150ms ease-out',
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.opacity = '1';
         if (!error) {
           e.currentTarget.style.color = 'var(--ember)';
-          e.currentTarget.style.background = 'rgba(196, 95, 71, 0.18)';
+          e.currentTarget.style.background = 'rgba(196, 95, 71, 0.22)';
+          e.currentTarget.style.borderColor = 'var(--ember)';
         }
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.opacity = '0.55';
+        e.currentTarget.style.opacity = '0.92';
         if (!error) {
-          e.currentTarget.style.color = 'var(--fg-muted)';
-          e.currentTarget.style.background = 'rgba(20, 16, 28, 0.72)';
+          e.currentTarget.style.color = 'var(--fg)';
+          e.currentTarget.style.background = 'var(--bg-sunken)';
+          e.currentTarget.style.borderColor = 'var(--border-strong)';
         }
       }}
     >
-      <Icon name="x" size={12} />
+      <Icon name="x" size={14} />
     </button>
   );
 }
