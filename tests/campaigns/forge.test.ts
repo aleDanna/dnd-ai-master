@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { campaigns, characters, sessions, sessionState, users } from '@/db/schema';
+import { characters, sessions, sessionState, users } from '@/db/schema';
 import { createCampaign } from '@/campaigns/forge';
 
 describe('createCampaign', () => {
