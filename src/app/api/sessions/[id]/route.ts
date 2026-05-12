@@ -2,20 +2,26 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { sessions, sessionState } from '@/db/schema';
+import { sessions, sessionState, campaigns, characters } from '@/db/schema';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   const { id } = await params;
-  const [session] = await db
-    .select()
+  const [row] = await db
+    .select({
+      session: sessions,
+      campaign: campaigns,
+      character: characters,
+    })
     .from(sessions)
+    .leftJoin(campaigns, eq(campaigns.id, sessions.campaignId))
+    .leftJoin(characters, eq(characters.id, sessions.characterId))
     .where(and(eq(sessions.id, id), eq(sessions.userId, userId), isNull(sessions.deletedAt)))
     .limit(1);
-  if (!session) return NextResponse.json({ error: 'not-found' }, { status: 404 });
+  if (!row) return NextResponse.json({ error: 'not-found' }, { status: 404 });
   const [state] = await db.select().from(sessionState).where(eq(sessionState.sessionId, id)).limit(1);
-  return NextResponse.json({ session, state });
+  return NextResponse.json({ session: row.session, campaign: row.campaign, character: row.character, state });
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

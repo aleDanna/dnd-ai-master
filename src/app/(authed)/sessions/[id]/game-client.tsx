@@ -16,12 +16,13 @@ import { SettingsLink } from '@/components/ui/settings-link';
 import { MemoryStatusBanner } from '@/components/memory-status-banner';
 import { setActiveAudio, getActiveAudio, setLoadingMessageId } from '@/lib/tts-playback';
 import type { Character } from '@/engine/types';
-import type { CombatActorRow, MessageRow, SessionRow, SessionStateRow } from '@/sessions/client-types';
+import type { CampaignRow, CombatActorRow, MessageRow, SessionRow, SessionStateRow } from '@/sessions/client-types';
 import type { MasterInventoryView } from '@/srd/enrich-inventory';
 
 export interface GameClientProps {
   sessionId: string;
   session: SessionRow;
+  campaign: CampaignRow | null;
   character: Character;
   initialState: SessionStateRow | null;
   initialMessages: MessageRow[];
@@ -31,7 +32,7 @@ export interface GameClientProps {
   initialImageGenerationEnabled: boolean;
 }
 
-export function GameClient({ sessionId, session, character: initialCharacter, initialState, initialMessages, initialActors, initialAutoplay, initialManualRolls, initialImageGenerationEnabled }: GameClientProps) {
+export function GameClient({ sessionId, session, campaign, character: initialCharacter, initialState, initialMessages, initialActors, initialAutoplay, initialManualRolls, initialImageGenerationEnabled }: GameClientProps) {
   const [memoryReady, setMemoryReady] = React.useState(false);
   const [messages, setMessages] = React.useState<MessageRow[]>(initialMessages);
   // Character mirror: starts from SSR-provided value, refreshed on mount and
@@ -341,7 +342,7 @@ export function GameClient({ sessionId, session, character: initialCharacter, in
         <div style={{ flex: 1, textAlign: 'center' }}>
           <div style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 17 }}>{character.name}&apos;s session</div>
           <div style={{ fontSize: 10, color: 'var(--fg-subtle)', fontFamily: 'var(--font-mono)', marginTop: 1 }}>
-            {liveState.inCombat ? 'COMBAT' : 'EXPLORATION'} · LANG {session.language?.toUpperCase() ?? '–'}
+            {liveState.inCombat ? 'COMBAT' : 'EXPLORATION'} · LANG {(campaign?.language ?? session.language)?.toUpperCase() ?? '–'}
           </div>
         </div>
         <AutoplayToggle value={autoplay} onChange={setAutoplay} />
