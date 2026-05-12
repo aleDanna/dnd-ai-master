@@ -60,6 +60,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!turnRow) return jsonResponse({ error: 'not-found' }, 404);
     campaign = turnRow.campaign;
 
+    // Multiplayer permission check — only the current player may POST a turn.
+    // Solo sessions always have currentPlayerCharacterId pointing to the
+    // single character (backfilled at migration), so this check is safe for
+    // solo too. Skipped on "begin" turns since the host always opens the scene.
+    if (!isBegin && turnRow.session.currentPlayerCharacterId) {
+      const [check] = await db
+        .select({
+          cpcId: sessions.currentPlayerCharacterId,
+          ownerUserId: charactersTable.userId,
+        })
+        .from(sessions)
+        .innerJoin(charactersTable, eq(charactersTable.id, sessions.currentPlayerCharacterId))
+        .where(eq(sessions.id, sessionId))
+        .limit(1);
+      if (!check) return jsonResponse({ error: 'session-not-found' }, 404);
+      if (check.ownerUserId !== userId) {
+        return jsonResponse({ error: 'not-your-turn', currentCharacterId: check.cpcId }, 403);
+      }
+    }
+
     // A "begin" turn only makes sense when the chat is empty. If anything
     // has been said already, ignore the flag silently — clients may
     // re-trigger the auto-opener on remount and we don't want that to
