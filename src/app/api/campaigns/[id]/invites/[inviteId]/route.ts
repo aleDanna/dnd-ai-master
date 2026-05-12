@@ -16,7 +16,7 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
     .where(and(eq(campaigns.id, campaignId), isNull(campaigns.deletedAt))).limit(1);
   if (!c || c.userId !== userId) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
-  const ok = await revokeInvite(inviteId);
+  const ok = await revokeInvite(inviteId, campaignId);
   if (!ok) return NextResponse.json({ error: 'not-found' }, { status: 404 });
   return new NextResponse(null, { status: 204 });
 }

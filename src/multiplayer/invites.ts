@@ -49,11 +49,15 @@ export async function listActiveInvites(campaignId: string): Promise<CampaignInv
   return rows.filter((r) => isInviteValid(r, now));
 }
 
-export async function revokeInvite(inviteId: string): Promise<boolean> {
+export async function revokeInvite(inviteId: string, campaignId: string): Promise<boolean> {
   const [row] = await db
     .update(campaignInvites)
     .set({ revokedAt: new Date() })
-    .where(and(eq(campaignInvites.id, inviteId), isNull(campaignInvites.revokedAt)))
+    .where(and(
+      eq(campaignInvites.id, inviteId),
+      eq(campaignInvites.campaignId, campaignId),
+      isNull(campaignInvites.revokedAt),
+    ))
     .returning({ id: campaignInvites.id });
   return !!row;
 }
