@@ -3,13 +3,14 @@ import { auth } from '@clerk/nextjs/server';
 import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions, sessionState } from '@/db/schema';
+import { checkPartyAccess } from '@/multiplayer/access';
 
 export async function GET(req: NextRequest | Request, { params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
   if (!userId) return new Response('unauthenticated', { status: 401 });
   const { id: sessionId } = await params;
 
-  // Ownership check + state read in one round-trip.
+  // Party access check + state read.
   const [row] = await db
     .select({
       version: sessionState.sceneImageVersion,
@@ -17,8 +18,12 @@ export async function GET(req: NextRequest | Request, { params }: { params: Prom
     })
     .from(sessions)
     .innerJoin(sessionState, eq(sessionState.sessionId, sessions.id))
-    .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId), isNull(sessions.deletedAt)))
+    .where(and(eq(sessions.id, sessionId), isNull(sessions.deletedAt)))
     .limit(1);
+  if (row) {
+    const hasAccess = await checkPartyAccess(userId, sessionId);
+    if (!hasAccess) return new Response('forbidden', { status: 403 });
+  }
 
   if (!row || row.version === 0 || !row.data) {
     return new Response('not-found', { status: 404 });

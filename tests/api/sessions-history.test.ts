@@ -8,6 +8,7 @@ import { sessions, sessionState, sessionMessages, diceLog, campaigns } from '@/d
 
 const TEST_USER = 'user_history_' + Date.now();
 let SESSION_ID = '';
+let CHAR_ID = '';
 
 describe('sessions history persistence', () => {
   afterAll(async () => {
@@ -25,13 +26,14 @@ describe('sessions history persistence', () => {
     const w = emptyWizardState();
     w.raceSlug = 'half-elf'; w.classSlug = 'fighter'; w.backgroundSlug = 'soldier'; w.identity.name = 'Tharion';
     const { id: charId } = await saveCharacter({ userId: TEST_USER, wizard: w });
+    CHAR_ID = charId;
     const [campaign] = await db.insert(campaigns).values({ userId: TEST_USER, name: 'Test campaign', premise: 'goblin warren' }).returning();
     const [s] = await db.insert(sessions).values({ userId: TEST_USER, characterId: charId, campaignId: campaign!.id, premise: 'goblin warren' }).returning();
     SESSION_ID = s!.id;
     await db.insert(sessionState).values({ sessionId: SESSION_ID, hpCurrent: 11, hitDiceRemaining: 1 });
 
     await db.insert(sessionMessages).values([
-      { sessionId: SESSION_ID, role: 'player', content: 'I attack the goblin' },
+      { sessionId: SESSION_ID, role: 'player', content: 'I attack the goblin', authorCharacterId: CHAR_ID },
       { sessionId: SESSION_ID, role: 'master', content: 'Your blade finds its mark.' },
     ]);
 

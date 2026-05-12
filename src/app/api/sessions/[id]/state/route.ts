@@ -4,11 +4,16 @@ import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions, sessionState, combatActors, characters } from '@/db/schema';
 import { enrichInventoryItems, formatEnrichedForMaster } from '@/srd/enrich-inventory';
+import { checkPartyAccess } from '@/multiplayer/access';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
   if (!userId) return new Response('unauthenticated', { status: 401 });
   const { id: sessionId } = await params;
+
+  // One-time party access check before opening the SSE stream.
+  const hasAccess = await checkPartyAccess(userId, sessionId);
+  if (!hasAccess) return new Response('forbidden', { status: 403 });
 
   let closed = false;
   let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
@@ -46,7 +51,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
           const [session] = await db
             .select()
             .from(sessions)
-            .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId), isNull(sessions.deletedAt)))
+            .where(and(eq(sessions.id, sessionId), isNull(sessions.deletedAt)))
             .limit(1);
           if (!session) {
             try {

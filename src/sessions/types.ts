@@ -1,4 +1,5 @@
 import type { Mutation, ActionResult, EngineState } from '@/engine/types';
+import type { Character as CharacterDbRow } from '@/db/schema';
 
 export interface TurnRequest {
   sessionId: string;
@@ -20,6 +21,12 @@ export interface SnapshotForModel {
   characterMonoSpace: string;
   scene: string;
   language: string | null;
+  /** All instance characters in this campaign, ordered by creation time. */
+  party: CharacterDbRow[];
+  /** The character whose turn it currently is (NULL when not yet set). */
+  currentPlayerCharacterId: string | null;
+  /** The viewing user's own character id within the party (NULL for spectators). */
+  viewerCharacterId: string | null;
 }
 
 export const TURN_TOOL_CALL_CAP = 12;

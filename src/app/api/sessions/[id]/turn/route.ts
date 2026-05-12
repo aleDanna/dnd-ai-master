@@ -1,10 +1,10 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, and, desc, isNull } from 'drizzle-orm';
+import { eq, and, desc, isNull, isNotNull, sql } from 'drizzle-orm';
 import type Anthropic from '@anthropic-ai/sdk';
 import { waitUntil } from '@vercel/functions';
 import { db } from '@/db/client';
-import { sessions, sessionMessages, campaigns } from '@/db/schema';
+import { sessions, sessionMessages, campaigns, characters as charactersTable } from '@/db/schema';
 import { buildSnapshot } from '@/sessions/snapshot';
 import { applyMutations } from '@/sessions/applicator';
 import { acquireTurnLock, releaseTurnLock } from '@/sessions/lock';
@@ -21,6 +21,9 @@ import { getResolvedPreferences } from '@/lib/preferences';
 import { loadMemoryContext } from '@/sessions/memory/context';
 import { extractMemory } from '@/sessions/memory/extractor';
 import { touchCampaign } from '@/campaigns/persist';
+import { nextInParty } from '@/multiplayer/party';
+import { notifySession } from '@/sessions/notify';
+import { checkPartyAccess } from '@/multiplayer/access';
 
 /**
  * Synthetic user instruction injected on the very first turn of a campaign,
@@ -48,15 +51,41 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // in the chat UI with no recoverable signal.
   let campaign: typeof campaigns.$inferSelect;
   let lockHolder: string;
+  let currentTurnSeq = 0;
+  let authorCharacterId: string | null = null;
   try {
     const [turnRow] = await db
       .select({ session: sessions, campaign: campaigns })
       .from(sessions)
       .innerJoin(campaigns, eq(campaigns.id, sessions.campaignId))
-      .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId), isNull(sessions.deletedAt)))
+      .where(and(eq(sessions.id, sessionId), isNull(sessions.deletedAt)))
       .limit(1);
     if (!turnRow) return jsonResponse({ error: 'not-found' }, 404);
+    const hasAccess = await checkPartyAccess(userId, sessionId);
+    if (!hasAccess) return jsonResponse({ error: 'forbidden' }, 403);
     campaign = turnRow.campaign;
+    currentTurnSeq = turnRow.session.turnSeq ?? 0;
+    authorCharacterId = turnRow.session.currentPlayerCharacterId ?? null;
+
+    // Multiplayer permission check — only the current player may POST a turn.
+    // Solo sessions always have currentPlayerCharacterId pointing to the
+    // single character (backfilled at migration), so this check is safe for
+    // solo too. Skipped on "begin" turns since the host always opens the scene.
+    if (!isBegin && turnRow.session.currentPlayerCharacterId) {
+      const [check] = await db
+        .select({
+          cpcId: sessions.currentPlayerCharacterId,
+          ownerUserId: charactersTable.userId,
+        })
+        .from(sessions)
+        .innerJoin(charactersTable, eq(charactersTable.id, sessions.currentPlayerCharacterId))
+        .where(eq(sessions.id, sessionId))
+        .limit(1);
+      if (!check) return jsonResponse({ error: 'session-not-found' }, 404);
+      if (check.ownerUserId !== userId) {
+        return jsonResponse({ error: 'not-your-turn', currentCharacterId: check.cpcId }, 403);
+      }
+    }
 
     // A "begin" turn only makes sense when the chat is empty. If anything
     // has been said already, ignore the flag silently — clients may
@@ -84,12 +113,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
   }
 
-  const stream = new ReadableStream({
-    async start(controller) {
-      const send = (event: string, data: unknown): void => {
-        controller.enqueue(new TextEncoder().encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
-      };
-      const t0 = Date.now();
+  // Run the master loop in the background so the HTTP response can return
+  // 202 immediately. Clients receive real-time updates via the /stream SSE
+  // channel (Tasks 20-22). The SSE response and `send()` helper are removed;
+  // all events now flow through notifySession / pg_notify.
+  waitUntil(
+    (async () => {
       try {
         // 0. Resolve per-user prefs once — drive provider/model + behavior flags from here.
         const userPrefs = await getResolvedPreferences(userId);
@@ -98,8 +127,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // (no real player text exists yet; the master is opening the scene
         // from the campaign premise).
         if (!isBegin) {
-          const [pm] = await db.insert(sessionMessages).values({ sessionId, role: 'player', content: body!.message! }).returning();
-          send('player_message_persisted', { type: 'player_message_persisted', messageId: pm!.id });
+          await db.insert(sessionMessages).values({
+            sessionId,
+            role: 'player',
+            content: body!.message!,
+            // Multiplayer: tag which character authored this message so
+            // the chat bubbles can show the character name instead of "Player".
+            authorCharacterId: authorCharacterId ?? undefined,
+          });
         }
 
         // 2. Language detection if not pinned (uses the user's chosen provider).
@@ -147,6 +182,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // (Hydrated from the campaign join in buildSnapshot since Task 15.)
           tonalFrame: snap.state.tonalFrame,
           engagementProfile: snap.state.engagementProfile,
+          // Multiplayer — party roster + active player for PARTY MODE block.
+          party: snap.party,
+          currentPlayerCharacterId: snap.currentPlayerCharacterId,
         });
 
         let history: Anthropic.Messages.MessageParam[];
@@ -168,7 +206,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             .map((m) => ({ role: m.role === 'master' ? 'assistant' : 'user', content: m.content }));
         }
 
-        // 5. Run the tool loop — events flush as they happen via onEvent
+        // 5. Run the tool loop — events forwarded to SSE subscribers via notifySession.
         // Provider + model are resolved from user prefs (with env fallback) so each
         // user can pick their own AI without redeploying.
         const provider = getProviderByName(userPrefs.aiProvider);
@@ -192,43 +230,97 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               usage,
             });
           },
-          onEvent: (ev) => send(ev.type, ev),
+          onEvent: (ev) => {
+            // Broadcast narrative chunks to all SSE subscribers on the session
+            // channel so party members receive the master typing in real-time.
+            // messageId:'' is a sentinel meaning "pending" — the real messageId
+            // arrives in the 'message' notification once the row is persisted.
+            if (ev.type === 'narrative_delta') {
+              notifySession(sessionId, { type: 'message-chunk', messageId: '', text: ev.text }).catch(
+                (e) => console.warn('notifySession(message-chunk) failed:', e instanceof Error ? e.message : String(e)),
+              );
+            }
+          },
         });
 
-        // 6. Persist master message — only if it actually has content. An
+        // 6. Post-loop fallback round-robin — runs regardless of whether the
+        // master produced narration. If the master called set_current_player,
+        // turnsSinceMasterAdvance was already reset to 0 by the tool handler.
+        // Otherwise we increment. At >= 3 consecutive turns without the master
+        // advancing, the server auto-advances round-robin to prevent deadlock.
+        await db.transaction(async (tx) => {
+          const [s] = await tx
+            .select({
+              tsma: sessions.turnsSinceMasterAdvance,
+              cpcId: sessions.currentPlayerCharacterId,
+              campaignId: sessions.campaignId,
+            })
+            .from(sessions)
+            .where(eq(sessions.id, sessionId))
+            .limit(1);
+          if (!s) return;
+
+          if (s.tsma === 0) {
+            // Master called set_current_player. Counter already reset.
+          } else {
+            const next = s.tsma + 1;
+            if (next >= 3) {
+              const party = await tx
+                .select({ id: charactersTable.id, createdAt: charactersTable.createdAt })
+                .from(charactersTable)
+                .where(and(
+                  eq(charactersTable.campaignId, s.campaignId!),
+                  isNull(charactersTable.deletedAt),
+                  isNotNull(charactersTable.templateId),
+                ))
+                .orderBy(charactersTable.createdAt);
+              const nextChar = nextInParty(s.cpcId ?? '', party);
+              await tx
+                .update(sessions)
+                .set({ currentPlayerCharacterId: nextChar.id, turnsSinceMasterAdvance: 0 })
+                .where(eq(sessions.id, sessionId));
+              await notifySession(sessionId, { type: 'turn-change', characterId: nextChar.id });
+            } else {
+              await tx
+                .update(sessions)
+                .set({ turnsSinceMasterAdvance: next })
+                .where(eq(sessions.id, sessionId));
+            }
+          }
+
+          await tx.update(sessions).set({ turnSeq: sql`turn_seq + 1` }).where(eq(sessions.id, sessionId));
+        });
+
+        // 7. Persist master message — only if it actually has content. An
         // empty finalText typically means a tool call failed and the master
         // never got to write narration; persisting an empty row leaves a
-        // ghost "THE MASTER" bubble in the chat with no body. Surface that
-        // as a turn_error instead so the player sees a recoverable signal.
+        // ghost "THE MASTER" bubble in the chat with no body.
         if (result.finalText.trim()) {
           const [mm] = await db.insert(sessionMessages).values({ sessionId, role: 'master', content: result.finalText }).returning();
+          // Notify SSE subscribers that a final master message is persisted.
+          // This supersedes all preceding message-chunk notifications for this
+          // turn — clients should replace their transient buffer with the row.
+          notifySession(sessionId, { type: 'message', messageId: mm!.id }).catch(
+            (e) => console.warn('notifySession(message) failed:', e instanceof Error ? e.message : String(e)),
+          );
           waitUntil(
             extractMemory(sessionId, userPrefs.aiProvider).catch((e) => {
               console.error('memory.extract.fire_and_forget', e instanceof Error ? e.message : String(e));
             }),
           );
-          send('turn_complete', { type: 'turn_complete', messageId: mm!.id, durationMs: Date.now() - t0, toolCallCount: result.toolCallCount, truncated: result.truncated, timedOut: result.timedOut });
         } else {
-          send('turn_error', { type: 'turn_error', reason: 'empty_response', recoverable: true });
+          console.warn('turn produced empty response', { sessionId });
         }
       } catch (e) {
-        send('turn_error', { type: 'turn_error', reason: e instanceof Error ? e.message : 'unknown', recoverable: false });
+        console.error('turn background task failed', e instanceof Error ? e.message : String(e));
       } finally {
         await touchCampaign(campaign.id);
         await releaseTurnLock(sessionId, lockHolder);
-        controller.close();
       }
-    },
-  });
+    })(),
+  );
 
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      'X-Accel-Buffering': 'no',
-    },
-  });
+  return NextResponse.json({ ok: true, turnSeq: currentTurnSeq + 1 }, { status: 202 });
 }
 
 function jsonResponse(body: unknown, status: number): Response {

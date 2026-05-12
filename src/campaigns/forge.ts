@@ -68,6 +68,7 @@ export async function createCampaign(input: CreateCampaignInput): Promise<Create
         userId: input.userId,
         characterId: fork.instanceId,
         campaignId: campaign.id,
+        currentPlayerCharacterId: fork.instanceId,
         // Deprecated double-write: PR2 drops these columns.
         premise: input.premise,
       })

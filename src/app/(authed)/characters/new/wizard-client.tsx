@@ -1,6 +1,6 @@
 'use client';
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import type { Options } from '@/characters/options';
 import type { WizardState } from '@/characters/types';
 import type { Skill } from '@/engine/types';
@@ -43,6 +43,8 @@ function computeFeatCap(state: WizardState): number {
 
 export function WizardClient({ options }: { options: Options }) {
   const router = useRouter();
+  const search = useSearchParams();
+  const returnTo = search.get('returnTo');
   const [state, dispatch] = useWizardState();
   const [step, setStep] = React.useState(0);
   const [showAi, setShowAi] = React.useState(true);
@@ -122,8 +124,14 @@ export function WizardClient({ options }: { options: Options }) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || 'Failed to save');
       }
-      const { id } = (await res.json()) as { id: string };
-      router.push(`/characters/${id}`);
+      const saved = await res.json();
+      if (returnTo) {
+        router.push(returnTo);
+      } else if (saved?.id) {
+        router.push(`/characters/${saved.id}`);
+      } else {
+        router.push('/hub');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save');
       setBusy(false);

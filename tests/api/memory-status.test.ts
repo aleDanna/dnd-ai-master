@@ -8,6 +8,7 @@ import { sessions, sessionState, sessionMessages, sessionChapters, campaigns } f
 
 const TEST_USER = 'user_memstatus_' + Date.now();
 let SESSION_ID = '';
+let CHAR_ID = '';
 
 vi.mock('@clerk/nextjs/server', () => ({
   auth: async () => ({ userId: TEST_USER }),
@@ -29,6 +30,7 @@ describe('GET /api/sessions/:id/memory/status', () => {
     w.backgroundSlug = 'soldier';
     w.identity.name = 'P';
     const c = await saveCharacter({ userId: TEST_USER, wizard: w });
+    CHAR_ID = c.id;
     const [campaign] = await db.insert(campaigns).values({ userId: TEST_USER, name: 'Test campaign', premise: 'x' }).returning();
     const [s] = await db
       .insert(sessions)
@@ -55,10 +57,12 @@ describe('GET /api/sessions/:id/memory/status', () => {
   it('needsBackfill=true when 40+ messages and 0 chapters', async () => {
     const rows = [];
     for (let i = 0; i < 42; i++) {
+      const isPlayer = i % 2 === 0;
       rows.push({
         sessionId: SESSION_ID,
-        role: (i % 2 === 0 ? 'player' : 'master') as 'player' | 'master',
+        role: (isPlayer ? 'player' : 'master') as 'player' | 'master',
         content: 'm',
+        authorCharacterId: isPlayer ? CHAR_ID : null,
       });
     }
     await db.insert(sessionMessages).values(rows);
@@ -70,8 +74,8 @@ describe('GET /api/sessions/:id/memory/status', () => {
   it('OOC messages excluded from messageCount', async () => {
     await db.execute(sql`delete from session_messages where session_id = ${SESSION_ID}`);
     await db.insert(sessionMessages).values([
-      { sessionId: SESSION_ID, role: 'player', content: 'normal' },
-      { sessionId: SESSION_ID, role: 'player', content: '!ooc' },
+      { sessionId: SESSION_ID, role: 'player', content: 'normal', authorCharacterId: CHAR_ID },
+      { sessionId: SESSION_ID, role: 'player', content: '!ooc', authorCharacterId: CHAR_ID },
     ]);
     const r = await call();
     expect(r.json).toMatchObject({ messageCount: 1 });
@@ -80,7 +84,7 @@ describe('GET /api/sessions/:id/memory/status', () => {
   it('needsBackfill=false once a chapter exists', async () => {
     const [m1] = await db
       .insert(sessionMessages)
-      .values({ sessionId: SESSION_ID, role: 'player', content: 'a' })
+      .values({ sessionId: SESSION_ID, role: 'player', content: 'a', authorCharacterId: CHAR_ID })
       .returning();
     await db.insert(sessionChapters).values({
       sessionId: SESSION_ID,
@@ -97,6 +101,7 @@ describe('GET /api/sessions/:id/memory/status', () => {
         sessionId: SESSION_ID,
         role: 'player' as const,
         content: 'm',
+        authorCharacterId: CHAR_ID,
       });
     }
     await db.insert(sessionMessages).values(rows);

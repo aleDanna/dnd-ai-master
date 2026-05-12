@@ -1,12 +1,17 @@
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
+import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { getCampaign } from '@/campaigns/persist';
+import { db } from '@/db/client';
+import { characters } from '@/db/schema';
+import { listActiveInvites } from '@/multiplayer/invites';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Chip } from '@/components/ui/chip';
 import { Icon } from '@/components/ui/icon';
 import { DeleteCardButton } from '@/components/ui/delete-card-button';
+import { InviteSection } from '@/components/campaigns/invite-section';
 import { RenameHeading } from './rename-heading';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +22,28 @@ export default async function CampaignDetail({ params }: { params: Promise<{ id:
   const { id } = await params;
   const data = await getCampaign(userId, id);
   if (!data) notFound();
-  const { campaign, character, activeSession } = data;
+  const { campaign, activeSession } = data;
+
+  const isHost = userId === campaign.userId;
+
+  const rawInvites = isHost ? await listActiveInvites(id) : [];
+  const invites = rawInvites.map((inv) => ({
+    id: inv.id,
+    token: inv.token,
+    expiresAt: inv.expiresAt ? inv.expiresAt.toISOString() : null,
+    maxUses: inv.maxUses ?? null,
+    usesCount: inv.usesCount,
+  }));
+
+  const party = await db
+    .select()
+    .from(characters)
+    .where(and(
+      eq(characters.campaignId, id),
+      isNotNull(characters.templateId),
+      isNull(characters.deletedAt),
+    ))
+    .orderBy(characters.createdAt);
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '40px 32px' }}>
@@ -42,19 +68,44 @@ export default async function CampaignDetail({ params }: { params: Promise<{ id:
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 18 }}>
-        <Card>
-          {character ? (
-            <Link href={`/characters/${character.templateId ?? character.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600 }}>{character.name}</div>
-              <div style={{ fontSize: 13, color: 'var(--fg-muted)' }}>{character.raceSlug} · {character.classSlug} · L{character.level}</div>
-              <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 6 }}>HP {character.hpMax} · AC {character.ac}</div>
-              <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 8 }}><Icon name="arrow-right" size={12}/> view sheet</div>
-            </Link>
-          ) : (
-            <div style={{ fontSize: 14, color: 'var(--fg-muted)' }}>No character bound to this campaign.</div>
-          )}
-        </Card>
+      {isHost && (
+        <div style={{ marginTop: 18, marginBottom: 18 }}>
+          <InviteSection campaignId={id} initial={{ invites }} />
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 18, marginTop: 18 }}>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--fg-muted)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>
+            Party ({party.length})
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
+            {party.length === 0 && (
+              <div style={{ fontSize: 14, color: 'var(--fg-muted)' }}>No characters in this campaign yet.</div>
+            )}
+            {party.map((p) => (
+              <Card key={p.id} style={{ padding: 12 }}>
+                {p.userId === userId && p.templateId ? (
+                  <Link href={`/characters/${p.templateId}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>
+                      {p.name}<span style={{ fontSize: 11, color: 'var(--fg-subtle)' }}> (you)</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{p.raceSlug} · {p.classSlug} · L{p.level}</div>
+                    <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 4 }}>HP {p.hpMax} · AC {p.ac}</div>
+                    <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 6 }}><Icon name="arrow-right" size={12} /> view sheet</div>
+                  </Link>
+                ) : (
+                  <>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>
+                      {p.name}{p.userId === userId && <span style={{ fontSize: 11, color: 'var(--fg-subtle)' }}> (you)</span>}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{p.raceSlug} · {p.classSlug} · L{p.level}</div>
+                  </>
+                )}
+              </Card>
+            ))}
+          </div>
+        </div>
         <Card>
           <div style={{ fontSize: 11, color: 'var(--fg-muted)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Premise</div>
           <div style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 14, lineHeight: 1.55 }}>

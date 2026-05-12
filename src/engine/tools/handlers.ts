@@ -3298,4 +3298,43 @@ export const TOOL_HANDLERS_DB: Record<string, DbToolHandler> = {
       hasMaterial,
     });
   },
+
+  set_current_player: async (ctx, _state, input) => {
+    const { db } = await import('@/db/client');
+    const { sessions, characters } = await import('@/db/schema');
+    const { eq, and, isNotNull, isNull } = await import('drizzle-orm');
+    const { notifySession } = await import('@/sessions/notify');
+
+    const characterId = typeof input.characterId === 'string' ? input.characterId.trim() : '';
+    if (!characterId) {
+      return { ok: false, error: 'missing_character_id', rolls: [], mutations: [] };
+    }
+
+    const [valid] = await db
+      .select({ id: characters.id })
+      .from(characters)
+      .innerJoin(sessions, eq(sessions.campaignId, characters.campaignId))
+      .where(
+        and(
+          eq(sessions.id, ctx.sessionId),
+          eq(characters.id, characterId),
+          isNull(characters.deletedAt),
+          isNotNull(characters.templateId),
+        ),
+      )
+      .limit(1);
+
+    if (!valid) {
+      return { ok: false, error: 'character-not-in-party', rolls: [], mutations: [] };
+    }
+
+    await db
+      .update(sessions)
+      .set({ currentPlayerCharacterId: characterId, turnsSinceMasterAdvance: 0 })
+      .where(eq(sessions.id, ctx.sessionId));
+
+    await notifySession(ctx.sessionId, { type: 'turn-change', characterId });
+
+    return { ok: true, data: { currentPlayerCharacterId: characterId }, rolls: [], mutations: [] };
+  },
 };

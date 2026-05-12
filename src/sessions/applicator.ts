@@ -1,5 +1,6 @@
 import { eq, and, gt } from 'drizzle-orm';
 import { db } from '@/db/client';
+import { notifySession } from '@/sessions/notify';
 import {
   sessionState as sessionStateTable,
   combatActors as combatActorsTable,
@@ -119,6 +120,22 @@ export async function applyMutations(sessionId: string, mutations: Mutation[], r
       await tx.insert(diceLogTable).values(inserts);
     }
   });
+  // Notify SSE subscribers after the transaction commits so they can refetch
+  // the latest state. Errors are swallowed so a broken notify channel never
+  // crashes the applicator.
+  if (deduped.length > 0) {
+    notifySession(sessionId, { type: 'state' }).catch((e) =>
+      console.warn('notifySession(state) failed:', e instanceof Error ? e.message : String(e)),
+    );
+  }
+  if (rolls.length > 0) {
+    // Batch insert — no per-row IDs returned. Emit a single dice notification;
+    // clients refetch the dice log on receipt. logId is left empty as a
+    // sentinel meaning "some dice were logged this turn".
+    notifySession(sessionId, { type: 'dice', logId: '' }).catch((e) =>
+      console.warn('notifySession(dice) failed:', e instanceof Error ? e.message : String(e)),
+    );
+  }
 }
 
 function pickKind(r: DiceRoll): DiceLogInsert['kind'] {

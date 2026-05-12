@@ -2,6 +2,7 @@ import { auth } from '@clerk/nextjs/server';
 import { eq, and, isNull, count, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions, sessionMessages, sessionChapters } from '@/db/schema';
+import { checkPartyAccess } from '@/multiplayer/access';
 
 export async function GET(
   _req: Request,
@@ -14,9 +15,11 @@ export async function GET(
   const [session] = await db
     .select({ id: sessions.id })
     .from(sessions)
-    .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId), isNull(sessions.deletedAt)))
+    .where(and(eq(sessions.id, sessionId), isNull(sessions.deletedAt)))
     .limit(1);
   if (!session) return json({ error: 'not-found' }, 404);
+  const hasAccess = await checkPartyAccess(userId, sessionId);
+  if (!hasAccess) return json({ error: 'forbidden' }, 403);
 
   // count non-OOC messages
   const [msgRow] = await db

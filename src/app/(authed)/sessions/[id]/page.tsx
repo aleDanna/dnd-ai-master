@@ -7,6 +7,7 @@ import { GameClient } from './game-client';
 import { getResolvedPreferences } from '@/lib/preferences';
 import { deriveLevel1Spellcasting } from '@/characters/derive';
 import type { Character, FeatureInstance, SpellcastingState } from '@/engine/types';
+import { checkPartyAccess } from '@/multiplayer/access';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,9 +20,11 @@ export default async function GameSessionPage({ params }: { params: Promise<{ id
     .select({ session: sessions, campaign: campaigns })
     .from(sessions)
     .leftJoin(campaigns, eq(campaigns.id, sessions.campaignId))
-    .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId), isNull(sessions.deletedAt)))
+    .where(and(eq(sessions.id, sessionId), isNull(sessions.deletedAt)))
     .limit(1);
   if (!sessionRow) notFound();
+  const hasAccess = await checkPartyAccess(userId, sessionId);
+  if (!hasAccess) notFound();
   const session = sessionRow.session;
   const campaign = sessionRow.campaign;
 
@@ -146,6 +149,7 @@ export default async function GameSessionPage({ params }: { params: Promise<{ id
         sessionId: m.sessionId,
         role: m.role,
         content: m.content,
+        authorCharacterId: m.authorCharacterId ?? null,
         createdAt: m.createdAt.toISOString(),
       }))}
       initialActors={actors.map((a) => ({

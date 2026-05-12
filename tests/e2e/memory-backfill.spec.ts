@@ -30,10 +30,12 @@ test.describe('memory backfill banner', () => {
     await db.insert(sessionState).values({ sessionId, hpCurrent: 10, hitDiceRemaining: 1 });
     const rows = [];
     for (let i = 0; i < 80; i++) {
+      const isPlayer = i % 2 === 0;
       rows.push({
         sessionId,
-        role: (i % 2 === 0 ? 'player' : 'master') as 'player' | 'master',
+        role: (isPlayer ? 'player' : 'master') as 'player' | 'master',
         content: `seeded message ${i}`,
+        authorCharacterId: isPlayer ? c.id : null,
       });
     }
     await db.insert(sessionMessages).values(rows);

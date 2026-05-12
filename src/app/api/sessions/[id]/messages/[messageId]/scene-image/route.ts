@@ -6,6 +6,7 @@ import { sessions, sessionMessages, sessionState, characters } from '@/db/schema
 import { getResolvedPreferences } from '@/lib/preferences';
 import { resolveStyleText, buildCharacterAppearance } from '@/ai/master/image-style';
 import { generateAndPersist } from '@/sessions/scene-image-job';
+import { checkPartyAccess } from '@/multiplayer/access';
 
 /**
  * Manual scene-image trigger: the player clicked the "Generate image" button
@@ -47,13 +48,14 @@ export async function POST(
     .innerJoin(characters, eq(characters.id, sessions.characterId))
     .where(and(
       eq(sessions.id, sessionId),
-      eq(sessions.userId, userId),
       isNull(sessions.deletedAt),
       eq(sessionMessages.id, messageId),
     ))
     .limit(1);
 
   if (!row) return NextResponse.json({ error: 'not-found' }, { status: 404 });
+  const hasAccess = await checkPartyAccess(userId, sessionId);
+  if (!hasAccess) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   if (row.messageRole !== 'master') {
     return NextResponse.json({ error: 'not-a-master-message' }, { status: 400 });
   }

@@ -1,4 +1,4 @@
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, isNotNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import {
   sessions as sessionsTable,
@@ -8,6 +8,7 @@ import {
   campaigns as campaignsTable,
   type SessionState,
   type CombatActor as CombatActorRow,
+  type Character as CharacterDbRow,
 } from '@/db/schema';
 import type {
   Bastion,
@@ -320,6 +321,22 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
   const [character] = await db.select().from(charactersTable).where(eq(charactersTable.id, session.characterId)).limit(1);
   if (!character) throw new Error(`buildSnapshot: character ${session.characterId} not found`);
 
+  // Multiplayer — fetch all instance characters for this campaign so consumers
+  // can render the full party roster and identify each player's character.
+  const partyRows = await db
+    .select()
+    .from(charactersTable)
+    .where(and(
+      eq(charactersTable.campaignId, session.campaignId),
+      isNull(charactersTable.deletedAt),
+      isNotNull(charactersTable.templateId),
+    ))
+    .orderBy(charactersTable.createdAt);
+
+  // The viewing user's own character within the party (may be null for
+  // spectators or in edge cases where the instance row hasn't been created).
+  const viewerChar: CharacterDbRow | null = partyRows.find((c) => c.userId === userId) ?? null;
+
   const [stateRow] = await db.select().from(sessionStateTable).where(eq(sessionStateTable.sessionId, sessionId)).limit(1);
   if (!stateRow) throw new Error(`buildSnapshot: session_state for ${sessionId} not found`);
 
@@ -496,7 +513,17 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
     spellSlots: buildSpellSlotsView(character.spellcasting as Character['spellcasting'], stateRow.spellSlotsUsed),
   });
 
-  return { state, characterMonoSpace, scene: stateRow.scene, language: campaign.language };
+  return {
+    state,
+    characterMonoSpace,
+    scene: stateRow.scene,
+    language: campaign.language,
+    // Multiplayer additions — backward-compatible; existing consumers that only
+    // destructure the four fields above continue to work unchanged.
+    party: partyRows,
+    currentPlayerCharacterId: session.currentPlayerCharacterId,
+    viewerCharacterId: viewerChar?.id ?? null,
+  };
 }
 
 function toEngineCombatActor(row: CombatActorRow): CombatActor {

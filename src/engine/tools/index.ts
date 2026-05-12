@@ -1252,6 +1252,18 @@ const ALWAYS_ON: AnthropicTool[] = [
       },
     } as never,
   },
+  {
+    name: 'set_current_player',
+    description:
+      'Sets which character takes the next turn. Call at the end of each narrative beat to address the next player. The character must be in the party.',
+    input_schema: {
+      type: 'object',
+      required: ['characterId'],
+      properties: {
+        characterId: { type: 'string', description: 'uuid of the next character to act' },
+      },
+    } as never,
+  },
 ];
 
 /**

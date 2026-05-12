@@ -48,10 +48,12 @@ async function freshSession(): Promise<void> {
 async function seedMessages(count: number): Promise<void> {
   const rows = [];
   for (let i = 0; i < count; i++) {
+    const isPlayer = i % 2 === 0;
     rows.push({
       sessionId: SESSION_ID,
-      role: (i % 2 === 0 ? 'player' : 'master') as 'player' | 'master',
+      role: (isPlayer ? 'player' : 'master') as 'player' | 'master',
       content: `message ${i}`,
+      authorCharacterId: isPlayer ? CHAR_ID : null,
     });
   }
   await db.insert(sessionMessages).values(rows);
@@ -176,15 +178,16 @@ describe('extractMemory', () => {
 
   it('OOC messages are excluded from chapter ranges', async () => {
     // 35 normal + 10 OOC + 5 normal => 40 non-OOC, threshold reached
-    const rows: { sessionId: string; role: 'player' | 'master'; content: string }[] = [];
+    const rows: { sessionId: string; role: 'player' | 'master'; content: string; authorCharacterId: string | null }[] = [];
     for (let i = 0; i < 35; i++) {
-      rows.push({ sessionId: SESSION_ID, role: i % 2 === 0 ? 'player' : 'master', content: 'msg' });
+      const isPlayer = i % 2 === 0;
+      rows.push({ sessionId: SESSION_ID, role: isPlayer ? 'player' : 'master', content: 'msg', authorCharacterId: isPlayer ? CHAR_ID : null });
     }
     for (let i = 0; i < 10; i++) {
-      rows.push({ sessionId: SESSION_ID, role: 'player', content: '!ooc question' });
+      rows.push({ sessionId: SESSION_ID, role: 'player', content: '!ooc question', authorCharacterId: CHAR_ID });
     }
     for (let i = 0; i < 5; i++) {
-      rows.push({ sessionId: SESSION_ID, role: 'master', content: 'msg' });
+      rows.push({ sessionId: SESSION_ID, role: 'master', content: 'msg', authorCharacterId: null });
     }
     await db.insert(sessionMessages).values(rows);
 

@@ -9,8 +9,8 @@ import { CharacterPane } from '@/components/game/character-pane';
 import { NarrativePane } from '@/components/game/narrative-pane';
 import { MechanicsPane } from '@/components/game/mechanics-pane';
 import { SpellModal } from '@/components/game/spell-modal';
-import { useTurnStream } from '@/sessions/use-turn-stream';
-import { useSessionState } from '@/sessions/use-session-state';
+import { PartyStrip } from '@/components/sessions/party-strip';
+import { useSessionStream } from '@/sessions/use-session-stream';
 import { AutoplayToggle } from '@/components/game/autoplay-toggle';
 import { SettingsLink } from '@/components/ui/settings-link';
 import { MemoryStatusBanner } from '@/components/memory-status-banner';
@@ -36,38 +36,43 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
   const [memoryReady, setMemoryReady] = React.useState(false);
   const [messages, setMessages] = React.useState<MessageRow[]>(initialMessages);
   // Character mirror: starts from SSR-provided value, refreshed on mount and
-  // after every turn_complete. Mutable character fields (level, xp, hpMax,
+  // after every message final event. Mutable character fields (level, xp, hpMax,
   // ...) stay in sync with the server even when the player navigates away
-  // and back to the session — that scenario was producing a stale chat
-  // before this state was here, because returning to the page reused the
-  // initially-rendered React tree.
+  // and back to the session.
   const [character, setCharacter] = React.useState<Character>(initialCharacter);
   const [enrichedInventory, setEnrichedInventory] = React.useState<MasterInventoryView[]>([]);
   const [spellOpen, setSpellOpen] = React.useState(false);
   const [autoplay, setAutoplay] = React.useState(initialAutoplay);
-  const lastCompleteIdRef = React.useRef<string | null>(null);
-  // Seed with the most recent persisted master message so we don't autoplay it on page mount.
+  // sending tracks the in-flight POST to /turn (before the SSE stream takes over)
+  const [sending, setSending] = React.useState(false);
+  const [sendError, setSendError] = React.useState<string | null>(null);
   const lastAutoplayedRef = React.useRef<string | null>(
     [...initialMessages].reverse().find((m) => m.role === 'master')?.id ?? null,
   );
-  const turn = useTurnStream(sessionId);
-  const stateSub = useSessionState(sessionId);
 
-  const liveState: SessionStateRow | null = stateSub.snapshot?.state ?? initialState;
-  const liveActors: CombatActorRow[] = stateSub.snapshot?.actors ?? initialActors;
+  const { snapshot, streamingMessage, error: streamError } = useSessionStream(sessionId);
 
-  // Live character mutable fields from the /state SSE snapshot. Merging
-  // these onto the local React state on every snapshot tick (every 1.5s)
-  // makes the right-pane UI (XP bar, AC, inventory, spell slots) eventually
-  // consistent with the DB regardless of whether the turn_complete refetch
-  // succeeded — that path used to race with effect re-runs and silently
-  // drop updates.
+  // Derive live state: prefer snapshot from SSE, fall back to SSR props
+  const liveState: SessionStateRow | null = (snapshot?.state as SessionStateRow | null) ?? initialState;
+  const liveActors: CombatActorRow[] = (snapshot as any)?.actors ?? initialActors;
+
+  // Build a synthesized liveEvents array from streamingMessage for NarrativePane.
+  // NarrativePane consumes TurnEvent[] and derives the live text from
+  // narrative_delta entries; we map the streamed text into that shape.
+  const liveEvents = React.useMemo<import('@/sessions/types').TurnEvent[]>(() => {
+    if (!streamingMessage?.text) return [];
+    return [{ type: 'narrative_delta', text: streamingMessage.text }];
+  }, [streamingMessage]);
+
+  const busy = streamingMessage !== null || sending;
+
+  // Live character mutable fields from the SSE snapshot. Merging
+  // onto the local React state on every snapshot tick makes the right-pane
+  // UI (XP bar, AC, inventory, spell slots) eventually consistent with the DB.
   React.useEffect(() => {
-    const patch = stateSub.snapshot?.character;
+    const patch = snapshot?.character;
     if (!patch) return;
     setCharacter((prev) => {
-      // Skip the setState if nothing in the patch differs from current —
-      // avoids an unnecessary re-render on every keepalive tick.
       if (
         prev.id === patch.id &&
         prev.level === patch.level &&
@@ -103,18 +108,10 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     });
     const next = (patch as { enrichedInventory?: MasterInventoryView[] }).enrichedInventory;
     if (next) setEnrichedInventory(next);
-  }, [stateSub.snapshot?.character]);
+  }, [snapshot?.character]);
 
-  // Derive server-side error from any turn_error event in the stream.
-  const serverError = React.useMemo(() => {
-    const ev = turn.events.find((e) => e.type === 'turn_error');
-    return ev && ev.type === 'turn_error' ? ev.reason : null;
-  }, [turn.events]);
-
-  // Pure fetch — no setState side-effects. Returns a snapshot of the
-  // server-side session state for the caller to apply via setState. Keeping
-  // this side-effect-free lets us use it inside useEffect without tripping
-  // the React 19 cascading-renders lint rule.
+  // Pure fetch — returns fresh messages + character. Side-effect-free so it
+  // can be called from effects without triggering lint warnings.
   const fetchSessionData = React.useCallback(async (): Promise<{
     messages: MessageRow[] | null;
     character: Character | null;
@@ -129,9 +126,8 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     };
   }, [sessionId]);
 
-  // On mount: pull fresh server state. Fixes the "I went to /settings, came
-  // back, the chat shows old messages" bug — the page is client-navigated
-  // and the SSR'd messages prop can be minutes out of date.
+  // On mount: pull fresh server state. Fixes stale SSR'd messages when
+  // client-navigating back to the session page.
   React.useEffect(() => {
     let active = true;
     void fetchSessionData().then((data) => {
@@ -139,106 +135,99 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
       if (data.messages) setMessages(data.messages);
       if (data.character) setCharacter(data.character);
     });
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [fetchSessionData]);
 
-  // Auto-open the campaign: when the player lands on a brand-new session
-  // (no messages yet), kick off the synthetic "begin" turn so the master
-  // narrates the opening scene from the campaign premise. We wait until
-  // memory is ready (so the input isn't disabled) and guard with a ref so
-  // a re-render or remount doesn't fire a second begin — the server also
-  // returns 409 in that case, but we don't want the spurious request.
-  const beganRef = React.useRef(false);
-  const beginTurn = turn.begin;
+  // When streamingMessage transitions from non-null → null, the master
+  // message has been finalised. Refetch to get authoritative content.
+  const prevStreamingRef = React.useRef<boolean>(false);
   React.useEffect(() => {
-    if (beganRef.current) return;
-    if (!memoryReady) return;
-    if (turn.busy) return;
-    if (messages.length > 0) return;
-    beganRef.current = true;
-    void beginTurn();
-  }, [memoryReady, turn.busy, messages.length, beginTurn]);
-
-  // When a turn completes, optimistically inject the master's response into
-  // `messages` (using the live-streamed text + the persisted ID from
-  // turn_complete) BEFORE resetting events. This prevents the brief gap
-  // where the live message has been cleared but the refetch hasn't landed
-  // yet — that gap was making the player's last reply visually disappear.
-  // Then run the async refetch to sync dice rolls, character XP, etc.
-  React.useEffect(() => {
-    const last = turn.events.at(-1);
-    if (last?.type === 'turn_complete' && !turn.busy && lastCompleteIdRef.current !== last.messageId) {
-      const completedId = last.messageId;
-      lastCompleteIdRef.current = completedId;
-
-      // Reconstruct the master message text from accumulated narrative_delta
-      // events. Mirrors mergeMessages' live-text logic in narrative-pane.
-      let liveText = '';
-      for (const ev of turn.events) {
-        if (ev.type === 'narrative_delta') liveText += ev.text;
-      }
-
-      // Optimistic insert with the persisted ID. Idempotent: if the message
-      // is already present (e.g. an earlier refetch already landed), skip.
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === completedId)) return prev;
-        return [
-          ...prev,
-          {
-            id: completedId,
-            sessionId,
-            role: 'master',
-            content: liveText,
-            createdAt: new Date().toISOString(),
-          },
-        ];
-      });
-
-      // Now safe to clear live events — the master's text is already in
-      // `messages` so the user sees a continuous render with no flash.
-      turn.reset();
-
-      // Async refresh: pull authoritative state (XP, full message list
-      // with any tool metadata the server attached).
+    const wasStreaming = prevStreamingRef.current;
+    const isStreaming = streamingMessage !== null;
+    prevStreamingRef.current = isStreaming;
+    if (wasStreaming && !isStreaming) {
+      // Stream just ended — refresh messages
       let active = true;
       void fetchSessionData().then((data) => {
         if (!active) return;
         if (data.messages) setMessages(data.messages);
         if (data.character) setCharacter(data.character);
       });
-      return () => {
-        active = false;
-      };
+      return () => { active = false; };
     }
-  }, [turn, sessionId, fetchSessionData]);
+  }, [streamingMessage, fetchSessionData]);
+
+  // POST to /turn. Returns true on success, false on error.
+  const postTurn = React.useCallback(async (payload: { message?: string; begin?: boolean }): Promise<boolean> => {
+    if (sending) return false;
+    setSending(true);
+    setSendError(null);
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/turn`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const errMsg = (body as { error?: string }).error ?? `HTTP ${res.status}`;
+        // 409 already-begun is expected on remount — treat as no-op
+        if (res.status === 409) return true;
+        setSendError(errMsg);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      setSendError(e instanceof Error ? e.message : 'unknown');
+      return false;
+    } finally {
+      setSending(false);
+    }
+  }, [sending, sessionId]);
+
+  // Auto-open the campaign: kick off the synthetic "begin" turn when the
+  // session has no messages yet and memory is ready.
+  const beganRef = React.useRef(false);
+  React.useEffect(() => {
+    if (beganRef.current) return;
+    if (!memoryReady) return;
+    if (busy) return;
+    if (messages.length > 0) return;
+    beganRef.current = true;
+    void postTurn({ begin: true });
+  }, [memoryReady, busy, messages.length, postTurn]);
 
   const send = (text: string): void => {
-    setMessages((prev) => [...prev, { id: `temp-${Date.now()}`, sessionId, role: 'player', content: text, createdAt: new Date().toISOString() }]);
-    void turn.send(text);
+    setMessages((prev) => [
+      ...prev,
+      { id: `temp-${Date.now()}`, sessionId, role: 'player', content: text, createdAt: new Date().toISOString() },
+    ]);
+    void postTurn({ message: text });
   };
 
   const handleMemoryReady = React.useCallback(() => {
     setMemoryReady(true);
   }, []);
 
-  // Manual override: force the session out of combat. Used when the master
-  // forgot to call end_combat (or the session pre-dates that tool) and the
-  // tracker is stuck on "Combat · Round 1" with the fight long over. The
-  // session-state SSE subscription picks up the cleared row automatically.
   const endCombat = React.useCallback((): void => {
     void fetch(`/api/sessions/${sessionId}/end-combat`, { method: 'POST' });
   }, [sessionId]);
 
-  // Derive the latest master message id as a stable scalar so the autoplay
-  // effect doesn't fire on every messages-array-reference change (the
-  // optimistic insert + the fetchSessionData refetch produce two distinct
-  // array refs for the same logical message, causing the previous version
-  // of this effect to race itself: fetch #1 in flight, ref update cancels
-  // it, fetch #2 starts, second cleanup interrupts #2 mid-play — net
-  // result was "a volte il TTS non parte" because the audio was preempted
-  // before it could actually start).
+  // Multiplayer: composer gating
+  const party: Array<{ id: string; name: string; raceSlug: string; classSlug: string; level: number }> =
+    (snapshot?.party ?? []).map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      raceSlug: p.raceSlug,
+      classSlug: p.classSlug,
+      level: p.level,
+    }));
+  const currentPlayerCharacterId: string | null = snapshot?.currentPlayerCharacterId ?? null;
+  const viewerCharacterId: string | null = snapshot?.viewerCharacterId ?? null;
+  const isMyTurn = viewerCharacterId === null || viewerCharacterId === currentPlayerCharacterId;
+  const currentPlayerName = party.find((p) => p.id === currentPlayerCharacterId)?.name ?? '...';
+
+  // Derive the latest persisted master message id for TTS autoplay.
   const latestMasterMsgId = React.useMemo<string | null>(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i]!;
@@ -247,16 +236,8 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     return null;
   }, [messages]);
 
-  // Track the in-flight target so a same-id re-entry (e.g. dev double-mount
-  // in StrictMode) doesn't kick off a duplicate fetch.
   const inFlightTtsRef = React.useRef<string | null>(null);
 
-  // Auto-play the latest persisted master message when the toggle is on.
-  // - Re-runs ONLY when latestMasterMsgId changes (stable scalar).
-  // - lastAutoplayedRef is set after audio.play() resolves, so browser
-  //   autoplay-policy blocks (NotAllowedError on the first message before
-  //   any user gesture) don't permanently disable autoplay — the next
-  //   message will retry naturally.
   React.useEffect(() => {
     if (!autoplay) return;
     if (!latestMasterMsgId) return;
@@ -264,10 +245,6 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     if (inFlightTtsRef.current === latestMasterMsgId) return;
     const target = latestMasterMsgId;
     inFlightTtsRef.current = target;
-    // Broadcast loading state so the TtsButton under this specific message
-    // shows a "Generating…" spinner instead of the stale "Listen" label
-    // while we fetch + decode. Cleared by setActiveAudio (when audio plays)
-    // or by the finally{} block (on cancel / error).
     setLoadingMessageId(target);
 
     let cancelled = false;
@@ -283,29 +260,18 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
           if (getActiveAudio() === audio) setActiveAudio(null);
           URL.revokeObjectURL(url);
         };
-        // Tag with the messageId so the TtsButton for this message can adopt
-        // the audio and show "Pause" while it plays. setActiveAudio auto-
-        // clears the loading flag for this target.
         setActiveAudio(audio, target);
         await audio.play();
         if (!cancelled) lastAutoplayedRef.current = target;
       } catch (e) {
-        // Most common: browser autoplay policy (NotAllowedError) before user
-        // gesture. Keep lastAutoplayedRef untouched so the user can either
-        // click the Listen button manually OR a subsequent message attempt
-        // (after they've interacted with the page) auto-plays cleanly.
         console.warn('tts.autoplay.failed', e instanceof Error ? e.message : e);
       } finally {
         if (inFlightTtsRef.current === target) inFlightTtsRef.current = null;
-        // Best-effort clear: setActiveAudio already cleared it on success,
-        // but if we cancelled/errored before play() this catches it.
         setLoadingMessageId(null);
       }
     })();
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [latestMasterMsgId, autoplay, sessionId]);
 
   if (!liveState) {
@@ -321,6 +287,8 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
         used: liveState.spellSlotsUsed[level] ?? 0,
       }))
     : [];
+
+  const composerDisabled = !memoryReady || !isMyTurn;
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)', flexDirection: 'column' }}>
@@ -359,20 +327,31 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
               <MemoryStatusBanner sessionId={sessionId} onReady={handleMemoryReady} />
             </div>
           )}
+          {snapshot && party.length > 1 && (
+            <div style={{ padding: '0 40px', flexShrink: 0 }}>
+              <PartyStrip
+                party={party}
+                currentPlayerCharacterId={currentPlayerCharacterId}
+                viewerCharacterId={viewerCharacterId}
+              />
+            </div>
+          )}
           <NarrativePane
             sessionId={sessionId}
             history={messages}
-            liveEvents={turn.events}
-            busy={turn.busy}
+            liveEvents={liveEvents}
+            busy={busy}
             onSend={send}
             onCastSpell={character.spellcasting && slots.length > 0 ? () => setSpellOpen(true) : undefined}
             manualRolls={initialManualRolls}
             imageGenerationEnabled={initialImageGenerationEnabled}
-            disabled={!memoryReady}
+            disabled={composerDisabled}
+            disabledPlaceholder={!memoryReady ? 'Preparazione memoria in corso…' : `Waiting for ${currentPlayerName}…`}
+            party={party}
           />
-          {(turn.error || serverError) && (
+          {(sendError || streamError) && (
             <div style={{ padding: '8px 16px', background: 'var(--bg-card)', color: 'var(--ember)', borderTop: '1px solid var(--ember)', fontSize: 12 }}>
-              <Icon name="x" size={12} /> {turn.error ?? serverError}
+              <Icon name="x" size={12} /> {sendError ?? streamError}
             </div>
           )}
           {spellOpen && character.spellcasting && (

@@ -13,6 +13,7 @@ vi.mock('@clerk/nextjs/server', () => ({
 
 const TEST_USER = 'user_msgs_route';
 let SESSION_ID = '';
+let CHAR_ID = '';
 
 describe('GET /api/sessions/[id]/messages', () => {
   beforeAll(async () => {
@@ -20,6 +21,7 @@ describe('GET /api/sessions/[id]/messages', () => {
     const w = emptyWizardState();
     w.raceSlug = 'human'; w.classSlug = 'fighter'; w.backgroundSlug = 'soldier'; w.identity.name = 'Tester';
     const { id: charId } = await saveCharacter({ userId: TEST_USER, wizard: w });
+    CHAR_ID = charId;
     const [campaign] = await db.insert(campaigns).values({ userId: TEST_USER, name: 'Test campaign', premise: 'x' }).returning();
     const [s] = await db.insert(sessions).values({ userId: TEST_USER, characterId: charId, campaignId: campaign!.id, premise: 'x' }).returning();
     SESSION_ID = s!.id;
@@ -45,6 +47,7 @@ describe('GET /api/sessions/[id]/messages', () => {
       role: (i % 2 === 0 ? 'player' : 'master') as 'player' | 'master',
       content: `msg-${i.toString().padStart(3, '0')}`,
       createdAt: new Date(base + i * 1000),
+      authorCharacterId: i % 2 === 0 ? CHAR_ID : null,
     }));
     await db.insert(sessionMessages).values(inserts);
 
