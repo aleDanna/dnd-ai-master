@@ -4,6 +4,7 @@ import { db } from '@/db/client';
 import { sessions } from '@/db/schema';
 import { rebuildMemoryStream } from '@/sessions/memory/extractor';
 import { getResolvedPreferences } from '@/lib/preferences';
+import { checkPartyAccess } from '@/multiplayer/access';
 
 export async function POST(
   _req: Request,
@@ -13,12 +14,21 @@ export async function POST(
   if (!userId) return json({ error: 'unauthenticated' }, 401);
   const { id: sessionId } = await params;
 
+  // NB: any party member may trigger the rebuild — the client-side
+  // MemoryStatusBanner fires this on mount for everyone in the session, so
+  // the previous host-only `eq(sessions.userId, userId)` filter left guests
+  // stuck on "Preparazione memoria in corso…" forever (the 404 response is
+  // not event-stream-shaped, so the reader loop exited without ever calling
+  // `onReady`). Concurrent triggers are safe — the extractor checkpoints
+  // chapters into `session_chapters` and is idempotent on re-entry.
   const [session] = await db
     .select({ id: sessions.id })
     .from(sessions)
-    .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId), isNull(sessions.deletedAt)))
+    .where(and(eq(sessions.id, sessionId), isNull(sessions.deletedAt)))
     .limit(1);
   if (!session) return json({ error: 'not-found' }, 404);
+  const hasAccess = await checkPartyAccess(userId, sessionId);
+  if (!hasAccess) return json({ error: 'forbidden' }, 403);
 
   const prefs = await getResolvedPreferences(userId);
 

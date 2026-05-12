@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions, sessionState } from '@/db/schema';
+import { checkPartyAccess } from '@/multiplayer/access';
 
 /**
  * Manual escape hatch for sessions that ended up with a stuck combat state
@@ -11,7 +12,8 @@ import { sessions, sessionState } from '@/db/schema';
  * predate that tool — or where the master just forgot — this lets the
  * player force the tracker back to "Exploration" mode.
  *
- * Scoped by user, like every other session endpoint.
+ * Any party member may trigger this (checkPartyAccess) — the button lives in
+ * the right-pane MechanicsPane visible to everyone in the party.
  */
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
@@ -21,9 +23,11 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const [session] = await db
     .select({ id: sessions.id })
     .from(sessions)
-    .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId), isNull(sessions.deletedAt)))
+    .where(and(eq(sessions.id, sessionId), isNull(sessions.deletedAt)))
     .limit(1);
   if (!session) return NextResponse.json({ error: 'not-found' }, { status: 404 });
+  const hasAccess = await checkPartyAccess(userId, sessionId);
+  if (!hasAccess) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   await db
     .update(sessionState)
