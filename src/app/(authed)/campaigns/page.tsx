@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
@@ -11,7 +12,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function CampaignsPage() {
   const { userId } = await auth();
-  if (!userId) return null;
+  if (!userId) redirect('/sign-in');
 
   const rows = await db
     .select({ campaign: campaignsTable, character: charactersTable })
