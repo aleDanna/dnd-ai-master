@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Eyebrow } from '@/components/ui/eyebrow';
 import { Chip } from '@/components/ui/chip';
 import { Button } from '@/components/ui/button';
+import { DeleteResourceButton } from '@/components/ui/delete-resource-button';
 import { MiniStat } from '@/components/layout/mini-stat';
 import { HpBar } from '@/components/layout/hp-bar';
 import { abilityModifier } from '@/engine/modifiers';
@@ -47,7 +48,14 @@ export default async function CharacterPage({ params }: { params: Promise<{ id: 
             <Chip tone="gold">{ch.backgroundSlug}</Chip>
           </div>
         </div>
-        <Link href="/hub"><Button variant="ghost" size="md">Back to hub</Button></Link>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Link href="/hub"><Button variant="ghost" size="md">Back to hub</Button></Link>
+          <DeleteResourceButton
+            endpoint={`/api/characters/${ch.id}`}
+            confirmText={`Delete ${ch.name}? This cannot be undone.`}
+            redirectTo="/hub"
+          />
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>

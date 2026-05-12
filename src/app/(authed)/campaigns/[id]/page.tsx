@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Chip } from '@/components/ui/chip';
 import { Icon } from '@/components/ui/icon';
-import { DeleteCardButton } from '@/components/ui/delete-card-button';
+import { DeleteResourceButton } from '@/components/ui/delete-resource-button';
 import { InviteSection } from '@/components/campaigns/invite-section';
 import { RenameHeading } from './rename-heading';
 
@@ -64,7 +64,13 @@ export default async function CampaignDetail({ params }: { params: Promise<{ id:
           ) : (
             <Button variant="primary" size="md" disabled>Resume not available</Button>
           )}
-          <DeleteCardButton endpoint={`/api/campaigns/${campaign.id}`} confirmText={`Delete ${campaign.name}? This cannot be undone.`} />
+          {isHost && (
+            <DeleteResourceButton
+              endpoint={`/api/campaigns/${campaign.id}`}
+              confirmText={`Delete ${campaign.name}? This cannot be undone.`}
+              redirectTo="/campaigns"
+            />
+          )}
         </div>
       </div>
 

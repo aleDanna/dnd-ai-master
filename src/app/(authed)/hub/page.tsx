@@ -149,6 +149,9 @@ export default async function HubPage() {
             characterRace={character?.raceSlug}
             characterClass={character?.classSlug}
             characterLevel={character?.level}
+            // Hub only lists the viewer's owned campaigns
+            // (campaignsTable.userId === viewer).
+            showDelete
           />
         ))}
         <Link href="/campaigns/new" style={{ textDecoration: 'none' }}>

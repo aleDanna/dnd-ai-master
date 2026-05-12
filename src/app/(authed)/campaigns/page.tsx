@@ -54,6 +54,8 @@ export default async function CampaignsPage() {
               characterRace={character?.raceSlug}
               characterClass={character?.classSlug}
               characterLevel={character?.level}
+              // listCampaigns is already scoped to the viewer's owned rows.
+              showDelete
             />
           );
         })}
