@@ -204,6 +204,13 @@
       "when": 1778593261140,
       "tag": "0028_bouncy_titanium_man",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1778598848310,
+      "tag": "0029_brown_kree",
+      "breakpoints": true
     }
   ]
 }
