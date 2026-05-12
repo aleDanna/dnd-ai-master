@@ -7,6 +7,8 @@ export interface MessageRow {
   sessionId: string;
   role: 'player' | 'master' | 'system';
   content: string;
+  /** Multiplayer: the character that authored a player message. Null for master/system. */
+  authorCharacterId?: string | null;
   createdAt: string;
 }
 

@@ -347,6 +347,7 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
             imageGenerationEnabled={initialImageGenerationEnabled}
             disabled={composerDisabled}
             disabledPlaceholder={!memoryReady ? 'Preparazione memoria in corso…' : `Waiting for ${currentPlayerName}…`}
+            party={party}
           />
           {(sendError || streamError) && (
             <div style={{ padding: '8px 16px', background: 'var(--bg-card)', color: 'var(--ember)', borderTop: '1px solid var(--ember)', fontSize: 12 }}>

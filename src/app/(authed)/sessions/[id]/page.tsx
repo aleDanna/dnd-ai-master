@@ -146,6 +146,7 @@ export default async function GameSessionPage({ params }: { params: Promise<{ id
         sessionId: m.sessionId,
         role: m.role,
         content: m.content,
+        authorCharacterId: m.authorCharacterId ?? null,
         createdAt: m.createdAt.toISOString(),
       }))}
       initialActors={actors.map((a) => ({

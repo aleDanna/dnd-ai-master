@@ -51,6 +51,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let campaign: typeof campaigns.$inferSelect;
   let lockHolder: string;
   let currentTurnSeq = 0;
+  let authorCharacterId: string | null = null;
   try {
     const [turnRow] = await db
       .select({ session: sessions, campaign: campaigns })
@@ -61,6 +62,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!turnRow) return jsonResponse({ error: 'not-found' }, 404);
     campaign = turnRow.campaign;
     currentTurnSeq = turnRow.session.turnSeq ?? 0;
+    authorCharacterId = turnRow.session.currentPlayerCharacterId ?? null;
 
     // Multiplayer permission check — only the current player may POST a turn.
     // Solo sessions always have currentPlayerCharacterId pointing to the
@@ -122,7 +124,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // (no real player text exists yet; the master is opening the scene
         // from the campaign premise).
         if (!isBegin) {
-          await db.insert(sessionMessages).values({ sessionId, role: 'player', content: body!.message! });
+          await db.insert(sessionMessages).values({
+            sessionId,
+            role: 'player',
+            content: body!.message!,
+            // Multiplayer: tag which character authored this message so
+            // the chat bubbles can show the character name instead of "Player".
+            authorCharacterId: authorCharacterId ?? undefined,
+          });
         }
 
         // 2. Language detection if not pinned (uses the user's chosen provider).

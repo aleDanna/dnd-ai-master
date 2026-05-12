@@ -19,6 +19,7 @@ export interface NarrativeMessage {
   id?: string;
   role: 'master' | 'player' | 'system';
   content: string;
+  authorCharacterId?: string | null;
   tools?: { name: string; ok: boolean; error?: string; rolls: { formula: string; total: number; rolls?: number[] }[] }[];
 }
 
@@ -37,13 +38,15 @@ export interface NarrativePaneProps {
   disabled?: boolean;
   /** Custom placeholder shown when disabled is true. Defaults to the memory-prep message. */
   disabledPlaceholder?: string;
+  /** Party roster used to resolve author names on player messages. */
+  party?: Array<{ id: string; name: string }>;
 }
 
 /** Number of newest messages visible on first load. The "Show previous"
  *  link reveals an additional batch of this size with each click. */
 const PAGE_SIZE = 10;
 
-export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, onCastSpell, manualRolls, imageGenerationEnabled = false, disabled = false, disabledPlaceholder }: NarrativePaneProps) {
+export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, onCastSpell, manualRolls, imageGenerationEnabled = false, disabled = false, disabledPlaceholder, party = [] }: NarrativePaneProps) {
   const [draft, setDraft] = React.useState('');
   // Tamper-resistant pending roll. The text is set ONLY by handleRollResult
   // (called from the dice-button after the spinner settles) and rendered as
@@ -204,6 +207,7 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
               onRollResult={handleRollResult}
               onAnyRollStart={handleRollStart}
               onAnyRollEnd={handleRollEnd}
+              party={party}
             />
           ))}
           {busy && (
@@ -351,6 +355,13 @@ function PendingRollChip({ text }: { text: string }) {
   );
 }
 
+function authorLabel(msg: NarrativeMessage, party: Array<{ id: string; name: string }>): string {
+  if (msg.role === 'master') return 'The Master';
+  if (msg.role === 'system') return 'System';
+  const char = party.find((p) => p.id === msg.authorCharacterId);
+  return char?.name ?? 'Player';
+}
+
 function MessageView({
   m,
   sessionId,
@@ -359,6 +370,7 @@ function MessageView({
   onRollResult,
   onAnyRollStart,
   onAnyRollEnd,
+  party,
 }: {
   m: NarrativeMessage;
   sessionId: string;
@@ -367,6 +379,7 @@ function MessageView({
   onRollResult: (text: string) => void;
   onAnyRollStart?: () => void;
   onAnyRollEnd?: () => void;
+  party: Array<{ id: string; name: string }>;
 }) {
   if (m.role === 'master') {
     const rollRequests = manualRolls ? parseRollRequests(m.content) : [];
@@ -423,24 +436,23 @@ function MessageView({
   if (m.role === 'player') {
     const ooc = isOocMessage(m.content);
     const displayText = ooc ? stripOocPrefix(m.content) : m.content;
+    const label = authorLabel(m, party);
     return (
       <div style={{ alignSelf: 'flex-end', marginLeft: 'auto', maxWidth: '85%' }}>
-        {ooc && (
-          <div
-            style={{
-              fontSize: 9,
-              fontWeight: 600,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              color: 'var(--fg-subtle)',
-              textAlign: 'right',
-              marginBottom: 4,
-              fontFamily: 'var(--font-ui)',
-            }}
-          >
-            Aside · OOC
-          </div>
-        )}
+        <div
+          style={{
+            fontSize: 9,
+            fontWeight: 600,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: 'var(--fg-subtle)',
+            textAlign: 'right',
+            marginBottom: 4,
+            fontFamily: 'var(--font-ui)',
+          }}
+        >
+          {ooc ? `${label} · OOC` : label}
+        </div>
         <div
           style={{
             background: ooc ? 'transparent' : 'var(--bone)',
@@ -480,7 +492,7 @@ function MessageView({
 }
 
 function mergeMessages(history: MessageRow[], live: TurnEvent[]): NarrativeMessage[] {
-  const out: NarrativeMessage[] = history.map((m) => ({ id: m.id, role: m.role, content: m.content }));
+  const out: NarrativeMessage[] = history.map((m) => ({ id: m.id, role: m.role, content: m.content, authorCharacterId: m.authorCharacterId }));
   // Append live events: build the in-progress master message from narrative_delta + tool_use_end events.
   let liveText = '';
   const liveTools: NonNullable<NarrativeMessage['tools']> = [];
