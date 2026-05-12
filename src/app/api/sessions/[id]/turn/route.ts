@@ -313,10 +313,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             }),
           );
         } else {
+          // Gemini / brief-mode responses sometimes only call tools and
+          // `end_turn` without producing narration. The turn DID happen
+          // (tools ran, mutations persisted, turn counter advanced), but the
+          // player has nothing to read and no signal that the master tried.
+          // Surface this to the client as a `turn-error` so the composer
+          // unlocks and the player can re-prompt the master.
           console.warn('turn produced empty response', { sessionId });
+          notifySession(sessionId, {
+            type: 'turn-error',
+            reason: 'empty_response',
+            message: 'Il Master non ha prodotto una risposta. Riprova o riformula.',
+          }).catch((e) => console.warn('notifySession(turn-error) failed:', e instanceof Error ? e.message : String(e)));
         }
       } catch (e) {
-        console.error('turn background task failed', e instanceof Error ? e.message : String(e));
+        const reason = e instanceof Error ? e.message : String(e);
+        console.error('turn background task failed', reason);
+        // Surface the failure to the client so it stops waiting forever.
+        // We intentionally do NOT echo the raw error to the user — it
+        // could leak provider keys or internal details — just a generic
+        // hint that the turn fizzled. The full reason stays in the logs.
+        notifySession(sessionId, {
+          type: 'turn-error',
+          reason: 'failed',
+          message: 'Il Master ha incontrato un errore. Riprova.',
+        }).catch((nerr) =>
+          console.warn('notifySession(turn-error/failed) failed:', nerr instanceof Error ? nerr.message : String(nerr)),
+        );
       } finally {
         await touchCampaign(campaign.id);
         await releaseTurnLock(sessionId, lockHolder);

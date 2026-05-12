@@ -50,7 +50,7 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     [...initialMessages].reverse().find((m) => m.role === 'master')?.id ?? null,
   );
 
-  const { snapshot, streamingMessage, error: streamError } = useSessionStream(sessionId);
+  const { snapshot, streamingMessage, error: streamError, turnError, clearTurnError } = useSessionStream(sessionId);
 
   // Derive live state: prefer snapshot from SSE, fall back to SSR props
   const liveState: SessionStateRow | null = (snapshot?.state as SessionStateRow | null) ?? initialState;
@@ -237,11 +237,30 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
 
   React.useEffect(() => () => clearSafetyPoll(), [clearSafetyPoll]);
 
+  // Post-send pessimistic lock — the gap between `POST /turn` returning 202
+  // (sending=false) and the master's first streamed chunk (streamingMessage)
+  // is several seconds long, during which the turn-change SSE may not have
+  // landed yet. Without this lock the player could double-submit and the
+  // server would only catch them with a 403 not-your-turn. We keep the
+  // composer locked from `send()` until either streaming starts, a
+  // turn-error arrives, or a 12s safety ceiling expires.
+  const [postSendLock, setPostSendLock] = React.useState(false);
+  React.useEffect(() => {
+    if (!postSendLock) return;
+    if (streamingMessage || turnError) {
+      setPostSendLock(false);
+      return;
+    }
+    const t = setTimeout(() => setPostSendLock(false), 12_000);
+    return () => clearTimeout(t);
+  }, [postSendLock, streamingMessage, turnError]);
+
   const send = (text: string): void => {
     setMessages((prev) => [
       ...prev,
       { id: `temp-${Date.now()}`, sessionId, role: 'player', content: text, createdAt: new Date().toISOString() },
     ]);
+    setPostSendLock(true);
     void postTurn({ message: text });
     startSafetyPoll();
   };
@@ -265,7 +284,17 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     }));
   const currentPlayerCharacterId: string | null = snapshot?.currentPlayerCharacterId ?? null;
   const viewerCharacterId: string | null = snapshot?.viewerCharacterId ?? null;
-  const isMyTurn = viewerCharacterId === null || viewerCharacterId === currentPlayerCharacterId;
+  // Multiplayer rule: if the snapshot has *any* turn ownership signal
+  // (`currentPlayerCharacterId` set), the viewer MUST match it to act. Falling
+  // back to `true` whenever `viewerCharacterId` was null used to let players
+  // keep typing after their turn ended — every refetch / SSE message blanked
+  // `viewerCharacterId` to null, and the composer popped open again.
+  // Legacy single-character sessions have `currentPlayerCharacterId === null`,
+  // so we keep them permissive in that branch.
+  const isMyTurn =
+    currentPlayerCharacterId === null
+      ? true
+      : viewerCharacterId !== null && viewerCharacterId === currentPlayerCharacterId;
   const currentPlayerName = party.find((p) => p.id === currentPlayerCharacterId)?.name ?? '...';
 
   // Derive the latest persisted master message id for TTS autoplay.
@@ -329,7 +358,10 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
       }))
     : [];
 
-  const composerDisabled = !memoryReady || !isMyTurn;
+  // Composer is locked when: memory isn't ready, it's not the viewer's turn,
+  // the master is currently streaming a response (busy), or the player
+  // just submitted and we're waiting for the master to take over.
+  const composerDisabled = !memoryReady || !isMyTurn || busy || postSendLock;
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)', flexDirection: 'column' }}>
@@ -408,9 +440,42 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
             disabledPlaceholder={!memoryReady ? 'Preparazione memoria in corso…' : `Waiting for ${currentPlayerName}…`}
             party={party}
           />
-          {(sendError || streamError) && (
-            <div style={{ padding: '8px 16px', background: 'var(--bg-card)', color: 'var(--ember)', borderTop: '1px solid var(--ember)', fontSize: 12 }}>
-              <Icon name="x" size={12} /> {sendError ?? streamError}
+          {(sendError || streamError || turnError) && (
+            <div
+              style={{
+                padding: '8px 16px',
+                background: 'var(--bg-card)',
+                color: 'var(--ember)',
+                borderTop: '1px solid var(--ember)',
+                fontSize: 12,
+                display: 'flex',
+                gap: 8,
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                <Icon name="x" size={12} />
+                {sendError ?? streamError ?? turnError?.message ?? 'Errore turno.'}
+              </span>
+              {turnError && (
+                <button
+                  type="button"
+                  onClick={clearTurnError}
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid var(--ember)',
+                    color: 'var(--ember)',
+                    padding: '2px 8px',
+                    borderRadius: 999,
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 11,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Chiudi
+                </button>
+              )}
             </div>
           )}
           {spellOpen && character.spellcasting && !composerDisabled && (

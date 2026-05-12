@@ -7,7 +7,12 @@ export type NotifyPayload =
   | { type: 'message'; messageId: string }
   | { type: 'state' }
   | { type: 'turn-change'; characterId: string }
-  | { type: 'dice'; logId: string };
+  | { type: 'dice'; logId: string }
+  // Master loop completed without persisting a master message (empty finalText,
+  // typically Gemini-style "tool calls only / end_turn"). The current player
+  // stays the current player so they can retry. The client shows an inline
+  // error so the user knows the turn fizzled instead of hanging silently.
+  | { type: 'turn-error'; reason: 'empty_response' | 'failed'; message?: string };
 
 /**
  * Emit a Postgres NOTIFY on channel `session_<id>`. All SSE subscribers
