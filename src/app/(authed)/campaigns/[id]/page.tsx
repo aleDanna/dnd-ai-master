@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card';
 import { Chip } from '@/components/ui/chip';
 import { Icon } from '@/components/ui/icon';
 import { DeleteCardButton } from '@/components/ui/delete-card-button';
+import { RenameHeading } from './rename-heading';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +23,7 @@ export default async function CampaignDetail({ params }: { params: Promise<{ id:
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '40px 32px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 36, fontWeight: 600, lineHeight: 1.1 }}>{campaign.name}</h1>
+          <RenameHeading campaignId={campaign.id} initialName={campaign.name} />
           <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
             <Chip tone={campaign.status === 'active' ? 'accent' : 'neutral'} dot={campaign.status === 'active'}>{campaign.status}</Chip>
             <Chip tone="neutral">{campaign.style}</Chip>
