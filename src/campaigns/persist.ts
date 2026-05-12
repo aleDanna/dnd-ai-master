@@ -1,9 +1,42 @@
-import { and, eq, isNull, desc } from 'drizzle-orm';
+import { and, eq, isNull, isNotNull, desc, or, inArray } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { campaigns, sessions, characters, type Campaign } from '@/db/schema';
 
+/**
+ * List every campaign the user is a party member of:
+ *   - campaigns they host (`campaigns.userId === userId`), AND
+ *   - campaigns they joined via invite (own a `characters` row with
+ *     `templateId IS NOT NULL` + `campaignId = X` + `userId = me`).
+ *
+ * The two sets are merged at the application layer (rather than via a
+ * UNION) so consumers always get distinct campaign rows with the standard
+ * Drizzle shape — and so the host's row never appears twice for someone who
+ * is both host and "joined" via the same character row.
+ */
 export async function listCampaigns(userId: string, status?: 'active' | 'ended') {
-  const conditions = [eq(campaigns.userId, userId), isNull(campaigns.deletedAt)];
+  // Campaigns where the viewer has an instance character — i.e. they joined
+  // the party. We surface only campaign ids here; the full row is fetched
+  // in the next query alongside the host's own campaigns.
+  const joinedIds = (
+    await db
+      .selectDistinct({ id: characters.campaignId })
+      .from(characters)
+      .where(and(
+        eq(characters.userId, userId),
+        isNotNull(characters.templateId),
+        isNotNull(characters.campaignId),
+        isNull(characters.deletedAt),
+      ))
+  )
+    .map((r) => r.id)
+    .filter((id): id is string => id != null);
+
+  const conditions = [
+    isNull(campaigns.deletedAt),
+    joinedIds.length > 0
+      ? or(eq(campaigns.userId, userId), inArray(campaigns.id, joinedIds))
+      : eq(campaigns.userId, userId),
+  ];
   if (status) conditions.push(eq(campaigns.status, status));
   return db
     .select()
@@ -12,18 +45,55 @@ export async function listCampaigns(userId: string, status?: 'active' | 'ended')
     .orderBy(desc(campaigns.lastPlayedAt), desc(campaigns.updatedAt));
 }
 
+/**
+ * Returns whether the viewer is allowed to read the campaign — they're
+ * either the host or hold an instance character inside the campaign's
+ * party. Used by `getCampaign` and the `/campaigns/[id]` server component.
+ */
+async function userCanReadCampaign(userId: string, campaignId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ userId: campaigns.userId })
+    .from(campaigns)
+    .where(and(eq(campaigns.id, campaignId), isNull(campaigns.deletedAt)))
+    .limit(1);
+  if (!row) return false;
+  if (row.userId === userId) return true;
+  const [member] = await db
+    .select({ id: characters.id })
+    .from(characters)
+    .where(and(
+      eq(characters.campaignId, campaignId),
+      eq(characters.userId, userId),
+      isNotNull(characters.templateId),
+      isNull(characters.deletedAt),
+    ))
+    .limit(1);
+  return !!member;
+}
+
 export async function getCampaign(userId: string, campaignId: string) {
+  const canRead = await userCanReadCampaign(userId, campaignId);
+  if (!canRead) return null;
+
   const [campaign] = await db
     .select()
     .from(campaigns)
-    .where(and(eq(campaigns.id, campaignId), eq(campaigns.userId, userId), isNull(campaigns.deletedAt)))
+    .where(and(eq(campaigns.id, campaignId), isNull(campaigns.deletedAt)))
     .limit(1);
   if (!campaign) return null;
 
+  // The viewer's OWN instance character in the campaign (used by hub /
+  // campaigns list as the "you play X" hint). Falls back to any instance
+  // when the viewer is the host but has no instance yet (legacy data).
   const [instance] = await db
     .select()
     .from(characters)
-    .where(and(eq(characters.campaignId, campaignId), isNull(characters.deletedAt)))
+    .where(and(
+      eq(characters.campaignId, campaignId),
+      eq(characters.userId, userId),
+      isNotNull(characters.templateId),
+      isNull(characters.deletedAt),
+    ))
     .limit(1);
 
   const [activeSession] = await db

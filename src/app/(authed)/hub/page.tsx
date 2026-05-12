@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { auth } from '@clerk/nextjs/server';
-import { eq, isNull, and, desc } from 'drizzle-orm';
+import { eq, isNull, isNotNull, and, inArray } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { characters as charactersTable, campaigns as campaignsTable } from '@/db/schema';
+import { characters as charactersTable } from '@/db/schema';
 import { ensureUser } from '@/db/users';
+import { listCampaigns } from '@/campaigns/persist';
 import { Eyebrow } from '@/components/ui/eyebrow';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,13 +30,31 @@ export default async function HubPage() {
       isNull(charactersTable.templateId),  // hide per-session instance forks
     ));
 
-  const recentCampaigns = await db
-    .select({ campaign: campaignsTable, character: charactersTable })
-    .from(campaignsTable)
-    .leftJoin(charactersTable, eq(charactersTable.campaignId, campaignsTable.id))
-    .where(and(eq(campaignsTable.userId, userId), isNull(campaignsTable.deletedAt)))
-    .orderBy(desc(campaignsTable.lastPlayedAt), desc(campaignsTable.updatedAt))
-    .limit(3);
+  // listCampaigns is multiplayer-aware — it returns both host campaigns and
+  // campaigns the viewer joined via invite. We then join the viewer's own
+  // instance character per campaign so the card hint says "you play X"
+  // rather than the host's character.
+  const allCampaigns = await listCampaigns(userId);
+  const top3 = allCampaigns.slice(0, 3);
+  const myInstances = top3.length > 0
+    ? await db
+        .select()
+        .from(charactersTable)
+        .where(and(
+          eq(charactersTable.userId, userId),
+          isNotNull(charactersTable.templateId),
+          isNull(charactersTable.deletedAt),
+          inArray(
+            charactersTable.campaignId,
+            top3.map((c) => c.id),
+          ),
+        ))
+    : [];
+  const instanceByCampaign = new Map(myInstances.map((c) => [c.campaignId, c]));
+  const recentCampaigns = top3.map((campaign) => ({
+    campaign,
+    character: instanceByCampaign.get(campaign.id) ?? null,
+  }));
 
   const hasCharacters = myChars.length > 0;
 
@@ -149,9 +168,10 @@ export default async function HubPage() {
             characterRace={character?.raceSlug}
             characterClass={character?.classSlug}
             characterLevel={character?.level}
-            // Hub only lists the viewer's owned campaigns
-            // (campaignsTable.userId === viewer).
-            showDelete
+            // Only the host can delete a campaign — for joined-via-invite
+            // entries we still show the card (so the viewer can resume) but
+            // hide the destructive affordance they can't act on anyway.
+            showDelete={campaign.userId === userId}
           />
         ))}
         <Link href="/campaigns/new" style={{ textDecoration: 'none' }}>

@@ -7,7 +7,18 @@ import { useRouter } from 'next/navigation';
 // This avoids the Escape→blur race where blur fires after cancel and
 // would re-trigger a save with the partially-edited value.
 
-export function RenameHeading({ campaignId, initialName }: { campaignId: string; initialName: string }) {
+export function RenameHeading({
+  campaignId,
+  initialName,
+  canEdit = true,
+}: {
+  campaignId: string;
+  initialName: string;
+  /** When false, the heading renders as a plain `<h1>` (guests can't rename
+   *  a campaign — only the host can; the API would reject anyway, but the UI
+   *  shouldn't pretend the affordance is there). */
+  canEdit?: boolean;
+}) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(initialName);
@@ -18,6 +29,13 @@ export function RenameHeading({ campaignId, initialName }: { campaignId: string;
   useEffect(() => {
     if (editing) inputRef.current?.focus();
   }, [editing]);
+
+  // Guest mode: read-only heading, no click handler, no hover affordance.
+  if (!canEdit) {
+    return (
+      <h1 style={{ fontSize: 36, fontWeight: 600, lineHeight: 1.1 }}>{name}</h1>
+    );
+  }
 
   const save = async () => {
     const trimmed = name.trim();

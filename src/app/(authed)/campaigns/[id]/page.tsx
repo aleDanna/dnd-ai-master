@@ -49,7 +49,7 @@ export default async function CampaignDetail({ params }: { params: Promise<{ id:
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '40px 32px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 24 }}>
         <div>
-          <RenameHeading campaignId={campaign.id} initialName={campaign.name} />
+          <RenameHeading campaignId={campaign.id} initialName={campaign.name} canEdit={isHost} />
           <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
             <Chip tone={campaign.status === 'active' ? 'accent' : 'neutral'} dot={campaign.status === 'active'}>{campaign.status}</Chip>
             <Chip tone="neutral">{campaign.style}</Chip>

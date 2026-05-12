@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
-import { and, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, isNotNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { characters as charactersTable } from '@/db/schema';
 import { listCampaigns } from '@/campaigns/persist';
@@ -17,12 +17,17 @@ export default async function CampaignsPage() {
 
   const campaignRows = await listCampaigns(userId);
 
+  // Per-campaign hint: show the VIEWER's own instance character (their party
+  // hero) rather than "any character in this campaign" — the latter used to
+  // surface the host's character on a guest's cards, which was confusing.
   const characterRows = campaignRows.length > 0
     ? await db
         .select()
         .from(charactersTable)
         .where(and(
           inArray(charactersTable.campaignId, campaignRows.map(c => c.id)),
+          eq(charactersTable.userId, userId),
+          isNotNull(charactersTable.templateId),
           isNull(charactersTable.deletedAt),
         ))
     : [];
@@ -54,8 +59,9 @@ export default async function CampaignsPage() {
               characterRace={character?.raceSlug}
               characterClass={character?.classSlug}
               characterLevel={character?.level}
-              // listCampaigns is already scoped to the viewer's owned rows.
-              showDelete
+              // Only the host can delete; guests joined via invite see the
+              // card without the destructive affordance.
+              showDelete={campaign.userId === userId}
             />
           );
         })}
