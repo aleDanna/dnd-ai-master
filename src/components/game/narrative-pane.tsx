@@ -35,13 +35,15 @@ export interface NarrativePaneProps {
   imageGenerationEnabled?: boolean;
   /** When true, the chat input and Send button are disabled (e.g. memory backfill in progress). */
   disabled?: boolean;
+  /** Custom placeholder shown when disabled is true. Defaults to the memory-prep message. */
+  disabledPlaceholder?: string;
 }
 
 /** Number of newest messages visible on first load. The "Show previous"
  *  link reveals an additional batch of this size with each click. */
 const PAGE_SIZE = 10;
 
-export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, onCastSpell, manualRolls, imageGenerationEnabled = false, disabled = false }: NarrativePaneProps) {
+export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, onCastSpell, manualRolls, imageGenerationEnabled = false, disabled = false, disabledPlaceholder }: NarrativePaneProps) {
   const [draft, setDraft] = React.useState('');
   // Tamper-resistant pending roll. The text is set ONLY by handleRollResult
   // (called from the dice-button after the spinner settles) and rendered as
@@ -252,7 +254,7 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
                 }
               }}
               disabled={disabled}
-              placeholder={disabled ? 'Preparazione memoria in corso…' : 'What do you do? · Start with ! to ask the master out-of-character'}
+              placeholder={disabled ? (disabledPlaceholder ?? 'Preparazione memoria in corso…') : 'What do you do? · Start with ! to ask the master out-of-character'}
               rows={2}
               style={{
                 flex: 1,
