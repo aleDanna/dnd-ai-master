@@ -39,6 +39,10 @@ describe('buildSnapshot', () => {
     const { id: characterId } = await saveCharacter({ userId: TEST_USER, wizard: w });
 
     const campaignId = await makeTestCampaign('goblin warren');
+    // Simulate a campaign instance fork: set templateId + campaignId so the
+    // party query (isNotNull(templateId)) picks this character up.
+    await db.update(characters).set({ templateId: characterId, campaignId }).where(eq(characters.id, characterId));
+
     const [session] = await db.insert(sessions).values({ userId: TEST_USER, characterId, premise: 'goblin warren', campaignId }).returning();
     await db.insert(sessionState).values({ sessionId: session!.id, hpCurrent: 11, hitDiceRemaining: 1 });
     await db.insert(combatActors).values({ sessionId: session!.id, name: 'Goblin', monsterSlug: 'goblin', hpCurrent: 7, hpMax: 7 });
@@ -51,6 +55,11 @@ describe('buildSnapshot', () => {
     expect(snap.state.runtime[snap.state.characters[0]!.id]?.hpCurrent).toBe(11);
     expect(snap.scene).toBe('');
     expect(snap.characterMonoSpace).toContain('"name":"Tharion"');
+    // Multiplayer additions
+    expect(snap.party).toBeInstanceOf(Array);
+    expect(snap.party.length).toBeGreaterThanOrEqual(1);
+    expect(snap.currentPlayerCharacterId).toBeDefined();
+    expect(snap.viewerCharacterId).toBeDefined();
   });
 
   it('throws if session does not belong to userId', async () => {
