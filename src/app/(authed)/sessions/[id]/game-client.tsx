@@ -369,7 +369,21 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
             </div>
           )}
           {snapshot && party.length > 1 && (
-            <div style={{ padding: '0 40px', flexShrink: 0 }}>
+            // Sticky right under the 56px top header so the party roster +
+            // active-turn indicator stay visible while the narrative scrolls.
+            // `zIndex: 5` keeps it above the narrative bubbles but below the
+            // header's z-index: 10. We give the wrapper a solid page bg so
+            // the horizontal padding doesn't "see-through" scrolling content.
+            <div
+              style={{
+                padding: '8px 40px 0',
+                background: 'var(--bg)',
+                position: 'sticky',
+                top: 56,
+                zIndex: 5,
+                flexShrink: 0,
+              }}
+            >
               <PartyStrip
                 party={party}
                 currentPlayerCharacterId={currentPlayerCharacterId}
