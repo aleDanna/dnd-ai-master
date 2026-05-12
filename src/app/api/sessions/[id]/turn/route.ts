@@ -217,7 +217,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               usage,
             });
           },
-          onEvent: (ev) => send(ev.type, ev),
+          onEvent: (ev) => {
+            send(ev.type, ev);
+            // Broadcast narrative chunks to all SSE subscribers on the session
+            // channel so party members not in the active SSE tab still see the
+            // master typing in real-time. We use messageId:'' as a sentinel
+            // meaning "pending" — the final messageId arrives in the 'message'
+            // notification below once the master row is persisted.
+            if (ev.type === 'narrative_delta') {
+              notifySession(sessionId, { type: 'message-chunk', messageId: '', text: ev.text }).catch(
+                (e) => console.warn('notifySession(message-chunk) failed:', e instanceof Error ? e.message : String(e)),
+              );
+            }
+          },
         });
 
         // 6. Post-loop fallback round-robin — runs regardless of whether the
@@ -275,6 +287,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // as a turn_error instead so the player sees a recoverable signal.
         if (result.finalText.trim()) {
           const [mm] = await db.insert(sessionMessages).values({ sessionId, role: 'master', content: result.finalText }).returning();
+          // Notify SSE subscribers that a final master message is persisted.
+          // This supersedes all preceding message-chunk notifications for this
+          // turn — clients should replace their transient buffer with the row.
+          notifySession(sessionId, { type: 'message', messageId: mm!.id }).catch(
+            (e) => console.warn('notifySession(message) failed:', e instanceof Error ? e.message : String(e)),
+          );
           waitUntil(
             extractMemory(sessionId, userPrefs.aiProvider).catch((e) => {
               console.error('memory.extract.fire_and_forget', e instanceof Error ? e.message : String(e));
