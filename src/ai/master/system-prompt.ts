@@ -1146,6 +1146,23 @@ You read the codex in two ways:
 
 Hard rule: if the codex has a fact, **do not contradict it**. If you can't find a needed entity via \`lookup_codex\`, narrate carefully — describe only what you can support — rather than inventing details that may conflict with what's already established. The Codex index below tells you what kinds of entities exist, even when their full data isn't on screen.`;
 
+function buildPartyModeBlock(
+  party: Array<{ id: string; name: string; raceSlug: string; classSlug: string; level: number }>,
+  currentPlayerCharacterId: string | null,
+): string {
+  if (party.length <= 1) return ''; // solo: no party mode
+  const list = party.map((c) => `- ${c.name} (${c.raceSlug} ${c.classSlug} L${c.level}, id: ${c.id})`).join('\n');
+  const currentName = party.find((c) => c.id === currentPlayerCharacterId)?.name ?? '(unset)';
+  return [
+    `PARTY MODE: This campaign has a party of ${party.length} characters:`,
+    list,
+    '',
+    `Address players by their character name (e.g., "Tharion, you see..."). Never use "you" to refer to multiple players ambiguously. The character currently acting is ${currentName}.`,
+    '',
+    `AT END OF EACH NARRATIVE BEAT, call the tool set_current_player with the characterId of the next player to act. Pick based on narrative tension, party initiative, or round-robin as feels natural. If you do not call set_current_player for 3 consecutive turns, the system will auto-advance round-robin to prevent deadlock.`,
+  ].join('\n');
+}
+
 export interface MasterPromptInput {
   srdContext: string;
   /** Curated DM craft guidance from the 5e DMG 2024 (chapters 1-3). Loaded via getMasterHandbook(). */
@@ -1186,6 +1203,16 @@ export interface MasterPromptInput {
    * snapshot.
    */
   engagementProfile?: EngagementProfile[];
+  /**
+   * Multiplayer — all instance characters in this campaign (ordered by
+   * creation time). When N > 1, triggers the PARTY MODE block.
+   */
+  party?: Array<{ id: string; name: string; raceSlug: string; classSlug: string; level: number }>;
+  /**
+   * Multiplayer — the id of the character whose turn it currently is.
+   * Passed to buildPartyModeBlock to identify the active player.
+   */
+  currentPlayerCharacterId?: string | null;
 }
 
 export const MASTER_HIDE_DIFFICULTY_RULE = `## Hide difficulty numbers
@@ -1441,6 +1468,7 @@ Then end your turn and wait. When the player replies with the rolled total(s), n
 
 export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }[] } {
   const langHint = input.language ? `\n\nNarrative language for this session: ${input.language}. Mirror it.` : '';
+  const partyModeBlock = buildPartyModeBlock(input.party ?? [], input.currentPlayerCharacterId ?? null);
   const dynamicTail = `## Current snapshot\n\n### Character\n\`\`\`json\n${input.characterMonoSpace}\n\`\`\`\n\n### Scene\n${input.scene || '(no scene set yet)'}${langHint}`;
 
   const blocks: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }[] = [
@@ -1531,6 +1559,12 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
         `Detected profiles: ${input.engagementProfile.join(', ')}.\n\n` +
         `Lean into scenes that reward these styles. Refine via \`set_engagement_profile\` if the player's preferences shift.`,
     });
+  }
+
+  // Party mode block — dynamic (varies with party composition and active
+  // player). Only injected when N > 1 characters are in the party.
+  if (partyModeBlock) {
+    blocks.push({ type: 'text', text: partyModeBlock });
   }
 
   // Dynamic, NOT cached
