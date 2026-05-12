@@ -1,6 +1,6 @@
-import { eq } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { users, type UserPreferences } from '@/db/schema';
+import { sessions, users, type UserPreferences } from '@/db/schema';
 
 export type { UserPreferences };
 export {
@@ -154,5 +154,38 @@ export async function updateUserPreferences(userId: string, patch: Partial<UserP
   const merged: UserPreferences = { ...current, ...patch };
   await db.update(users).set({ preferences: merged }).where(eq(users.id, userId));
   return merged;
+}
+
+/**
+ * Session-scoped resolved preferences — returns the **host's** preferences for
+ * the given session, regardless of who's calling.
+ *
+ * Multiplayer rule: only the host decides which AI provider/model the Master
+ * uses, whether image generation is on, what tonal-frame defaults apply, etc.
+ * If we resolved per-caller, a guest's quirky preference (say, Gemini when the
+ * host has Anthropic) would either crash the turn or silently switch the
+ * narration's voice mid-session. Everything that touches the Master loop or
+ * shared session state (image regen on a past message, memory rebuild, the
+ * /turn endpoint) MUST go through this helper so the session has one
+ * canonical AI configuration.
+ *
+ * Personal-device choices (TTS voice/model, autoplay) still resolve
+ * per-viewer via `getResolvedPreferences(viewerId)` — those don't affect
+ * other party members.
+ *
+ * Throws if the session doesn't exist or has been soft-deleted; callers
+ * upstream of this helper have always done auth first, so a missing row is
+ * a programmer error worth surfacing.
+ */
+export async function getSessionMasterPreferences(
+  sessionId: string,
+): Promise<Required<UserPreferences>> {
+  const [row] = await db
+    .select({ userId: sessions.userId })
+    .from(sessions)
+    .where(and(eq(sessions.id, sessionId), isNull(sessions.deletedAt)))
+    .limit(1);
+  if (!row) throw new Error(`getSessionMasterPreferences: session ${sessionId} not found`);
+  return getResolvedPreferences(row.userId);
 }
 

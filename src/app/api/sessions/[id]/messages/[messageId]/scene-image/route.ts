@@ -3,7 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions, sessionMessages, sessionState, characters } from '@/db/schema';
-import { getResolvedPreferences } from '@/lib/preferences';
+import { getSessionMasterPreferences } from '@/lib/preferences';
 import { resolveStyleText, buildCharacterAppearance } from '@/ai/master/image-style';
 import { generateAndPersist } from '@/sessions/scene-image-job';
 import { checkPartyAccess } from '@/multiplayer/access';
@@ -63,7 +63,11 @@ export async function POST(
     return NextResponse.json({ error: 'empty-message' }, { status: 400 });
   }
 
-  const prefs = await getResolvedPreferences(userId);
+  // Image regen uses the host's image provider/model + style preset — every
+  // party member sees the same scene image, so the regen MUST match the
+  // configuration the host chose. The viewer who clicked the button doesn't
+  // get to swap in their own provider / preset.
+  const prefs = await getSessionMasterPreferences(sessionId);
   if (!prefs.imageGenerationEnabled) {
     return NextResponse.json({ error: 'image-generation-disabled' }, { status: 403 });
   }

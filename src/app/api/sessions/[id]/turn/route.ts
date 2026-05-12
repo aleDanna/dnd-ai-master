@@ -17,7 +17,7 @@ import { buildToolDefinitions } from '@/engine';
 import { getProviderByName } from '@/ai/provider';
 import { recordUsage } from '@/ai/master/usage';
 import { checkQuotas } from '@/ai/master/quotas';
-import { getResolvedPreferences } from '@/lib/preferences';
+import { getSessionMasterPreferences } from '@/lib/preferences';
 import { loadMemoryContext } from '@/sessions/memory/context';
 import { extractMemory } from '@/sessions/memory/extractor';
 import { touchCampaign } from '@/campaigns/persist';
@@ -120,8 +120,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   waitUntil(
     (async () => {
       try {
-        // 0. Resolve per-user prefs once — drive provider/model + behavior flags from here.
-        const userPrefs = await getResolvedPreferences(userId);
+        // 0. Resolve session-scoped (host's) prefs once — the AI provider/model
+        // and master-behavior flags MUST be uniform across the party regardless
+        // of who's posting this turn. Personal-device prefs (TTS voice etc.)
+        // are not consumed here; they only matter for /messages/<id>/tts which
+        // resolves per-viewer.
+        const userPrefs = await getSessionMasterPreferences(sessionId);
 
         // 1. Persist player message — skipped on the synthetic "begin" turn
         // (no real player text exists yet; the master is opening the scene

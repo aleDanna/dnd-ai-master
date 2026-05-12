@@ -3,7 +3,7 @@ import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions } from '@/db/schema';
 import { rebuildMemoryStream } from '@/sessions/memory/extractor';
-import { getResolvedPreferences } from '@/lib/preferences';
+import { getSessionMasterPreferences } from '@/lib/preferences';
 import { checkPartyAccess } from '@/multiplayer/access';
 
 export async function POST(
@@ -30,7 +30,9 @@ export async function POST(
   const hasAccess = await checkPartyAccess(userId, sessionId);
   if (!hasAccess) return json({ error: 'forbidden' }, 403);
 
-  const prefs = await getResolvedPreferences(userId);
+  // Memory belongs to the session, not the challer — use the host's AI prefs
+  // so the rebuilt chapters speak the same Master "voice" as the live turns.
+  const prefs = await getSessionMasterPreferences(sessionId);
 
   const stream = new ReadableStream({
     async start(controller) {

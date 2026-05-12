@@ -4,7 +4,7 @@ import { eq, and, isNull, isNotNull, asc } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions, sessionState, sessionMessages, combatActors, characters, campaigns } from '@/db/schema';
 import { GameClient } from './game-client';
-import { getResolvedPreferences } from '@/lib/preferences';
+import { getResolvedPreferences, getSessionMasterPreferences } from '@/lib/preferences';
 import { deriveLevel1Spellcasting } from '@/characters/derive';
 import type { Character, FeatureInstance, SpellcastingState } from '@/engine/types';
 import { checkPartyAccess } from '@/multiplayer/access';
@@ -112,14 +112,22 @@ export default async function GameSessionPage({ params }: { params: Promise<{ id
     hitDieSize: character.hitDieSize,
   };
 
-  const preferences = await getResolvedPreferences(userId);
+  // Split prefs by ownership:
+  //   - Master-driven flags (manualRolls, imageGenerationEnabled) come from
+  //     the host so the party sees one consistent Master configuration.
+  //   - TTS autoplay is a personal device choice — each viewer sets it
+  //     themselves on /settings.
+  const [viewerPrefs, sessionPrefs] = await Promise.all([
+    getResolvedPreferences(userId),
+    getSessionMasterPreferences(sessionId),
+  ]);
 
   return (
     <GameClient
       sessionId={sessionId}
-      initialAutoplay={preferences.ttsAutoplay}
-      initialManualRolls={preferences.manualRolls}
-      initialImageGenerationEnabled={preferences.imageGenerationEnabled}
+      initialAutoplay={viewerPrefs.ttsAutoplay}
+      initialManualRolls={sessionPrefs.manualRolls}
+      initialImageGenerationEnabled={sessionPrefs.imageGenerationEnabled}
       session={{
         id: session.id,
         userId: session.userId,
