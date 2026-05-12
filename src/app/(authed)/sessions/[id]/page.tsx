@@ -1,6 +1,6 @@
 import { auth } from '@clerk/nextjs/server';
 import { notFound } from 'next/navigation';
-import { eq, and, isNull, asc } from 'drizzle-orm';
+import { eq, and, isNull, isNotNull, asc } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions, sessionState, sessionMessages, combatActors, characters, campaigns } from '@/db/schema';
 import { GameClient } from './game-client';
@@ -28,7 +28,25 @@ export default async function GameSessionPage({ params }: { params: Promise<{ id
   const session = sessionRow.session;
   const campaign = sessionRow.campaign;
 
-  const [characterRow] = await db.select().from(characters).where(eq(characters.id, session.characterId)).limit(1);
+  // Multiplayer: each viewer sees THEIR OWN character in the left pane.
+  // Look up the viewer's instance in the campaign's party. Fall back to
+  // session.characterId (host's character) for the host or for legacy
+  // single-character sessions where the viewer's row is the same.
+  const [viewerChar] = session.campaignId
+    ? await db
+        .select()
+        .from(characters)
+        .where(and(
+          eq(characters.campaignId, session.campaignId),
+          eq(characters.userId, userId),
+          isNotNull(characters.templateId),
+          isNull(characters.deletedAt),
+        ))
+        .limit(1)
+    : [];
+  const characterRow = viewerChar ?? (
+    await db.select().from(characters).where(eq(characters.id, session.characterId)).limit(1)
+  )[0];
   if (!characterRow) notFound();
 
   // One-time backfill: characters created before deriveCharacter populated
