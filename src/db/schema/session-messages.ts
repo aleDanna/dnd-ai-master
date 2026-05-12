@@ -1,5 +1,6 @@
 import { pgTable, uuid, text, boolean, timestamp, pgEnum, index } from 'drizzle-orm/pg-core';
 import { sessions } from './sessions';
+import { characters } from './characters';
 
 export const messageRoleEnum = pgEnum('message_role', ['player', 'master', 'system']);
 
@@ -11,6 +12,11 @@ export const sessionMessages = pgTable(
     role: messageRoleEnum('role').notNull(),
     content: text('content').notNull(),
     cacheBreakpoint: boolean('cache_breakpoint').notNull().default(false),
+    /**
+     * Multiplayer (#6): the character that authored this message. NULL for
+     * role='master' and role='system' rows. Populated for role='player'.
+     */
+    authorCharacterId: uuid('author_character_id').references(() => characters.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
