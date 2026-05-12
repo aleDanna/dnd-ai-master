@@ -30,7 +30,7 @@ export const sessions = pgTable(
      * after observing the first few turns.
      */
     engagementProfile: jsonb('engagement_profile').$type<string[]>().notNull().default([]),
-    campaignId: uuid('campaign_id').notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+    campaignId: uuid('campaign_id').references(() => campaigns.id, { onDelete: 'cascade' }),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
