@@ -247,51 +247,63 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           },
         });
 
-        // 6. Post-loop fallback round-robin — runs regardless of whether the
-        // master produced narration. If the master called set_current_player,
-        // turnsSinceMasterAdvance was already reset to 0 by the tool handler.
-        // Otherwise we increment. At >= 3 consecutive turns without the master
-        // advancing, the server auto-advances round-robin to prevent deadlock.
-        await db.transaction(async (tx) => {
-          const [s] = await tx
-            .select({
-              tsma: sessions.turnsSinceMasterAdvance,
-              cpcId: sessions.currentPlayerCharacterId,
-              campaignId: sessions.campaignId,
-            })
-            .from(sessions)
-            .where(eq(sessions.id, sessionId))
-            .limit(1);
-          if (!s) return;
+        // 6. Post-loop turn advancement.
+        //
+        // Previously this leaned on `turnsSinceMasterAdvance === 0` as a
+        // proxy for "the master called set_current_player this turn", with a
+        // 3-turn auto-advance safety net. But the counter is sticky: once it
+        // hits 0 (from a prior `set_current_player`), it STAYS 0 across
+        // subsequent turns where the master only narrates — so the post-loop
+        // happily concluded the master had advanced, when in fact it hadn't.
+        // Gemini Flash routinely narrates "Luffy, che fai?" without invoking
+        // the tool, and players got stuck on the previous turn's actor
+        // forever.
+        //
+        // We now look directly at the tool-loop events for this turn: if the
+        // master invoked `set_current_player`, trust the handler. Otherwise,
+        // in a multiplayer party (size > 1), force round-robin to the next
+        // character so play keeps moving.
+        const masterTriedAdvance = result.events.some(
+          (e) => e.type === 'tool_use_start' && e.name === 'set_current_player',
+        );
 
-          if (s.tsma === 0) {
-            // Master called set_current_player. Counter already reset.
-          } else {
-            const next = s.tsma + 1;
-            if (next >= 3) {
+        await db.transaction(async (tx) => {
+          if (!masterTriedAdvance) {
+            const [s] = await tx
+              .select({
+                cpcId: sessions.currentPlayerCharacterId,
+                campaignId: sessions.campaignId,
+              })
+              .from(sessions)
+              .where(eq(sessions.id, sessionId))
+              .limit(1);
+            if (s && s.campaignId) {
               const party = await tx
                 .select({ id: charactersTable.id, createdAt: charactersTable.createdAt })
                 .from(charactersTable)
                 .where(and(
-                  eq(charactersTable.campaignId, s.campaignId!),
+                  eq(charactersTable.campaignId, s.campaignId),
                   isNull(charactersTable.deletedAt),
                   isNotNull(charactersTable.templateId),
                 ))
                 .orderBy(charactersTable.createdAt);
-              const nextChar = nextInParty(s.cpcId ?? '', party);
-              await tx
-                .update(sessions)
-                .set({ currentPlayerCharacterId: nextChar.id, turnsSinceMasterAdvance: 0 })
-                .where(eq(sessions.id, sessionId));
-              await notifySession(sessionId, { type: 'turn-change', characterId: nextChar.id });
-            } else {
-              await tx
-                .update(sessions)
-                .set({ turnsSinceMasterAdvance: next })
-                .where(eq(sessions.id, sessionId));
+              // Only auto-advance when there's actually somewhere to advance
+              // to. Solo and 1-character "multiplayer" sessions stay put.
+              if (party.length > 1) {
+                const nextChar = nextInParty(s.cpcId ?? '', party);
+                if (nextChar.id !== s.cpcId) {
+                  await tx
+                    .update(sessions)
+                    .set({ currentPlayerCharacterId: nextChar.id, turnsSinceMasterAdvance: 0 })
+                    .where(eq(sessions.id, sessionId));
+                  await notifySession(sessionId, { type: 'turn-change', characterId: nextChar.id });
+                }
+              }
             }
           }
-
+          // turnsSinceMasterAdvance is now mostly historical telemetry — the
+          // event-based check above is authoritative. We still bump turnSeq
+          // for downstream consumers (cache keys, etc.).
           await tx.update(sessions).set({ turnSeq: sql`turn_seq + 1` }).where(eq(sessions.id, sessionId));
         });
 
