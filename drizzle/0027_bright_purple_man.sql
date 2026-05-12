@@ -33,8 +33,7 @@ CREATE INDEX "sessions_campaign_idx" ON "sessions" USING btree ("campaign_id");
 CREATE TEMP TABLE session_to_campaign ON COMMIT DROP AS
 SELECT s.id AS session_id, gen_random_uuid() AS campaign_id
 FROM sessions s
-WHERE s.campaign_id IS NULL
-  AND s.deleted_at IS NULL;
+WHERE s.campaign_id IS NULL;
 
 INSERT INTO campaigns (
   id, user_id, name, premise, language, tonal_frame, engagement_profile,
