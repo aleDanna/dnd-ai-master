@@ -20,6 +20,7 @@ import { checkQuotas } from '@/ai/master/quotas';
 import { getResolvedPreferences } from '@/lib/preferences';
 import { loadMemoryContext } from '@/sessions/memory/context';
 import { extractMemory } from '@/sessions/memory/extractor';
+import { touchCampaign } from '@/campaigns/persist';
 
 /**
  * Synthetic user instruction injected on the very first turn of a campaign,
@@ -213,6 +214,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       } catch (e) {
         send('turn_error', { type: 'turn_error', reason: e instanceof Error ? e.message : 'unknown', recoverable: false });
       } finally {
+        await touchCampaign(campaign.id);
         await releaseTurnLock(sessionId, lockHolder);
         controller.close();
       }
