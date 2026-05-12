@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { eq, and, isNull, isNotNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions, sessionState, campaigns, characters } from '@/db/schema';
+import { checkPartyAccess } from '@/multiplayer/access';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
@@ -17,9 +18,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     .from(sessions)
     .leftJoin(campaigns, eq(campaigns.id, sessions.campaignId))
     .leftJoin(characters, eq(characters.id, sessions.characterId))
-    .where(and(eq(sessions.id, id), eq(sessions.userId, userId), isNull(sessions.deletedAt)))
+    .where(and(eq(sessions.id, id), isNull(sessions.deletedAt)))
     .limit(1);
   if (!row) return NextResponse.json({ error: 'not-found' }, { status: 404 });
+  const hasAccess = await checkPartyAccess(userId, id);
+  if (!hasAccess) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   const [state] = await db.select().from(sessionState).where(eq(sessionState.sessionId, id)).limit(1);
   const party = await db
     .select()

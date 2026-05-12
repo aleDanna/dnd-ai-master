@@ -5,6 +5,7 @@ import { db } from '@/db/client';
 import { sessions, sessionMessages, ttsCache } from '@/db/schema';
 import { synthesizeSpeech } from '@/ai/tts';
 import { getResolvedPreferences } from '@/lib/preferences';
+import { checkPartyAccess } from '@/multiplayer/access';
 
 export async function GET(
   _req: NextRequest,
@@ -14,13 +15,15 @@ export async function GET(
   if (!userId) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   const { id: sessionId, messageId } = await params;
 
-  // Verify session ownership
+  // Verify session access (host or party member)
   const [session] = await db
     .select()
     .from(sessions)
-    .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId), isNull(sessions.deletedAt)))
+    .where(and(eq(sessions.id, sessionId), isNull(sessions.deletedAt)))
     .limit(1);
   if (!session) return NextResponse.json({ error: 'not-found' }, { status: 404 });
+  const hasAccess = await checkPartyAccess(userId, sessionId);
+  if (!hasAccess) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   // Load the message — must belong to this session
   const [message] = await db

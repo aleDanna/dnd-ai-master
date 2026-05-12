@@ -23,6 +23,7 @@ import { extractMemory } from '@/sessions/memory/extractor';
 import { touchCampaign } from '@/campaigns/persist';
 import { nextInParty } from '@/multiplayer/party';
 import { notifySession } from '@/sessions/notify';
+import { checkPartyAccess } from '@/multiplayer/access';
 
 /**
  * Synthetic user instruction injected on the very first turn of a campaign,
@@ -57,9 +58,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .select({ session: sessions, campaign: campaigns })
       .from(sessions)
       .innerJoin(campaigns, eq(campaigns.id, sessions.campaignId))
-      .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId), isNull(sessions.deletedAt)))
+      .where(and(eq(sessions.id, sessionId), isNull(sessions.deletedAt)))
       .limit(1);
     if (!turnRow) return jsonResponse({ error: 'not-found' }, 404);
+    const hasAccess = await checkPartyAccess(userId, sessionId);
+    if (!hasAccess) return jsonResponse({ error: 'forbidden' }, 403);
     campaign = turnRow.campaign;
     currentTurnSeq = turnRow.session.turnSeq ?? 0;
     authorCharacterId = turnRow.session.currentPlayerCharacterId ?? null;
