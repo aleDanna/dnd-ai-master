@@ -60,7 +60,7 @@ describe('GET /api/sessions/[id]/scene-image', () => {
     expect(res.status).toBe(304);
   });
 
-  it('returns 404 when the session does not belong to the caller', async () => {
+  it('returns 403 when the session does not belong to the caller', async () => {
     const otherUser = 'user_route_si_other';
     await ensureUser(otherUser);
     const w = emptyWizardState();
@@ -73,7 +73,7 @@ describe('GET /api/sessions/[id]/scene-image', () => {
 
     // Caller is still TEST_USER (mocked above); request the OTHER session.
     const res = await GET(makeReq(), { params: Promise.resolve({ id: otherSessionId }) });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
 
     // cleanup
     await db.execute(sql`delete from session_state where session_id = ${otherSessionId}`);
