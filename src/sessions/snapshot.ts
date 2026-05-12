@@ -309,13 +309,17 @@ function hydrateClasses(
 }
 
 export async function buildSnapshot(sessionId: string, userId: string): Promise<SnapshotForModel> {
+  // Note: no userId filter here — multiplayer guests need to load the snapshot
+  // of a session they don't own. Route-level checkPartyAccess gates who can
+  // request this. `userId` is used below to identify the viewer's own
+  // character in the party.
   const [row] = await db
     .select({ session: sessionsTable, campaign: campaignsTable })
     .from(sessionsTable)
     .innerJoin(campaignsTable, eq(campaignsTable.id, sessionsTable.campaignId))
-    .where(and(eq(sessionsTable.id, sessionId), eq(sessionsTable.userId, userId), isNull(sessionsTable.deletedAt)))
+    .where(and(eq(sessionsTable.id, sessionId), isNull(sessionsTable.deletedAt)))
     .limit(1);
-  if (!row) throw new Error(`buildSnapshot: session ${sessionId} not found for user ${userId}`);
+  if (!row) throw new Error(`buildSnapshot: session ${sessionId} not found (viewer ${userId})`);
   const { session, campaign } = row;
 
   const [character] = await db.select().from(charactersTable).where(eq(charactersTable.id, session.characterId)).limit(1);
