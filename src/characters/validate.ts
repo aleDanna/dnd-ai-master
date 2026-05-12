@@ -109,8 +109,11 @@ export function validateWizardState(w: WizardState, opts: OptionSlugs): Validati
     const rule = opts.classSkillRules[w.classSlug];
     if (rule) {
       const bgSkills = (w.backgroundSlug && opts.backgroundSkills?.[w.backgroundSlug]) ?? [];
-      const classPicks = w.skills.filter((s) => rule.skillsFrom.includes(s) && !bgSkills.includes(s));
-      const offList = w.skills.filter((s) => !rule.skillsFrom.includes(s) && !bgSkills.includes(s));
+      // SRD sentinel '*' means "any skill" (Bard, Rogue with 4 from any).
+      const anySkill = rule.skillsFrom.includes('*');
+      const inClassList = (s: string) => anySkill || rule.skillsFrom.includes(s);
+      const classPicks = w.skills.filter((s) => inClassList(s) && !bgSkills.includes(s));
+      const offList = w.skills.filter((s) => !inClassList(s) && !bgSkills.includes(s));
       if (offList.length > 0) errors.push('skills-off-list');
       if (classPicks.length > rule.skillsChoose) errors.push('skills-too-many');
       else if (classPicks.length < rule.skillsChoose) errors.push('skills-too-few');

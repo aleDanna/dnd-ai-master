@@ -192,7 +192,18 @@ export function WizardClient({ options }: { options: Options }) {
         const klass = options.classes.find((c) => c.slug === state.classSlug);
         const bg = options.backgrounds.find((b) => b.slug === state.backgroundSlug);
         const classSkillsChoose = klass?.proficiencies.skillsChoose ?? 0;
-        const classSkillsFrom = (klass?.proficiencies.skillsFrom ?? []) as Skill[];
+        const rawClassSkillsFrom = (klass?.proficiencies.skillsFrom ?? []) as string[];
+        // SRD sentinel '*' means "any skill" (e.g. Bard, Rogue with 4 from any).
+        // Expand to the full 18-skill list so the wizard renders all options.
+        const classSkillsFrom: Skill[] = rawClassSkillsFrom.includes('*')
+          ? ([
+              'Acrobatics', 'Animal Handling', 'Arcana', 'Athletics',
+              'Deception', 'History', 'Insight', 'Intimidation',
+              'Investigation', 'Medicine', 'Nature', 'Perception',
+              'Performance', 'Persuasion', 'Religion', 'Sleight of Hand',
+              'Stealth', 'Survival',
+            ] as Skill[])
+          : (rawClassSkillsFrom as Skill[]);
         const backgroundSkills = (bg?.skillProficiencies ?? []) as Skill[];
         return (
           <SkillsStep
