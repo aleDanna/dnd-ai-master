@@ -9,6 +9,7 @@ import { __setExtractorProviderForTest } from '@/sessions/memory/extractor';
 
 const TEST_USER = 'user_rebuild_' + Date.now();
 let SESSION_ID = '';
+let CHAR_ID = '';
 
 vi.mock('@clerk/nextjs/server', () => ({
   auth: async () => ({ userId: TEST_USER }),
@@ -43,6 +44,7 @@ describe('POST /api/sessions/:id/memory/rebuild', () => {
     w.backgroundSlug = 'soldier';
     w.identity.name = 'P';
     const c = await saveCharacter({ userId: TEST_USER, wizard: w });
+    CHAR_ID = c.id;
     const [camp] = await db
       .insert(campaigns)
       .values({ userId: TEST_USER, name: 'Test Campaign', premise: 'x' })
@@ -56,10 +58,12 @@ describe('POST /api/sessions/:id/memory/rebuild', () => {
     // 80 non-OOC messages → 2 chapters expected.
     const rows = [];
     for (let i = 0; i < 80; i++) {
+      const isPlayer = i % 2 === 0;
       rows.push({
         sessionId: SESSION_ID,
-        role: (i % 2 === 0 ? 'player' : 'master') as 'player' | 'master',
+        role: (isPlayer ? 'player' : 'master') as 'player' | 'master',
         content: `m${i}`,
+        authorCharacterId: isPlayer ? CHAR_ID : null,
       });
     }
     await db.insert(sessionMessages).values(rows);

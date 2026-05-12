@@ -31,7 +31,7 @@ describe('loadMemoryContext', () => {
     await db.insert(sessionState).values({ sessionId: SESSION_ID, hpCurrent: 10, hitDiceRemaining: 1 });
     const [m] = await db
       .insert(sessionMessages)
-      .values({ sessionId: SESSION_ID, role: 'player', content: 'I look for Aldric.' })
+      .values({ sessionId: SESSION_ID, role: 'player', content: 'I look for Aldric.', authorCharacterId: CHAR_ID })
       .returning();
     MSG_ID = m!.id;
   });

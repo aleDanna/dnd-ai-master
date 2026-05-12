@@ -16,6 +16,7 @@ import { applyPatch } from '@/sessions/memory/patch';
 
 const TEST_USER = 'user_patch_' + Date.now();
 let SESSION_ID = '';
+let CHAR_ID = '';
 let MSG_A = '';
 let MSG_B = '';
 
@@ -28,6 +29,7 @@ describe('applyPatch', () => {
     w.backgroundSlug = 'soldier';
     w.identity.name = 'P';
     const { id: charId } = await saveCharacter({ userId: TEST_USER, wizard: w });
+    CHAR_ID = charId;
     const [campaign] = await db.insert(campaigns).values({ userId: TEST_USER, name: 'Test campaign', premise: 'x' }).returning();
     const [s] = await db
       .insert(sessions)
@@ -37,7 +39,7 @@ describe('applyPatch', () => {
     await db.insert(sessionState).values({ sessionId: SESSION_ID, hpCurrent: 10, hitDiceRemaining: 1 });
     const [a] = await db
       .insert(sessionMessages)
-      .values({ sessionId: SESSION_ID, role: 'player', content: 'hello' })
+      .values({ sessionId: SESSION_ID, role: 'player', content: 'hello', authorCharacterId: CHAR_ID })
       .returning();
     const [b] = await db
       .insert(sessionMessages)
