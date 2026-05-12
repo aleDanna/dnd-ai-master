@@ -4,7 +4,7 @@ import { db, pool } from '@/db/client';
 import { ensureUser } from '@/db/users';
 import { saveCharacter } from '@/characters/persist';
 import { emptyWizardState } from '@/characters/types';
-import { sessions, sessionState, sessionMessages, sessionChapters } from '@/db/schema';
+import { sessions, sessionState, sessionMessages, sessionChapters, campaigns } from '@/db/schema';
 import { __setExtractorProviderForTest } from '@/sessions/memory/extractor';
 
 const TEST_USER = 'user_rebuild_' + Date.now();
@@ -43,9 +43,13 @@ describe('POST /api/sessions/:id/memory/rebuild', () => {
     w.backgroundSlug = 'soldier';
     w.identity.name = 'P';
     const c = await saveCharacter({ userId: TEST_USER, wizard: w });
+    const [camp] = await db
+      .insert(campaigns)
+      .values({ userId: TEST_USER, name: 'Test Campaign', premise: 'x' })
+      .returning();
     const [s] = await db
       .insert(sessions)
-      .values({ userId: TEST_USER, characterId: c.id, premise: 'x' })
+      .values({ userId: TEST_USER, characterId: c.id, premise: 'x', campaignId: camp!.id })
       .returning();
     SESSION_ID = s!.id;
     await db.insert(sessionState).values({ sessionId: SESSION_ID, hpCurrent: 10, hitDiceRemaining: 1 });
@@ -79,6 +83,7 @@ describe('POST /api/sessions/:id/memory/rebuild', () => {
 
   afterAll(async () => {
     await db.execute(sql`delete from sessions where user_id = ${TEST_USER}`);
+    await db.execute(sql`delete from campaigns where user_id = ${TEST_USER}`);
     await db.execute(sql`delete from characters where user_id = ${TEST_USER}`);
     await db.execute(sql`delete from users where id = ${TEST_USER}`);
     await pool.end();

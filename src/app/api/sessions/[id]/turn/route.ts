@@ -4,7 +4,7 @@ import { eq, and, desc, isNull } from 'drizzle-orm';
 import type Anthropic from '@anthropic-ai/sdk';
 import { waitUntil } from '@vercel/functions';
 import { db } from '@/db/client';
-import { sessions, sessionMessages } from '@/db/schema';
+import { sessions, sessionMessages, campaigns } from '@/db/schema';
 import { buildSnapshot } from '@/sessions/snapshot';
 import { applyMutations } from '@/sessions/applicator';
 import { acquireTurnLock, releaseTurnLock } from '@/sessions/lock';
@@ -45,15 +45,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Postgres occasionally drops the first query after an idle period; an
   // unhandled rejection here would surface as "500 (Internal Server Error)"
   // in the chat UI with no recoverable signal.
-  let session: typeof sessions.$inferSelect | undefined;
+  let campaign: typeof campaigns.$inferSelect;
   let lockHolder: string;
   try {
-    [session] = await db
-      .select()
+    const [turnRow] = await db
+      .select({ session: sessions, campaign: campaigns })
       .from(sessions)
+      .innerJoin(campaigns, eq(campaigns.id, sessions.campaignId))
       .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId), isNull(sessions.deletedAt)))
       .limit(1);
-    if (!session) return jsonResponse({ error: 'not-found' }, 404);
+    if (!turnRow) return jsonResponse({ error: 'not-found' }, 404);
+    campaign = turnRow.campaign;
 
     // A "begin" turn only makes sense when the chat is empty. If anything
     // has been said already, ignore the flag silently — clients may
@@ -103,13 +105,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // On a begin turn we have no player text, so we run detection on the
         // premise itself — that way the master mirrors the language the
         // player wrote (or the preset's language) right out of the gate.
-        if (!session.language) {
-          const detectText = isBegin ? session.premise : body!.message!;
+        // language is now canonical on the campaign row; the session column is
+        // deprecated (Task 16 will update the write side).
+        if (!campaign.language) {
+          const detectText = isBegin ? campaign.premise : body!.message!;
           if (detectText && detectText.trim().length > 0) {
             const code = await detectLanguage({ text: detectText, userId, sessionId, provider: userPrefs.aiProvider });
             if (code) {
               await db.update(sessions).set({ language: code }).where(eq(sessions.id, sessionId));
-              session.language = code;
+              // Propagate into the in-memory campaign object so the system
+              // prompt receives the freshly detected language below.
+              campaign.language = code;
             }
           }
         }
@@ -128,7 +134,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           worldLore,
           characterMonoSpace: snap.characterMonoSpace,
           scene: snap.scene,
-          language: session.language ?? snap.language,
+          language: campaign.language ?? snap.language,
           manualRolls: userPrefs.manualRolls,
           masterGuidanceLevel: userPrefs.masterGuidanceLevel,
           showDifficultyNumbers: userPrefs.showDifficultyNumbers,
@@ -136,8 +142,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           sceneCard: memory.sceneCard,
           codexIndex: memory.codexIndex,
           // Master World Lore §5.1 + Master Handbook §2.1 — pass through the
-          // session-level tonal frame and engagement profile so the system
+          // campaign-level tonal frame and engagement profile so the system
           // prompt can inject the dynamic blocks when set.
+          // (Hydrated from the campaign join in buildSnapshot since Task 15.)
           tonalFrame: snap.state.tonalFrame,
           engagementProfile: snap.state.engagementProfile,
         });

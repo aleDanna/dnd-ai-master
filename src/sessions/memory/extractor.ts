@@ -5,6 +5,7 @@ import {
   sessionMessages,
   sessionChapters,
   codexEntities,
+  campaigns,
   type SessionMessage,
 } from '@/db/schema';
 import { applyPatch } from './patch';
@@ -138,8 +139,14 @@ interface ExtractorContext {
 }
 
 async function buildContext(sessionId: string): Promise<ExtractorContext | null> {
-  const [s] = await db.select().from(sessions).where(eq(sessions.id, sessionId)).limit(1);
-  if (!s) return null;
+  const [row] = await db
+    .select({ session: sessions, campaign: campaigns })
+    .from(sessions)
+    .innerJoin(campaigns, eq(campaigns.id, sessions.campaignId))
+    .where(eq(sessions.id, sessionId))
+    .limit(1);
+  if (!row) return null;
+  const { campaign: s } = row;
 
   const chapters = await db
     .select()

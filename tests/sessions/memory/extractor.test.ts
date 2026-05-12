@@ -10,6 +10,7 @@ import {
   sessionMessages,
   sessionChapters,
   codexEntities,
+  campaigns,
 } from '@/db/schema';
 import { extractMemory, __setExtractorProviderForTest } from '@/sessions/memory/extractor';
 import type { MasterProvider, CompleteMessageOutput } from '@/ai/provider/types';
@@ -17,6 +18,7 @@ import type { MasterProvider, CompleteMessageOutput } from '@/ai/provider/types'
 const TEST_USER = 'user_extr_' + Date.now();
 let SESSION_ID = '';
 let CHAR_ID = '';
+let CAMPAIGN_ID = '';
 
 function fakeProvider(jsonReply: string): MasterProvider {
   return {
@@ -37,7 +39,7 @@ function fakeProvider(jsonReply: string): MasterProvider {
 async function freshSession(): Promise<void> {
   const [s] = await db
     .insert(sessions)
-    .values({ userId: TEST_USER, characterId: CHAR_ID, premise: 'x' })
+    .values({ userId: TEST_USER, characterId: CHAR_ID, premise: 'x', campaignId: CAMPAIGN_ID })
     .returning();
   SESSION_ID = s!.id;
   await db.insert(sessionState).values({ sessionId: SESSION_ID, hpCurrent: 10, hitDiceRemaining: 1 });
@@ -65,6 +67,11 @@ describe('extractMemory', () => {
     w.identity.name = 'P';
     const c = await saveCharacter({ userId: TEST_USER, wizard: w });
     CHAR_ID = c.id;
+    const [camp] = await db
+      .insert(campaigns)
+      .values({ userId: TEST_USER, name: 'Test Campaign', premise: 'x' })
+      .returning();
+    CAMPAIGN_ID = camp!.id;
   });
 
   beforeEach(async () => {
@@ -77,6 +84,7 @@ describe('extractMemory', () => {
 
   afterAll(async () => {
     await db.execute(sql`delete from sessions where user_id = ${TEST_USER}`);
+    await db.execute(sql`delete from campaigns where user_id = ${TEST_USER}`);
     await db.execute(sql`delete from characters where user_id = ${TEST_USER}`);
     await db.execute(sql`delete from users where id = ${TEST_USER}`);
     await pool.end();
