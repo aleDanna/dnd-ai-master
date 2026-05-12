@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { POST as postCampaign, GET as getCampaigns } from '@/app/api/campaigns/route';
+import { GET as getOne, PATCH as patchOne, DELETE as delOne } from '@/app/api/campaigns/[id]/route';
 import { db, pool } from '@/db/client';
 import { characters, users } from '@/db/schema';
 
@@ -66,5 +67,53 @@ describe('GET /api/campaigns', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(Array.isArray(body.campaigns)).toBe(true);
+  });
+});
+
+describe('GET /api/campaigns/[id]', () => {
+  it('returns campaign + character + activeSession', async () => {
+    const create = await postCampaign(new Request('http://t', { method: 'POST', body: JSON.stringify({ name: 'X', premise: 'Y', characterTemplateId: templateId }) }) as any);
+    const { campaign } = await create.json();
+    const res = await getOne(new Request('http://t') as any, { params: Promise.resolve({ id: campaign.id }) });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.campaign.id).toBe(campaign.id);
+    expect(body.character).toBeTruthy();
+    expect(body.activeSession).toBeTruthy();
+  });
+});
+
+describe('PATCH /api/campaigns/[id]', () => {
+  it('renames the campaign', async () => {
+    const create = await postCampaign(new Request('http://t', { method: 'POST', body: JSON.stringify({ name: 'Old', premise: 'Y', characterTemplateId: templateId }) }) as any);
+    const { campaign } = await create.json();
+    const res = await patchOne(
+      new Request('http://t', { method: 'PATCH', body: JSON.stringify({ name: 'New' }) }) as any,
+      { params: Promise.resolve({ id: campaign.id }) },
+    );
+    expect(res.status).toBe(200);
+    expect((await res.json()).campaign.name).toBe('New');
+  });
+
+  it('rejects premise mutations with 422', async () => {
+    const create = await postCampaign(new Request('http://t', { method: 'POST', body: JSON.stringify({ name: 'X', premise: 'Y', characterTemplateId: templateId }) }) as any);
+    const { campaign } = await create.json();
+    const res = await patchOne(
+      new Request('http://t', { method: 'PATCH', body: JSON.stringify({ premise: 'changed' }) }) as any,
+      { params: Promise.resolve({ id: campaign.id }) },
+    );
+    expect(res.status).toBe(422);
+  });
+});
+
+describe('DELETE /api/campaigns/[id]', () => {
+  it('soft-deletes campaign + session + instance', async () => {
+    const create = await postCampaign(new Request('http://t', { method: 'POST', body: JSON.stringify({ name: 'X', premise: 'Y', characterTemplateId: templateId }) }) as any);
+    const { campaign } = await create.json();
+    const res = await delOne(new Request('http://t') as any, { params: Promise.resolve({ id: campaign.id }) });
+    expect(res.status).toBe(204);
+
+    const after = await getOne(new Request('http://t') as any, { params: Promise.resolve({ id: campaign.id }) });
+    expect(after.status).toBe(404);
   });
 });
