@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { db, pool } from '@/db/client';
-import { users, campaigns } from '@/db/schema';
+import { users, campaigns, characters, sessions, sessionState } from '@/db/schema';
 import { POST as postInvite, GET as listInvites } from '@/app/api/campaigns/[id]/invites/route';
 import { DELETE as deleteInvite } from '@/app/api/campaigns/[id]/invites/[inviteId]/route';
 import { GET as resolveToken } from '@/app/api/r/[token]/route';
+import { POST as joinCampaign } from '@/app/api/campaigns/[id]/join/route';
 
 const HOST = 'user_mp_host_001';
 const GUEST = 'user_mp_guest_001';
@@ -26,6 +27,42 @@ beforeAll(async () => {
     premise: 'A test multiplayer campaign.',
   }).returning();
   campaignId = c!.id;
+
+  // Create a host template character
+  const [hostTemplate] = await db.insert(characters).values({
+    userId: HOST, name: 'Tharion',
+    raceSlug: 'human', classSlug: 'fighter', backgroundSlug: 'soldier',
+    classes: [{ slug: 'fighter', level: 1 }],
+    abilities: { STR: 14, DEX: 12, CON: 14, INT: 10, WIS: 12, CHA: 10 },
+    level: 1, xp: 0, proficiencyBonus: 2, hpMax: 12, ac: 11, speed: 30, hitDieSize: 10, hitDiceMax: 1,
+    proficiencies: { saves: ['STR', 'CON'], skills: [], expertise: [], weapons: [], armor: [], tools: [], languages: [] },
+    spellcasting: null, spellsKnown: [], features: [], inventory: [],
+    identity: { alignment: 'N' },
+    templateId: null, campaignId: null,
+  }).returning();
+
+  // Fork the template into an instance bound to the campaign
+  const { id: _tid, createdAt: _tc, updatedAt: _tu, ...templateData } = hostTemplate!;
+  const [hostInstance] = await db.insert(characters).values({
+    ...templateData,
+    templateId: hostTemplate!.id,
+    campaignId: campaignId,
+  }).returning();
+
+  // Create the host's session so guests have a session to join
+  const [hostSession] = await db.insert(sessions).values({
+    userId: HOST,
+    characterId: hostInstance!.id,
+    campaignId: campaignId,
+    premise: 'A test multiplayer campaign.',
+    currentPlayerCharacterId: hostInstance!.id,
+  }).returning();
+
+  await db.insert(sessionState).values({
+    sessionId: hostSession!.id,
+    hpCurrent: 12,
+    hitDiceRemaining: 1,
+  });
 });
 
 afterAll(async () => {
@@ -146,6 +183,75 @@ describe('GET /api/r/[token]', () => {
     const res = await resolveToken(
       new Request('http://test/api') as any,
       { params: Promise.resolve({ token: invite.token }) },
+    );
+    expect(res.status).toBe(410);
+  });
+});
+
+describe('POST /api/campaigns/[id]/join', () => {
+  let guestTemplateId: string;
+  beforeAll(async () => {
+    const [tpl] = await db.insert(characters).values({
+      userId: GUEST, name: 'Lyra',
+      raceSlug: 'tiefling', classSlug: 'cleric', backgroundSlug: 'acolyte',
+      classes: [{ slug: 'cleric', level: 1 }],
+      abilities: { STR: 10, DEX: 12, CON: 14, INT: 10, WIS: 16, CHA: 14 },
+      level: 1, xp: 0, proficiencyBonus: 2, hpMax: 10, ac: 14, speed: 30, hitDieSize: 8, hitDiceMax: 1,
+      proficiencies: { saves: ['WIS', 'CHA'], skills: [], expertise: [], weapons: [], armor: [], tools: [], languages: [] },
+      spellcasting: null, spellsKnown: [], features: [], inventory: [],
+      identity: { alignment: 'N' },
+    }).returning();
+    guestTemplateId = tpl!.id;
+  });
+
+  it('guest joins via valid token', async () => {
+    CURRENT_USER = HOST;
+    const createRes = await postInvite(
+      new Request('http://test/api', { method: 'POST', body: JSON.stringify({}) }) as any,
+      { params: Promise.resolve({ id: campaignId }) },
+    );
+    const { invite } = await createRes.json();
+
+    CURRENT_USER = GUEST;
+    const res = await joinCampaign(
+      new Request('http://test/api', {
+        method: 'POST',
+        body: JSON.stringify({ token: invite.token, characterTemplateId: guestTemplateId }),
+      }) as any,
+      { params: Promise.resolve({ id: campaignId }) },
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.sessionId).toBeTruthy();
+  });
+
+  it('joining twice returns 409', async () => {
+    CURRENT_USER = HOST;
+    const createRes = await postInvite(
+      new Request('http://test/api', { method: 'POST', body: JSON.stringify({}) }) as any,
+      { params: Promise.resolve({ id: campaignId }) },
+    );
+    const { invite } = await createRes.json();
+
+    CURRENT_USER = GUEST;
+    const res = await joinCampaign(
+      new Request('http://test/api', {
+        method: 'POST',
+        body: JSON.stringify({ token: invite.token, characterTemplateId: guestTemplateId }),
+      }) as any,
+      { params: Promise.resolve({ id: campaignId }) },
+    );
+    expect(res.status).toBe(409);
+  });
+
+  it('rejects invalid token with 410', async () => {
+    CURRENT_USER = GUEST;
+    const res = await joinCampaign(
+      new Request('http://test/api', {
+        method: 'POST',
+        body: JSON.stringify({ token: 'nonexistent_', characterTemplateId: guestTemplateId }),
+      }) as any,
+      { params: Promise.resolve({ id: campaignId }) },
     );
     expect(res.status).toBe(410);
   });
