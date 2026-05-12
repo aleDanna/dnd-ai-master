@@ -64,7 +64,13 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     return [{ type: 'narrative_delta', text: streamingMessage.text }];
   }, [streamingMessage]);
 
-  const busy = streamingMessage !== null || sending;
+  // "Master is responding…" indicator. Stays on for the WHOLE window between
+  // kicking off a turn (POST 202 returns in ~100ms; `sending` is true only
+  // during that window) and the master starting to stream — historically a
+  // multi-second gap where the spinner used to vanish. `pendingTurn` below
+  // closes that gap.
+  const [pendingTurn, setPendingTurn] = React.useState(false);
+  const busy = streamingMessage !== null || sending || pendingTurn;
 
   // Live character mutable fields from the SSE snapshot. Merging
   // onto the local React state on every snapshot tick makes the right-pane
@@ -199,6 +205,9 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     if (busy) return;
     if (messages.length > 0) return;
     beganRef.current = true;
+    // Light up the "Master is responding…" indicator immediately — the
+    // master can take a few seconds to produce the opening scene.
+    setPendingTurn(true);
     void postTurn({ begin: true });
   }, [memoryReady, busy, messages.length, postTurn]);
 
@@ -237,30 +246,27 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
 
   React.useEffect(() => () => clearSafetyPoll(), [clearSafetyPoll]);
 
-  // Post-send pessimistic lock — the gap between `POST /turn` returning 202
-  // (sending=false) and the master's first streamed chunk (streamingMessage)
-  // is several seconds long, during which the turn-change SSE may not have
-  // landed yet. Without this lock the player could double-submit and the
-  // server would only catch them with a 403 not-your-turn. We keep the
-  // composer locked from `send()` until either streaming starts, a
-  // turn-error arrives, or a 12s safety ceiling expires.
-  const [postSendLock, setPostSendLock] = React.useState(false);
+  // `pendingTurn` covers the window between kicking off a turn (POST /turn
+  // returning 202) and the master starting to stream the response. It powers
+  // both the "Master is responding…" indicator (via `busy`) and the composer
+  // lock (so the player can't double-submit during that gap). Cleared by the
+  // first streamed chunk, by a turn-error, or by a 12s safety ceiling.
   React.useEffect(() => {
-    if (!postSendLock) return;
+    if (!pendingTurn) return;
     if (streamingMessage || turnError) {
-      setPostSendLock(false);
+      setPendingTurn(false);
       return;
     }
-    const t = setTimeout(() => setPostSendLock(false), 12_000);
+    const t = setTimeout(() => setPendingTurn(false), 12_000);
     return () => clearTimeout(t);
-  }, [postSendLock, streamingMessage, turnError]);
+  }, [pendingTurn, streamingMessage, turnError]);
 
   const send = (text: string): void => {
     setMessages((prev) => [
       ...prev,
       { id: `temp-${Date.now()}`, sessionId, role: 'player', content: text, createdAt: new Date().toISOString() },
     ]);
-    setPostSendLock(true);
+    setPendingTurn(true);
     void postTurn({ message: text });
     startSafetyPoll();
   };
@@ -359,9 +365,9 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     : [];
 
   // Composer is locked when: memory isn't ready, it's not the viewer's turn,
-  // the master is currently streaming a response (busy), or the player
-  // just submitted and we're waiting for the master to take over.
-  const composerDisabled = !memoryReady || !isMyTurn || busy || postSendLock;
+  // or the master is currently busy (POST in flight, streaming, OR we just
+  // submitted and the master hasn't started streaming yet — `pendingTurn`).
+  const composerDisabled = !memoryReady || !isMyTurn || busy;
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)', flexDirection: 'column' }}>
