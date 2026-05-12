@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, isNotNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions, sessionState, campaigns, characters } from '@/db/schema';
 
@@ -21,7 +21,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     .limit(1);
   if (!row) return NextResponse.json({ error: 'not-found' }, { status: 404 });
   const [state] = await db.select().from(sessionState).where(eq(sessionState.sessionId, id)).limit(1);
-  return NextResponse.json({ session: row.session, campaign: row.campaign, character: row.character, state });
+  const party = await db
+    .select()
+    .from(characters)
+    .where(and(
+      eq(characters.campaignId, row.session.campaignId!),
+      isNull(characters.deletedAt),
+      isNotNull(characters.templateId),
+    ))
+    .orderBy(characters.createdAt);
+  return NextResponse.json({ session: row.session, campaign: row.campaign, character: row.character, state, party });
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
