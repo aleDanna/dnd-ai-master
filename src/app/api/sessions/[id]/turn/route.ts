@@ -105,14 +105,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // On a begin turn we have no player text, so we run detection on the
         // premise itself — that way the master mirrors the language the
         // player wrote (or the preset's language) right out of the gate.
-        // language is now canonical on the campaign row; the session column is
-        // deprecated (Task 16 will update the write side).
+        // language is canonical on the campaign row.
         if (!campaign.language) {
           const detectText = isBegin ? campaign.premise : body!.message!;
           if (detectText && detectText.trim().length > 0) {
             const code = await detectLanguage({ text: detectText, userId, sessionId, provider: userPrefs.aiProvider });
             if (code) {
-              await db.update(sessions).set({ language: code }).where(eq(sessions.id, sessionId));
+              await db.update(campaigns).set({ language: code }).where(eq(campaigns.id, campaign.id));
               // Propagate into the in-memory campaign object so the system
               // prompt receives the freshly detected language below.
               campaign.language = code;
