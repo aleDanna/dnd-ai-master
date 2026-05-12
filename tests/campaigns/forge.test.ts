@@ -47,6 +47,6 @@ describe('createCampaign', () => {
   it('rejects a template owned by a different user', async () => {
     await expect(
       createCampaign({ userId: 'someone-else', name: 'X', premise: 'Y', characterTemplateId: templateId })
-    ).rejects.toThrow(/character-not-found/);
+    ).rejects.toThrow(/character-forbidden/);
   });
 });
