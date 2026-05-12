@@ -76,6 +76,7 @@ export async function forkTemplateForCampaign(opts: {
       downtimeActivities: [],
       hirelings: [],
       bastion: null,
+      deletedAt: null,
       mountedOn: null,
       embarkedOn: null,
     })
