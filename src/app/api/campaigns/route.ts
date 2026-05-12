@@ -30,6 +30,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown';
     if (message === 'character-not-found') return NextResponse.json({ error: message }, { status: 404 });
+    if (message === 'character-forbidden') return NextResponse.json({ error: message }, { status: 403 });
     if (message === 'not-a-template') return NextResponse.json({ error: message }, { status: 422 });
     console.error('createCampaign failed:', err);
     return NextResponse.json({ error: 'create-failed' }, { status: 500 });

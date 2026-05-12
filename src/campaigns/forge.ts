@@ -24,19 +24,25 @@ export async function createCampaign(input: CreateCampaignInput): Promise<Create
   return await db.transaction(async (tx) => {
     // Validate template ownership before any insert so FK violations on the
     // campaigns table don't mask the user-facing error.
-    const [template] = await tx
-      .select({ id: characters.id })
+
+    // Step 1: existence (and not-deleted)
+    const [character] = await tx
+      .select({ id: characters.id, userId: characters.userId, templateId: characters.templateId })
       .from(characters)
       .where(
         and(
           eq(characters.id, input.characterTemplateId),
-          eq(characters.userId, input.userId),
           isNull(characters.deletedAt),
-          isNull(characters.templateId),
         ),
       )
       .limit(1);
-    if (!template) throw new Error('character-not-found');
+    if (!character) throw new Error('character-not-found');
+
+    // Step 2: ownership
+    if (character.userId !== input.userId) throw new Error('character-forbidden');
+
+    // Step 3: must be a template (templateId === null means it IS a template)
+    if (character.templateId !== null) throw new Error('not-a-template');
 
     const [campaign] = await tx
       .insert(campaigns)
