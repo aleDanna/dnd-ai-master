@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { db, pool } from '@/db/client';
 import { users, campaigns } from '@/db/schema';
 import { POST as postInvite, GET as listInvites } from '@/app/api/campaigns/[id]/invites/route';
+import { DELETE as deleteInvite } from '@/app/api/campaigns/[id]/invites/[inviteId]/route';
+import { GET as resolveToken } from '@/app/api/r/[token]/route';
 
 const HOST = 'user_mp_host_001';
 const GUEST = 'user_mp_guest_001';
@@ -70,5 +72,81 @@ describe('GET /api/campaigns/[id]/invites', () => {
     const body = await res.json();
     expect(Array.isArray(body.invites)).toBe(true);
     expect(body.invites.length).toBeGreaterThan(0);
+  });
+});
+
+describe('DELETE /api/campaigns/[id]/invites/[inviteId]', () => {
+  it('host revokes an invite', async () => {
+    CURRENT_USER = HOST;
+    const createRes = await postInvite(
+      new Request('http://test/api', { method: 'POST', body: JSON.stringify({}) }) as any,
+      { params: Promise.resolve({ id: campaignId }) },
+    );
+    const { invite } = await createRes.json();
+    const res = await deleteInvite(
+      new Request('http://test/api', { method: 'DELETE' }) as any,
+      { params: Promise.resolve({ id: campaignId, inviteId: invite.id }) },
+    );
+    expect(res.status).toBe(204);
+  });
+
+  it('guest gets 403', async () => {
+    CURRENT_USER = HOST;
+    const createRes = await postInvite(
+      new Request('http://test/api', { method: 'POST', body: JSON.stringify({}) }) as any,
+      { params: Promise.resolve({ id: campaignId }) },
+    );
+    const { invite } = await createRes.json();
+    CURRENT_USER = GUEST;
+    const res = await deleteInvite(
+      new Request('http://test/api', { method: 'DELETE' }) as any,
+      { params: Promise.resolve({ id: campaignId, inviteId: invite.id }) },
+    );
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('GET /api/r/[token]', () => {
+  it('valid token returns campaign info', async () => {
+    CURRENT_USER = HOST;
+    const createRes = await postInvite(
+      new Request('http://test/api', { method: 'POST', body: JSON.stringify({}) }) as any,
+      { params: Promise.resolve({ id: campaignId }) },
+    );
+    const { invite } = await createRes.json();
+    const res = await resolveToken(
+      new Request('http://test/api') as any,
+      { params: Promise.resolve({ token: invite.token }) },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.campaignId).toBe(campaignId);
+    expect(body.campaignName).toBe('MP Test');
+  });
+
+  it('unknown token returns 410', async () => {
+    const res = await resolveToken(
+      new Request('http://test/api') as any,
+      { params: Promise.resolve({ token: 'nonexistent_' }) },
+    );
+    expect(res.status).toBe(410);
+  });
+
+  it('revoked token returns 410', async () => {
+    CURRENT_USER = HOST;
+    const createRes = await postInvite(
+      new Request('http://test/api', { method: 'POST', body: JSON.stringify({}) }) as any,
+      { params: Promise.resolve({ id: campaignId }) },
+    );
+    const { invite } = await createRes.json();
+    await deleteInvite(
+      new Request('http://test/api', { method: 'DELETE' }) as any,
+      { params: Promise.resolve({ id: campaignId, inviteId: invite.id }) },
+    );
+    const res = await resolveToken(
+      new Request('http://test/api') as any,
+      { params: Promise.resolve({ token: invite.token }) },
+    );
+    expect(res.status).toBe(410);
   });
 });
