@@ -1,10 +1,7 @@
-import { config as loadEnv } from 'dotenv';
-// Load .env.local first (Next.js convention, contains Vercel-pulled secrets),
-// then fall back to .env for any keys not defined in .env.local.
-loadEnv({ path: '.env.local' });
-loadEnv();
-
 import { defineConfig } from 'drizzle-kit';
+import { loadDbEnv, normalizeSslMode } from './src/db/connection-url';
+
+loadDbEnv();
 
 const url = process.env.DATABASE_URL;
 if (!url) {
@@ -15,7 +12,7 @@ export default defineConfig({
   schema: './src/db/schema/index.ts',
   out: './drizzle',
   dialect: 'postgresql',
-  dbCredentials: { url },
+  dbCredentials: { url: normalizeSslMode(url) },
   strict: true,
   verbose: true,
 });

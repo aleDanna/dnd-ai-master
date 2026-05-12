@@ -16,7 +16,14 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/srd/seed.ts",
-    "db:reseed": "tsx src/srd/seed.ts --reset"
+    "db:reseed": "tsx src/srd/seed.ts --reset",
+    "db:audit": "tsx scripts/db-audit.ts",
+    "db:cleanup": "tsx scripts/db-cleanup.ts",
+    "db:vacuum": "tsx scripts/db-vacuum.ts",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:snapshot": "tsx scripts/db-snapshot.ts",
+    "db:restore": "tsx scripts/db-restore.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",
