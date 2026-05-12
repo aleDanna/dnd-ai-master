@@ -2,7 +2,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { db, pool } from '@/db/client';
 import { ensureUser } from '@/db/users';
-import { sessions, aiUsage } from '@/db/schema';
+import { sessions, aiUsage, campaigns } from '@/db/schema';
 import { saveCharacter } from '@/characters/persist';
 import { emptyWizardState } from '@/characters/types';
 import { checkQuotas, DAILY_TURN_CAP } from '@/ai/master/quotas';
@@ -47,7 +47,8 @@ describe('checkQuotas', () => {
     const w = emptyWizardState();
     w.raceSlug = 'half-elf'; w.classSlug = 'fighter'; w.backgroundSlug = 'soldier'; w.identity.name = 'X';
     const { id: charId } = await saveCharacter({ userId: TEST_USER, wizard: w });
-    const sessionInserts = Array.from({ length: 51 }, () => ({ userId: TEST_USER, characterId: charId, premise: 'p' }));
+    const [campaign] = await db.insert(campaigns).values({ userId: TEST_USER, name: 'Quota test campaign', premise: 'p' }).returning();
+    const sessionInserts = Array.from({ length: 51 }, () => ({ userId: TEST_USER, characterId: charId, campaignId: campaign!.id, premise: 'p' }));
     await db.insert(sessions).values(sessionInserts);
     const r = await checkQuotas({ userId: TEST_USER, kind: 'create_session' });
     expect(r.ok).toBe(false);

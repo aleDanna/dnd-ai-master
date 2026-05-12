@@ -4,7 +4,7 @@ import { db, pool } from '@/db/client';
 import { ensureUser } from '@/db/users';
 import { saveCharacter } from '@/characters/persist';
 import { emptyWizardState } from '@/characters/types';
-import { sessions, sessionState, characters } from '@/db/schema';
+import { sessions, sessionState, characters, campaigns } from '@/db/schema';
 import { applyMutations } from '@/sessions/applicator';
 import type { Mutation } from '@/engine/types';
 
@@ -52,9 +52,10 @@ describe('applicator currency conversion', () => {
     w.identity.name = 'Coin Subject';
     const { id: charId } = await saveCharacter({ userId: TEST_USER, wizard: w });
     PC_ID = charId;
+    const [campaign] = await db.insert(campaigns).values({ userId: TEST_USER, name: 'Test campaign', premise: 'x' }).returning();
     const [s] = await db
       .insert(sessions)
-      .values({ userId: TEST_USER, characterId: charId, premise: 'x' })
+      .values({ userId: TEST_USER, characterId: charId, campaignId: campaign!.id, premise: 'x' })
       .returning();
     SESSION_ID = s!.id;
     await db.insert(sessionState).values({ sessionId: SESSION_ID, hpCurrent: 10, hitDiceRemaining: 1 });
@@ -64,6 +65,7 @@ describe('applicator currency conversion', () => {
     await db.execute(sql`delete from inventory_grants where session_id = ${SESSION_ID}`);
     await db.execute(sql`delete from session_state where session_id = ${SESSION_ID}`);
     await db.execute(sql`delete from sessions where id = ${SESSION_ID}`);
+    await db.execute(sql`delete from campaigns where user_id = ${TEST_USER}`);
     await db.execute(sql`delete from characters where user_id = ${TEST_USER}`);
     await db.execute(sql`delete from users where id = ${TEST_USER}`);
     await pool.end();

@@ -4,7 +4,7 @@ import { db, pool } from '@/db/client';
 import { ensureUser } from '@/db/users';
 import { saveCharacter } from '@/characters/persist';
 import { emptyWizardState } from '@/characters/types';
-import { sessions, sessionState, combatActors, diceLog, characters } from '@/db/schema';
+import { sessions, sessionState, combatActors, diceLog, characters, campaigns } from '@/db/schema';
 import { applyMutations } from '@/sessions/applicator';
 import type { Mutation, DiceRoll } from '@/engine/types';
 
@@ -20,7 +20,8 @@ describe('applyMutations', () => {
     w.raceSlug = 'half-elf'; w.classSlug = 'fighter'; w.backgroundSlug = 'soldier'; w.identity.name = 'Tharion';
     const { id: charId } = await saveCharacter({ userId: TEST_USER, wizard: w });
     PC_ID = charId;
-    const [s] = await db.insert(sessions).values({ userId: TEST_USER, characterId: charId, premise: 'x' }).returning();
+    const [campaign] = await db.insert(campaigns).values({ userId: TEST_USER, name: 'Test campaign', premise: 'x' }).returning();
+    const [s] = await db.insert(sessions).values({ userId: TEST_USER, characterId: charId, campaignId: campaign!.id, premise: 'x' }).returning();
     SESSION_ID = s!.id;
     await db.insert(sessionState).values({ sessionId: SESSION_ID, hpCurrent: 11, hitDiceRemaining: 1 });
     const [m] = await db.insert(combatActors).values({ sessionId: SESSION_ID, name: 'Goblin', monsterSlug: 'goblin', hpCurrent: 7, hpMax: 7 }).returning();
@@ -32,6 +33,7 @@ describe('applyMutations', () => {
     await db.execute(sql`delete from combat_actors where session_id = ${SESSION_ID}`);
     await db.execute(sql`delete from session_state where session_id = ${SESSION_ID}`);
     await db.execute(sql`delete from sessions where id = ${SESSION_ID}`);
+    await db.execute(sql`delete from campaigns where user_id = ${TEST_USER}`);
     await db.execute(sql`delete from characters where user_id = ${TEST_USER}`);
     await db.execute(sql`delete from users where id = ${TEST_USER}`);
     await pool.end();

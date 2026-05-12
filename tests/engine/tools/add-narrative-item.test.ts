@@ -4,7 +4,7 @@ import { db, pool } from '@/db/client';
 import { ensureUser } from '@/db/users';
 import { saveCharacter } from '@/characters/persist';
 import { emptyWizardState } from '@/characters/types';
-import { sessions, sessionState, codexEntities } from '@/db/schema';
+import { sessions, sessionState, codexEntities, campaigns } from '@/db/schema';
 import { addNarrativeItem } from '@/engine/tools/add-narrative-item';
 import type { Character, EngineState } from '@/engine/types';
 
@@ -23,9 +23,10 @@ beforeAll(async () => {
   w.identity.name = 'P';
   const { id: charId } = await saveCharacter({ userId: TEST_USER, wizard: w });
   CHAR_ID = charId;
+  const [campaign] = await db.insert(campaigns).values({ userId: TEST_USER, name: 'Test campaign', premise: 'narrative-items-test' }).returning();
   const [s] = await db
     .insert(sessions)
-    .values({ userId: TEST_USER, characterId: charId, premise: 'narrative-items-test' })
+    .values({ userId: TEST_USER, characterId: charId, campaignId: campaign!.id, premise: 'narrative-items-test' })
     .returning();
   SESSION_ID = s!.id;
   await db.insert(sessionState).values({ sessionId: SESSION_ID, hpCurrent: 10, hitDiceRemaining: 1 });
@@ -51,6 +52,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.execute(sql`delete from codex_entities where session_id = ${SESSION_ID}`);
   await db.execute(sql`delete from sessions where id = ${SESSION_ID}`);
+  await db.execute(sql`delete from campaigns where user_id = ${TEST_USER}`);
   await db.execute(sql`delete from characters where user_id = ${TEST_USER}`);
   await db.execute(sql`delete from users where id = ${TEST_USER}`);
   await pool.end();
