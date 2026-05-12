@@ -190,6 +190,63 @@ describe('validateWizardState', () => {
     expect(r.ok).toBe(true);
   });
 
+  // ─── "Any skill" classes (Bard, Rogue) — sentinel ['*'] in skillsFrom ────────
+  // Regression: the SRD parser encodes "3 from any" as skillsFrom: ['*'].
+  // Validator must treat that as "every skill is in-list" rather than literal '*'.
+
+  const optionsWithAnySkillBard = {
+    ...completeOptions,
+    classSlugs: [...completeOptions.classSlugs, 'bard'],
+    classSkillRules: {
+      bard: { skillsChoose: 3, skillsFrom: ['*'] },
+    },
+    backgroundSkills: {
+      soldier: ['Athletics', 'Intimidation'],
+    },
+  };
+
+  function baseBardWizard() {
+    const w = emptyWizardState();
+    w.raceSlug = 'half-elf';
+    w.classSlug = 'bard';
+    w.backgroundSlug = 'soldier';
+    w.identity.name = 'Lyra';
+    return w;
+  }
+
+  it("accepts a Bard's 3 picks from any skill list (sentinel '*')", () => {
+    const w = baseBardWizard();
+    // Soldier grants Athletics + Intimidation. Bard picks 3 from any.
+    w.skills = ['Performance', 'Persuasion', 'Stealth'];
+    const r = validateWizardState(w, optionsWithAnySkillBard);
+    expect(r.ok).toBe(true);
+    expect(r.errors).toEqual([]);
+  });
+
+  it("rejects a Bard with only 2 class picks (sentinel '*')", () => {
+    const w = baseBardWizard();
+    w.skills = ['Performance', 'Persuasion'];
+    const r = validateWizardState(w, optionsWithAnySkillBard);
+    expect(r.ok).toBe(false);
+    expect(r.errors).toContain('skills-too-few');
+  });
+
+  it("rejects a Bard with 4 class picks (sentinel '*')", () => {
+    const w = baseBardWizard();
+    w.skills = ['Performance', 'Persuasion', 'Stealth', 'Arcana'];
+    const r = validateWizardState(w, optionsWithAnySkillBard);
+    expect(r.ok).toBe(false);
+    expect(r.errors).toContain('skills-too-many');
+  });
+
+  it("does not flag any skill as off-list when sentinel '*' is used", () => {
+    const w = baseBardWizard();
+    // All 18 skills are valid for Bard. Pick odd ones that wouldn't normally fit anywhere.
+    w.skills = ['Religion', 'Survival', 'Medicine'];
+    const r = validateWizardState(w, optionsWithAnySkillBard);
+    expect(r.errors).not.toContain('skills-off-list');
+  });
+
   // ─── Class L1 choices ──────────────────────────────────────────────────────
 
   describe('class L1 choices', () => {
