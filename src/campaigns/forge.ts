@@ -32,6 +32,7 @@ export async function createCampaign(input: CreateCampaignInput): Promise<Create
           eq(characters.id, input.characterTemplateId),
           eq(characters.userId, input.userId),
           isNull(characters.deletedAt),
+          isNull(characters.templateId),
         ),
       )
       .limit(1);
