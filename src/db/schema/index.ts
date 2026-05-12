@@ -12,6 +12,7 @@ export * from './srd-rule-doc';
 export * from './users';
 export * from './characters';
 export * from './campaigns';
+export * from './campaign-invites';
 export * from './sessions';
 export * from './session-state';
 export * from './session-messages';
