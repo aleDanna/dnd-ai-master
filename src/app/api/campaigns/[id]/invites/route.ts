@@ -43,7 +43,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   return NextResponse.json({ invite, url }, { status: 201 });
 }
 
-export async function GET(req: NextRequest, ctx: Ctx) {
+export async function GET(_req: NextRequest, ctx: Ctx) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   const { id: campaignId } = await ctx.params;
