@@ -208,6 +208,10 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
               onAnyRollStart={handleRollStart}
               onAnyRollEnd={handleRollEnd}
               party={party}
+              // When the composer is locked (not viewer's turn / memory not
+              // ready), gate any roll buttons too — rolling a die you can
+              // never send is pure dead weight in the UI and confusing.
+              disabled={disabled}
             />
           ))}
           {busy && (
@@ -221,13 +225,13 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
       <div style={{ position: 'sticky', bottom: 0, background: 'var(--bg-elev)', borderTop: '1px solid var(--border)', zIndex: 5 }}>
         <div style={{ padding: '10px 40px 0' }}>
           <div style={{ maxWidth: 680, margin: '0 auto', display: 'flex', gap: 6, paddingTop: 8, paddingBottom: 4, flexWrap: 'wrap' }}>
-            <Quick icon="dice" label="Skill check" onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'I make a Perception check.')} />
-            <Quick icon="sword" label="Attack" onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'I attack with my equipped weapon.')} />
-            {onCastSpell && <Quick icon="spell" label="Cast spell" onClick={onCastSpell} />}
-            <Quick icon="shield" label="Dodge" onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'I take the Dodge action.')} />
-            <Quick icon="heart" label="Short rest" onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'We take a short rest.')} />
+            <Quick icon="dice" label="Skill check" disabled={disabled} onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'I make a Perception check.')} />
+            <Quick icon="sword" label="Attack" disabled={disabled} onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'I attack with my equipped weapon.')} />
+            {onCastSpell && <Quick icon="spell" label="Cast spell" disabled={disabled} onClick={onCastSpell} />}
+            <Quick icon="shield" label="Dodge" disabled={disabled} onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'I take the Dodge action.')} />
+            <Quick icon="heart" label="Short rest" disabled={disabled} onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'We take a short rest.')} />
             <div style={{ flex: 1 }} />
-            <Quick icon="book" label="Look up rule" onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'Master, look up the rule for ')} />
+            <Quick icon="book" label="Look up rule" disabled={disabled} onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'Master, look up the rule for ')} />
           </div>
         </div>
 
@@ -294,10 +298,12 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
   );
 }
 
-function Quick({ icon, label, onClick }: { icon: IconName; label: string; onClick: () => void }) {
+function Quick({ icon, label, onClick, disabled = false }: { icon: IconName; label: string; onClick: () => void; disabled?: boolean }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
+      aria-disabled={disabled || undefined}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -310,7 +316,8 @@ function Quick({ icon, label, onClick }: { icon: IconName; label: string; onClic
         color: 'var(--fg-muted)',
         fontFamily: 'var(--font-ui)',
         fontSize: 12,
-        cursor: 'pointer',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.4 : undefined,
       }}
     >
       <Icon name={icon} size={13} /> {label}
@@ -371,6 +378,7 @@ function MessageView({
   onAnyRollStart,
   onAnyRollEnd,
   party,
+  disabled = false,
 }: {
   m: NarrativeMessage;
   sessionId: string;
@@ -380,9 +388,16 @@ function MessageView({
   onAnyRollStart?: () => void;
   onAnyRollEnd?: () => void;
   party: Array<{ id: string; name: string }>;
+  /** When true, interactive elements inside the message (roll buttons) are
+   *  greyed out — used to gate non-current-turn viewers from clicking dice
+   *  they can never send. */
+  disabled?: boolean;
 }) {
   if (m.role === 'master') {
-    const rollRequests = manualRolls ? parseRollRequests(m.content) : [];
+    // When the composer is locked, suppress roll requests entirely: a roll
+    // the viewer can't send is noise, and the parsed `[Perception 1d20+3]`
+    // hints still render inline as text inside the narrative.
+    const rollRequests = manualRolls && !disabled ? parseRollRequests(m.content) : [];
     const hasFooter = m.id || (m.tools && m.tools.length > 0) || rollRequests.length > 0;
     return (
       <div>

@@ -342,7 +342,11 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
             liveEvents={liveEvents}
             busy={busy}
             onSend={send}
-            onCastSpell={character.spellcasting && slots.length > 0 ? () => setSpellOpen(true) : undefined}
+            // Drop the spell-cast affordance when the composer is locked: an
+            // open Spell modal would still call `send()` directly (bypassing
+            // the textarea/Send gates), so we close that path at the source
+            // rather than half-disabling the UI.
+            onCastSpell={!composerDisabled && character.spellcasting && slots.length > 0 ? () => setSpellOpen(true) : undefined}
             manualRolls={initialManualRolls}
             imageGenerationEnabled={initialImageGenerationEnabled}
             disabled={composerDisabled}
@@ -354,7 +358,7 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
               <Icon name="x" size={12} /> {sendError ?? streamError}
             </div>
           )}
-          {spellOpen && character.spellcasting && (
+          {spellOpen && character.spellcasting && !composerDisabled && (
             <SpellModal
               spellsKnown={character.spellcasting.spellsKnown}
               slots={slots}
