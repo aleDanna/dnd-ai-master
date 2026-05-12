@@ -21,3 +21,18 @@ CREATE INDEX "campaign_invites_token_idx" ON "campaign_invites" USING btree ("to
 CREATE INDEX "campaign_invites_campaign_idx" ON "campaign_invites" USING btree ("campaign_id");--> statement-breakpoint
 ALTER TABLE "sessions" ADD CONSTRAINT "sessions_current_player_character_id_characters_id_fk" FOREIGN KEY ("current_player_character_id") REFERENCES "public"."characters"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "session_messages" ADD CONSTRAINT "session_messages_author_character_id_characters_id_fk" FOREIGN KEY ("author_character_id") REFERENCES "public"."characters"("id") ON DELETE set null ON UPDATE no action;
+--> statement-breakpoint
+-- ── Multiplayer backfill ──
+-- Existing sessions: current_player_character_id = the (only) character
+-- Existing player messages: author_character_id = session's character
+
+UPDATE sessions
+SET current_player_character_id = character_id
+WHERE current_player_character_id IS NULL;
+
+UPDATE session_messages sm
+SET author_character_id = s.character_id
+FROM sessions s
+WHERE sm.session_id = s.id
+  AND sm.role = 'player'
+  AND sm.author_character_id IS NULL;
