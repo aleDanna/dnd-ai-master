@@ -124,9 +124,11 @@ export function WizardClient({ options }: { options: Options }) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || 'Failed to save');
       }
-      await res.json();
+      const saved = await res.json();
       if (returnTo) {
         router.push(returnTo);
+      } else if (saved?.id) {
+        router.push(`/characters/${saved.id}`);
       } else {
         router.push('/hub');
       }
