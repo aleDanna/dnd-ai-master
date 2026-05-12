@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { CampaignPreset } from '@/sessions/campaign-presets';
 import { Button } from '@/components/ui/button';
@@ -132,7 +133,7 @@ export function NewCampaignWizard({ templates, presets }: { templates: TemplateO
 
       <div style={{ marginTop: 28, display: 'flex', justifyContent: 'space-between' }}>
         {step === 0 ? (
-          <a href="/campaigns" style={{ textDecoration: 'none' }}><Button variant="ghost" size="md">Cancel</Button></a>
+          <Link href="/campaigns" style={{ textDecoration: 'none' }}><Button variant="ghost" size="md">Cancel</Button></Link>
         ) : (
           <Button variant="ghost" size="md" onClick={() => setStep(0)}>Back</Button>
         )}
