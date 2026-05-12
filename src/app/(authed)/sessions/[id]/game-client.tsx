@@ -146,6 +146,11 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     const isStreaming = streamingMessage !== null;
     prevStreamingRef.current = isStreaming;
     if (wasStreaming && !isStreaming) {
+      // SSE delivered the full turn — kill the safety poll started by `send`.
+      if (safetyPollRef.current) {
+        clearInterval(safetyPollRef.current);
+        safetyPollRef.current = null;
+      }
       // Stream just ended — refresh messages
       let active = true;
       void fetchSessionData().then((data) => {
@@ -197,12 +202,48 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     void postTurn({ begin: true });
   }, [memoryReady, busy, messages.length, postTurn]);
 
+  // Post-turn safety refetch — if SSE never delivers the master's response
+  // (Neon pooler dropping NOTIFY, function timeout, dropped socket, …), the
+  // UI used to hang forever on the player's "temp-…" bubble. We poll the
+  // messages endpoint every 3s after a send and stop as soon as a new master
+  // message lands, or after a hard ceiling (90s).
+  const safetyPollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const clearSafetyPoll = React.useCallback(() => {
+    if (safetyPollRef.current) {
+      clearInterval(safetyPollRef.current);
+      safetyPollRef.current = null;
+    }
+  }, []);
+  const startSafetyPoll = React.useCallback(() => {
+    clearSafetyPoll();
+    const baselineMasterCount = messages.filter((m) => m.role === 'master').length;
+    const startedAt = Date.now();
+    safetyPollRef.current = setInterval(() => {
+      void fetchSessionData().then((data) => {
+        if (!data.messages) return;
+        const masterCount = data.messages.filter((m) => m.role === 'master').length;
+        if (masterCount > baselineMasterCount) {
+          setMessages(data.messages);
+          if (data.character) setCharacter(data.character);
+          clearSafetyPoll();
+          return;
+        }
+        // Hard timeout — stop polling so we don't hammer the API forever on a
+        // truly broken turn (master errored out without persisting anything).
+        if (Date.now() - startedAt > 90_000) clearSafetyPoll();
+      }).catch(() => { /* network blip — keep polling */ });
+    }, 3000);
+  }, [messages, fetchSessionData, clearSafetyPoll]);
+
+  React.useEffect(() => () => clearSafetyPoll(), [clearSafetyPoll]);
+
   const send = (text: string): void => {
     setMessages((prev) => [
       ...prev,
       { id: `temp-${Date.now()}`, sessionId, role: 'player', content: text, createdAt: new Date().toISOString() },
     ]);
     void postTurn({ message: text });
+    startSafetyPoll();
   };
 
   const handleMemoryReady = React.useCallback(() => {

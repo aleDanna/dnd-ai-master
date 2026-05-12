@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eq, and, isNull, isNotNull } from 'drizzle-orm';
-import { db, pool } from '@/db/client';
+import { db, createListenClient } from '@/db/client';
 import {
   sessions,
   sessionState,
@@ -94,7 +94,12 @@ export async function GET(req: NextRequest, ctx: Ctx) {
   const access = await checkPartyAccess(userId, sessionId);
   if (!access) return new Response('forbidden', { status: 403 });
 
-  const client = await pool.connect();
+  // Dedicated direct (un-pooled) connection — Neon's main DATABASE_URL is the
+  // pgbouncer pooler in transaction mode, which does NOT support LISTEN.
+  // `createListenClient` reads `DATABASE_URL_UNPOOLED` when present and falls
+  // back to the regular URL locally.
+  const client = createListenClient();
+  await client.connect();
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -112,6 +117,12 @@ export async function GET(req: NextRequest, ctx: Ctx) {
           controller.enqueue(encoder.encode(`data: ${msg.payload}\n\n`));
         }
       });
+      // Surface connection errors instead of swallowing them — a dropped
+      // unpooled connection (Neon idle disconnect, network blip) used to
+      // leave the SSE stream open but mute, with no NOTIFY ever flowing.
+      client.on('error', (err) => {
+        console.error('LISTEN client error:', err instanceof Error ? err.message : err);
+      });
 
       const ka = setInterval(() => {
         try { controller.enqueue(encoder.encode(`: keep-alive\n\n`)); } catch {}
@@ -120,7 +131,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
       req.signal.addEventListener('abort', async () => {
         clearInterval(ka);
         try { await client.query(`UNLISTEN "session_${sessionId}"`); } catch {}
-        client.release();
+        try { await client.end(); } catch {}
         try { controller.close(); } catch {}
       });
     },
