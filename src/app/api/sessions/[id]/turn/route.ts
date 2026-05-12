@@ -1,10 +1,10 @@
 import { NextRequest } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { eq, and, desc, isNull } from 'drizzle-orm';
+import { eq, and, desc, isNull, isNotNull, sql } from 'drizzle-orm';
 import type Anthropic from '@anthropic-ai/sdk';
 import { waitUntil } from '@vercel/functions';
 import { db } from '@/db/client';
-import { sessions, sessionMessages, campaigns } from '@/db/schema';
+import { sessions, sessionMessages, campaigns, characters as charactersTable } from '@/db/schema';
 import { buildSnapshot } from '@/sessions/snapshot';
 import { applyMutations } from '@/sessions/applicator';
 import { acquireTurnLock, releaseTurnLock } from '@/sessions/lock';
@@ -21,6 +21,8 @@ import { getResolvedPreferences } from '@/lib/preferences';
 import { loadMemoryContext } from '@/sessions/memory/context';
 import { extractMemory } from '@/sessions/memory/extractor';
 import { touchCampaign } from '@/campaigns/persist';
+import { nextInParty } from '@/multiplayer/party';
+import { notifySession } from '@/sessions/notify';
 
 /**
  * Synthetic user instruction injected on the very first turn of a campaign,
@@ -147,6 +149,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // (Hydrated from the campaign join in buildSnapshot since Task 15.)
           tonalFrame: snap.state.tonalFrame,
           engagementProfile: snap.state.engagementProfile,
+          // Multiplayer — party roster + active player for PARTY MODE block.
+          party: snap.party,
+          currentPlayerCharacterId: snap.currentPlayerCharacterId,
         });
 
         let history: Anthropic.Messages.MessageParam[];
@@ -195,7 +200,55 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           onEvent: (ev) => send(ev.type, ev),
         });
 
-        // 6. Persist master message — only if it actually has content. An
+        // 6. Post-loop fallback round-robin — runs regardless of whether the
+        // master produced narration. If the master called set_current_player,
+        // turnsSinceMasterAdvance was already reset to 0 by the tool handler.
+        // Otherwise we increment. At >= 3 consecutive turns without the master
+        // advancing, the server auto-advances round-robin to prevent deadlock.
+        await db.transaction(async (tx) => {
+          const [s] = await tx
+            .select({
+              tsma: sessions.turnsSinceMasterAdvance,
+              cpcId: sessions.currentPlayerCharacterId,
+              campaignId: sessions.campaignId,
+            })
+            .from(sessions)
+            .where(eq(sessions.id, sessionId))
+            .limit(1);
+          if (!s) return;
+
+          if (s.tsma === 0) {
+            // Master called set_current_player. Counter already reset.
+          } else {
+            const next = s.tsma + 1;
+            if (next >= 3) {
+              const party = await tx
+                .select({ id: charactersTable.id, createdAt: charactersTable.createdAt })
+                .from(charactersTable)
+                .where(and(
+                  eq(charactersTable.campaignId, s.campaignId!),
+                  isNull(charactersTable.deletedAt),
+                  isNotNull(charactersTable.templateId),
+                ))
+                .orderBy(charactersTable.createdAt);
+              const nextChar = nextInParty(s.cpcId ?? '', party);
+              await tx
+                .update(sessions)
+                .set({ currentPlayerCharacterId: nextChar.id, turnsSinceMasterAdvance: 0 })
+                .where(eq(sessions.id, sessionId));
+              await notifySession(sessionId, { type: 'turn-change', characterId: nextChar.id });
+            } else {
+              await tx
+                .update(sessions)
+                .set({ turnsSinceMasterAdvance: next })
+                .where(eq(sessions.id, sessionId));
+            }
+          }
+
+          await tx.update(sessions).set({ turnSeq: sql`turn_seq + 1` }).where(eq(sessions.id, sessionId));
+        });
+
+        // 7. Persist master message — only if it actually has content. An
         // empty finalText typically means a tool call failed and the master
         // never got to write narration; persisting an empty row leaves a
         // ghost "THE MASTER" bubble in the chat with no body. Surface that
