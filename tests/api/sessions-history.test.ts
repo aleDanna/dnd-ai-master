@@ -4,7 +4,7 @@ import { db, pool } from '@/db/client';
 import { ensureUser } from '@/db/users';
 import { saveCharacter } from '@/characters/persist';
 import { emptyWizardState } from '@/characters/types';
-import { sessions, sessionState, sessionMessages, diceLog } from '@/db/schema';
+import { sessions, sessionState, sessionMessages, diceLog, campaigns } from '@/db/schema';
 
 const TEST_USER = 'user_history_' + Date.now();
 let SESSION_ID = '';
@@ -25,8 +25,8 @@ describe('sessions history persistence', () => {
     const w = emptyWizardState();
     w.raceSlug = 'half-elf'; w.classSlug = 'fighter'; w.backgroundSlug = 'soldier'; w.identity.name = 'Tharion';
     const { id: charId } = await saveCharacter({ userId: TEST_USER, wizard: w });
-
-    const [s] = await db.insert(sessions).values({ userId: TEST_USER, characterId: charId, premise: 'goblin warren' }).returning();
+    const [campaign] = await db.insert(campaigns).values({ userId: TEST_USER, name: 'Test campaign', premise: 'goblin warren' }).returning();
+    const [s] = await db.insert(sessions).values({ userId: TEST_USER, characterId: charId, campaignId: campaign!.id, premise: 'goblin warren' }).returning();
     SESSION_ID = s!.id;
     await db.insert(sessionState).values({ sessionId: SESSION_ID, hpCurrent: 11, hitDiceRemaining: 1 });
 

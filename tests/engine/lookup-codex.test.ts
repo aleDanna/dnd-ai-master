@@ -4,7 +4,7 @@ import { db, pool } from '@/db/client';
 import { ensureUser } from '@/db/users';
 import { saveCharacter } from '@/characters/persist';
 import { emptyWizardState } from '@/characters/types';
-import { sessions, sessionState, codexEntities } from '@/db/schema';
+import { sessions, sessionState, codexEntities, campaigns } from '@/db/schema';
 import { lookupCodex } from '@/engine/tools/lookup-codex';
 
 const TEST_USER = 'user_lookup_' + Date.now();
@@ -19,9 +19,10 @@ describe('lookup_codex handler', () => {
     w.backgroundSlug = 'soldier';
     w.identity.name = 'P';
     const c = await saveCharacter({ userId: TEST_USER, wizard: w });
+    const [campaign] = await db.insert(campaigns).values({ userId: TEST_USER, name: 'Test campaign', premise: 'x' }).returning();
     const [s] = await db
       .insert(sessions)
-      .values({ userId: TEST_USER, characterId: c.id, premise: 'x' })
+      .values({ userId: TEST_USER, characterId: c.id, campaignId: campaign!.id, premise: 'x' })
       .returning();
     SESSION_ID = s!.id;
     await db.insert(sessionState).values({ sessionId: SESSION_ID, hpCurrent: 10, hitDiceRemaining: 1 });
@@ -52,6 +53,7 @@ describe('lookup_codex handler', () => {
 
   afterAll(async () => {
     await db.execute(sql`delete from sessions where user_id = ${TEST_USER}`);
+    await db.execute(sql`delete from campaigns where user_id = ${TEST_USER}`);
     await db.execute(sql`delete from characters where user_id = ${TEST_USER}`);
     await db.execute(sql`delete from users where id = ${TEST_USER}`);
     await pool.end();

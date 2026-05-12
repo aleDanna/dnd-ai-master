@@ -1,6 +1,7 @@
 import { pgTable, text, uuid, timestamp, pgEnum, index, varchar, jsonb } from 'drizzle-orm/pg-core';
 import { users } from './users';
 import { characters } from './characters';
+import { campaigns } from './campaigns';
 
 export const sessionStatusEnum = pgEnum('session_status', ['active', 'ended']);
 
@@ -29,12 +30,14 @@ export const sessions = pgTable(
      * after observing the first few turns.
      */
     engagementProfile: jsonb('engagement_profile').$type<string[]>().notNull().default([]),
+    campaignId: uuid('campaign_id').notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     userStatusIdx: index('sessions_user_status_idx').on(t.userId, t.status),
+    campaignIdx: index('sessions_campaign_idx').on(t.campaignId),
   }),
 );
 

@@ -4,7 +4,7 @@ import { db, pool } from '@/db/client';
 import { ensureUser } from '@/db/users';
 import { saveCharacter } from '@/characters/persist';
 import { emptyWizardState } from '@/characters/types';
-import { sessions, sessionMessages, sessionState } from '@/db/schema';
+import { sessions, sessionMessages, sessionState, campaigns } from '@/db/schema';
 import { GET } from '@/app/api/sessions/[id]/messages/route';
 
 vi.mock('@clerk/nextjs/server', () => ({
@@ -20,7 +20,8 @@ describe('GET /api/sessions/[id]/messages', () => {
     const w = emptyWizardState();
     w.raceSlug = 'human'; w.classSlug = 'fighter'; w.backgroundSlug = 'soldier'; w.identity.name = 'Tester';
     const { id: charId } = await saveCharacter({ userId: TEST_USER, wizard: w });
-    const [s] = await db.insert(sessions).values({ userId: TEST_USER, characterId: charId, premise: 'x' }).returning();
+    const [campaign] = await db.insert(campaigns).values({ userId: TEST_USER, name: 'Test campaign', premise: 'x' }).returning();
+    const [s] = await db.insert(sessions).values({ userId: TEST_USER, characterId: charId, campaignId: campaign!.id, premise: 'x' }).returning();
     SESSION_ID = s!.id;
     await db.insert(sessionState).values({ sessionId: SESSION_ID, hpCurrent: 10, hitDiceRemaining: 1 });
   });
@@ -29,6 +30,7 @@ describe('GET /api/sessions/[id]/messages', () => {
     await db.execute(sql`delete from session_messages where session_id = ${SESSION_ID}`);
     await db.execute(sql`delete from session_state where session_id = ${SESSION_ID}`);
     await db.execute(sql`delete from sessions where id = ${SESSION_ID}`);
+    await db.execute(sql`delete from campaigns where user_id = ${TEST_USER}`);
     await db.execute(sql`delete from characters where user_id = ${TEST_USER}`);
     await db.execute(sql`delete from users where id = ${TEST_USER}`);
     await pool.end();

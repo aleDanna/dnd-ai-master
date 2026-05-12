@@ -1,5 +1,6 @@
 import { pgTable, text, integer, jsonb, uuid, timestamp, index, boolean } from 'drizzle-orm/pg-core';
 import { users } from './users';
+import { campaigns } from './campaigns';
 import type {
   Bastion,
   ClassLevel,
@@ -158,6 +159,13 @@ export const characters = pgTable(
      *   from the user-facing list; only the linked session reads it).
      */
     templateId: uuid('template_id'),
+    /**
+     * NULL on a template row. Non-NULL on an instance row, pointing at the
+     * campaign that owns the fork. Combined with `templateId`, enforces the
+     * application invariant: templates have both NULL, instances have both
+     * NOT NULL.
+     */
+    campaignId: uuid('campaign_id').references(() => campaigns.id, { onDelete: 'cascade' }),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -165,6 +173,7 @@ export const characters = pgTable(
   (t) => ({
     userIdx: index('characters_user_idx').on(t.userId),
     templateIdx: index('characters_template_idx').on(t.templateId),
+    campaignIdx: index('characters_campaign_idx').on(t.campaignId),
   }),
 );
 

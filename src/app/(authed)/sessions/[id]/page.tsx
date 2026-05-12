@@ -2,7 +2,7 @@ import { auth } from '@clerk/nextjs/server';
 import { notFound } from 'next/navigation';
 import { eq, and, isNull, asc } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { sessions, sessionState, sessionMessages, combatActors, characters } from '@/db/schema';
+import { sessions, sessionState, sessionMessages, combatActors, characters, campaigns } from '@/db/schema';
 import { GameClient } from './game-client';
 import { getResolvedPreferences } from '@/lib/preferences';
 import { deriveLevel1Spellcasting } from '@/characters/derive';
@@ -15,12 +15,15 @@ export default async function GameSessionPage({ params }: { params: Promise<{ id
   if (!userId) return null;
   const { id: sessionId } = await params;
 
-  const [session] = await db
-    .select()
+  const [sessionRow] = await db
+    .select({ session: sessions, campaign: campaigns })
     .from(sessions)
+    .leftJoin(campaigns, eq(campaigns.id, sessions.campaignId))
     .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId), isNull(sessions.deletedAt)))
     .limit(1);
-  if (!session) notFound();
+  if (!sessionRow) notFound();
+  const session = sessionRow.session;
+  const campaign = sessionRow.campaign;
 
   const [characterRow] = await db.select().from(characters).where(eq(characters.id, session.characterId)).limit(1);
   if (!characterRow) notFound();
@@ -106,6 +109,19 @@ export default async function GameSessionPage({ params }: { params: Promise<{ id
         createdAt: session.createdAt.toISOString(),
         updatedAt: session.updatedAt.toISOString(),
       }}
+      campaign={campaign ? {
+        id: campaign.id,
+        userId: campaign.userId,
+        name: campaign.name,
+        premise: campaign.premise,
+        style: campaign.style,
+        language: campaign.language,
+        tonalFrame: campaign.tonalFrame,
+        engagementProfile: campaign.engagementProfile,
+        status: campaign.status,
+        createdAt: campaign.createdAt.toISOString(),
+        updatedAt: campaign.updatedAt.toISOString(),
+      } : null}
       character={engineCharacter}
       initialState={
         stateRow

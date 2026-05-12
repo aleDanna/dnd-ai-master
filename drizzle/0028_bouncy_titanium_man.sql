@@ -1,0 +1,1 @@
+ALTER TABLE "sessions" ALTER COLUMN "campaign_id" SET NOT NULL;

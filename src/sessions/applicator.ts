@@ -5,6 +5,7 @@ import {
   combatActors as combatActorsTable,
   diceLog as diceLogTable,
   sessions as sessionsTable,
+  campaigns as campaignsTable,
   characters as charactersTable,
   codexEntities as codexEntitiesTable,
   inventoryGrants as inventoryGrantsTable,
@@ -39,18 +40,19 @@ const VALID_KINDS = new Set(['attack', 'damage', 'save', 'check', 'init', 'gener
 interface SessionContext {
   characterId: string;
   hpMax: number;
+  campaignId: string | null;
 }
 
 async function loadContext(tx: Tx, sessionId: string): Promise<SessionContext | null> {
   const [s] = await tx
-    .select({ characterId: sessionsTable.characterId })
+    .select({ characterId: sessionsTable.characterId, campaignId: sessionsTable.campaignId })
     .from(sessionsTable)
     .where(eq(sessionsTable.id, sessionId))
     .limit(1);
   if (!s) return null;
   const [c] = await tx.select({ hpMax: charactersTable.hpMax }).from(charactersTable).where(eq(charactersTable.id, s.characterId)).limit(1);
   if (!c) return null;
-  return { characterId: s.characterId, hpMax: c.hpMax };
+  return { characterId: s.characterId, hpMax: c.hpMax, campaignId: s.campaignId };
 }
 
 /**
@@ -900,23 +902,30 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
     }
     case 'set_tonal_frame': {
       // Master World Lore §5.1 — persist the campaign tonal frame on the
-      // session row. The validator at the tool layer guarantees the value
-      // is one of the 8 known frames; the applicator stays permissive.
-      await tx
-        .update(sessionsTable)
-        .set({ tonalFrame: m.frame, updatedAt: new Date() })
-        .where(eq(sessionsTable.id, sessionId));
+      // campaign row (campaign-scoped, not session-scoped). The validator
+      // at the tool layer guarantees the value is one of the 8 known frames;
+      // the applicator stays permissive. No-op if session has no campaign yet
+      // (legacy sessions without a campaignId).
+      if (ctx.campaignId) {
+        await tx
+          .update(campaignsTable)
+          .set({ tonalFrame: m.frame, updatedAt: new Date() })
+          .where(eq(campaignsTable.id, ctx.campaignId));
+      }
       break;
     }
     case 'set_engagement_profile': {
       // Master Handbook §2.1 — persist the detected engagement profile
-      // array. Replaces the previous value (the master typically calls
-      // this with the FULL up-to-date list). Empty array is legal —
-      // it clears the hint.
-      await tx
-        .update(sessionsTable)
-        .set({ engagementProfile: m.profiles, updatedAt: new Date() })
-        .where(eq(sessionsTable.id, sessionId));
+      // array on the campaign row. Replaces the previous value (the master
+      // typically calls this with the FULL up-to-date list). Empty array
+      // is legal — it clears the hint. No-op if session has no campaign yet
+      // (legacy sessions without a campaignId).
+      if (ctx.campaignId) {
+        await tx
+          .update(campaignsTable)
+          .set({ engagementProfile: m.profiles, updatedAt: new Date() })
+          .where(eq(campaignsTable.id, ctx.campaignId));
+      }
       break;
     }
     case 'update_npc_beats': {

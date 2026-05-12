@@ -10,6 +10,7 @@ import {
   sessionMessages,
   codexEntities,
   sessionChapters,
+  campaigns,
 } from '@/db/schema';
 import { applyPatch } from '@/sessions/memory/patch';
 
@@ -27,9 +28,10 @@ describe('applyPatch', () => {
     w.backgroundSlug = 'soldier';
     w.identity.name = 'P';
     const { id: charId } = await saveCharacter({ userId: TEST_USER, wizard: w });
+    const [campaign] = await db.insert(campaigns).values({ userId: TEST_USER, name: 'Test campaign', premise: 'x' }).returning();
     const [s] = await db
       .insert(sessions)
-      .values({ userId: TEST_USER, characterId: charId, premise: 'x' })
+      .values({ userId: TEST_USER, characterId: charId, campaignId: campaign!.id, premise: 'x' })
       .returning();
     SESSION_ID = s!.id;
     await db.insert(sessionState).values({ sessionId: SESSION_ID, hpCurrent: 10, hitDiceRemaining: 1 });
@@ -47,6 +49,7 @@ describe('applyPatch', () => {
 
   afterAll(async () => {
     await db.execute(sql`delete from sessions where id = ${SESSION_ID}`);
+    await db.execute(sql`delete from campaigns where user_id = ${TEST_USER}`);
     await db.execute(sql`delete from characters where user_id = ${TEST_USER}`);
     await db.execute(sql`delete from users where id = ${TEST_USER}`);
     await pool.end();

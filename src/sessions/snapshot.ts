@@ -5,6 +5,7 @@ import {
   sessionState as sessionStateTable,
   combatActors as combatActorsTable,
   characters as charactersTable,
+  campaigns as campaignsTable,
   type SessionState,
   type CombatActor as CombatActorRow,
 } from '@/db/schema';
@@ -307,12 +308,14 @@ function hydrateClasses(
 }
 
 export async function buildSnapshot(sessionId: string, userId: string): Promise<SnapshotForModel> {
-  const [session] = await db
-    .select()
+  const [row] = await db
+    .select({ session: sessionsTable, campaign: campaignsTable })
     .from(sessionsTable)
+    .innerJoin(campaignsTable, eq(campaignsTable.id, sessionsTable.campaignId))
     .where(and(eq(sessionsTable.id, sessionId), eq(sessionsTable.userId, userId), isNull(sessionsTable.deletedAt)))
     .limit(1);
-  if (!session) throw new Error(`buildSnapshot: session ${sessionId} not found for user ${userId}`);
+  if (!row) throw new Error(`buildSnapshot: session ${sessionId} not found for user ${userId}`);
+  const { session, campaign } = row;
 
   const [character] = await db.select().from(charactersTable).where(eq(charactersTable.id, session.characterId)).limit(1);
   if (!character) throw new Error(`buildSnapshot: character ${session.characterId} not found`);
@@ -415,16 +418,17 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
   }
 
   // Master World Lore §5.1 + Master Handbook §2.1 — hydrate the
-  // session-level tonal frame and engagement profile. The frame is a
+  // campaign-level tonal frame and engagement profile (canonical source
+  // since Task 15; session columns are deprecated). The frame is a
   // single string in the DB; we validate it against the typed union and
   // drop unknown values defensively (forward-compat with legacy data).
   // The engagement profile is a jsonb array; same defensive filter.
   const tonalFrame: TonalFrame | undefined =
-    typeof session.tonalFrame === 'string' && isValidTonalFrame(session.tonalFrame)
-      ? session.tonalFrame
+    typeof campaign.tonalFrame === 'string' && isValidTonalFrame(campaign.tonalFrame)
+      ? campaign.tonalFrame
       : undefined;
-  const engagementProfile: EngagementProfile[] = Array.isArray(session.engagementProfile)
-    ? (session.engagementProfile.filter((p): p is EngagementProfile =>
+  const engagementProfile: EngagementProfile[] = Array.isArray(campaign.engagementProfile)
+    ? (campaign.engagementProfile.filter((p): p is EngagementProfile =>
         typeof p === 'string' && isValidEngagementProfile(p),
       ) as EngagementProfile[])
     : [];
@@ -492,7 +496,7 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
     spellSlots: buildSpellSlotsView(character.spellcasting as Character['spellcasting'], stateRow.spellSlotsUsed),
   });
 
-  return { state, characterMonoSpace, scene: stateRow.scene, language: session.language };
+  return { state, characterMonoSpace, scene: stateRow.scene, language: campaign.language };
 }
 
 function toEngineCombatActor(row: CombatActorRow): CombatActor {

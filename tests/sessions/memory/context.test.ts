@@ -4,7 +4,7 @@ import { db, pool } from '@/db/client';
 import { ensureUser } from '@/db/users';
 import { saveCharacter } from '@/characters/persist';
 import { emptyWizardState } from '@/characters/types';
-import { sessions, sessionState, sessionMessages, codexEntities, sessionChapters } from '@/db/schema';
+import { sessions, sessionState, sessionMessages, codexEntities, sessionChapters, campaigns } from '@/db/schema';
 import { loadMemoryContext } from '@/sessions/memory/context';
 
 const TEST_USER = 'user_ctx_' + Date.now();
@@ -22,9 +22,10 @@ describe('loadMemoryContext', () => {
     w.identity.name = 'P';
     const c = await saveCharacter({ userId: TEST_USER, wizard: w });
     CHAR_ID = c.id;
+    const [campaign] = await db.insert(campaigns).values({ userId: TEST_USER, name: 'Test campaign', premise: 'x' }).returning();
     const [s] = await db
       .insert(sessions)
-      .values({ userId: TEST_USER, characterId: CHAR_ID, premise: 'x' })
+      .values({ userId: TEST_USER, characterId: CHAR_ID, campaignId: campaign!.id, premise: 'x' })
       .returning();
     SESSION_ID = s!.id;
     await db.insert(sessionState).values({ sessionId: SESSION_ID, hpCurrent: 10, hitDiceRemaining: 1 });
@@ -37,6 +38,7 @@ describe('loadMemoryContext', () => {
 
   afterAll(async () => {
     await db.execute(sql`delete from sessions where user_id = ${TEST_USER}`);
+    await db.execute(sql`delete from campaigns where user_id = ${TEST_USER}`);
     await db.execute(sql`delete from characters where user_id = ${TEST_USER}`);
     await db.execute(sql`delete from users where id = ${TEST_USER}`);
     await pool.end();

@@ -4,7 +4,7 @@ import { db } from '@/db/client';
 import { ensureUser } from '@/db/users';
 import { saveCharacter } from '@/characters/persist';
 import { emptyWizardState } from '@/characters/types';
-import { sessions, sessionState, sessionMessages } from '@/db/schema';
+import { sessions, sessionState, sessionMessages, campaigns } from '@/db/schema';
 
 const TESTING_USER = process.env.CLERK_TESTING_TOKEN_USER_ID;
 const HAS_CLERK_TESTING = !!TESTING_USER;
@@ -21,9 +21,10 @@ test.describe('memory backfill banner', () => {
     w.backgroundSlug = 'soldier';
     w.identity.name = 'Memoria E2E';
     const c = await saveCharacter({ userId: TESTING_USER!, wizard: w });
+    const [campaign] = await db.insert(campaigns).values({ userId: TESTING_USER!, name: 'Memory backfill E2E campaign', premise: 'memoria-e2e' }).returning();
     const [s] = await db
       .insert(sessions)
-      .values({ userId: TESTING_USER!, characterId: c.id, premise: 'memoria-e2e' })
+      .values({ userId: TESTING_USER!, characterId: c.id, campaignId: campaign!.id, premise: 'memoria-e2e' })
       .returning();
     sessionId = s!.id;
     await db.insert(sessionState).values({ sessionId, hpCurrent: 10, hitDiceRemaining: 1 });

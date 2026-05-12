@@ -72,6 +72,20 @@ export interface SessionRow {
   updatedAt: string;
 }
 
+export interface CampaignRow {
+  id: string;
+  userId: string;
+  name: string;
+  premise: string;
+  style: string;
+  language: string | null;
+  tonalFrame: string | null;
+  engagementProfile: string[];
+  status: 'active' | 'ended';
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SessionStateRow {
   sessionId: string;
   hpCurrent: number;
