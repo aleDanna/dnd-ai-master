@@ -212,7 +212,7 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
   }, [memoryReady, busy, messages.length, postTurn]);
 
   // Post-turn safety refetch — if SSE never delivers the master's response
-  // (Neon pooler dropping NOTIFY, function timeout, dropped socket, …), the
+  // (Supavisor session pool dropping NOTIFY, function timeout, dropped socket, …), the
   // UI used to hang forever on the player's "temp-…" bubble. We poll the
   // messages endpoint every 3s after a send and stop as soon as a new master
   // message lands, or after a hard ceiling (90s).

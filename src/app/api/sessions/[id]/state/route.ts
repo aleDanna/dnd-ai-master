@@ -41,7 +41,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       const tick = async () => {
         if (closed) return;
         // Wrap the entire tick body in try/catch. A transient DB error
-        // (e.g. Neon serverless disconnect) used to throw out of this
+        // (e.g. Supavisor disconnect) used to throw out of this
         // function and skip the setTimeout(tick, 1500) at the end —
         // silently stalling the SSE forever. The browser's EventSource
         // stayed open (keepalives kept arriving) but no new snapshots,

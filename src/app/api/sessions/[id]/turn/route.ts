@@ -45,8 +45,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!isBegin && !body?.message?.trim()) return jsonResponse({ error: 'missing-message' }, 400);
 
   // Wrap the preamble (session lookup, quota, lock) so a DB connection blip
-  // returns a clean JSON error instead of a bare 500. Neon's serverless
-  // Postgres occasionally drops the first query after an idle period; an
+  // returns a clean JSON error instead of a bare 500. Supavisor occasionally
+  // drops the first query after an idle period; an
   // unhandled rejection here would surface as "500 (Internal Server Error)"
   // in the chat UI with no recoverable signal.
   let campaign: typeof campaigns.$inferSelect;

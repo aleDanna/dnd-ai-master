@@ -116,7 +116,7 @@ export async function lookupCatalogItem(
   if (isCurrencySlug(s)) return { kind: 'currency', code: s };
 
   // Probe each SRD table by primary key. These are O(1) point lookups; we
-  // could parallelise, but the round-trip cost on neon is dominated by the
+  // could parallelise, but the round-trip cost on Supabase is dominated by the
   // first query — sequencing keeps the typical case (weapon found first) at
   // one network hop.
   const [weaponRow] = await db.select().from(srdWeapon).where(eq(srdWeapon.slug, s)).limit(1);

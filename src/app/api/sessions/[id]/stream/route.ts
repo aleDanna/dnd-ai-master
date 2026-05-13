@@ -14,9 +14,9 @@ export async function GET(req: NextRequest, ctx: Ctx) {
   const access = await checkPartyAccess(userId, sessionId);
   if (!access) return new Response('forbidden', { status: 403 });
 
-  // Dedicated direct (un-pooled) connection — Neon's main DATABASE_URL is the
-  // pgbouncer pooler in transaction mode, which does NOT support LISTEN.
-  // `createListenClient` reads `DATABASE_URL_UNPOOLED` when present and falls
+  // Dedicated session-mode connection — DATABASE_URL is the Supabase transaction
+  // pooler (Supavisor port 6543), which does NOT support LISTEN. `createListenClient`
+  // reads `DATABASE_URL_UNPOOLED` (session pooler, port 5432) when present and falls
   // back to the regular URL locally.
   const client = createListenClient();
   await client.connect();
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
         }
       });
       // Surface connection errors instead of swallowing them — a dropped
-      // unpooled connection (Neon idle disconnect, network blip) used to
+      // session-pool connection (Supavisor idle eviction, network blip) used to
       // leave the SSE stream open but mute, with no NOTIFY ever flowing.
       client.on('error', (err) => {
         console.error('LISTEN client error:', err instanceof Error ? err.message : err);

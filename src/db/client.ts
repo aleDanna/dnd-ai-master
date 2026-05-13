@@ -29,16 +29,16 @@ export { pool };
 /**
  * Open a fresh, dedicated client for `LISTEN/NOTIFY`.
  *
- * Why a separate connection: Neon's main `DATABASE_URL` is the **pooled**
- * endpoint (pgbouncer in transaction mode), which does **not** support
- * `LISTEN` — pgbouncer hands the pooled connection back to the pool between
- * statements, so notifications fired against the underlying session never
- * reach the LISTEN-er.
+ * Why a separate connection: `DATABASE_URL` is the Supabase **transaction
+ * pooler** (Supavisor, port 6543), which does **not** support `LISTEN` — the
+ * pooler hands the connection back between statements, so notifications fired
+ * against the underlying session never reach the LISTEN-er.
  *
- * On Vercel we expose `DATABASE_URL_UNPOOLED` (Neon's direct endpoint) for
- * exactly this kind of long-lived session work; locally `pnpm db:up` is a
- * single Postgres so the regular URL works just fine — we fall back to
- * `DATABASE_URL` when the unpooled var is absent.
+ * `DATABASE_URL_UNPOOLED` points at the Supabase **session pooler** (port 5432)
+ * which keeps a connection bound to one underlying session for its lifetime,
+ * making it safe for `LISTEN`. Locally `pnpm db:up` is a single Postgres so
+ * the regular URL works fine — we fall back to `DATABASE_URL` when the
+ * unpooled var is absent.
  *
  * The caller MUST `client.release()` (or `client.end()`) on stream abort to
  * avoid leaking sockets — we do that in `/api/sessions/[id]/stream`.

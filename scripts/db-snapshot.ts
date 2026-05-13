@@ -2,7 +2,7 @@
  * Dump a Postgres database into .snapshots/dnd-<timestamp>.dump using pg_dump (custom format).
  *
  * Uses a Docker container so no host pg_dump install is required. Defaults to dumping
- * SOURCE_DATABASE_URL (or DATABASE_URL if not set) — typically your Neon instance.
+ * SOURCE_DATABASE_URL (or DATABASE_URL if not set) — typically your Supabase instance.
  *
  * Usage:
  *   pnpm db:snapshot                          # dumps $DATABASE_URL
