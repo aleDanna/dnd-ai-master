@@ -69,38 +69,64 @@ export function computeTurnAdvance(args: {
  * Scan a master narration and return the character id the prose is addressing,
  * if any. The signal is a "<Name>," pattern at the start of a sentence —
  * either at the very start of the message ("Kank Reena, le parole di Bruce
- * risuonano in te..." opening a POV narration) or at the end ("Kank, cosa
- * fai?" closing with an action prompt).
+ * risuonano in te..." opening a POV narration) or at the end ("Bruce, cosa
+ * rispondi?" closing with an action prompt).
  *
- * Scans the WHOLE message: the addressee is the LAST `<Name>,` match by
- * position. This catches both:
- *   - POV-opening addresses where the master narrates the actor's perspective
- *     at the start and ends with a generic action prompt ("Tira una prova"),
- *   - closing-prompt addresses where the action is asked at the end ("Kank,
- *     cosa fai?").
+ * Both full names AND short forms (first / last name tokens of length ≥ 3)
+ * are accepted, so an address like "Bruce, cosa rispondi?" still routes to
+ * the "Bruce Kettah" PG. Ambiguous short forms — a token shared by two or
+ * more party members — are excluded for those characters; the master must
+ * use the full name to disambiguate.
  *
- * Returns null when:
- *   - no party-name occurs after a sentence boundary in the message
- *   - multiple names match — we take the LAST one as the latest signal
+ * Scans the WHOLE message: the addressee is the LAST match by position. This
+ * catches both POV-opening addresses ("Kank Reena, le parole di Bruce
+ * risuonano...") and closing-prompt addresses ("Bruce, cosa fai?").
  *
- * Intentionally narrow: bare mentions ("the merchant nods at Bruce.") don't
- * trigger, only "<Name>," after a sentence boundary or paragraph break. False
- * positives mis-route the turn, so we keep the lead-in set tight
- * (`[\n.!?:]`) and require an immediate comma after the name.
+ * Returns null when no party-name occurs after a sentence boundary in the
+ * message. Intentionally narrow: bare mentions ("the merchant nods at
+ * Bruce.") don't trigger, only "<Name>," after a sentence boundary or
+ * paragraph break.
  */
 export function detectAddressee(
   text: string,
   party: Array<{ id: string; name: string }>,
 ): { id: string } | null {
   if (!text || party.length === 0) return null;
-  const matches: Array<{ id: string; index: number }> = [];
+
+  // Build the variant → owner map. Each character contributes its full name
+  // plus every whitespace-separated token of length ≥ 3 (so "Bruce Kettah"
+  // contributes "Bruce Kettah", "Bruce", and "Kettah"). If two characters
+  // collide on a variant (e.g. two PGs with first name "Bruce"), that
+  // variant is dropped for both — the master must use the full name to
+  // disambiguate. Full names themselves rarely collide; if they do, we
+  // drop them too rather than guess.
+  const ownerByVariant = new Map<string, string>();
+  const ambiguous = new Set<string>();
   for (const c of party) {
     if (!c.name) continue;
-    const pattern = `(?:^|[\\n.!?:]\\s*)${escapeRegex(c.name)},`;
+    const variants = new Set<string>([c.name]);
+    for (const tok of c.name.split(/\s+/)) {
+      if (tok.length >= 3) variants.add(tok);
+    }
+    for (const v of variants) {
+      if (ambiguous.has(v)) continue;
+      const prev = ownerByVariant.get(v);
+      if (prev !== undefined && prev !== c.id) {
+        ambiguous.add(v);
+        ownerByVariant.delete(v);
+      } else {
+        ownerByVariant.set(v, c.id);
+      }
+    }
+  }
+
+  const matches: Array<{ id: string; index: number }> = [];
+  for (const [variant, id] of ownerByVariant) {
+    const pattern = `(?:^|[\\n.!?:]\\s*)${escapeRegex(variant)},`;
     const re = new RegExp(pattern, 'g');
     let m: RegExpExecArray | null;
     while ((m = re.exec(text)) !== null) {
-      matches.push({ id: c.id, index: m.index });
+      matches.push({ id, index: m.index });
     }
   }
   if (matches.length === 0) return null;

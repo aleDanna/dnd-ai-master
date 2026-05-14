@@ -180,4 +180,56 @@ describe('detectAddressee', () => {
     const text = 'Bruce, le ombre si muovono attorno a te. Dopo un momento, ti volti.\n\nKank, cosa fai?';
     expect(detectAddressee(text, named)).toEqual({ id: 'kank-id' });
   });
+
+  // The "first-name only" bug: party rows store full names ("Bruce Kettah",
+  // "Kank Reena") but the master naturally drops to first names in dialog
+  // ("Bruce, cosa rispondi?"). Without short-form support the closing
+  // address misses and the server skips the turn switch.
+  it('matches a short-form first name when the party uses full names', () => {
+    const fullNamed = [
+      { id: 'bruce-id', name: 'Bruce Kettah' },
+      { id: 'kank-id', name: 'Kank Reena' },
+    ];
+    const text =
+      'Kank Reena, stringi la pergamena.\n\nBruce Kettah ti guarda, la sua espressione riflessiva.\n\nBruce, Kank ti ha appena chiesto un parere. Cosa rispondi?';
+    expect(detectAddressee(text, fullNamed)).toEqual({ id: 'bruce-id' });
+  });
+
+  it('matches a short-form last name when unambiguous', () => {
+    const fullNamed = [
+      { id: 'bruce-id', name: 'Bruce Kettah' },
+      { id: 'kank-id', name: 'Kank Reena' },
+    ];
+    expect(detectAddressee('La storia continua. Kettah, sei pronto?', fullNamed)).toEqual({ id: 'bruce-id' });
+  });
+
+  it('drops ambiguous short forms when two PGs share a token (must use full name)', () => {
+    // Two Bruces in the party → "Bruce," alone is ambiguous and excluded.
+    // The master must use the disambiguating last name.
+    const collidingParty = [
+      { id: 'bruce-a', name: 'Bruce Kettah' },
+      { id: 'bruce-b', name: 'Bruce Tarras' },
+    ];
+    // Short "Bruce," → dropped, no match.
+    expect(detectAddressee('Le ombre si muovono. Bruce, cosa fai?', collidingParty)).toBeNull();
+    // Full "Bruce Kettah," → routes correctly.
+    expect(detectAddressee('Bruce Kettah, cosa fai?', collidingParty)).toEqual({ id: 'bruce-a' });
+    // Unique last name still works ("Tarras" only belongs to bruce-b).
+    expect(detectAddressee('Le ombre si muovono. Tarras, cosa fai?', collidingParty)).toEqual({ id: 'bruce-b' });
+  });
+
+  it('ignores name tokens shorter than 3 chars (so a "Bo" PG does not get spuriously matched)', () => {
+    const shortNamed = [{ id: 'bo-id', name: 'Bo' }];
+    // The 2-char name itself is still a full-name variant, but no token
+    // pruning happens — the regex still anchors on sentence boundary + comma
+    // so this single match is intentional.
+    expect(detectAddressee('Cosa fai?\n\nBo, tocca a te.', shortNamed)).toEqual({ id: 'bo-id' });
+    // But token-pruning DOES drop the 2-char first name of a multi-token PG.
+    const partialNamed = [{ id: 'al-id', name: 'Al Ironheart' }];
+    // "Al," alone (2 chars) is below the threshold → not added as a variant.
+    expect(detectAddressee('Cosa fai?\n\nAl, tocca a te.', partialNamed)).toBeNull();
+    // Full name and last name (≥ 3 chars) still match.
+    expect(detectAddressee('Al Ironheart, tocca a te.', partialNamed)).toEqual({ id: 'al-id' });
+    expect(detectAddressee('Cosa fai?\n\nIronheart, tocca a te.', partialNamed)).toEqual({ id: 'al-id' });
+  });
 });
