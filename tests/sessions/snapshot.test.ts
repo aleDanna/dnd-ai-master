@@ -119,4 +119,70 @@ describe('buildSnapshot', () => {
     ]);
     expect(pc.classSlug).toBe('fighter');
   });
+
+  // Cross-character tools (e.g. add_item / remove_item targeting a
+  // non-active PG during an inventory transfer) need EVERY party member
+  // in state.characters or the handler returns `unknown_actor` and
+  // silently emits no mutation. Regression for the "item transfer didn't
+  // remove from giver or add to receiver" report.
+  it('multiplayer: state.characters includes every party member, with active PG first', async () => {
+    await ensureUser(TEST_USER);
+
+    // First PG — will become the active one.
+    const w1 = emptyWizardState();
+    w1.raceSlug = 'half-elf';
+    w1.classSlug = 'fighter';
+    w1.backgroundSlug = 'soldier';
+    w1.identity.name = 'Bruce';
+    const { id: bruceId } = await saveCharacter({ userId: TEST_USER, wizard: w1 });
+
+    // Second PG — same campaign, distinct user (a teammate). The party
+    // query filters by campaignId + templateId IS NOT NULL.
+    const teammate = 'user_teammate_' + Date.now();
+    await ensureUser(teammate);
+    const w2 = emptyWizardState();
+    w2.raceSlug = 'half-elf';
+    w2.classSlug = 'wizard';
+    w2.backgroundSlug = 'sage';
+    w2.identity.name = 'Kank';
+    const { id: kankId } = await saveCharacter({ userId: teammate, wizard: w2 });
+
+    const campaignId = await makeTestCampaign('multiplayer scene');
+    await db
+      .update(characters)
+      .set({ templateId: bruceId, campaignId })
+      .where(eq(characters.id, bruceId));
+    await db
+      .update(characters)
+      .set({ templateId: kankId, campaignId })
+      .where(eq(characters.id, kankId));
+
+    const [session] = await db
+      .insert(sessions)
+      .values({
+        userId: TEST_USER,
+        characterId: bruceId,
+        currentPlayerCharacterId: bruceId,
+        premise: 'multiplayer scene',
+        campaignId,
+      })
+      .returning();
+    await db.insert(sessionState).values({ sessionId: session!.id, hpCurrent: 11, hitDiceRemaining: 1 });
+
+    const snap = await buildSnapshot(session!.id, TEST_USER);
+    expect(snap.state.characters.length).toBe(2);
+    // Active PG first — protects legacy callers (e.g. addNarrativeItem) that
+    // read state.characters[0] as "the PC".
+    expect(snap.state.characters[0]!.id).toBe(bruceId);
+    expect(snap.state.characters[0]!.name).toBe('Bruce');
+    // The other party member is also present, so cross-character handlers
+    // (`state.characters.find(c => c.id === <kank_uuid>)`) succeed.
+    const kank = snap.state.characters.find((c) => c.id === kankId);
+    expect(kank).toBeDefined();
+    expect(kank!.name).toBe('Kank');
+
+    // Cleanup the teammate user the afterAll hook doesn't cover.
+    await db.execute(sql`delete from characters where user_id = ${teammate}`);
+    await db.execute(sql`delete from users where id = ${teammate}`);
+  });
 });

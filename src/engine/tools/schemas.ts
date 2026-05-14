@@ -37,5 +37,6 @@ export const CONDITION_ENUM = {
 
 export const ACTOR_ID = {
   type: 'string' as const,
-  description: 'Either "player_character" or a combat actor id (e.g. "m1") returned by a previous tool result.',
+  description:
+    'Identifier of the actor the mutation targets. Accepts: "player_character" (solo-mode alias for the only PG); a party member\'s character UUID (multiplayer — see the PARTY MODE block for the roster of valid UUIDs); a combat actor id like "m1" returned by a previous tool result. In multiplayer the "player_character" alias only resolves when the party has one member — for cross-character ops (e.g. add_item on the receiver during an item transfer), always pass the explicit UUID.',
 };

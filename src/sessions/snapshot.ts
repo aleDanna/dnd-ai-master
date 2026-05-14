@@ -308,6 +308,72 @@ function hydrateClasses(
   return [{ slug: fallbackClassSlug, level: Math.max(1, Math.floor(fallbackLevel || 1)) }];
 }
 
+/**
+ * Turn a `characters` table row into the engine-shape `Character` object the
+ * tool handlers operate on. Shared between the active-PG hydration and the
+ * multiplayer party hydration so every party member receives the same
+ * defensive treatment (focus, crafting projects, hirelings, bastion, mounted/
+ * embarked state, etc.).
+ */
+function hydrateEngineCharacter(
+  row: CharacterDbRow,
+  classes: ClassLevel[],
+  primaryClassSlug: string,
+): Character {
+  return {
+    id: row.id,
+    name: row.name,
+    level: row.level,
+    xp: row.xp,
+    classSlug: primaryClassSlug,
+    classes,
+    raceSlug: row.raceSlug,
+    backgroundSlug: row.backgroundSlug,
+    abilities: row.abilities,
+    proficiencyBonus: row.proficiencyBonus,
+    hpMax: row.hpMax,
+    ac: row.ac,
+    speed: row.speed,
+    proficiencies: row.proficiencies as Character['proficiencies'],
+    inspiration: row.inspiration ?? false,
+    spellcasting: row.spellcasting as Character['spellcasting'],
+    features: row.features as Character['features'],
+    inventory: row.inventory,
+    // PHB §10.1: hydrate from the persisted column. The DB default is `[]`
+    // but historic rows pre-migration may surface as null/undefined; the
+    // `??` keeps the engine-side type non-nullable.
+    attunedItems: Array.isArray(row.attunedItems) ? row.attunedItems : [],
+    hitDiceMax: row.hitDiceMax,
+    hitDieSize: row.hitDieSize,
+    // PHB §6.4 — hydrate the optional Senses column. NULL → undefined so
+    // the engine type's optional field reads as absent.
+    senses: row.senses ?? undefined,
+    // PHB §8.4 — hydrate the equipped focus. We validate the kind
+    // against the FocusKind union so a corrupt/legacy value can't
+    // crash component validation downstream.
+    equippedFocus: hydrateFocus(row.equippedFocus),
+    // PHB §5 + DMG — hydrate in-flight crafting projects. Defaults to
+    // [] so callers can rely on the array always being present even
+    // when the row predates the column.
+    craftingProjects: hydrateCraftingProjects(row.craftingProjects),
+    // PHB §6 — Phase 13 downtime activities. Defaults to [] so legacy
+    // rows pre-migration still typecheck.
+    downtimeActivities: hydrateDowntimeActivities(row.downtimeActivities),
+    // PHB §6 — Phase 13 hireling roster. Defaults to [].
+    hirelings: hydrateHirelings(row.hirelings),
+    // 2024 PHB simplified Bastion. NULL → undefined so the optional
+    // field reads as absent on the engine type.
+    bastion: hydrateBastion(row.bastion),
+    // PHB §3.23 — Phase 14 mounted state. Defaults to undefined when
+    // the column is null / malformed; the tool layer treats absence
+    // as "on foot".
+    mountedOn: hydrateMountedOn(row.mountedOn),
+    // PHB §9.6 — Phase 14 vehicle embarkation. Slug into the
+    // catalog; undefined when not embarked.
+    embarkedOn: hydrateEmbarkedOn(row.embarkedOn),
+  };
+}
+
 export async function buildSnapshot(sessionId: string, userId: string): Promise<SnapshotForModel> {
   // Note: no userId filter here — multiplayer guests need to load the snapshot
   // of a session they don't own. Route-level checkPartyAccess gates who can
@@ -358,59 +424,21 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
   const classes = hydrateClasses(character.classes, character.classSlug, character.level);
   const primaryClassSlug = classes[0]?.slug ?? character.classSlug;
 
+  // In a multiplayer party the engine needs every PG visible in
+  // `state.characters` so cross-character tools (e.g. `add_item(actor:
+  // <kank_uuid>)` while Bruce is active during a "give item" beat) can
+  // resolve the target. The active PG is kept at index 0 to preserve
+  // legacy callers that read `state.characters[0]` as "the PC" (e.g.
+  // `addNarrativeItem`). In solo mode the array stays single-element.
   const characters: Character[] = [
-    {
-      id: character.id,
-      name: character.name,
-      level: character.level,
-      xp: character.xp,
-      classSlug: primaryClassSlug,
-      classes,
-      raceSlug: character.raceSlug,
-      backgroundSlug: character.backgroundSlug,
-      abilities: character.abilities,
-      proficiencyBonus: character.proficiencyBonus,
-      hpMax: character.hpMax,
-      ac: character.ac,
-      speed: character.speed,
-      proficiencies: character.proficiencies as Character['proficiencies'],
-      inspiration: character.inspiration ?? false,
-      spellcasting: character.spellcasting as Character['spellcasting'],
-      features: character.features as Character['features'],
-      inventory: character.inventory,
-      // PHB §10.1: hydrate from the persisted column. The DB default is `[]`
-      // but historic rows pre-migration may surface as null/undefined; the
-      // `??` keeps the engine-side type non-nullable.
-      attunedItems: Array.isArray(character.attunedItems) ? character.attunedItems : [],
-      hitDiceMax: character.hitDiceMax,
-      hitDieSize: character.hitDieSize,
-      // PHB §6.4 — hydrate the optional Senses column. NULL → undefined so
-      // the engine type's optional field reads as absent.
-      senses: character.senses ?? undefined,
-      // PHB §8.4 — hydrate the equipped focus. We validate the kind
-      // against the FocusKind union so a corrupt/legacy value can't
-      // crash component validation downstream.
-      equippedFocus: hydrateFocus(character.equippedFocus),
-      // PHB §5 + DMG — hydrate in-flight crafting projects. Defaults to
-      // [] so callers can rely on the array always being present even
-      // when the row predates the column.
-      craftingProjects: hydrateCraftingProjects(character.craftingProjects),
-      // PHB §6 — Phase 13 downtime activities. Defaults to [] so legacy
-      // rows pre-migration still typecheck.
-      downtimeActivities: hydrateDowntimeActivities(character.downtimeActivities),
-      // PHB §6 — Phase 13 hireling roster. Defaults to [].
-      hirelings: hydrateHirelings(character.hirelings),
-      // 2024 PHB simplified Bastion. NULL → undefined so the optional
-      // field reads as absent on the engine type.
-      bastion: hydrateBastion(character.bastion),
-      // PHB §3.23 — Phase 14 mounted state. Defaults to undefined when
-      // the column is null / malformed; the tool layer treats absence
-      // as "on foot".
-      mountedOn: hydrateMountedOn(character.mountedOn),
-      // PHB §9.6 — Phase 14 vehicle embarkation. Slug into the
-      // catalog; undefined when not embarked.
-      embarkedOn: hydrateEmbarkedOn(character.embarkedOn),
-    },
+    hydrateEngineCharacter(character, classes, primaryClassSlug),
+    ...partyRows
+      .filter((r) => r.id !== character.id)
+      .map((r) => {
+        const otherClasses = hydrateClasses(r.classes, r.classSlug, r.level);
+        const otherPrimary = otherClasses[0]?.slug ?? r.classSlug;
+        return hydrateEngineCharacter(r, otherClasses, otherPrimary);
+      }),
   ];
 
   const combatActors: CombatActor[] = actorRows.map(toEngineCombatActor);
