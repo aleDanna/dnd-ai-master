@@ -1153,13 +1153,30 @@ function buildPartyModeBlock(
   if (party.length <= 1) return ''; // solo: no party mode
   const list = party.map((c) => `- ${c.name} (${c.raceSlug} ${c.classSlug} L${c.level}, id: ${c.id})`).join('\n');
   const currentName = party.find((c) => c.id === currentPlayerCharacterId)?.name ?? '(unset)';
+  const currentId = currentPlayerCharacterId ?? '(unset)';
   return [
-    `PARTY MODE: This campaign has a party of ${party.length} characters:`,
+    `## PARTY MODE (CRITICAL — turn discipline)`,
+    `This campaign has a party of ${party.length} characters:`,
     list,
     '',
-    `Address players by their character name (e.g., "Tharion, you see..."). Never use "you" to refer to multiple players ambiguously. The character currently acting is ${currentName}.`,
+    `THE ACTIVE PG THIS BEAT: **${currentName}** (id: ${currentId}).`,
+    `Only the active PG may take an action right now. The character sheet in the snapshot below belongs to ${currentName} — those are the stats you adjudicate against.`,
     '',
-    `AT END OF EACH NARRATIVE BEAT, call the tool set_current_player with the characterId of the next player to act. Pick based on narrative tension, party initiative, or round-robin as feels natural. If you do not call set_current_player for 3 consecutive turns, the system will auto-advance round-robin to prevent deadlock.`,
+    `### Message attribution`,
+    `Player messages are prefixed with \`[CharacterName]\` so you can tell who typed what. The brackets are signal, not narration — don't echo them back. The prefix tells you WHO SPOKE; the active PG (above) tells you WHOSE TURN IT IS. Those can differ (a player may type out-of-turn flavor or a question).`,
+    '',
+    `### Hard rules — read before every response`,
+    `1. **Address the active PG only.** When the beat ends with "what do you do?" / "cosa fai?" / a roll request, it MUST be aimed at ${currentName}. Never end a beat asking a different PG to act without first calling \`set_current_player\` to make them the active PG.`,
+    `2. **Never roll on a player's behalf.** Not for ${currentName}, not for anyone. Every d20-driven outcome belongs to the player. If you find yourself writing "tira... il risultato è un 8" / "you roll... you get an 8", STOP — the player rolls, you only narrate the result AFTER they reply with their number.`,
+    `3. **Other PGs are bystanders this beat.** You may describe what they see, say, or do passively ("Kank watches from the doorway") but never invite them to make a decision or a check on this turn. Their turn comes when you hand it to them.`,
+    `4. **To hand the turn to another PG**, call \`set_current_player({ characterId: <uuid> })\` with one of the ids listed above. Pass the UUID, not the name. Once you call it, the addressed PG becomes active on the NEXT beat — keep your current narration focused on the beat you're closing.`,
+    `5. **Author prefix does not change the active PG.** If a non-active player types something, you may acknowledge their flavor briefly, but do not resolve actions or rolls for them — the active PG is still ${currentName}.`,
+    '',
+    `### Address pattern enforced server-side`,
+    `If your last paragraph addresses a non-active PG by name (e.g. "Kank, cosa fai?" while ${currentName} is active), the server will detect the mismatch and either (a) advance the turn to that PG if you forgot \`set_current_player\`, or (b) flag it in logs. Match the prose to the cpcId yourself — don't rely on the safety net.`,
+    '',
+    `### Idle deadlock fallback`,
+    `If you do not call \`set_current_player\` for 3 consecutive beats, the system auto-advances round-robin to prevent deadlock. This is a safety net — don't depend on it. Each beat should either close with the active PG continuing OR explicitly hand off via the tool.`,
   ].join('\n');
 }
 
@@ -1464,7 +1481,16 @@ When you DO need to write more than one roll in the same message (rare, see exce
 
 Note that the attack→damage cycle is NEITHER of these — it is two separate turns, not a single multi-roll message.
 
-Then end your turn and wait. When the player replies with the rolled total(s), narrate the outcome and call the deterministic state tools (\`apply_damage\`, \`use_resource\`, \`apply_condition\`, etc.) using their numbers. The player's numbers are authoritative — do not second-guess them, do not re-roll, do not ask them to "physically roll" or "grab dice".`;
+Then end your turn and wait. When the player replies with the rolled total(s), narrate the outcome and call the deterministic state tools (\`apply_damage\`, \`use_resource\`, \`apply_condition\`, etc.) using their numbers. The player's numbers are authoritative — do not second-guess them, do not re-roll, do not ask them to "physically roll" or "grab dice".
+
+### Party mode interaction
+The in-app roll button only appears in the UI of the **currently active PG** (the cpcId named in the PARTY MODE block). The app gates other players out so they can't click a button that isn't theirs.
+
+This means:
+- A roll formula in your prose lands in the active PG's UI. If the action belongs to the active PG, write the formula and end the beat — they'll click and reply.
+- If the action belongs to a DIFFERENT party member, you MUST call \`set_current_player({ characterId: <uuid of that PG> })\` BEFORE ending the beat. The next beat is when that PG sees the button.
+- **NEVER narrate a roll result for any PG yourself.** "Tira... il risultato è 8" / "you roll... you get an 8" is FORBIDDEN. Always write only the formula, then stop. The player rolls.
+- **NEVER compute or invent a roll for a non-active PG.** You don't have their character sheet in the snapshot — only the active PG's stats. If you find yourself thinking "Kank rolls History 8…" while Bruce is active, STOP. Hand the turn to Kank first (set_current_player), then in the NEXT beat ask Kank to tira 1d20+modifier.`;
 
 export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }[] } {
   const langHint = input.language ? `\n\nNarrative language for this session: ${input.language}. Mirror it.` : '';

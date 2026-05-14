@@ -46,14 +46,21 @@ interface SessionContext {
 
 async function loadContext(tx: Tx, sessionId: string): Promise<SessionContext | null> {
   const [s] = await tx
-    .select({ characterId: sessionsTable.characterId, campaignId: sessionsTable.campaignId })
+    .select({
+      characterId: sessionsTable.characterId,
+      currentPlayerCharacterId: sessionsTable.currentPlayerCharacterId,
+      campaignId: sessionsTable.campaignId,
+    })
     .from(sessionsTable)
     .where(eq(sessionsTable.id, sessionId))
     .limit(1);
   if (!s) return null;
-  const [c] = await tx.select({ hpMax: charactersTable.hpMax }).from(charactersTable).where(eq(charactersTable.id, s.characterId)).limit(1);
+  // Multiplayer: mutations land on the currently acting PG, not the host.
+  // Falls back to the legacy `characterId` for solo and unmigrated rows.
+  const activeId = s.currentPlayerCharacterId ?? s.characterId;
+  const [c] = await tx.select({ hpMax: charactersTable.hpMax }).from(charactersTable).where(eq(charactersTable.id, activeId)).limit(1);
   if (!c) return null;
-  return { characterId: s.characterId, hpMax: c.hpMax, campaignId: s.campaignId };
+  return { characterId: activeId, hpMax: c.hpMax, campaignId: s.campaignId };
 }
 
 /**

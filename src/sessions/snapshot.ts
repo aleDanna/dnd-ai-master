@@ -322,8 +322,13 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
   if (!row) throw new Error(`buildSnapshot: session ${sessionId} not found (viewer ${userId})`);
   const { session, campaign } = row;
 
-  const [character] = await db.select().from(charactersTable).where(eq(charactersTable.id, session.characterId)).limit(1);
-  if (!character) throw new Error(`buildSnapshot: character ${session.characterId} not found`);
+  // Multiplayer: in a party, the master should see the stats of whoever is
+  // currently acting (cpcId), not always the host. Falls back to the legacy
+  // session.characterId for solo sessions and edge cases where the migration
+  // hasn't backfilled cpcId yet.
+  const activeCharacterId = session.currentPlayerCharacterId ?? session.characterId;
+  const [character] = await db.select().from(charactersTable).where(eq(charactersTable.id, activeCharacterId)).limit(1);
+  if (!character) throw new Error(`buildSnapshot: character ${activeCharacterId} not found`);
 
   // Multiplayer — fetch all instance characters for this campaign so consumers
   // can render the full party roster and identify each player's character.

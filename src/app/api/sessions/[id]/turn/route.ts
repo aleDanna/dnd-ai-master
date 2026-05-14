@@ -21,7 +21,7 @@ import { getSessionMasterPreferences } from '@/lib/preferences';
 import { loadMemoryContext } from '@/sessions/memory/context';
 import { extractMemory } from '@/sessions/memory/extractor';
 import { touchCampaign } from '@/campaigns/persist';
-import { computeTurnAdvance } from '@/multiplayer/turn-advance';
+import { computeTurnAdvance, detectAddressee } from '@/multiplayer/turn-advance';
 import { notifySession } from '@/sessions/notify';
 import { checkPartyAccess } from '@/multiplayer/access';
 
@@ -204,10 +204,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             .where(and(eq(sessionMessages.sessionId, sessionId), eq(sessionMessages.cacheBreakpoint, false)))
             .orderBy(desc(sessionMessages.createdAt))
             .limit(20);
+          // In PARTY MODE the master needs to know which PG authored each
+          // player message — otherwise it can't tell "I tip the guard" from
+          // "Kank tips the guard". Solo mode keeps the bare content (no
+          // bracket noise for a single-character session).
+          const nameById = new Map<string, string>(snap.party.map((c) => [c.id, c.name]));
+          const usePrefix = snap.party.length > 1;
           history = recent
             .reverse()
             .filter((m) => m.role !== 'system')
-            .map((m) => ({ role: m.role === 'master' ? 'assistant' : 'user', content: m.content }));
+            .map((m) => {
+              if (m.role === 'master') return { role: 'assistant', content: m.content };
+              const name = usePrefix && m.authorCharacterId ? nameById.get(m.authorCharacterId) : null;
+              const content = name ? `[${name}] ${m.content}` : m.content;
+              return { role: 'user', content };
+            });
         }
 
         // 5. Run the tool loop — events forwarded to SSE subscribers via notifySession.
@@ -273,7 +284,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             .limit(1);
           if (s && s.campaignId) {
             const party = await tx
-              .select({ id: charactersTable.id, createdAt: charactersTable.createdAt })
+              .select({ id: charactersTable.id, name: charactersTable.name, createdAt: charactersTable.createdAt })
               .from(charactersTable)
               .where(and(
                 eq(charactersTable.campaignId, s.campaignId),
@@ -281,11 +292,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 isNotNull(charactersTable.templateId),
               ))
               .orderBy(charactersTable.createdAt);
+            // Prose-derived addressee: when the master closes with "Kank,
+            // cosa fai?" the player will expect to act as Kank. Use this
+            // as the highest-priority signal — it overrides both the
+            // master's tool call (which may have been off-by-one) and the
+            // round-robin fallback (which would mis-rotate when the master
+            // forgot the tool but did address someone explicitly).
+            const addressee = detectAddressee(result.finalText, party);
             const decision = computeTurnAdvance({
               isBegin,
               beforeCpcId: authorCharacterId,
               afterCpcId: s.cpcId,
               party,
+              addresseeId: addressee?.id ?? null,
             });
             if (decision.kind === 'advance') {
               await tx

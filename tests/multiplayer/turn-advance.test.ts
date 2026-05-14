@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeTurnAdvance } from '@/multiplayer/turn-advance';
+import { computeTurnAdvance, detectAddressee } from '@/multiplayer/turn-advance';
 
 type Char = { id: string; createdAt: Date };
 const party: Char[] = [
@@ -71,5 +71,100 @@ describe('computeTurnAdvance', () => {
     });
     // nextInParty('', party) returns party[0] — usopp here.
     expect(result).toEqual({ kind: 'advance', nextCharacterId: 'usopp' });
+  });
+
+  // The screenshot bug: master prose ends with "Kank, cosa fai?" while the
+  // tool layer never moved cpcId off Bruce. Round-robin alone may rotate
+  // to the wrong PG (alphabetical / creation-order next). The addressee
+  // signal overrides round-robin and matches cpcId to the prose.
+  it('advances to the addressed PG even when master forgot set_current_player', () => {
+    const result = computeTurnAdvance({
+      isBegin: false,
+      beforeCpcId: 'usopp',
+      afterCpcId: 'usopp',
+      party,
+      addresseeId: 'luffy',
+    });
+    expect(result).toEqual({ kind: 'advance', nextCharacterId: 'luffy' });
+  });
+
+  it('addressee overrides a wrong set_current_player tool call', () => {
+    const result = computeTurnAdvance({
+      isBegin: false,
+      beforeCpcId: 'usopp',
+      // Master moved cpcId to itself (no-op) but prose addresses Luffy.
+      // Trust the prose over the broken tool call.
+      afterCpcId: 'usopp',
+      party,
+      addresseeId: 'luffy',
+    });
+    expect(result).toEqual({ kind: 'advance', nextCharacterId: 'luffy' });
+  });
+
+  it('skips when addressee matches cpcId (prose and tool agree)', () => {
+    const result = computeTurnAdvance({
+      isBegin: false,
+      beforeCpcId: 'usopp',
+      afterCpcId: 'luffy',
+      party,
+      addresseeId: 'luffy',
+    });
+    expect(result).toEqual({ kind: 'skip' });
+  });
+
+  it('ignores addressee not in the party (defensive against bad prose match)', () => {
+    const result = computeTurnAdvance({
+      isBegin: false,
+      beforeCpcId: 'usopp',
+      afterCpcId: 'usopp',
+      party,
+      addresseeId: 'someone-else',
+    });
+    // Falls through to round-robin since the addressee is bogus.
+    expect(result).toEqual({ kind: 'advance', nextCharacterId: 'luffy' });
+  });
+});
+
+describe('detectAddressee', () => {
+  const named = [
+    { id: 'bruce-id', name: 'Bruce' },
+    { id: 'kank-id', name: 'Kank' },
+  ];
+
+  it('returns the last comma-addressed PG in the tail', () => {
+    const text =
+      "Bruce, il tuo sguardo è teso, in attesa di una reazione più chiara dal 'Cercatore'.\n\nKank, cosa fai?";
+    expect(detectAddressee(text, named)).toEqual({ id: 'kank-id' });
+  });
+
+  it('catches an addressee at the very start of the message', () => {
+    const text = 'Bruce, the door creaks open. What do you do?';
+    expect(detectAddressee(text, named)).toEqual({ id: 'bruce-id' });
+  });
+
+  it('returns null when no party name is followed by a comma at a sentence boundary', () => {
+    const text = 'The merchant nods at Bruce. Kank watches from the door.';
+    expect(detectAddressee(text, named)).toBeNull();
+  });
+
+  it('ignores bare mentions inside narrative prose', () => {
+    const text = 'You see Bruce slumped against the wall. The hall is silent.';
+    expect(detectAddressee(text, named)).toBeNull();
+  });
+
+  it('returns null on empty input', () => {
+    expect(detectAddressee('', named)).toBeNull();
+    expect(detectAddressee('hello', [])).toBeNull();
+  });
+
+  it('handles English action prompts', () => {
+    const text = 'A wind sweeps the chamber. Kank, what do you do?';
+    expect(detectAddressee(text, named)).toEqual({ id: 'kank-id' });
+  });
+
+  it('handles names with special regex chars defensively (escaping)', () => {
+    const party = [{ id: 'x', name: 'O.G. the Brave' }];
+    const text = 'The fog parts. O.G. the Brave, your move.';
+    expect(detectAddressee(text, party)).toEqual({ id: 'x' });
   });
 });
