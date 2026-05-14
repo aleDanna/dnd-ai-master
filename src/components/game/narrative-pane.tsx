@@ -40,13 +40,15 @@ export interface NarrativePaneProps {
   disabledPlaceholder?: string;
   /** Party roster used to resolve author names on player messages. */
   party?: Array<{ id: string; name: string }>;
+  /** When true, padding tightens and the quick-action bar is hidden (mobile drawer host). */
+  compact?: boolean;
 }
 
 /** Number of newest messages visible on first load. The "Show previous"
  *  link reveals an additional batch of this size with each click. */
 const PAGE_SIZE = 10;
 
-export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, onCastSpell, manualRolls, imageGenerationEnabled = false, disabled = false, disabledPlaceholder, party = [] }: NarrativePaneProps) {
+export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, onCastSpell, manualRolls, imageGenerationEnabled = false, disabled = false, disabledPlaceholder, party = [], compact = false }: NarrativePaneProps) {
   const [draft, setDraft] = React.useState('');
   // Tamper-resistant pending roll. The text is set ONLY by handleRollResult
   // (called from the dice-button after the spinner settles) and rendered as
@@ -169,7 +171,7 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
           input bar with room to spare (the bar can grow when a chip lands).
           The sticky bar itself takes space in normal flow, but its shadow /
           border can still feel cramped without breathing room. */}
-      <div style={{ flex: 1, padding: '32px 40px 80px' }}>
+      <div style={{ flex: 1, padding: compact ? '16px 20px 100px' : '32px 40px 80px' }}>
         <div style={{ maxWidth: 680, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 22 }}>
           {hiddenCount > 0 && (
             <button
@@ -223,19 +225,21 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
       </div>
 
       <div style={{ position: 'sticky', bottom: 0, background: 'var(--bg-elev)', borderTop: '1px solid var(--border)', zIndex: 5 }}>
-        <div style={{ padding: '10px 40px 0' }}>
-          <div style={{ maxWidth: 680, margin: '0 auto', display: 'flex', gap: 6, paddingTop: 8, paddingBottom: 4, flexWrap: 'wrap' }}>
-            <Quick icon="dice" label="Skill check" disabled={disabled} onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'I make a Perception check.')} />
-            <Quick icon="sword" label="Attack" disabled={disabled} onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'I attack with my equipped weapon.')} />
-            {onCastSpell && <Quick icon="spell" label="Cast spell" disabled={disabled} onClick={onCastSpell} />}
-            <Quick icon="shield" label="Dodge" disabled={disabled} onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'I take the Dodge action.')} />
-            <Quick icon="heart" label="Short rest" disabled={disabled} onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'We take a short rest.')} />
-            <div style={{ flex: 1 }} />
-            <Quick icon="book" label="Look up rule" disabled={disabled} onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'Master, look up the rule for ')} />
+        {!compact && (
+          <div style={{ padding: '10px 40px 0' }}>
+            <div style={{ maxWidth: 680, margin: '0 auto', display: 'flex', gap: 6, paddingTop: 8, paddingBottom: 4, flexWrap: 'wrap' }}>
+              <Quick icon="dice" label="Skill check" disabled={disabled} onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'I make a Perception check.')} />
+              <Quick icon="sword" label="Attack" disabled={disabled} onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'I attack with my equipped weapon.')} />
+              {onCastSpell && <Quick icon="spell" label="Cast spell" disabled={disabled} onClick={onCastSpell} />}
+              <Quick icon="shield" label="Dodge" disabled={disabled} onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'I take the Dodge action.')} />
+              <Quick icon="heart" label="Short rest" disabled={disabled} onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'We take a short rest.')} />
+              <div style={{ flex: 1 }} />
+              <Quick icon="book" label="Look up rule" disabled={disabled} onClick={() => setDraft((d) => d + (d ? ' ' : '') + 'Master, look up the rule for ')} />
+            </div>
           </div>
-        </div>
+        )}
 
-        <div style={{ padding: '8px 40px 20px' }}>
+        <div style={{ padding: compact ? '8px 16px 16px' : '8px 40px 20px' }}>
         <div
           style={{
             maxWidth: 680,
