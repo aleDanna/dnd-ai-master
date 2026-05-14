@@ -296,11 +296,16 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
   // keep typing after their turn ended — every refetch / SSE message blanked
   // `viewerCharacterId` to null, and the composer popped open again.
   // Legacy single-character sessions have `currentPlayerCharacterId === null`,
-  // so we keep them permissive in that branch.
+  // so we keep them permissive in that branch. Solo campaigns (party of 0–1)
+  // also skip the gate: there's no other player to share the turn with, so
+  // any cpcId/viewerCharacterId mismatch (snapshot lag, legacy migrations)
+  // must NOT lock the only player out of their own game.
   const isMyTurn =
-    currentPlayerCharacterId === null
+    party.length <= 1
       ? true
-      : viewerCharacterId !== null && viewerCharacterId === currentPlayerCharacterId;
+      : currentPlayerCharacterId === null
+        ? true
+        : viewerCharacterId !== null && viewerCharacterId === currentPlayerCharacterId;
   const currentPlayerName = party.find((p) => p.id === currentPlayerCharacterId)?.name ?? '...';
 
   // Derive the latest persisted master message id for TTS autoplay.
