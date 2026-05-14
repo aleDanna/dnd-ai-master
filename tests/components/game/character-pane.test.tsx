@@ -239,3 +239,24 @@ describe('CharacterPane condition durations (PHB §3.6)', () => {
     expect(screen.queryByText(/\(\d+/)).toBeNull();
   });
 });
+
+describe('CharacterPane compact prop', () => {
+  it('renders without the sticky desktop sidebar chrome when compact=true', () => {
+    const { container } = render(
+      <CharacterPane character={baseCharacter} state={baseState} compact />,
+    );
+    const aside = container.querySelector('aside')!;
+    expect(aside.style.position).not.toBe('sticky');
+    expect(aside.style.width).not.toBe('280px');
+    expect(aside.style.borderRight).toBe('');
+  });
+
+  it('renders with the sticky sidebar chrome when compact is false (default)', () => {
+    const { container } = render(
+      <CharacterPane character={baseCharacter} state={baseState} />,
+    );
+    const aside = container.querySelector('aside')!;
+    expect(aside.style.position).toBe('sticky');
+    expect(aside.style.width).toBe('280px');
+  });
+});

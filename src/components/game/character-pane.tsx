@@ -18,18 +18,20 @@ export interface CharacterPaneProps {
   character: Character;
   state: SessionStateRow;
   enrichedInventory?: MasterInventoryView[];
+  /** When true the pane drops desktop sidebar chrome and renders as drawer content. */
+  compact?: boolean;
 }
 
-export function CharacterPane({ character, state, enrichedInventory }: CharacterPaneProps) {
+export function CharacterPane({ character, state, enrichedInventory, compact = false }: CharacterPaneProps) {
   const hpPct = character.hpMax > 0 ? Math.round((state.hpCurrent / character.hpMax) * 100) : 0;
   const hpTone = hpPct <= 25 ? 'var(--ember)' : hpPct <= 50 ? 'var(--gold)' : 'var(--verdigris)';
 
   return (
     <aside
       style={{
-        width: 280,
+        width: compact ? '100%' : 280,
         padding: 18,
-        borderRight: '1px solid var(--border)',
+        borderRight: compact ? '' : '1px solid var(--border)',
         background: 'var(--bg-elev)',
         display: 'flex',
         flexDirection: 'column',
@@ -38,10 +40,8 @@ export function CharacterPane({ character, state, enrichedInventory }: Character
         // Span the viewport vertically (minus the 56px sticky topbar) instead
         // of collapsing to content. The pane scrolls internally when its
         // sections overflow, but the chrome itself always reaches the bottom.
-        position: 'sticky',
-        top: 56,
-        height: 'calc(100vh - 56px)',
-        overflowY: 'auto',
+        // In compact mode (drawer), sticky chrome is removed.
+        ...(compact ? {} : { position: 'sticky', top: 56, height: 'calc(100vh - 56px)', overflowY: 'auto' }),
       }}
     >
       <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
