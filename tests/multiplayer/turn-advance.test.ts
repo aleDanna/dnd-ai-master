@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  computeTurnAdvance,
-  detectAddressee,
-  MAX_CONSECUTIVE_BEATS_ON_SAME_PG,
-} from '@/multiplayer/turn-advance';
+import { computeTurnAdvance, detectAddressee } from '@/multiplayer/turn-advance';
 
 type Char = { id: string; createdAt: Date };
 const party: Char[] = [
@@ -128,89 +124,6 @@ describe('computeTurnAdvance', () => {
     expect(result).toEqual({ kind: 'advance', nextCharacterId: 'luffy' });
   });
 
-  // Fairness fallback: when the master keeps addressing the same PG over and
-  // over without handing off, the system force-rotates after the streak hits
-  // MAX_CONSECUTIVE_BEATS_ON_SAME_PG. Without this, one player monopolises
-  // the spotlight (see the "Bruce-as-protagonist, Kank-as-bystander" bug).
-  describe('fairness fallback', () => {
-    it('allows the same PG to stay active under the streak threshold', () => {
-      const result = computeTurnAdvance({
-        isBegin: false,
-        beforeCpcId: 'usopp',
-        afterCpcId: 'usopp',
-        party,
-        addresseeId: 'usopp',
-        consecutiveBeatsOnCurrent: MAX_CONSECUTIVE_BEATS_ON_SAME_PG - 1,
-      });
-      // Streak below threshold + prose addresses the same PG → legitimate
-      // follow-up beat, do not interfere.
-      expect(result).toEqual({ kind: 'skip' });
-    });
-
-    it('force-rotates when the master keeps spotlight at the streak threshold', () => {
-      const result = computeTurnAdvance({
-        isBegin: false,
-        beforeCpcId: 'usopp',
-        afterCpcId: 'usopp',
-        party,
-        addresseeId: 'usopp',
-        consecutiveBeatsOnCurrent: MAX_CONSECUTIVE_BEATS_ON_SAME_PG,
-      });
-      expect(result).toEqual({ kind: 'advance', nextCharacterId: 'luffy' });
-    });
-
-    it('force-rotates even when prose has no addressee (silent spotlight hold)', () => {
-      const result = computeTurnAdvance({
-        isBegin: false,
-        beforeCpcId: 'usopp',
-        afterCpcId: 'usopp',
-        party,
-        addresseeId: null,
-        consecutiveBeatsOnCurrent: MAX_CONSECUTIVE_BEATS_ON_SAME_PG,
-      });
-      expect(result).toEqual({ kind: 'advance', nextCharacterId: 'luffy' });
-    });
-
-    it('does NOT force-rotate when the master hands off via prose (addressee != current)', () => {
-      // Streak is high but the master IS handing off to luffy — respect that
-      // signal instead of overriding with a round-robin pick (which would be
-      // luffy anyway here, but the principle holds for >2-PG parties).
-      const result = computeTurnAdvance({
-        isBegin: false,
-        beforeCpcId: 'usopp',
-        afterCpcId: 'usopp',
-        party,
-        addresseeId: 'luffy',
-        consecutiveBeatsOnCurrent: MAX_CONSECUTIVE_BEATS_ON_SAME_PG,
-      });
-      expect(result).toEqual({ kind: 'advance', nextCharacterId: 'luffy' });
-    });
-
-    it('does NOT force-rotate when the master hands off via tool (cpcId moved)', () => {
-      const result = computeTurnAdvance({
-        isBegin: false,
-        beforeCpcId: 'usopp',
-        afterCpcId: 'luffy',
-        party,
-        consecutiveBeatsOnCurrent: MAX_CONSECUTIVE_BEATS_ON_SAME_PG,
-      });
-      // Master already moved cpcId via the tool — the streak counter is stale
-      // on the route side and will be reset to 0 in the same transaction.
-      expect(result).toEqual({ kind: 'skip' });
-    });
-
-    it('does NOT force-rotate in a solo / 1-PG party regardless of streak', () => {
-      const result = computeTurnAdvance({
-        isBegin: false,
-        beforeCpcId: 'usopp',
-        afterCpcId: 'usopp',
-        party: [party[0]!],
-        addresseeId: 'usopp',
-        consecutiveBeatsOnCurrent: 99,
-      });
-      expect(result).toEqual({ kind: 'skip' });
-    });
-  });
 });
 
 describe('detectAddressee', () => {
@@ -254,5 +167,25 @@ describe('detectAddressee', () => {
     const party = [{ id: 'x', name: 'O.G. the Brave' }];
     const text = 'The fog parts. O.G. the Brave, your move.';
     expect(detectAddressee(text, party)).toEqual({ id: 'x' });
+  });
+
+  // The "Percezione" bug: master narrates a long POV section starting with
+  // "Kank Reena, le parole di Bruce..." and ends with a generic action prompt
+  // ("Tira una prova di Percezione.") — no closing addressee in the tail.
+  // The old tail-only scan returned null and round-robin sent the roll to
+  // the wrong PG. Scanning the whole message picks the POV-opening address.
+  it('catches a POV-opening addressee even when the closing prompt is generic', () => {
+    const text =
+      `Kank Reena, le parole di Bruce Kettah risuonano in te come una melodia agrodolce di speranza e incertezza. "Questa per me potrebbe essere una grande speranza. Speravo fosse vivo, ma non ne sono sicura." Dici, la tua voce è un sussurro che quasi si perde nell'aria. Poi, con un moto di cautela, decidi di usare i tuoi sensi affinati. "Nel frattempo faccio una prova di percezione sulle due persone che mi sono accanto, per vedere se riesco a riconoscerne la provenienza."\n\nTira una prova di Percezione.`;
+    const party = [
+      { id: 'bruce-id', name: 'Bruce Kettah' },
+      { id: 'kank-id', name: 'Kank Reena' },
+    ];
+    expect(detectAddressee(text, party)).toEqual({ id: 'kank-id' });
+  });
+
+  it('still prefers the LAST addressee when both opening and closing addresses are present', () => {
+    const text = 'Bruce, le ombre si muovono attorno a te. Dopo un momento, ti volti.\n\nKank, cosa fai?';
+    expect(detectAddressee(text, named)).toEqual({ id: 'kank-id' });
   });
 });

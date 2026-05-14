@@ -278,7 +278,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             .select({
               cpcId: sessions.currentPlayerCharacterId,
               campaignId: sessions.campaignId,
-              streak: sessions.turnsSinceMasterAdvance,
             })
             .from(sessions)
             .where(eq(sessions.id, sessionId))
@@ -293,12 +292,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 isNotNull(charactersTable.templateId),
               ))
               .orderBy(charactersTable.createdAt);
-            // Prose-derived addressee: when the master closes with "Kank,
-            // cosa fai?" the player will expect to act as Kank. Use this
-            // as the highest-priority signal — it overrides both the
-            // master's tool call (which may have been off-by-one) and the
-            // round-robin fallback (which would mis-rotate when the master
-            // forgot the tool but did address someone explicitly).
+            // Prose-derived addressee: scans the whole message for
+            // "<Name>," patterns at sentence boundaries. Catches both
+            // POV-opening addresses ("Kank Reena, le parole...") and
+            // closing-prompt addresses ("Kank, cosa fai?"). When the
+            // master writes either form, the system trusts the prose over
+            // the tool layer.
             const addressee = detectAddressee(result.finalText, party);
             const decision = computeTurnAdvance({
               isBegin,
@@ -306,30 +305,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               afterCpcId: s.cpcId,
               party,
               addresseeId: addressee?.id ?? null,
-              // Fairness fallback: how many beats has the current cpcId
-              // already been active for, BEFORE this beat. The route owns
-              // the counter (`turnsSinceMasterAdvance`); computeTurnAdvance
-              // owns the policy (force-rotate at the threshold).
-              consecutiveBeatsOnCurrent: s.streak ?? 0,
             });
             if (decision.kind === 'advance') {
-              // cpcId changes → reset the streak counter to 0. The new PG
-              // starts fresh; their first beat counts as #1 next iteration.
               await tx
                 .update(sessions)
                 .set({ currentPlayerCharacterId: decision.nextCharacterId, turnsSinceMasterAdvance: 0 })
                 .where(eq(sessions.id, sessionId));
               await notifySession(sessionId, { type: 'turn-change', characterId: decision.nextCharacterId });
-            } else if (!isBegin && party.length > 1 && s.cpcId !== null) {
-              // No advance + multiplayer + cpcId set → this beat extended
-              // the current PG's run. Increment the streak so the next
-              // beat sees `consecutiveBeatsOnCurrent` reflect reality and
-              // the fairness fallback can fire when the streak hits
-              // MAX_CONSECUTIVE_BEATS_ON_SAME_PG.
-              await tx
-                .update(sessions)
-                .set({ turnsSinceMasterAdvance: (s.streak ?? 0) + 1 })
-                .where(eq(sessions.id, sessionId));
             }
           }
           // Bump turnSeq for downstream consumers (cache keys, etc.).
