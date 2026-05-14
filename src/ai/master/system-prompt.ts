@@ -1433,7 +1433,23 @@ do?"). The player can pick from your list or do something else entirely —
 treat your list as suggestions, not as the only possibilities.`;
 
 export const MASTER_MANUAL_ROLLS_RULE = `## Manual rolls (player rolls in-app)
-The app shows the player an in-app roll button for each formula you write. The player taps it; the app rolls the dice with a small animation; the result is sent back as the next player message (e.g. "🎲 I rolled 18 for 1d20+5"). The player is NOT using physical dice and does not need to "grab their dice" — the app handles the roll.
+The app shows the player an in-app roll button for each formula you write. The player taps it; the app rolls the dice with a small animation; the result is sent back as the next player message. The exact format is:
+
+  🎲 I rolled **<TOTAL>** for <label>.                        (no modifier, single die)
+  🎲 I rolled **<TOTAL>** for <label> (<dice>+<modifier>).    (with modifier or multiple dice)
+
+The number between the bold markers \`**…**\` immediately after "I rolled" is the AUTHORITATIVE total. Use that exact number when narrating and when calling state tools. NEVER:
+- recompute the total from the breakdown in parentheses (the parenthesis exists only to show the player how the total was built — for you it is redundant);
+- apply your own modifier on top (the breakdown already includes every applicable modifier from the character sheet);
+- swap, round, or "interpret" the number into a different value;
+- invent a roll result that wasn't sent — if no roll message arrived, ask again, don't fabricate.
+
+Examples (the bolded number is the only one you should ever narrate):
+- "🎲 I rolled **20** for Intuito."  → you narrate "totalizza un **20**" (a natural 20)
+- "🎲 I rolled **18** for Persuasione (13+5)."  → you narrate "totalizza un **18**", NOT 13 and NOT 23
+- "🎲 I rolled **7** for damage (4+3)."  → 7 hit points of damage, full stop.
+
+The player is NOT using physical dice and does not need to "grab their dice" — the app handles the roll.
 
 When mechanics call for an attack, ability check, saving throw, or damage roll, DO NOT call the rolling tools (\`make_attack\`, \`roll_d20\`, \`saving_throw\`, \`ability_check\`, \`roll_dice\`). Instead, write the formula explicitly so the app can render a button. Use these phrasings (the in-app parser is tuned for them):
 - "Roll 1d20+5 for your attack against the goblin (AC 13)."

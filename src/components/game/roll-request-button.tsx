@@ -112,13 +112,23 @@ export function RollRequestButton({ request, onResult, onStart, disabled = false
  * Format a single roll result as a player-facing chat line. Exported so the
  * AND group coordinator can reuse the exact wording when assembling a combined
  * message from multiple rolls.
+ *
+ * The total is bolded and unambiguous so the master LLM cannot mis-read it.
+ * The optional breakdown is appended ONLY when it carries information the
+ * total alone doesn't convey — multiple dice, or a non-zero modifier. For a
+ * bare single d20 (e.g. 1d20 → 20) the breakdown is identical to the total
+ * and showing it as "(20)" was historically confusing the model into
+ * inventing a different number ("I rolled 20 for Intuito (20)." → master
+ * narrated 12). Dropping the redundant parenthetical eliminates that
+ * ambiguity at the source.
  */
 export function formatResultText(req: RollRequest, r: RollResult): string {
-  const breakdown =
-    r.rolls.length === 1 && r.modifier === 0
-      ? `${r.rolls[0]}`
-      : r.modifier !== 0
-        ? `${r.rolls.join('+')}${r.modifier >= 0 ? '+' : ''}${r.modifier}`
-        : r.rolls.join('+');
-  return `🎲 I rolled **${r.total}** for ${req.label} (${breakdown}).`;
+  const showBreakdown = r.rolls.length > 1 || r.modifier !== 0;
+  if (!showBreakdown) {
+    return `🎲 I rolled **${r.total}** for ${req.label}.`;
+  }
+  const dice = r.rolls.join('+');
+  const mod =
+    r.modifier === 0 ? '' : `${r.modifier > 0 ? '+' : ''}${r.modifier}`;
+  return `🎲 I rolled **${r.total}** for ${req.label} (${dice}${mod}).`;
 }
