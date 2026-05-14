@@ -1171,12 +1171,13 @@ function buildPartyModeBlock(
     `3. **Other PGs are bystanders this beat.** You may describe what they see, say, or do passively ("Kank watches from the doorway") but never invite them to make a decision or a check on this turn. Their turn comes when you hand it to them.`,
     `4. **To hand the turn to another PG**, call \`set_current_player({ characterId: <uuid> })\` with one of the ids listed above. Pass the UUID, not the name. Once you call it, the addressed PG becomes active on the NEXT beat — keep your current narration focused on the beat you're closing.`,
     `5. **Author prefix does not change the active PG.** If a non-active player types something, you may acknowledge their flavor briefly, but do not resolve actions or rolls for them — the active PG is still ${currentName}.`,
+    `6. **Rotate the spotlight fairly.** Every player must feel like a protagonist, not a bystander. When the active PG closes a self-contained beat — a finished speech, a decision, an attack resolution, a remark addressed to another PG, or any action that naturally invites a response — hand off to the next PG via \`set_current_player\` and address THAT PG in your closing prose. Do NOT keep the spotlight on ${currentName} for more than 2 consecutive beats in exploration / social / RP scenes. Combat is the only exception: the initiative tracker drives turn order there, and you follow it.`,
     '',
     `### Address pattern enforced server-side`,
-    `If your last paragraph addresses a non-active PG by name (e.g. "Kank, cosa fai?" while ${currentName} is active), the server will detect the mismatch and either (a) advance the turn to that PG if you forgot \`set_current_player\`, or (b) flag it in logs. Match the prose to the cpcId yourself — don't rely on the safety net.`,
+    `If your last paragraph addresses a non-active PG by name (e.g. "Kank, cosa fai?" while ${currentName} is active), the server will detect the mismatch and advance the turn to that PG (covering the case where you forgot \`set_current_player\`). Match the prose to the cpcId yourself — don't rely on the safety net.`,
     '',
-    `### Idle deadlock fallback`,
-    `If you do not call \`set_current_player\` for 3 consecutive beats, the system auto-advances round-robin to prevent deadlock. This is a safety net — don't depend on it. Each beat should either close with the active PG continuing OR explicitly hand off via the tool.`,
+    `### Fairness fallback (enforced server-side)`,
+    `The server tracks how many consecutive beats the same PG has been active. If ${currentName} has already held the spotlight for 2 beats and you neither call \`set_current_player\` nor address a different PG in your closing prose, the server force-rotates round-robin on the next beat — even if your prose addresses ${currentName} again. This prevents one player from monopolising the scene. Treat it as a hard ceiling, not a target: hand off explicitly as soon as a beat closes.`,
   ].join('\n');
 }
 

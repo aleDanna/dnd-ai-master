@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { computeTurnAdvance, detectAddressee } from '@/multiplayer/turn-advance';
+import {
+  computeTurnAdvance,
+  detectAddressee,
+  MAX_CONSECUTIVE_BEATS_ON_SAME_PG,
+} from '@/multiplayer/turn-advance';
 
 type Char = { id: string; createdAt: Date };
 const party: Char[] = [
@@ -122,6 +126,90 @@ describe('computeTurnAdvance', () => {
     });
     // Falls through to round-robin since the addressee is bogus.
     expect(result).toEqual({ kind: 'advance', nextCharacterId: 'luffy' });
+  });
+
+  // Fairness fallback: when the master keeps addressing the same PG over and
+  // over without handing off, the system force-rotates after the streak hits
+  // MAX_CONSECUTIVE_BEATS_ON_SAME_PG. Without this, one player monopolises
+  // the spotlight (see the "Bruce-as-protagonist, Kank-as-bystander" bug).
+  describe('fairness fallback', () => {
+    it('allows the same PG to stay active under the streak threshold', () => {
+      const result = computeTurnAdvance({
+        isBegin: false,
+        beforeCpcId: 'usopp',
+        afterCpcId: 'usopp',
+        party,
+        addresseeId: 'usopp',
+        consecutiveBeatsOnCurrent: MAX_CONSECUTIVE_BEATS_ON_SAME_PG - 1,
+      });
+      // Streak below threshold + prose addresses the same PG → legitimate
+      // follow-up beat, do not interfere.
+      expect(result).toEqual({ kind: 'skip' });
+    });
+
+    it('force-rotates when the master keeps spotlight at the streak threshold', () => {
+      const result = computeTurnAdvance({
+        isBegin: false,
+        beforeCpcId: 'usopp',
+        afterCpcId: 'usopp',
+        party,
+        addresseeId: 'usopp',
+        consecutiveBeatsOnCurrent: MAX_CONSECUTIVE_BEATS_ON_SAME_PG,
+      });
+      expect(result).toEqual({ kind: 'advance', nextCharacterId: 'luffy' });
+    });
+
+    it('force-rotates even when prose has no addressee (silent spotlight hold)', () => {
+      const result = computeTurnAdvance({
+        isBegin: false,
+        beforeCpcId: 'usopp',
+        afterCpcId: 'usopp',
+        party,
+        addresseeId: null,
+        consecutiveBeatsOnCurrent: MAX_CONSECUTIVE_BEATS_ON_SAME_PG,
+      });
+      expect(result).toEqual({ kind: 'advance', nextCharacterId: 'luffy' });
+    });
+
+    it('does NOT force-rotate when the master hands off via prose (addressee != current)', () => {
+      // Streak is high but the master IS handing off to luffy — respect that
+      // signal instead of overriding with a round-robin pick (which would be
+      // luffy anyway here, but the principle holds for >2-PG parties).
+      const result = computeTurnAdvance({
+        isBegin: false,
+        beforeCpcId: 'usopp',
+        afterCpcId: 'usopp',
+        party,
+        addresseeId: 'luffy',
+        consecutiveBeatsOnCurrent: MAX_CONSECUTIVE_BEATS_ON_SAME_PG,
+      });
+      expect(result).toEqual({ kind: 'advance', nextCharacterId: 'luffy' });
+    });
+
+    it('does NOT force-rotate when the master hands off via tool (cpcId moved)', () => {
+      const result = computeTurnAdvance({
+        isBegin: false,
+        beforeCpcId: 'usopp',
+        afterCpcId: 'luffy',
+        party,
+        consecutiveBeatsOnCurrent: MAX_CONSECUTIVE_BEATS_ON_SAME_PG,
+      });
+      // Master already moved cpcId via the tool — the streak counter is stale
+      // on the route side and will be reset to 0 in the same transaction.
+      expect(result).toEqual({ kind: 'skip' });
+    });
+
+    it('does NOT force-rotate in a solo / 1-PG party regardless of streak', () => {
+      const result = computeTurnAdvance({
+        isBegin: false,
+        beforeCpcId: 'usopp',
+        afterCpcId: 'usopp',
+        party: [party[0]!],
+        addresseeId: 'usopp',
+        consecutiveBeatsOnCurrent: 99,
+      });
+      expect(result).toEqual({ kind: 'skip' });
+    });
   });
 });
 

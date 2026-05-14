@@ -278,6 +278,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             .select({
               cpcId: sessions.currentPlayerCharacterId,
               campaignId: sessions.campaignId,
+              streak: sessions.turnsSinceMasterAdvance,
             })
             .from(sessions)
             .where(eq(sessions.id, sessionId))
@@ -305,18 +306,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               afterCpcId: s.cpcId,
               party,
               addresseeId: addressee?.id ?? null,
+              // Fairness fallback: how many beats has the current cpcId
+              // already been active for, BEFORE this beat. The route owns
+              // the counter (`turnsSinceMasterAdvance`); computeTurnAdvance
+              // owns the policy (force-rotate at the threshold).
+              consecutiveBeatsOnCurrent: s.streak ?? 0,
             });
             if (decision.kind === 'advance') {
+              // cpcId changes → reset the streak counter to 0. The new PG
+              // starts fresh; their first beat counts as #1 next iteration.
               await tx
                 .update(sessions)
                 .set({ currentPlayerCharacterId: decision.nextCharacterId, turnsSinceMasterAdvance: 0 })
                 .where(eq(sessions.id, sessionId));
               await notifySession(sessionId, { type: 'turn-change', characterId: decision.nextCharacterId });
+            } else if (!isBegin && party.length > 1 && s.cpcId !== null) {
+              // No advance + multiplayer + cpcId set → this beat extended
+              // the current PG's run. Increment the streak so the next
+              // beat sees `consecutiveBeatsOnCurrent` reflect reality and
+              // the fairness fallback can fire when the streak hits
+              // MAX_CONSECUTIVE_BEATS_ON_SAME_PG.
+              await tx
+                .update(sessions)
+                .set({ turnsSinceMasterAdvance: (s.streak ?? 0) + 1 })
+                .where(eq(sessions.id, sessionId));
             }
           }
-          // turnsSinceMasterAdvance is now historical telemetry only — the
-          // before/after cpcId comparison is authoritative. Still bump
-          // turnSeq for downstream consumers (cache keys, etc.).
+          // Bump turnSeq for downstream consumers (cache keys, etc.).
           await tx.update(sessions).set({ turnSeq: sql`turn_seq + 1` }).where(eq(sessions.id, sessionId));
         });
 
