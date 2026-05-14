@@ -443,7 +443,13 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
             manualRolls={initialManualRolls}
             imageGenerationEnabled={initialImageGenerationEnabled}
             disabled={composerDisabled}
-            disabledPlaceholder={!memoryReady ? 'Preparazione memoria in corso…' : `Waiting for ${currentPlayerName}…`}
+            disabledPlaceholder={
+              !memoryReady
+                ? 'Preparazione memoria in corso…'
+                : busy
+                  ? 'The Master is responding…'
+                  : `Waiting for ${currentPlayerName}…`
+            }
             party={party}
           />
           {(sendError || streamError || turnError) && (
