@@ -6,6 +6,7 @@ import { categorizeInventory, formatInventoryDisplay, slugToLabel } from '@/lib/
 import type { Character } from '@/engine/types';
 import type { SessionStateRow } from '@/sessions/client-types';
 import type { MasterInventoryView } from '@/srd/enrich-inventory';
+import { ClassFeatures } from './class-features';
 
 // Classes that learn spells at any level. Used to decide whether to render
 // the Spells section even when `character.spellcasting` is null (e.g. older
@@ -147,36 +148,6 @@ export function CharacterPane({ character, state, enrichedInventory, compact = f
         </div>
       )}
 
-      {character.spellcasting && (
-        <div>
-          <Eyebrow style={{ marginBottom: 6 }}>Spell slots</Eyebrow>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {Object.entries(character.spellcasting.slotsMax).map(([level, max]) => {
-              const used = state.spellSlotsUsed[level] ?? 0;
-              return (
-                <div key={level} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-                  <span style={{ width: 28, fontFamily: 'var(--font-mono)', color: 'var(--fg-muted)' }}>Lv {level}</span>
-                  <div style={{ display: 'flex', gap: 4, flex: 1 }}>
-                    {Array.from({ length: max }).map((_, i) => (
-                      <div
-                        key={i}
-                        style={{
-                          width: 14,
-                          height: 14,
-                          borderRadius: '50%',
-                          border: '1.5px solid var(--arcane)',
-                          background: i < used ? 'transparent' : 'var(--arcane)',
-                        }}
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       {SPELLCASTER_CLASSES.has(character.classSlug) && (
         <SpellsSection
           spellsKnown={character.spellcasting?.spellsKnown ?? []}
@@ -184,27 +155,9 @@ export function CharacterPane({ character, state, enrichedInventory, compact = f
         />
       )}
 
-      <InventorySection inventory={character.inventory} enriched={enrichedInventory} />
+      <ClassFeatures character={character} state={state} />
 
-      {character.features.length > 0 && (
-        <div>
-          <Eyebrow style={{ marginBottom: 6 }}>Resources</Eyebrow>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {character.features
-              .filter((f) => f.usesMax !== 'unlimited')
-              .map((f) => {
-                const used = state.resourcesUsed[f.slug] ?? 0;
-                const max = f.usesMax === 'unlimited' ? 0 : f.usesMax;
-                return (
-                  <div key={f.slug} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                    <span>{f.slug}</span>
-                    <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-muted)' }}>{max - used} / {max}</span>
-                  </div>
-                );
-              })}
-          </div>
-        </div>
-      )}
+      <InventorySection inventory={character.inventory} enriched={enrichedInventory} />
     </aside>
   );
 }
