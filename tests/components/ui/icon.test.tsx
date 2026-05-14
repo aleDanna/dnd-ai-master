@@ -5,6 +5,7 @@ import { Icon, type IconName } from '@/components/ui/icon';
 const NEW_NAMES: IconName[] = [
   'image', 'menu', 'copy', 'chevron-down', 'chevron-up',
   'globe', 'compass', 'flame', 'star', 'eye',
+  'moon', 'sun', 'campfire', 'axe', 'wand', 'leaf', 'music', 'fist',
 ];
 
 describe('Icon — mobile additions', () => {
@@ -22,5 +23,11 @@ describe('Icon — mobile additions', () => {
     const svg = container.querySelector('svg');
     expect(svg?.getAttribute('width')).toBe('24');
     expect(svg?.getAttribute('height')).toBe('24');
+  });
+
+  it('renders star with fill="currentColor" (filled glyph)', () => {
+    const { container } = render(<Icon name="star" />);
+    const svg = container.querySelector('svg');
+    expect(svg?.getAttribute('fill')).toBe('currentColor');
   });
 });

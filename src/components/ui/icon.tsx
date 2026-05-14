@@ -6,7 +6,8 @@ export type IconName =
   | 'x' | 'user' | 'more' | 'logo-d20'
   | 'volume' | 'pause'
   | 'image' | 'menu' | 'copy' | 'chevron-down' | 'chevron-up'
-  | 'globe' | 'compass' | 'flame' | 'star' | 'eye';
+  | 'globe' | 'compass' | 'flame' | 'star' | 'eye'
+  | 'moon' | 'sun' | 'campfire' | 'axe' | 'wand' | 'leaf' | 'music' | 'fist';
 
 export interface IconProps extends Omit<React.SVGProps<SVGSVGElement>, 'name'> {
   name: IconName;
@@ -138,7 +139,7 @@ export function Icon({ name, size = 16, color, style, ...rest }: IconProps) {
       );
     case 'star':
       return (
-        <svg {...baseProps}>
+        <svg {...baseProps} fill="currentColor">
           <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
         </svg>
       );
@@ -147,6 +148,58 @@ export function Icon({ name, size = 16, color, style, ...rest }: IconProps) {
         <svg {...baseProps}>
           <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" />
           <circle cx="12" cy="12" r="3" />
+        </svg>
+      );
+    case 'moon':
+      return <svg {...baseProps}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>;
+    case 'sun':
+      return (
+        <svg {...baseProps}>
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+        </svg>
+      );
+    case 'campfire':
+      return (
+        <svg {...baseProps}>
+          <path d="M12 2c1.5 3 4 5 4 8a4 4 0 0 1-8 0c0-3 2.5-5 4-8z" />
+          <path d="M3 22h18M5 17l14 5M5 22 19 17" />
+        </svg>
+      );
+    case 'axe':
+      return (
+        <svg {...baseProps}>
+          <path d="M14 2L4 12l4 4 10-10z" />
+          <path d="m12 12 6 6 4-4-6-6" />
+          <path d="m6 14-4 8 8-4" />
+        </svg>
+      );
+    case 'wand':
+      return (
+        <svg {...baseProps}>
+          <path d="M15 4 4 15l5 5L20 9z" />
+          <path d="M14 6h6v6M18 2v4M22 6h-4" />
+        </svg>
+      );
+    case 'leaf':
+      return (
+        <svg {...baseProps}>
+          <path d="M11 20A7 7 0 0 1 4 13a7 7 0 0 1 7-7c1.5 0 2.9.5 4 1.4M11 20a7 7 0 0 0 7-7c0-3-2-5.5-4-7" />
+          <path d="M11 20v-9" />
+        </svg>
+      );
+    case 'music':
+      return (
+        <svg {...baseProps}>
+          <path d="M9 18V5l12-2v13" />
+          <circle cx="6" cy="18" r="3" />
+          <circle cx="18" cy="16" r="3" />
+        </svg>
+      );
+    case 'fist':
+      return (
+        <svg {...baseProps}>
+          <path d="M7 11V8a2 2 0 0 1 4 0v3M11 11V7a2 2 0 0 1 4 0v4M15 11V9a2 2 0 0 1 4 0v6a6 6 0 0 1-6 6h-2a6 6 0 0 1-6-6v-3a2 2 0 0 1 4 0" />
         </svg>
       );
   }
