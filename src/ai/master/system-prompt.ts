@@ -1176,8 +1176,8 @@ function buildPartyModeBlock(
     `### Address pattern enforced server-side`,
     `The server scans your message (start to end) for "<Name>," patterns at sentence boundaries. The LAST such match is treated as the addressee. If that addressee differs from the current active PG, the server advances the turn to them — covering the case where you addressed someone correctly in prose but forgot \`set_current_player\`. POV-opening addresses ("Kank Reena, le parole di Bruce risuonano...") count just as much as closing prompts ("Kank, cosa fai?"). Match the prose to the cpcId yourself; don't rely on the safety net.`,
     '',
-    `### Deadlock fallback`,
-    `If you neither call \`set_current_player\` nor address any PG by name AND your tool calls didn't move cpcId, the server round-robins to the next-in-party as a last-resort deadlock breaker. This is rare in practice — your response almost always addresses someone — and exists only to keep multi-player sessions unstuck. Don't depend on it.`,
+    `### Silent responses keep the spotlight in place`,
+    `If your response addresses no one and you don't call \`set_current_player\`, the server leaves cpcId on ${currentName}. This is correct for OOC clarifications and brief recaps — the previous active PG simply continues when ready. Do NOT rely on any round-robin fallback (there isn't one): if you intend a different PG to act next, address them by name or call the tool. The server does not rotate on your behalf.`,
   ].join('\n');
 }
 

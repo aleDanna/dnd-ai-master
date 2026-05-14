@@ -11,8 +11,14 @@ export type TurnAdvanceDecision =
   | { kind: 'advance'; nextCharacterId: string };
 
 /**
- * Post-turn safety net for multiplayer sessions: decides whether the system
- * must round-robin the current player after a master turn has run.
+ * Post-turn decision for multiplayer sessions: who is the active PG after
+ * the master turn has run.
+ *
+ * The master drives turn flow. The system follows the master's signals and
+ * never rotates "just because" — staying on the current PG is the default
+ * when the master is silent (e.g. an OOC clarification that asks no one to
+ * act). The previous round-robin fallback was removed because it stole
+ * turns during clarification beats and other silent responses.
  *
  * Priority of signals (highest first):
  *   1. `addresseeId` — derived from the master's prose. If the message
@@ -26,10 +32,12 @@ export type TurnAdvanceDecision =
  *      tool-call slip.
  *   2. `afterCpcId !== beforeCpcId` — the master successfully advanced via
  *      the tool. Trust it (skip).
- *   3. Round-robin fallback — the master neither addressed anyone by name
- *      nor moved cpcId. Rotate so the party doesn't deadlock.
+ *   3. Otherwise — stay on the current cpcId. The master's response did
+ *      not indicate a turn change, so neither does the server. Exception:
+ *      when both before and after are null (no active PG ever set), seed
+ *      with the first party member so the session has a starting point.
  *
- * Begin turns skip the fallback entirely: the host opens the scene and is
+ * Begin turns skip the decision entirely: the host opens the scene and is
  * supposed to play the first action.
  */
 export function computeTurnAdvance(args: {
@@ -47,9 +55,14 @@ export function computeTurnAdvance(args: {
     return { kind: 'advance', nextCharacterId: args.addresseeId };
   }
   if (args.afterCpcId !== args.beforeCpcId) return { kind: 'skip' };
-  const next = nextInParty(args.afterCpcId ?? '', args.party);
-  if (next.id === args.afterCpcId) return { kind: 'skip' };
-  return { kind: 'advance', nextCharacterId: next.id };
+  // Seed the active PG when the session has never had one set. Only fires
+  // when BOTH before and after are null — a true "first beat" state, not a
+  // silent master response on an existing cpcId.
+  if (args.afterCpcId === null && args.beforeCpcId === null) {
+    const next = nextInParty('', args.party);
+    return { kind: 'advance', nextCharacterId: next.id };
+  }
+  return { kind: 'skip' };
 }
 
 /**

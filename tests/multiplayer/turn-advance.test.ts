@@ -38,38 +38,30 @@ describe('computeTurnAdvance', () => {
     expect(result).toEqual({ kind: 'skip' });
   });
 
-  // Regression for the screenshot bug: master narrated "Luffy, che fai?" but
-  // the turn stayed on Usopp because Gemini either no-op'd set_current_player
-  // (called it with Usopp's id) or had it rejected (passed "Luffy" instead of
-  // the uuid). Both cases leave the DB state unchanged.
-  it('advances round-robin when the master left cpcId on the same character', () => {
+  // Regression for the "OOC clarification stole the turn" bug: the master
+  // replied to an out-of-character question with a brief explanation that
+  // addressed nobody, and the previous round-robin fallback rotated the
+  // active PG anyway. The fix: a silent master response keeps cpcId where
+  // it was; round-robin is no longer a fallback.
+  it('stays on the current PG when the master is silent (no addressee, no tool advance)', () => {
     const result = computeTurnAdvance({
       isBegin: false,
       beforeCpcId: 'usopp',
       afterCpcId: 'usopp',
       party,
     });
-    expect(result).toEqual({ kind: 'advance', nextCharacterId: 'luffy' });
+    expect(result).toEqual({ kind: 'skip' });
   });
 
-  it('advances round-robin (wrapping) from the last party member back to the first', () => {
-    const result = computeTurnAdvance({
-      isBegin: false,
-      beforeCpcId: 'luffy',
-      afterCpcId: 'luffy',
-      party,
-    });
-    expect(result).toEqual({ kind: 'advance', nextCharacterId: 'usopp' });
-  });
-
-  it('advances when both before and after are null (cpcId never set, multi-character party)', () => {
+  it('seeds the active PG when both before and after are null (multi-character init)', () => {
     const result = computeTurnAdvance({
       isBegin: false,
       beforeCpcId: null,
       afterCpcId: null,
       party,
     });
-    // nextInParty('', party) returns party[0] — usopp here.
+    // First-beat seed: pick party[0] so the session has a starting active PG.
+    // This is the ONLY case the route auto-advances without a master signal.
     expect(result).toEqual({ kind: 'advance', nextCharacterId: 'usopp' });
   });
 
@@ -120,8 +112,8 @@ describe('computeTurnAdvance', () => {
       party,
       addresseeId: 'someone-else',
     });
-    // Falls through to round-robin since the addressee is bogus.
-    expect(result).toEqual({ kind: 'advance', nextCharacterId: 'luffy' });
+    // Bogus addressee falls through; with no other signals, cpcId stays.
+    expect(result).toEqual({ kind: 'skip' });
   });
 
 });
