@@ -200,6 +200,23 @@ export function parseRollRequests(text: string): RollRequest[] {
     filtered = requests.filter((r) => r.kind !== 'damage');
   }
 
+  // Dedup logical save/check duplicates within the same message. The master
+  // often restates the same check in two beats — once in narration ("Fai una
+  // prova di Intuizione per capire se...") and once in the closing prompt
+  // ("Tira una prova di Intuizione.") — which would otherwise produce two
+  // identical buttons the player can't tell apart. Collapse to one,
+  // preferring the variant with a DC (more informative) over the bare form.
+  //
+  // Different abilities/skills stay as separate buttons. Two requests for
+  // the SAME ability with DIFFERENT DCs also both stay — those are
+  // semantically distinct rolls (e.g., "Fai una prova di Forza CD 14 per
+  // scalare. Fai una prova di Forza CD 18 per la pietra finale.").
+  //
+  // Attack / damage / generic rolls bypass this pass: the per-position
+  // dedup inside each pattern loop already handles uniqueness, and multiple
+  // same-formula attacks in one message are legitimate (sequential strikes).
+  filtered = dedupLogicalSavesAndChecks(filtered);
+
   // Determine the group mode once for the whole message and stamp it onto every request.
   // All rolls in the same master message share the same coordination policy.
   const mode = detectGroupMode(text, filtered.length);
@@ -226,6 +243,71 @@ export function parseRollRequests(text: string): RollRequest[] {
   }
 
   return filtered;
+}
+
+/**
+ * Collapse save/check requests that refer to the same logical roll (same
+ * ability or skill name) within a single master message. The DC suffix
+ * `(CD N)` / `(DC N)` is stripped to compute the dedup key.
+ *
+ * Merge policy when duplicates collide:
+ *   - one has a DC and the other doesn't → keep the one with the DC
+ *   - both have the same DC → keep the LATER one (closer to the closing
+ *     prompt, which is the authoritative ask)
+ *   - both have DCs but they DIFFER → keep both (semantically distinct
+ *     rolls, even if the ability is the same)
+ *   - neither has a DC → keep the LATER one
+ *
+ * Attack / damage / generic rolls pass through untouched: the per-position
+ * dedup inside each pattern loop already covers their uniqueness, and
+ * legitimate repetitions (sequential attacks) must not collapse.
+ */
+function dedupLogicalSavesAndChecks(requests: RollRequest[]): RollRequest[] {
+  const out: RollRequest[] = [];
+  // Map from logical key → index inside `out`. Used to locate the previous
+  // request when a duplicate arrives.
+  const indexByKey = new Map<string, number>();
+  for (const r of requests) {
+    if (r.kind !== 'save' && r.kind !== 'check') {
+      out.push(r);
+      continue;
+    }
+    const semantic = stripDcSuffix(r.label).toLowerCase();
+    const key = `${r.kind}:${semantic}`;
+    const prevIdx = indexByKey.get(key);
+    if (prevIdx === undefined) {
+      indexByKey.set(key, out.length);
+      out.push(r);
+      continue;
+    }
+    const prev = out[prevIdx]!;
+    const prevDc = parseDcFromLabel(prev.label);
+    const curDc = parseDcFromLabel(r.label);
+    if (curDc !== null && prevDc !== null && curDc !== prevDc) {
+      // Two distinct DCs for the same ability — keep both. Don't update
+      // the index map: future duplicates with either DC still collapse
+      // against the FIRST occurrence, which is conservative.
+      out.push(r);
+      continue;
+    }
+    // Pick the winner: whichever is more informative, else later position.
+    const currentWins =
+      (curDc !== null && prevDc === null) ||
+      (curDc === prevDc && r.index > prev.index);
+    if (currentWins) {
+      out[prevIdx] = r;
+    }
+  }
+  return out;
+}
+
+function stripDcSuffix(label: string): string {
+  return label.replace(/\s*\((?:CD|DC)\s*\d+\)\s*$/i, '').trim();
+}
+
+function parseDcFromLabel(label: string): number | null {
+  const m = /\((?:CD|DC)\s*(\d+)\)/i.exec(label);
+  return m ? parseInt(m[1]!, 10) : null;
 }
 
 /**

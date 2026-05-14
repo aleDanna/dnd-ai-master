@@ -561,6 +561,55 @@ describe('parseRollRequests — Italian skill checks with "su" prepositions', ()
   });
 });
 
+// The master often restates the same check in two beats — once in narration
+// ("Fai una prova di Intuizione per capire se...") and once in the closing
+// prompt ("Tira una prova di Intuizione."). Without dedup the UI showed two
+// indistinguishable buttons, asking the player to roll the same check twice.
+// See the "I rolled 20 in naturale, why is it making me roll again?" report.
+describe('parseRollRequests — duplicate-check dedup', () => {
+  it('collapses two mentions of the same Italian check (no DC) to one button', () => {
+    const text =
+      'Fai una prova di Intuizione per capire se anche lui rispetterà il patto.\n\nTira una prova di Intuizione.';
+    const reqs = parseRollRequests(text);
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.label).toBe('Intuito');
+    expect(reqs[0]!.kind).toBe('check');
+  });
+
+  it('keeps the DC-bearing variant when one mention has a DC and the other does not', () => {
+    const text =
+      'Fai una prova di Percezione per accorgerti della porta nascosta. Tira una prova di Percezione CD 14.';
+    const reqs = parseRollRequests(text);
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.label).toBe('Percezione (CD 14)');
+  });
+
+  it('keeps both when the same skill is asked with DIFFERENT DCs (distinct rolls)', () => {
+    const text =
+      'Fai una prova di Forza CD 14 per scalare il pendio. Poi, fai una prova di Forza CD 18 per scalare la pietra finale.';
+    const reqs = parseRollRequests(text);
+    expect(reqs.length).toBe(2);
+    expect(reqs.map((r) => r.label).sort()).toEqual(['Forza (CD 14)', 'Forza (CD 18)']);
+  });
+
+  it('keeps two DIFFERENT Italian saves as separate buttons', () => {
+    // Separate sentences so each is preceded by its own verb — the regex
+    // requires `tira/fai/...` at the start of every match.
+    const text = `Tira un TS Destrezza CD 14. Poi tira un TS Costituzione CD 12.`;
+    const reqs = parseRollRequests(text);
+    expect(reqs.length).toBe(2);
+    expect(reqs.map((r) => r.label).sort()).toEqual(['TS COS (CD 12)', 'TS DES (CD 14)']);
+  });
+
+  it('collapses two mentions of the same Italian save (no DC) to one button', () => {
+    const text =
+      `L'aria si fa pesante. Fai un TS Saggezza per resistere. Tira un TS Saggezza.`;
+    const reqs = parseRollRequests(text);
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.label).toBe('TS SAG');
+  });
+});
+
 describe('bulletIndexAt', () => {
   it('returns null for prose before any bullet', () => {
     const text = 'Vuoi:\n- Opzione A: tira 1d20.\n- Opzione B: tira 1d20.';
