@@ -24,6 +24,14 @@ export function useSessionStream(sessionId: string | null) {
   const [streamingMessage, setStreamingMessage] = useState<StreamingMessage>(null);
   const [error, setError] = useState<string | null>(null);
   const [turnError, setTurnError] = useState<TurnError>(null);
+  // Monotonic counter that increments every time a turn finalizes (a master
+  // `message` event, or a `turn-error`). The game-client subscribes to this
+  // so it can refetch the messages list even when the prior `message-chunk`
+  // events never arrived — historically the messages refetch was gated on a
+  // `streamingMessage` non-null → null transition, which never fires when
+  // the SSE chunks drop in transit and only the final `message` event lands.
+  // After: the message body shows up without a page refresh either way.
+  const [finalizedSeq, setFinalizedSeq] = useState(0);
 
   const refetch = useCallback(async () => {
     if (!sessionId) return;
@@ -32,6 +40,13 @@ export function useSessionStream(sessionId: string | null) {
   }, [sessionId]);
 
   const clearTurnError = useCallback(() => setTurnError(null), []);
+
+  // Used by the safety poll path when the SSE delivered `message-chunk`
+  // events but the final `message` event got dropped: without this the
+  // streaming buffer stays non-null forever, holding `busy=true` and
+  // locking the composer even though the master's reply has already
+  // landed in the messages list.
+  const clearStreamingMessage = useCallback(() => setStreamingMessage(null), []);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -56,6 +71,7 @@ export function useSessionStream(sessionId: string | null) {
           case 'message':
             setStreamingMessage(null);
             setTurnError(null);
+            setFinalizedSeq((s) => s + 1);
             refetch();
             break;
           case 'state':
@@ -71,6 +87,10 @@ export function useSessionStream(sessionId: string | null) {
             // streaming buffer so the composer can unlock.
             setStreamingMessage(null);
             setTurnError({ reason: ev.reason ?? 'failed', message: ev.message });
+            // Bump finalizedSeq so the game-client refetches messages — a
+            // failed turn can still have persisted mutations (xp, items)
+            // upstream of the narration crash.
+            setFinalizedSeq((s) => s + 1);
             // Refetch so we pick up any mutations the failed turn DID persist
             // (xp, inventory, etc. can land even when narration didn't).
             refetch();
@@ -84,5 +104,14 @@ export function useSessionStream(sessionId: string | null) {
     return () => es.close();
   }, [sessionId, refetch]);
 
-  return { snapshot, streamingMessage, error, turnError, clearTurnError, refetch };
+  return {
+    snapshot,
+    streamingMessage,
+    error,
+    turnError,
+    clearTurnError,
+    refetch,
+    finalizedSeq,
+    clearStreamingMessage,
+  };
 }

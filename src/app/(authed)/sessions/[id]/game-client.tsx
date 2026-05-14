@@ -50,7 +50,15 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     [...initialMessages].reverse().find((m) => m.role === 'master')?.id ?? null,
   );
 
-  const { snapshot, streamingMessage, error: streamError, turnError, clearTurnError } = useSessionStream(sessionId);
+  const {
+    snapshot,
+    streamingMessage,
+    error: streamError,
+    turnError,
+    clearTurnError,
+    finalizedSeq,
+    clearStreamingMessage,
+  } = useSessionStream(sessionId);
 
   // Derive live state: prefer snapshot from SSE, fall back to SSR props
   const liveState: SessionStateRow | null = (snapshot?.state as SessionStateRow | null) ?? initialState;
@@ -168,6 +176,30 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     }
   }, [streamingMessage, fetchSessionData]);
 
+  // Refetch messages whenever the stream signals a turn finalization. The
+  // stream-ended effect above only fires when `streamingMessage` actually
+  // transitions from non-null to null — which never happens if the
+  // `message-chunk` events drop in transit and only the final `message`
+  // event arrives. Without this, the master's reply was persisted server-
+  // side but the client kept showing the pre-turn message list until the
+  // user reloaded the page.
+  const prevFinalizedRef = React.useRef(0);
+  React.useEffect(() => {
+    if (finalizedSeq === 0 || finalizedSeq === prevFinalizedRef.current) return;
+    prevFinalizedRef.current = finalizedSeq;
+    if (safetyPollRef.current) {
+      clearInterval(safetyPollRef.current);
+      safetyPollRef.current = null;
+    }
+    let active = true;
+    void fetchSessionData().then((data) => {
+      if (!active) return;
+      if (data.messages) setMessages(data.messages);
+      if (data.character) setCharacter(data.character);
+    });
+    return () => { active = false; };
+  }, [finalizedSeq, fetchSessionData]);
+
   // POST to /turn. Returns true on success, false on error.
   const postTurn = React.useCallback(async (payload: { message?: string; begin?: boolean }): Promise<boolean> => {
     if (sending) return false;
@@ -196,21 +228,6 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     }
   }, [sending, sessionId]);
 
-  // Auto-open the campaign: kick off the synthetic "begin" turn when the
-  // session has no messages yet and memory is ready.
-  const beganRef = React.useRef(false);
-  React.useEffect(() => {
-    if (beganRef.current) return;
-    if (!memoryReady) return;
-    if (busy) return;
-    if (messages.length > 0) return;
-    beganRef.current = true;
-    // Light up the "Master is responding…" indicator immediately — the
-    // master can take a few seconds to produce the opening scene.
-    setPendingTurn(true);
-    void postTurn({ begin: true });
-  }, [memoryReady, busy, messages.length, postTurn]);
-
   // Post-turn safety refetch — if SSE never delivers the master's response
   // (Supavisor session pool dropping NOTIFY, function timeout, dropped socket, …), the
   // UI used to hang forever on the player's "temp-…" bubble. We poll the
@@ -234,6 +251,11 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
         if (masterCount > baselineMasterCount) {
           setMessages(data.messages);
           if (data.character) setCharacter(data.character);
+          // If chunks had arrived but the final `message` event got dropped,
+          // streamingMessage would still be non-null, keeping busy=true and
+          // the composer locked. Clearing it here releases that gate now
+          // that the persisted message is on screen.
+          clearStreamingMessage();
           clearSafetyPoll();
           return;
         }
@@ -242,9 +264,28 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
         if (Date.now() - startedAt > 90_000) clearSafetyPoll();
       }).catch(() => { /* network blip — keep polling */ });
     }, 3000);
-  }, [messages, fetchSessionData, clearSafetyPoll]);
+  }, [messages, fetchSessionData, clearSafetyPoll, clearStreamingMessage]);
 
   React.useEffect(() => () => clearSafetyPoll(), [clearSafetyPoll]);
+
+  // Auto-open the campaign: kick off the synthetic "begin" turn when the
+  // session has no messages yet and memory is ready.
+  const beganRef = React.useRef(false);
+  React.useEffect(() => {
+    if (beganRef.current) return;
+    if (!memoryReady) return;
+    if (busy) return;
+    if (messages.length > 0) return;
+    beganRef.current = true;
+    // Light up the "Master is responding…" indicator immediately — the
+    // master can take a few seconds to produce the opening scene.
+    setPendingTurn(true);
+    void postTurn({ begin: true });
+    // Mirror the regular `send()` path: arm the safety poll so a dropped
+    // SSE on the opening turn still lets the master's intro show up
+    // without a page refresh.
+    startSafetyPoll();
+  }, [memoryReady, busy, messages.length, postTurn, startSafetyPoll]);
 
   // `pendingTurn` covers the window between kicking off a turn (POST /turn
   // returning 202) and the master starting to stream the response. It powers
