@@ -185,4 +185,80 @@ describe('buildSnapshot', () => {
     await db.execute(sql`delete from characters where user_id = ${teammate}`);
     await db.execute(sql`delete from users where id = ${teammate}`);
   });
+
+  // Post per-character slot migration: every party member must own a
+  // runtime entry with their OWN spellSlotsUsed / resourcesUsed, read from
+  // `characters` (not `session_state`). Without this, a long_rest mutation
+  // targeting the non-active PG's actorId can't resolve their pre-rest
+  // state and the UI never sees the reset.
+  it('multiplayer: non-active party members get their own runtime slot ledger', async () => {
+    await ensureUser(TEST_USER);
+
+    const w1 = emptyWizardState();
+    w1.raceSlug = 'half-elf';
+    w1.classSlug = 'fighter';
+    w1.backgroundSlug = 'soldier';
+    w1.identity.name = 'BruceR';
+    const { id: bruceId } = await saveCharacter({ userId: TEST_USER, wizard: w1 });
+
+    const teammate = 'user_teammate_runtime_' + Date.now();
+    await ensureUser(teammate);
+    const w2 = emptyWizardState();
+    w2.raceSlug = 'half-elf';
+    w2.classSlug = 'wizard';
+    w2.backgroundSlug = 'sage';
+    w2.identity.name = 'KankR';
+    const { id: kankId } = await saveCharacter({ userId: teammate, wizard: w2 });
+
+    const campaignId = await makeTestCampaign('runtime ledger scene');
+    await db
+      .update(characters)
+      .set({
+        templateId: bruceId,
+        campaignId,
+        spellSlotsUsed: { 1: 2 },
+        resourcesUsed: { 'second-wind': 1 },
+      })
+      .where(eq(characters.id, bruceId));
+    await db
+      .update(characters)
+      .set({
+        templateId: kankId,
+        campaignId,
+        spellSlotsUsed: { 1: 1, 2: 1 },
+        resourcesUsed: { arcane_recovery: 1 },
+      })
+      .where(eq(characters.id, kankId));
+
+    const [session] = await db
+      .insert(sessions)
+      .values({
+        userId: TEST_USER,
+        characterId: bruceId,
+        currentPlayerCharacterId: bruceId,
+        premise: 'runtime ledger scene',
+        campaignId,
+      })
+      .returning();
+    await db.insert(sessionState).values({ sessionId: session!.id, hpCurrent: 11, hitDiceRemaining: 1 });
+
+    const snap = await buildSnapshot(session!.id, TEST_USER);
+
+    // Active PG (Bruce) — runtime reads slots from his characters row, not
+    // session_state. (Pre-fix the snapshot read session_state.spellSlotsUsed
+    // which was shared across PGs and broke once turns rotated.)
+    expect(snap.state.runtime[bruceId]).toBeDefined();
+    expect(snap.state.runtime[bruceId]!.spellSlotsUsed).toEqual({ 1: 2 });
+    expect(snap.state.runtime[bruceId]!.resourcesUsed).toEqual({ 'second-wind': 1 });
+
+    // Non-active PG (Kank) — also has a runtime entry with HER slots, so
+    // a `long_rest` mutation `restore_spell_slot: {actorId: kankId,...}`
+    // resolves and the applicator can clear the right column.
+    expect(snap.state.runtime[kankId]).toBeDefined();
+    expect(snap.state.runtime[kankId]!.spellSlotsUsed).toEqual({ 1: 1, 2: 1 });
+    expect(snap.state.runtime[kankId]!.resourcesUsed).toEqual({ arcane_recovery: 1 });
+
+    await db.execute(sql`delete from characters where user_id = ${teammate}`);
+    await db.execute(sql`delete from users where id = ${teammate}`);
+  });
 });

@@ -247,32 +247,37 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
       break;
     }
     case 'use_spell_slot': {
-      const [s] = await tx.select().from(sessionStateTable).where(eq(sessionStateTable.sessionId, sessionId)).limit(1);
-      if (!s) return;
-      const used = { ...(s.spellSlotsUsed as Record<string, number>) };
+      // Per-character storage (multiplayer-correct): each PG owns their
+      // own `spell_slots_used` column on `characters`. Pre-migration the
+      // applicator wrote to a single session_state row that only the active
+      // PG could read, which is why non-active party members' slots never
+      // refreshed after long_rest.
+      const [c] = await tx.select().from(charactersTable).where(eq(charactersTable.id, m.actorId)).limit(1);
+      if (!c) return;
+      const used = { ...((c.spellSlotsUsed ?? {}) as Record<string, number>) };
       used[String(m.level)] = (used[String(m.level)] ?? 0) + 1;
-      await tx.update(sessionStateTable).set({ spellSlotsUsed: used }).where(eq(sessionStateTable.sessionId, sessionId));
+      await tx.update(charactersTable).set({ spellSlotsUsed: used }).where(eq(charactersTable.id, m.actorId));
       break;
     }
     case 'restore_spell_slot': {
-      const [s] = await tx.select().from(sessionStateTable).where(eq(sessionStateTable.sessionId, sessionId)).limit(1);
-      if (!s) return;
-      const used = { ...(s.spellSlotsUsed as Record<string, number>) };
+      const [c] = await tx.select().from(charactersTable).where(eq(charactersTable.id, m.actorId)).limit(1);
+      if (!c) return;
+      const used = { ...((c.spellSlotsUsed ?? {}) as Record<string, number>) };
       const cur = used[String(m.level)] ?? 0;
       const next = Math.max(0, cur - Math.max(0, Math.floor(m.amount)));
       if (next === 0) delete used[String(m.level)];
       else used[String(m.level)] = next;
-      await tx.update(sessionStateTable).set({ spellSlotsUsed: used }).where(eq(sessionStateTable.sessionId, sessionId));
+      await tx.update(charactersTable).set({ spellSlotsUsed: used }).where(eq(charactersTable.id, m.actorId));
       break;
     }
     case 'use_resource':
     case 'restore_resource': {
-      const [s] = await tx.select().from(sessionStateTable).where(eq(sessionStateTable.sessionId, sessionId)).limit(1);
-      if (!s) return;
-      const used = { ...(s.resourcesUsed as Record<string, number>) };
+      const [c] = await tx.select().from(charactersTable).where(eq(charactersTable.id, m.actorId)).limit(1);
+      if (!c) return;
+      const used = { ...((c.resourcesUsed ?? {}) as Record<string, number>) };
       const cur = used[m.featureSlug] ?? 0;
       used[m.featureSlug] = m.op === 'use_resource' ? cur + m.amount : Math.max(0, cur - m.amount);
-      await tx.update(sessionStateTable).set({ resourcesUsed: used }).where(eq(sessionStateTable.sessionId, sessionId));
+      await tx.update(charactersTable).set({ resourcesUsed: used }).where(eq(charactersTable.id, m.actorId));
       break;
     }
     case 'spend_hit_die':
@@ -1066,15 +1071,20 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
       // dedicated mutation op so the AI Master's tool calls stay
       // semantically distinct (a "rage start" is more readable than a
       // generic "use_resource:rage" log entry). PC-only: monsters/NPCs
-      // don't track per-feature resources in session_state.
-      if (m.actorId !== ctx.characterId) break;
-      const [s] = await tx
+      // don't track per-feature resources.
+      //
+      // Per-character storage (multiplayer-correct): writes land on the
+      // addressed PG's `characters.resources_used` column instead of the
+      // shared session_state row, so non-active party members keep their
+      // own class-feature ledgers and a long_rest can restore each one
+      // independently.
+      const [c] = await tx
         .select()
-        .from(sessionStateTable)
-        .where(eq(sessionStateTable.sessionId, sessionId))
+        .from(charactersTable)
+        .where(eq(charactersTable.id, m.actorId))
         .limit(1);
-      if (!s) break;
-      const used = { ...(s.resourcesUsed as Record<string, number>) };
+      if (!c) break;
+      const used = { ...((c.resourcesUsed ?? {}) as Record<string, number>) };
       if (m.op === 'use_class_feature') {
         const inc = Math.max(1, Math.floor(m.uses ?? 1));
         used[m.featureSlug] = (used[m.featureSlug] ?? 0) + inc;
@@ -1095,9 +1105,9 @@ async function applyOne(tx: Tx, sessionId: string, ctx: SessionContext, m: Mutat
         else used['lay_on_hands'] = next;
       }
       await tx
-        .update(sessionStateTable)
+        .update(charactersTable)
         .set({ resourcesUsed: used })
-        .where(eq(sessionStateTable.sessionId, sessionId));
+        .where(eq(charactersTable.id, m.actorId));
       break;
     }
     case 'mark_sneak_attack': {

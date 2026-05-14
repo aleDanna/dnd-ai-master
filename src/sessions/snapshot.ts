@@ -444,6 +444,10 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
   const combatActors: CombatActor[] = actorRows.map(toEngineCombatActor);
 
   const runtime: Record<string, ActorRuntimeState> = {};
+  // Active PG's full runtime — HP / conditions / death saves / etc. still
+  // live on session_state (per-session). Spell slots and class resources
+  // are now read per-PG from `characters` so the active PG sees their own
+  // ledger even after a turn swap.
   runtime[character.id] = {
     actorId: character.id,
     hpCurrent: stateRow.hpCurrent,
@@ -453,12 +457,29 @@ export async function buildSnapshot(sessionId: string, userId: string): Promise<
     exhaustionLevel: stateRow.exhaustionLevel ?? 0,
     conditions: stateRow.conditions as ActorRuntimeState['conditions'],
     hitDiceRemaining: stateRow.hitDiceRemaining,
-    spellSlotsUsed: parseSlotsUsed(stateRow.spellSlotsUsed),
-    resourcesUsed: stateRow.resourcesUsed,
+    spellSlotsUsed: parseSlotsUsed(character.spellSlotsUsed),
+    resourcesUsed: (character.resourcesUsed ?? {}) as Record<string, number>,
     concentratingOn: hydrateConcentration(stateRow.concentratingOn),
     turnState: stateRow.turnState ?? undefined,
     position: stateRow.position ?? undefined,
   };
+  // Non-active party members get a sparse runtime: their per-PG slot and
+  // resource ledgers (so the UI can render their spell-slot tiles and so
+  // `long_rest` can target their actorId), with HP / death-saves left at
+  // safe defaults until the day per-PG runtime moves off session_state too.
+  for (const p of partyRows) {
+    if (p.id === character.id) continue;
+    runtime[p.id] = {
+      actorId: p.id,
+      hpCurrent: p.hpMax,
+      tempHp: 0,
+      deathSaves: { successes: 0, failures: 0 },
+      conditions: [],
+      hitDiceRemaining: p.hitDiceMax,
+      spellSlotsUsed: parseSlotsUsed(p.spellSlotsUsed),
+      resourcesUsed: (p.resourcesUsed ?? {}) as Record<string, number>,
+    };
+  }
   for (const a of actorRows) {
     runtime[a.id] = {
       actorId: a.id,

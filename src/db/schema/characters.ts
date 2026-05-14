@@ -54,6 +54,25 @@ export const characters = pgTable(
       spellsKnown: string[];
       spellsPrepared: string[];
     } | null>(),
+    /**
+     * Per-character spell-slot consumption ledger keyed by level
+     * ("1" → 2 means two L1 slots have been spent). The cap is
+     * `spellcasting.slotsMax[level]`; the applicator only writes here when
+     * a `use_spell_slot` / `restore_spell_slot` mutation arrives with this
+     * character's id. Multiplayer correctness: every PG owns their own
+     * column (previously a single session_state.spell_slots_used row
+     * served the active PG only, so non-active party members had no
+     * persistent slot state and long_rest left them untouched).
+     */
+    spellSlotsUsed: jsonb('spell_slots_used').$type<Record<string, number>>().notNull().default({}),
+    /**
+     * Per-character class-feature resource ledger keyed by feature slug
+     * (e.g. "action-surge" → 1 means one use spent this short/long rest).
+     * Same multiplayer rationale as `spellSlotsUsed`: was previously on
+     * session_state and only tracked for the active PG; long_rest now
+     * resets every party member's column independently.
+     */
+    resourcesUsed: jsonb('resources_used').$type<Record<string, number>>().notNull().default({}),
     spellsKnown: text('spells_known').array().notNull().default([]),
     features: jsonb('features').$type<{ slug: string; source: string; usesMax: number | 'unlimited'; description: string }[]>().notNull().default([]),
     inventory: jsonb('inventory').$type<{ slug: string; qty: number; equipped: boolean }[]>().notNull().default([]),

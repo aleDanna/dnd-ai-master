@@ -1152,19 +1152,21 @@ describe('applyMutations', () => {
 
   describe('class-feature mutations (Phase 11)', () => {
     it('use_class_feature increments resourcesUsed by uses (default 1)', async () => {
-      // Reset the resourcesUsed bag for this test.
+      // Reset the per-character resourcesUsed bag for this test. Post the
+      // per-PG storage migration the ledger lives on `characters`, not
+      // `session_state` — each PG owns their own column.
       await db
-        .update(sessionState)
+        .update(characters)
         .set({ resourcesUsed: {} })
-        .where(eq(sessionState.sessionId, SESSION_ID));
+        .where(eq(characters.id, PC_ID));
 
       await applyMutations(
         SESSION_ID,
         [{ op: 'use_class_feature', actorId: PC_ID, featureSlug: 'rage' }],
         [],
       );
-      let [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
-      expect((s!.resourcesUsed as Record<string, number>)['rage']).toBe(1);
+      let [c] = await db.select({ ru: characters.resourcesUsed }).from(characters).where(eq(characters.id, PC_ID)).limit(1);
+      expect((c!.ru as Record<string, number>)['rage']).toBe(1);
 
       // Increment with explicit uses=2.
       await applyMutations(
@@ -1172,40 +1174,40 @@ describe('applyMutations', () => {
         [{ op: 'use_class_feature', actorId: PC_ID, featureSlug: 'rage', uses: 2 }],
         [],
       );
-      [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
-      expect((s!.resourcesUsed as Record<string, number>)['rage']).toBe(3);
+      [c] = await db.select({ ru: characters.resourcesUsed }).from(characters).where(eq(characters.id, PC_ID)).limit(1);
+      expect((c!.ru as Record<string, number>)['rage']).toBe(3);
     });
 
     it('restore_class_feature decrements resourcesUsed and clears entry at 0', async () => {
       await db
-        .update(sessionState)
+        .update(characters)
         .set({ resourcesUsed: { action_surge: 1 } })
-        .where(eq(sessionState.sessionId, SESSION_ID));
+        .where(eq(characters.id, PC_ID));
 
       await applyMutations(
         SESSION_ID,
         [{ op: 'restore_class_feature', actorId: PC_ID, featureSlug: 'action_surge' }],
         [],
       );
-      const [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
-      const used = s!.resourcesUsed as Record<string, number>;
+      const [c] = await db.select({ ru: characters.resourcesUsed }).from(characters).where(eq(characters.id, PC_ID)).limit(1);
+      const used = c!.ru as Record<string, number>;
       // Either deleted entry or 0 (the applicator deletes on hit-zero — assert deletion).
       expect(used['action_surge']).toBeUndefined();
     });
 
     it('modify_lay_on_hands_pool with positive delta increments spent', async () => {
       await db
-        .update(sessionState)
+        .update(characters)
         .set({ resourcesUsed: {} })
-        .where(eq(sessionState.sessionId, SESSION_ID));
+        .where(eq(characters.id, PC_ID));
 
       await applyMutations(
         SESSION_ID,
         [{ op: 'modify_lay_on_hands_pool', actorId: PC_ID, delta: 10 }],
         [],
       );
-      let [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
-      expect((s!.resourcesUsed as Record<string, number>)['lay_on_hands']).toBe(10);
+      let [c] = await db.select({ ru: characters.resourcesUsed }).from(characters).where(eq(characters.id, PC_ID)).limit(1);
+      expect((c!.ru as Record<string, number>)['lay_on_hands']).toBe(10);
 
       // Negative delta restores (e.g., long rest).
       await applyMutations(
@@ -1213,8 +1215,8 @@ describe('applyMutations', () => {
         [{ op: 'modify_lay_on_hands_pool', actorId: PC_ID, delta: -10 }],
         [],
       );
-      [s] = await db.select().from(sessionState).where(eq(sessionState.sessionId, SESSION_ID)).limit(1);
-      expect((s!.resourcesUsed as Record<string, number>)['lay_on_hands']).toBeUndefined();
+      [c] = await db.select({ ru: characters.resourcesUsed }).from(characters).where(eq(characters.id, PC_ID)).limit(1);
+      expect((c!.ru as Record<string, number>)['lay_on_hands']).toBeUndefined();
     });
 
     it('mark_sneak_attack on the PC sets sessionState.turnState.sneakAttackUsed', async () => {

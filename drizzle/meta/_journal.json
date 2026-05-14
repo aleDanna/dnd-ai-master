@@ -211,6 +211,13 @@
       "when": 1778598848310,
       "tag": "0029_brown_kree",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1778802679409,
+      "tag": "0030_per_character_slot_state",
+      "breakpoints": true
     }
   ]
 }

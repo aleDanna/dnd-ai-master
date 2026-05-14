@@ -3251,13 +3251,56 @@ export const TOOL_HANDLERS_DB: Record<string, DbToolHandler> = {
         ? Math.max(0, Math.floor(interruptedByMinutesRaw))
         : undefined;
 
-    return longRest({
+    // PHB §5.2: the whole party rests together. Run longRest() for each PG
+    // in the snapshot so every member's spell slots, hit dice, class
+    // resources, and exhaustion reset — not just the addressed actor.
+    // Pre-fix only the active PG was restored; non-active party members
+    // kept their used slots indefinitely because they had nowhere to
+    // persist a "used" counter.
+    const addressedResult = longRest({
       char,
       runtime,
       lastLongRestAtMs,
       currentEpochMs: Date.now(),
       interruptedByMinutes,
     });
+    if (!addressedResult.ok) return addressedResult;
+
+    const allMutations = [...(addressedResult.mutations ?? [])];
+    const allRestored = [...(addressedResult.data?.restored ?? [])];
+    for (const otherChar of state.characters) {
+      if (otherChar.id === char.id) continue;
+      const otherRuntime = state.runtime[otherChar.id];
+      if (!otherRuntime) continue;
+      // The cooldown was already enforced by the addressed actor's call
+      // (whole-party rest = one shared timestamp); pass undefined here so
+      // the helper doesn't reject the partner. The interruption check
+      // applies to the rest as a whole, so reuse the same value.
+      const partnerResult = longRest({
+        char: otherChar,
+        runtime: otherRuntime,
+        lastLongRestAtMs: undefined,
+        currentEpochMs: Date.now(),
+        interruptedByMinutes,
+      });
+      if (!partnerResult.ok) continue;
+      // Drop the partner's set_long_rest_at — the session has ONE shared
+      // cooldown timestamp and the addressed actor already stamped it.
+      for (const mut of partnerResult.mutations ?? []) {
+        if (mut.op === 'set_long_rest_at') continue;
+        allMutations.push(mut);
+      }
+      for (const slug of partnerResult.data?.restored ?? []) {
+        allRestored.push(slug);
+      }
+    }
+
+    return {
+      ok: true,
+      data: { restored: allRestored },
+      rolls: addressedResult.rolls ?? [],
+      mutations: allMutations,
+    };
   },
 
   cast_spell: async (_ctx, state, input) => {
