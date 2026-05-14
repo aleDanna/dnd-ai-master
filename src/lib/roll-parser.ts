@@ -129,11 +129,15 @@ export function parseRollRequests(text: string): RollRequest[] {
   //    `roll`/`lancia` are accepted alongside the canonical Italian verbs to
   //    catch hybrid-language master output ("Roll una prova di Intimidazione")
   //    that would otherwise slip past both the English and Italian patterns.
+  //    `tenta`/`esegui`/`compi` cover imperative variants the master sometimes
+  //    picks ("Tenta una prova di Persuasione") — they only match when followed
+  //    by "prova/controllo" so unrelated prose ("tenta la fortuna") can't fire.
   const ITALIAN_SKILL =
     'Acrobazia|Addestrare\\s+Animali|Arcano|Arcana|Atletica|Inganno|Intuito|Intuizione|Intimidazione|Intimidire|Investigazione|Indagine|Indagare|Medicina|Natura|Percezione|Intrattenere|Spettacolo|Persuasione|Religione|Rapidit[àa]\\s+di\\s+Mano|Mano\\s+Lesta|Furtivit[àa]|Sopravvivenza|Storia';
   const ITALIAN_ABILITY = 'Forza|Destrezza|Costituzione|Intelligenza|Saggezza|Carisma';
+  const ITALIAN_CHECK_VERB = 'tira|fai|effettua|lancia|tenta|esegui|compi|roll';
   const checkReIt = new RegExp(
-    `(?:tira|fai|effettua|lancia|roll)\\s+(?:un[ao]?\\s+)?(?:prova|controllo)\\s+(?:di\\s+)?(${ITALIAN_SKILL}|${ITALIAN_ABILITY})(?:[^.!?\\n]{0,30}?\\bCD\\s*(\\d+))?`,
+    `(?:${ITALIAN_CHECK_VERB})\\s+(?:un[ao]?\\s+)?(?:prova|controllo)\\s+(?:di\\s+)?(${ITALIAN_SKILL}|${ITALIAN_ABILITY})(?:[^.!?\\n]{0,30}?\\bCD\\s*(\\d+))?`,
     'gi',
   );
   while ((m = checkReIt.exec(text)) !== null) {
@@ -154,9 +158,9 @@ export function parseRollRequests(text: string): RollRequest[] {
 
   // 5. Italian saving throw:
   //    "tira un TS Destrezza CD 14" / "tira un tiro salvezza di Costituzione (CD 12)"
-  //    Same hybrid-language tolerance as the check pattern above.
+  //    Same imperative-verb tolerance as the check pattern above.
   const saveReIt = new RegExp(
-    `(?:tira|fai|effettua|lancia|roll)\\s+(?:un[ao]?\\s+)?(?:TS|tiro\\s+(?:di\\s+)?salvezza)\\s+(?:di\\s+)?(${ITALIAN_ABILITY})(?:[^.!?\\n]{0,30}?\\bCD\\s*(\\d+))?`,
+    `(?:${ITALIAN_CHECK_VERB})\\s+(?:un[ao]?\\s+)?(?:TS|tiro\\s+(?:di\\s+)?salvezza)\\s+(?:di\\s+)?(${ITALIAN_ABILITY})(?:[^.!?\\n]{0,30}?\\bCD\\s*(\\d+))?`,
     'gi',
   );
   while ((m = saveReIt.exec(text)) !== null) {

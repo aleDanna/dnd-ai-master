@@ -397,6 +397,48 @@ describe('parseRollRequests — Italian skill checks (no explicit formula)', () 
     expect(reqs[0]!.kind).toBe('check');
   });
 
+  it('parses "Tenta una prova di Persuasione" as a check button', () => {
+    // Reproduces a real bug from a session screenshot: master narrated
+    // "Tenta una prova di Persuasione." but no roll button rendered
+    // because the parser only knew Tira/Fai/Effettua/Lancia/Roll.
+    // "Tenta" ("Attempt") is a natural imperative for a check in Italian
+    // and the parser must accept it.
+    const reqs = parseRollRequests('Tenta una prova di Persuasione.');
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.formula).toBe('1d20');
+    expect(reqs[0]!.label).toBe('Persuasione');
+    expect(reqs[0]!.kind).toBe('check');
+  });
+
+  it('parses "Esegui una prova di Atletica CD 15" as a check button', () => {
+    // "Esegui" ("Execute/Perform") is another imperative the master can
+    // pick when varying prose; the parser must tolerate it alongside the
+    // canonical Tira/Fai/Effettua.
+    const reqs = parseRollRequests('Esegui una prova di Atletica CD 15.');
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.label).toBe('Atletica (CD 15)');
+    expect(reqs[0]!.kind).toBe('check');
+  });
+
+  it('parses "Compi una prova di Furtività" as a check button', () => {
+    // "Compi" ("Perform/Accomplish") completes the small family of
+    // imperative variants the parser accepts in addition to the canonical
+    // verbs.
+    const reqs = parseRollRequests('Compi una prova di Furtività.');
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.label).toBe('Furtività');
+    expect(reqs[0]!.kind).toBe('check');
+  });
+
+  it('parses "Tenta un TS Destrezza CD 14" as a save button', () => {
+    // The same imperative tolerance applies to saving throws: the master
+    // sometimes writes "Tenta un TS ..." instead of "Tira un TS ...".
+    const reqs = parseRollRequests('Tenta un TS Destrezza CD 14.');
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.label).toBe('TS DES (CD 14)');
+    expect(reqs[0]!.kind).toBe('save');
+  });
+
   it('parses hybrid-language "Roll un TS Destrezza CD 14" as a save button', () => {
     const reqs = parseRollRequests('Roll un TS Destrezza CD 14.');
     expect(reqs.length).toBe(1);
