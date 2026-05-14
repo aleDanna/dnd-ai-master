@@ -177,6 +177,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           manualRolls: userPrefs.manualRolls,
           masterGuidanceLevel: userPrefs.masterGuidanceLevel,
           showDifficultyNumbers: userPrefs.showDifficultyNumbers,
+          narrationPace: userPrefs.narrationPace,
           chapterDigests: memory.chapterDigests,
           sceneCard: memory.sceneCard,
           codexIndex: memory.codexIndex,

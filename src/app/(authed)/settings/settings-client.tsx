@@ -126,6 +126,12 @@ export function SettingsClient({ initialPreferences }: SettingsClientProps) {
     void save({ showDifficultyNumbers: next });
   };
 
+  const onNarrationPaceChange = (next: 'detailed' | 'brisk'): void => {
+    if (next === prefs.narrationPace) return;
+    setPrefs((p) => ({ ...p, narrationPace: next }));
+    void save({ narrationPace: next });
+  };
+
   const onImageGenToggle = (): void => {
     const next = !prefs.imageGenerationEnabled;
     setPrefs((p) => ({ ...p, imageGenerationEnabled: next }));
@@ -454,6 +460,55 @@ export function SettingsClient({ initialPreferences }: SettingsClientProps) {
               <button
                 key={opt.slug}
                 onClick={() => onGuidanceLevelChange(opt.slug)}
+                disabled={busy}
+                aria-pressed={active}
+                title={opt.blurb}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 999,
+                  background: active ? 'var(--arcane)' : 'var(--bg-card)',
+                  color: active ? 'var(--bone)' : 'var(--fg)',
+                  border: '1px solid ' + (active ? 'var(--arcane)' : 'var(--border)'),
+                  cursor: busy ? 'wait' : 'pointer',
+                  fontFamily: 'inherit',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  gap: 2,
+                  minWidth: 140,
+                }}
+              >
+                <span>{opt.label}</span>
+                <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.8 }}>{opt.blurb}</span>
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+
+      <div style={{ height: 16 }} />
+
+      <Card>
+        <div>
+          <Eyebrow>Behavior</Eyebrow>
+          <h2 style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>Narration pace</h2>
+          <p style={{ marginTop: 4, fontSize: 13, color: 'var(--fg-muted)' }}>
+            Detailed: every micro-beat is its own master turn (notice the lever → press → door opens → what do you do). Brisk: the master collapses obvious follow-through into one beat (spotting a passage and saying &ldquo;I press it&rdquo; resolves into the open passage AND you stepping inside). Combat rounds, declared checks, and real choices are never collapsed.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {([
+            { slug: 'detailed' as const, label: 'Detailed', blurb: 'Every micro-beat' },
+            { slug: 'brisk' as const, label: 'Brisk', blurb: 'Collapse filler beats' },
+          ]).map((opt) => {
+            const active = (prefs.narrationPace ?? 'detailed') === opt.slug;
+            return (
+              <button
+                key={opt.slug}
+                onClick={() => onNarrationPaceChange(opt.slug)}
                 disabled={busy}
                 aria-pressed={active}
                 title={opt.blurb}

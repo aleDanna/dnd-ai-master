@@ -4,7 +4,7 @@ import {
   getSessionMasterPreferences,
   updateUserPreferences,
 } from '@/lib/preferences';
-import { isImageStylePreset } from '@/db/schema/users';
+import { isImageStylePreset, isNarrationPace } from '@/db/schema/users';
 import { db, pool } from '@/db/client';
 import { users, campaigns, characters, sessions } from '@/db/schema';
 
@@ -25,6 +25,21 @@ describe('image-generation preferences', () => {
     expect(isImageStylePreset('anime')).toBe(false);
     expect(isImageStylePreset(42)).toBe(false);
     expect(isImageStylePreset(undefined)).toBe(false);
+  });
+});
+
+describe('narrationPace preference', () => {
+  it('defaults to "detailed" (current granular pacing)', () => {
+    expect(DEFAULT_PREFERENCES.narrationPace).toBe('detailed');
+  });
+
+  it('isNarrationPace accepts the two allowed slugs and rejects others', () => {
+    expect(isNarrationPace('detailed')).toBe(true);
+    expect(isNarrationPace('brisk')).toBe(true);
+    expect(isNarrationPace('fast')).toBe(false);
+    expect(isNarrationPace('slow')).toBe(false);
+    expect(isNarrationPace(true)).toBe(false);
+    expect(isNarrationPace(undefined)).toBe(false);
   });
 });
 

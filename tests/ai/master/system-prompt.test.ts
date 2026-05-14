@@ -5,6 +5,7 @@ import {
   MASTER_GUIDANCE_BALANCED,
   MASTER_GUIDANCE_STRUCTURED,
   MASTER_HIDE_DIFFICULTY_RULE,
+  MASTER_BRISK_PACING_RULE,
 } from '@/ai/master/system-prompt';
 
 const baseInput = {
@@ -76,6 +77,24 @@ describe('buildMasterSystemPrompt — master guidance level', () => {
     }
     // The guidance block itself is per-user, NOT cached.
     expect(system[guidanceIdx]!.cache_control).toBeUndefined();
+  });
+
+  it('appends the brisk-pacing rule when narrationPace=brisk', () => {
+    const { system } = buildMasterSystemPrompt({ ...baseInput, narrationPace: 'brisk' });
+    const texts = system.map((b) => b.text);
+    expect(texts).toContain(MASTER_BRISK_PACING_RULE);
+  });
+
+  it('does NOT append the brisk-pacing rule when narrationPace=detailed', () => {
+    const { system } = buildMasterSystemPrompt({ ...baseInput, narrationPace: 'detailed' });
+    const texts = system.map((b) => b.text);
+    expect(texts).not.toContain(MASTER_BRISK_PACING_RULE);
+  });
+
+  it('does NOT append the brisk-pacing rule when narrationPace is unset (default = detailed)', () => {
+    const { system } = buildMasterSystemPrompt(baseInput);
+    const texts = system.map((b) => b.text);
+    expect(texts).not.toContain(MASTER_BRISK_PACING_RULE);
   });
 });
 

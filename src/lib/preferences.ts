@@ -91,6 +91,11 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   // Default: reveal DC/AC numbers in prose (current behavior). Players who
   // want a more immersive experience can flip this off.
   showDifficultyNumbers: true,
+  // Default: 'detailed' narration — every micro-beat is its own turn.
+  // Players who want the master to skip obvious follow-through ("you
+  // press the lever; the passage opens; you step inside") can flip to
+  // 'brisk' in /settings.
+  narrationPace: 'detailed',
   imageGenerationEnabled: false,
   imageStylePreset: 'pastel',
   imageStyleCustom: '',
@@ -141,6 +146,7 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
     aiMasterModel: masterModel,
     masterGuidanceLevel: prefs.masterGuidanceLevel ?? DEFAULT_PREFERENCES.masterGuidanceLevel,
     showDifficultyNumbers: prefs.showDifficultyNumbers ?? DEFAULT_PREFERENCES.showDifficultyNumbers,
+    narrationPace: prefs.narrationPace ?? DEFAULT_PREFERENCES.narrationPace,
     imageGenerationEnabled,
     imageStylePreset,
     imageStyleCustom,

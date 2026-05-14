@@ -46,6 +46,20 @@ export interface UserPreferences {
    * knowing exactly how hard the check is.
    */
   showDifficultyNumbers?: boolean;
+  /**
+   * Narration pace.
+   * - 'detailed' (default): every micro-beat is its own master turn — notice
+   *   the lever, press the lever, the door opens, what do you do — preserving
+   *   the current granular pacing.
+   * - 'brisk': the master collapses obvious follow-through into the same beat.
+   *   Spotting a secret passage and the player saying "I press it" resolves
+   *   into a single beat that shows the open passage AND the player crossing
+   *   it (unless an in-fiction reason warrants a pause: a hidden hazard, a
+   *   choice point, a check). Cuts down on the "you're inside; now what?"
+   *   filler turns. Combat rounds, declared checks, and meaningful choices
+   *   are NOT collapsed — only obvious low-stakes filler.
+   */
+  narrationPace?: 'detailed' | 'brisk';
   /** When true, the master may call generate_scene_image to illustrate the scene. Default false. */
   imageGenerationEnabled?: boolean;
   /** Style preset slug. Default 'pastel'. 'custom' uses imageStyleCustom. */
@@ -68,6 +82,12 @@ export type ImageStylePreset = NonNullable<UserPreferences['imageStylePreset']>;
 export const IMAGE_STYLE_PRESETS: ImageStylePreset[] = ['pastel', 'watercolor', 'oil', 'ink', 'photo', 'custom'];
 export function isImageStylePreset(v: unknown): v is ImageStylePreset {
   return typeof v === 'string' && (IMAGE_STYLE_PRESETS as string[]).includes(v);
+}
+
+export type NarrationPace = NonNullable<UserPreferences['narrationPace']>;
+export const NARRATION_PACES: NarrationPace[] = ['detailed', 'brisk'];
+export function isNarrationPace(v: unknown): v is NarrationPace {
+  return typeof v === 'string' && (NARRATION_PACES as string[]).includes(v);
 }
 
 export const users = pgTable('users', {

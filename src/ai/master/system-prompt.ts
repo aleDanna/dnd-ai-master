@@ -1216,6 +1216,13 @@ export interface MasterPromptInput {
    * and adjudicates privately.
    */
   showDifficultyNumbers?: boolean;
+  /**
+   * Narration pace. When 'brisk', the master collapses obvious low-stakes
+   * follow-through into the same beat instead of pausing after every micro-
+   * step. When 'detailed' (default) or unset, current granular pacing is
+   * preserved. See UserPreferences.narrationPace for the full description.
+   */
+  narrationPace?: 'detailed' | 'brisk';
   /** Concatenated chapter summaries (oldest → newest). Empty string if none. */
   chapterDigests?: string;
   /** Compact card of in-scene + open-quest entities. Empty string treated as none. */
@@ -1445,6 +1452,32 @@ After listing options, end with an open prompt ("Che fai?", "What do you
 do?"). The player can pick from your list or do something else entirely —
 treat your list as suggestions, not as the only possibilities.`;
 
+export const MASTER_BRISK_PACING_RULE = `## Narration pace — BRISK
+The player has asked for a faster pace. Cut filler beats. When the player's intent for a low-stakes follow-through is unambiguous, resolve the full mini-arc in ONE response instead of pausing after every step.
+
+### Collapse this pattern
+- Spot a clue, lever, passage, or object → on the very next beat the player says "press it" / "open it" / "go through" / "examine it" → you narrate the press AND the result AND the player's next obvious position, then ask what they do.
+- Climb / cross / descend a trivial obstacle when the player declares they tackle it (no check needed, no hidden hazard, no choice) → resolve the traversal in one beat and land them on the other side.
+- Walk to an obvious destination across an empty/safe scene → narrate the arrival, not the steps.
+- Pickpocket → on success, hand them the item and have them slip away in the same beat. On failure, narrate the catch + immediate fallout.
+
+### Concrete worked example
+Player turn N: "Cerco un passaggio segreto."
+- ❌ Detailed-pace response: "Trovi una leva nascosta dietro la tappezzeria. Cosa fai?"
+  (Player then has to type "tiro la leva" → master narrates the passage opening → "cosa fai?" → player types "entro" → master narrates the corridor → "cosa fai?" — four turns to do the obvious thing.)
+- ✅ Brisk-pace response: "Le tue dita trovano una leva nascosta dietro la tappezzeria. Quando la abbassi, una sezione di muro scorre lateralmente, rivelando un corridoio buio che scende in profondità. Ti ci infili e l'aria fredda della camera sotterranea ti accoglie. Cosa fai?"
+  (One beat, one prompt — the corridor is the new scene.)
+
+### Do NOT collapse these
+- Combat rounds — every action is its own beat regardless of the setting.
+- Declared ability checks, saving throws, attack rolls — never roll on behalf of the player or skip the prompt.
+- Real choice points — branching paths, NPCs reacting, anything where the player's input changes the outcome.
+- Hidden hazards or traps the player hasn't perceived — the trigger is its own beat.
+- Anything requiring the player's consent or specification ("which door?", "how do you approach the noble?").
+
+### Heuristic
+Ask yourself: would a competent table DM say "ok, you press the lever and step inside; what do you do?" all in one breath, OR would they pause for input? If the former, do it in one beat. If you're unsure, default to a beat boundary — losing momentum is worse than overshooting once in a while.`;
+
 export const MASTER_MANUAL_ROLLS_RULE = `## Manual rolls (player rolls in-app)
 The app shows the player an in-app roll button for each formula you write. The player taps it; the app rolls the dice with a small animation; the result is sent back as the next player message. The exact format is:
 
@@ -1586,6 +1619,12 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
   // where the master may show DC/AC numbers.
   if (input.showDifficultyNumbers === false) {
     blocks.push({ type: 'text', text: MASTER_HIDE_DIFFICULTY_RULE });
+  }
+
+  // Narration pace: only inject the BRISK rule when the user opted in.
+  // The detailed default needs no extra block — it's the baseline.
+  if (input.narrationPace === 'brisk') {
+    blocks.push({ type: 'text', text: MASTER_BRISK_PACING_RULE });
   }
 
   // Master World Lore §5.1 — when the campaign has a tonal frame, surface

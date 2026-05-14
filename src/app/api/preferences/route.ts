@@ -15,7 +15,7 @@ import {
   isKnownImageProvider,
   isKnownImageModel,
 } from '@/lib/ai-models';
-import { isMasterGuidanceLevel, isImageStylePreset } from '@/db/schema/users';
+import { isMasterGuidanceLevel, isImageStylePreset, isNarrationPace } from '@/db/schema/users';
 
 export async function GET() {
   const { userId } = await auth();
@@ -99,6 +99,12 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'invalid-showDifficultyNumbers' }, { status: 400 });
     }
     patch.showDifficultyNumbers = body.showDifficultyNumbers;
+  }
+  if ('narrationPace' in body) {
+    if (!isNarrationPace(body.narrationPace)) {
+      return NextResponse.json({ error: 'invalid-narrationPace' }, { status: 400 });
+    }
+    patch.narrationPace = body.narrationPace;
   }
   if ('imageGenerationEnabled' in body) {
     if (typeof body.imageGenerationEnabled !== 'boolean') {
