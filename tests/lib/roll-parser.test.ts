@@ -516,6 +516,49 @@ describe('parseRollRequests — Italian saving throws (no explicit formula)', ()
     const reqs = parseRollRequests('Fai un TS Saggezza.');
     expect(reqs[0]!.label).toBe('TS SAG');
   });
+
+  // The Master is instructed to use "TS <Ability>" or "tiro salvezza di
+  // <Ability>", but the LLM frequently slips into natural-Italian
+  // "su" + article phrasings ("sulla Saggezza", "sul Carisma",
+  // "sull'Intelligenza"). The parser accepts these so the player still gets
+  // a save button — see the spell-save bug where "Fai un tiro salvezza sulla
+  // Saggezza" produced no roll prompt in multiplayer.
+  it('parses "fai un tiro salvezza sulla Saggezza" (su + article)', () => {
+    const reqs = parseRollRequests(`Fai un tiro salvezza sulla Saggezza per resistere.`);
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.label).toBe('TS SAG');
+    expect(reqs[0]!.kind).toBe('save');
+  });
+
+  it('parses "tira un TS sull\'Intelligenza CD 15" (elided form)', () => {
+    const reqs = parseRollRequests(`Tira un TS sull'Intelligenza CD 15.`);
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.label).toBe('TS INT (CD 15)');
+  });
+
+  it('parses "fai un tiro salvezza sul Carisma" (masculine article)', () => {
+    const reqs = parseRollRequests('Fai un tiro salvezza sul Carisma.');
+    expect(reqs[0]!.label).toBe('TS CAR');
+  });
+
+  it('parses "fai un tiro salvezza su Costituzione" (bare "su")', () => {
+    const reqs = parseRollRequests('Fai un tiro salvezza su Costituzione.');
+    expect(reqs[0]!.label).toBe('TS COS');
+  });
+});
+
+describe('parseRollRequests — Italian skill checks with "su" prepositions', () => {
+  it('parses "tira una prova sulla Forza" (su + article)', () => {
+    const reqs = parseRollRequests('Tira una prova sulla Forza.');
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.label).toBe('Forza');
+    expect(reqs[0]!.kind).toBe('check');
+  });
+
+  it(`parses "tira una prova sull'Atletica" (elided form)`, () => {
+    const reqs = parseRollRequests(`Tira una prova sull'Atletica.`);
+    expect(reqs[0]!.label).toBe('Atletica');
+  });
 });
 
 describe('bulletIndexAt', () => {

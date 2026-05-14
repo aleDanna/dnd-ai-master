@@ -136,8 +136,16 @@ export function parseRollRequests(text: string): RollRequest[] {
     'Acrobazia|Addestrare\\s+Animali|Arcano|Arcana|Atletica|Inganno|Intuito|Intuizione|Intimidazione|Intimidire|Investigazione|Indagine|Indagare|Medicina|Natura|Percezione|Intrattenere|Spettacolo|Persuasione|Religione|Rapidit[àa]\\s+di\\s+Mano|Mano\\s+Lesta|Furtivit[àa]|Sopravvivenza|Storia';
   const ITALIAN_ABILITY = 'Forza|Destrezza|Costituzione|Intelligenza|Saggezza|Carisma';
   const ITALIAN_CHECK_VERB = 'tira|fai|effettua|lancia|tenta|esegui|compi|roll';
+  // Allowed prepositions between "prova"/"tiro [di] salvezza" and the
+  // ability/skill name. The Master is instructed to use "di" (or omit the
+  // preposition), but the LLM frequently slips into the natural-Italian
+  // "su" + article forms ("sulla Saggezza", "sul Carisma", "sull'Intelligenza").
+  // The elided "sull'X" form has no trailing whitespace, so it's a separate
+  // alternation branch. Longer variants come first so the regex engine doesn't
+  // greedily pick the shorter "sul"/"su" before checking "sulla"/"sullo".
+  const ITALIAN_ROLL_PREP = `(?:(?:sull[aoe]|sugli|sui|sul|su|di)\\s+|sull['’])`;
   const checkReIt = new RegExp(
-    `(?:${ITALIAN_CHECK_VERB})\\s+(?:un[ao]?\\s+)?(?:prova|controllo)\\s+(?:di\\s+)?(${ITALIAN_SKILL}|${ITALIAN_ABILITY})(?:[^.!?\\n]{0,30}?\\bCD\\s*(\\d+))?`,
+    `(?:${ITALIAN_CHECK_VERB})\\s+(?:un[ao]?\\s+)?(?:prova|controllo)\\s+${ITALIAN_ROLL_PREP}?(${ITALIAN_SKILL}|${ITALIAN_ABILITY})(?:[^.!?\\n]{0,30}?\\bCD\\s*(\\d+))?`,
     'gi',
   );
   while ((m = checkReIt.exec(text)) !== null) {
@@ -159,8 +167,10 @@ export function parseRollRequests(text: string): RollRequest[] {
   // 5. Italian saving throw:
   //    "tira un TS Destrezza CD 14" / "tira un tiro salvezza di Costituzione (CD 12)"
   //    Same imperative-verb tolerance as the check pattern above.
+  //    Also accepts "su"-family prepositions ("tiro salvezza sulla Saggezza",
+  //    "sul Carisma", "sull'Intelligenza") via ITALIAN_ROLL_PREP.
   const saveReIt = new RegExp(
-    `(?:${ITALIAN_CHECK_VERB})\\s+(?:un[ao]?\\s+)?(?:TS|tiro\\s+(?:di\\s+)?salvezza)\\s+(?:di\\s+)?(${ITALIAN_ABILITY})(?:[^.!?\\n]{0,30}?\\bCD\\s*(\\d+))?`,
+    `(?:${ITALIAN_CHECK_VERB})\\s+(?:un[ao]?\\s+)?(?:TS|tiro\\s+(?:di\\s+)?salvezza)\\s+${ITALIAN_ROLL_PREP}?(${ITALIAN_ABILITY})(?:[^.!?\\n]{0,30}?\\bCD\\s*(\\d+))?`,
     'gi',
   );
   while ((m = saveReIt.exec(text)) !== null) {
