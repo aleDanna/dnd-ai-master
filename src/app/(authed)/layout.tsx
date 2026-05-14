@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import { TopBar } from '@/components/layout/top-bar';
 import { TopBarMobile } from '@/components/layout/top-bar-mobile';
 import { BottomNav } from '@/components/layout/bottom-nav';
+import { UserMenu } from '@/components/layout/user-menu';
 import { Icon } from '@/components/ui/icon';
 import { useIsMobile } from '@/lib/use-is-mobile';
 
@@ -46,6 +47,7 @@ export default function AuthedLayout({ children }: { children: React.ReactNode }
           leading={<Icon name="logo-d20" size={20} />}
           title={pageLabelFor(pathname)}
           subtitle="AI&Games"
+          trailing={<UserMenu size={32} />}
         />
       ) : (
         <TopBar />

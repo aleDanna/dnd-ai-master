@@ -4,9 +4,14 @@ import AuthedLayout from '@/app/(authed)/layout';
 
 vi.mock('next/navigation', () => ({
   usePathname: vi.fn(),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), back: vi.fn(), forward: vi.fn(), prefetch: vi.fn() }),
 }));
 vi.mock('@/lib/use-is-mobile', () => ({
   useIsMobile: vi.fn(),
+}));
+vi.mock('@clerk/nextjs', () => ({
+  useUser: () => ({ user: null, isLoaded: true, isSignedIn: false }),
+  useClerk: () => ({ signOut: vi.fn() }),
 }));
 
 import { usePathname } from 'next/navigation';

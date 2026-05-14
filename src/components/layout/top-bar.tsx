@@ -4,7 +4,8 @@ import { usePathname } from 'next/navigation';
 import { Icon } from '@/components/ui/icon';
 import { Wordmark } from '@/components/ui/wordmark';
 import { Chip } from '@/components/ui/chip';
-import { Button } from '@/components/ui/button';
+import { SettingsLink } from '@/components/ui/settings-link';
+import { UserMenu } from '@/components/layout/user-menu';
 
 export interface TopBarProps {
   mode?: string;
@@ -56,21 +57,8 @@ export function TopBar({ mode = 'Solo' }: TopBarProps) {
       </nav>
       <div style={{ flex: 1 }} />
       <Chip tone="accent" dot>{mode}</Chip>
-      <Button variant="ghost" size="sm" icon="settings" aria-label="Settings" />
-      <div
-        style={{
-          width: 28,
-          height: 28,
-          borderRadius: '50%',
-          background: 'var(--bone)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: 'var(--ink)',
-        }}
-      >
-        <Icon name="user" size={14} />
-      </div>
+      <SettingsLink variant="ghost" size="sm" iconOnly />
+      <UserMenu />
     </header>
   );
 }

@@ -7,7 +7,8 @@ export type IconName =
   | 'volume' | 'pause'
   | 'image' | 'menu' | 'copy' | 'chevron-down' | 'chevron-up'
   | 'globe' | 'compass' | 'flame' | 'star' | 'eye'
-  | 'moon' | 'sun' | 'campfire' | 'axe' | 'wand' | 'leaf' | 'music' | 'fist';
+  | 'moon' | 'sun' | 'campfire' | 'axe' | 'wand' | 'leaf' | 'music' | 'fist'
+  | 'log-out';
 
 export interface IconProps extends Omit<React.SVGProps<SVGSVGElement>, 'name'> {
   name: IconName;
@@ -200,6 +201,14 @@ export function Icon({ name, size = 16, color, style, ...rest }: IconProps) {
       return (
         <svg {...baseProps}>
           <path d="M7 11V8a2 2 0 0 1 4 0v3M11 11V7a2 2 0 0 1 4 0v4M15 11V9a2 2 0 0 1 4 0v6a6 6 0 0 1-6 6h-2a6 6 0 0 1-6-6v-3a2 2 0 0 1 4 0" />
+        </svg>
+      );
+    case 'log-out':
+      return (
+        <svg {...baseProps}>
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <line x1="21" y1="12" x2="9" y2="12" />
         </svg>
       );
   }
