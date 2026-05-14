@@ -19,6 +19,8 @@ export interface MechanicsPaneProps {
   pcSpeed?: number;
   /** Forwarded to CombatTracker for the manual "End combat" escape hatch. */
   onEndCombat?: () => void;
+  /** When true the pane drops desktop sidebar chrome and renders as drawer content. */
+  compact?: boolean;
 }
 
 const PACE_LABEL: Record<'fast' | 'normal' | 'slow', string> = {
@@ -33,15 +35,15 @@ const LIGHT_LABEL: Record<'bright' | 'dim' | 'darkness', string> = {
   darkness: 'Darkness',
 };
 
-export function MechanicsPane({ sessionId, state, actors, pcCharacterId, pcName, pcHpMax, pcLevel, pcXp, pcSpeed, onEndCombat }: MechanicsPaneProps) {
+export function MechanicsPane({ sessionId, state, actors, pcCharacterId, pcName, pcHpMax, pcLevel, pcXp, pcSpeed, onEndCombat, compact = false }: MechanicsPaneProps) {
   const travel = state.travel;
   const showTravel = travel != null && (travel.pace || travel.lightLevel);
   return (
     <aside
       style={{
-        width: 320,
+        width: compact ? '100%' : 320,
         padding: 18,
-        borderLeft: '1px solid var(--border)',
+        borderLeft: compact ? '' : '1px solid var(--border)',
         background: 'var(--bg-elev)',
         display: 'flex',
         flexDirection: 'column',
@@ -50,10 +52,7 @@ export function MechanicsPane({ sessionId, state, actors, pcCharacterId, pcName,
         // Span the viewport vertically (minus the 56px sticky topbar) instead
         // of collapsing to content. Internal overflow scrolls; the chrome
         // always reaches the bottom edge.
-        position: 'sticky',
-        top: 56,
-        height: 'calc(100vh - 56px)',
-        overflowY: 'auto',
+        ...(compact ? {} : { position: 'sticky', top: 56, height: 'calc(100vh - 56px)', overflowY: 'auto' }),
       }}
     >
       {/* Memoria sits at the top so the player can trigger a codex rebuild

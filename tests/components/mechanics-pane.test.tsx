@@ -105,3 +105,35 @@ describe('MechanicsPane travel display (PHB §6)', () => {
     expect(screen.queryByText('Travel')).toBeNull();
   });
 });
+
+describe('MechanicsPane compact prop', () => {
+  it('renders without the sticky desktop sidebar chrome when compact=true', () => {
+    const { container } = render(
+      <MechanicsPane
+        sessionId="sess-1"
+        state={baseState()}
+        actors={[]}
+        pcCharacterId="pc1" pcName="Tharion" pcHpMax={10} pcLevel={1} pcXp={0}
+        compact
+      />,
+    );
+    const aside = container.querySelector('aside')!;
+    expect(aside.style.position).not.toBe('sticky');
+    expect(aside.style.width).not.toBe('320px');
+    expect(aside.style.borderLeft).toBe('');
+  });
+
+  it('renders with the sticky sidebar chrome by default', () => {
+    const { container } = render(
+      <MechanicsPane
+        sessionId="sess-1"
+        state={baseState()}
+        actors={[]}
+        pcCharacterId="pc1" pcName="Tharion" pcHpMax={10} pcLevel={1} pcXp={0}
+      />,
+    );
+    const aside = container.querySelector('aside')!;
+    expect(aside.style.position).toBe('sticky');
+    expect(aside.style.width).toBe('320px');
+  });
+});
