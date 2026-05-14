@@ -1,5 +1,4 @@
 'use client';
-import * as React from 'react';
 import { Icon } from '@/components/ui/icon';
 
 export type GameMode = 'combat' | 'exploration';

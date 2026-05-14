@@ -18,6 +18,11 @@ import { setActiveAudio, getActiveAudio, setLoadingMessageId } from '@/lib/tts-p
 import type { Character } from '@/engine/types';
 import type { CampaignRow, CombatActorRow, MessageRow, SessionRow, SessionStateRow } from '@/sessions/client-types';
 import type { MasterInventoryView } from '@/srd/enrich-inventory';
+import { useIsMobile } from '@/lib/use-is-mobile';
+import { TopBarMobile } from '@/components/layout/top-bar-mobile';
+import { Drawer } from '@/components/ui/drawer';
+import { MobileCharacterBar } from '@/components/game/mobile-character-bar';
+import { MobileMechanicsFab } from '@/components/game/mobile-mechanics-fab';
 
 export interface GameClientProps {
   sessionId: string;
@@ -43,6 +48,9 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
   const [enrichedInventory, setEnrichedInventory] = React.useState<MasterInventoryView[]>([]);
   const [spellOpen, setSpellOpen] = React.useState(false);
   const [autoplay, setAutoplay] = React.useState(initialAutoplay);
+  const isMobile = useIsMobile();
+  const [charDrawerOpen, setCharDrawerOpen] = React.useState(false);
+  const [mechDrawerOpen, setMechDrawerOpen] = React.useState(false);
   // sending tracks the in-flight POST to /turn (before the SSE stream takes over)
   const [sending, setSending] = React.useState(false);
   const [sendError, setSendError] = React.useState<string | null>(null);
@@ -415,6 +423,107 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
   // submitted and the master hasn't started streaming yet — `pendingTurn`).
   const composerDisabled = !memoryReady || !isMyTurn || busy;
 
+  if (isMobile) {
+    const inCombat = liveState.inCombat;
+    const round = (liveState.combat?.round as number | undefined) ?? undefined;
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: 'var(--bg)' }}>
+        <TopBarMobile
+          leading={
+            <Link href="/sessions">
+              <Button variant="ghost" size="sm" icon="arrow-left" aria-label="Back to sessions" />
+            </Link>
+          }
+          title={campaign?.name ?? `${character.name}'s session`}
+          subtitle={`${inCombat ? 'COMBAT' : 'EXPLORATION'} · ${(campaign?.language ?? session.language)?.toUpperCase() ?? '—'} · ${party.length > 1 ? `${party.length}P` : 'SOLO'}`}
+          trailing={
+            <>
+              <AutoplayToggle value={autoplay} onChange={setAutoplay} />
+              <SettingsLink variant="ghost" size="sm" iconOnly />
+            </>
+          }
+        />
+        <MobileCharacterBar character={character} state={liveState} onOpen={() => setCharDrawerOpen(true)} />
+        {snapshot && party.length > 1 && (
+          <div style={{ padding: '6px 12px', background: 'var(--bg)', position: 'sticky', top: 100, zIndex: 18, flexShrink: 0 }}>
+            <PartyStrip
+              party={party}
+              currentPlayerCharacterId={currentPlayerCharacterId}
+              viewerCharacterId={viewerCharacterId}
+            />
+          </div>
+        )}
+        {!memoryReady && (
+          <div style={{ padding: '8px 16px', flexShrink: 0 }}>
+            <MemoryStatusBanner sessionId={sessionId} onReady={handleMemoryReady} />
+          </div>
+        )}
+        <NarrativePane
+          sessionId={sessionId}
+          history={messages}
+          liveEvents={liveEvents}
+          busy={busy}
+          onSend={send}
+          onCastSpell={!composerDisabled && character.spellcasting && slots.length > 0 ? () => setSpellOpen(true) : undefined}
+          manualRolls={initialManualRolls}
+          imageGenerationEnabled={initialImageGenerationEnabled}
+          disabled={composerDisabled}
+          disabledPlaceholder={!memoryReady ? 'Preparazione memoria in corso…' : `Waiting for ${currentPlayerName}…`}
+          party={party}
+          compact
+        />
+        <MobileMechanicsFab
+          gameMode={inCombat ? 'combat' : 'exploration'}
+          round={round}
+          onOpen={() => setMechDrawerOpen(true)}
+        />
+        <Drawer open={charDrawerOpen} onOpenChange={setCharDrawerOpen}>
+          <CharacterPane character={character} state={liveState} enrichedInventory={enrichedInventory} compact />
+        </Drawer>
+        <Drawer open={mechDrawerOpen} onOpenChange={setMechDrawerOpen}>
+          <MechanicsPane
+            sessionId={sessionId}
+            state={liveState}
+            actors={liveActors}
+            pcCharacterId={character.id}
+            pcLevel={character.level}
+            pcXp={character.xp}
+            onEndCombat={endCombat}
+            pcName={character.name}
+            pcHpMax={character.hpMax}
+            pcSpeed={character.speed}
+            compact
+          />
+        </Drawer>
+        {(sendError || streamError || turnError) && (
+          <div style={{ padding: '8px 16px', background: 'var(--bg-card)', color: 'var(--ember)', borderTop: '1px solid var(--ember)', fontSize: 12, display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+              <Icon name="x" size={12} />
+              {sendError ?? streamError ?? turnError?.message ?? 'Errore turno.'}
+            </span>
+            {turnError && (
+              <button type="button" onClick={clearTurnError} style={{ background: 'transparent', border: '1px solid var(--ember)', color: 'var(--ember)', padding: '2px 8px', borderRadius: 999, fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer' }}>
+                Chiudi
+              </button>
+            )}
+          </div>
+        )}
+        {spellOpen && character.spellcasting && !composerDisabled && (
+          <SpellModal
+            spellsKnown={character.spellcasting.spellsKnown}
+            slots={slots}
+            onCast={(spellSlug, slotLevel) => {
+              send(`I cast ${spellSlug} at level ${slotLevel}.`);
+              setSpellOpen(false);
+            }}
+            onClose={() => setSpellOpen(false)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Desktop branch — unchanged
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)', flexDirection: 'column' }}>
       <header

@@ -1,5 +1,4 @@
 'use client';
-import * as React from 'react';
 import { Icon } from '@/components/ui/icon';
 import type { Character } from '@/engine/types';
 import type { SessionStateRow } from '@/sessions/client-types';
