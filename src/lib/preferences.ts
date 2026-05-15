@@ -47,6 +47,28 @@ function isLocalSurfaceAvailable(surface: 'ai' | 'tts' | 'image', subModel?: str
   return !!process.env.COMFYUI_BASE_URL || !!process.env.DRAW_THINGS_BASE_URL;
 }
 
+/** Read-side downgrade: if the stored provider is 'local' but the local
+ *  environment is gone (re-deploy without env, or running in production),
+ *  fall back to the env default. The user sees the radio move on next
+ *  Settings render but no broken requests fire. */
+function resolveLocalAiProvider(stored: UserPreferences['aiProvider']): ProviderName {
+  if (stored !== 'local') return stored ?? envDefaultProvider();
+  if (!isLocalSurfaceAvailable('ai')) return envDefaultProvider();
+  return 'local';
+}
+
+function resolveLocalTtsProvider(stored: UserPreferences['ttsProvider']): TtsProvider {
+  if (stored !== 'local') return stored ?? envDefaultTtsProvider();
+  if (!isLocalSurfaceAvailable('tts')) return envDefaultTtsProvider();
+  return 'local';
+}
+
+function resolveLocalImageProvider(stored: UserPreferences['imageProvider']): ImageProviderName {
+  if (stored !== 'local') return stored ?? envDefaultImageProvider();
+  if (!isLocalSurfaceAvailable('image')) return envDefaultImageProvider();
+  return 'local';
+}
+
 /**
  * Defaults are merged on top of stored prefs at read time. Provider/model defaults
  * cascade from env vars when user hasn't picked anything; if env is also unset,
@@ -146,29 +168,43 @@ export async function getUserPreferences(userId: string): Promise<UserPreference
  * affects existing users who haven't explicitly set a value. */
 export async function getResolvedPreferences(userId: string): Promise<Required<UserPreferences>> {
   const prefs = await getUserPreferences(userId);
-  const envProvider = envDefaultProvider();
-  const provider = prefs.aiProvider ?? envProvider;
+  const provider = resolveLocalAiProvider(prefs.aiProvider);
   const masterModel = prefs.aiMasterModel ?? envDefaultMasterModel(provider);
   const imageGenerationEnabled = prefs.imageGenerationEnabled ?? DEFAULT_PREFERENCES.imageGenerationEnabled;
   const imageStylePreset = prefs.imageStylePreset ?? DEFAULT_PREFERENCES.imageStylePreset;
   const imageStyleCustom = prefs.imageStyleCustom ?? DEFAULT_PREFERENCES.imageStyleCustom;
-  const imageProvider = prefs.imageProvider ?? envDefaultImageProvider();
+  const imageProvider = resolveLocalImageProvider(prefs.imageProvider);
   const imageModel = prefs.imageModel ?? envDefaultImageModel(imageProvider);
   // TTS triplet — provider drives the namespace; (provider, model) drives the
   // namespace for voice. Voice support is model-specific on OpenAI: 'ballad'
   // only works on gpt-4o-mini-tts and the legacy tts-1 / tts-1-hd reject it
   // with 400. Resolve model first, then voice against that model.
-  const ttsProvider = prefs.ttsProvider ?? envDefaultTtsProvider();
+  const ttsProvider = resolveLocalTtsProvider(prefs.ttsProvider);
   const storedModel = prefs.ttsModel;
-  const ttsModel =
-    storedModel && ttsModelsFor(ttsProvider).includes(storedModel)
+  const ttsModel = (() => {
+    if (ttsProvider === 'local') {
+      return storedModel === 'piper' || storedModel === 'xtts' ? storedModel : 'piper';
+    }
+    return storedModel && ttsModelsFor(ttsProvider).includes(storedModel)
       ? storedModel
       : envDefaultTtsModel(ttsProvider);
+  })();
   const storedVoice = prefs.ttsVoice;
-  const ttsVoice =
-    storedVoice && ttsVoicesForModel(ttsProvider, ttsModel).includes(storedVoice)
+  const ttsVoice = (() => {
+    if (ttsProvider === 'local') {
+      // For piper, voices are runtime-discovered; pass through any stored value.
+      // For xtts, validate against the language catalog and fall back to 'en'.
+      if (ttsModel === 'xtts') {
+        return storedVoice && (ttsVoicesForModel('local', 'xtts') as readonly string[]).includes(storedVoice)
+          ? storedVoice
+          : 'en';
+      }
+      return storedVoice ?? '';
+    }
+    return storedVoice && ttsVoicesForModel(ttsProvider, ttsModel).includes(storedVoice)
       ? storedVoice
       : envDefaultTtsVoice(ttsProvider, ttsModel);
+  })();
   return {
     ttsProvider,
     ttsVoice,
@@ -257,25 +293,37 @@ export async function getCampaignSettings(
   campaignId: string,
 ): Promise<Required<CampaignSettings>> {
   const prefs = await getCampaignSettingsRaw(campaignId);
-  const envProvider = envDefaultProvider();
-  const provider = prefs.aiProvider ?? envProvider;
+  const provider = resolveLocalAiProvider(prefs.aiProvider);
   const masterModel = prefs.aiMasterModel ?? envDefaultMasterModel(provider);
   const imageGenerationEnabled = prefs.imageGenerationEnabled ?? DEFAULT_PREFERENCES.imageGenerationEnabled;
   const imageStylePreset = prefs.imageStylePreset ?? DEFAULT_PREFERENCES.imageStylePreset;
   const imageStyleCustom = prefs.imageStyleCustom ?? DEFAULT_PREFERENCES.imageStyleCustom;
-  const imageProvider = prefs.imageProvider ?? envDefaultImageProvider();
+  const imageProvider = resolveLocalImageProvider(prefs.imageProvider);
   const imageModel = prefs.imageModel ?? envDefaultImageModel(imageProvider);
-  const ttsProvider = prefs.ttsProvider ?? envDefaultTtsProvider();
+  const ttsProvider = resolveLocalTtsProvider(prefs.ttsProvider);
   const storedModel = prefs.ttsModel;
-  const ttsModel =
-    storedModel && ttsModelsFor(ttsProvider).includes(storedModel)
+  const ttsModel = (() => {
+    if (ttsProvider === 'local') {
+      return storedModel === 'piper' || storedModel === 'xtts' ? storedModel : 'piper';
+    }
+    return storedModel && ttsModelsFor(ttsProvider).includes(storedModel)
       ? storedModel
       : envDefaultTtsModel(ttsProvider);
+  })();
   const storedVoice = prefs.ttsVoice;
-  const ttsVoice =
-    storedVoice && ttsVoicesForModel(ttsProvider, ttsModel).includes(storedVoice)
+  const ttsVoice = (() => {
+    if (ttsProvider === 'local') {
+      if (ttsModel === 'xtts') {
+        return storedVoice && (ttsVoicesForModel('local', 'xtts') as readonly string[]).includes(storedVoice)
+          ? storedVoice
+          : 'en';
+      }
+      return storedVoice ?? '';
+    }
+    return storedVoice && ttsVoicesForModel(ttsProvider, ttsModel).includes(storedVoice)
       ? storedVoice
       : envDefaultTtsVoice(ttsProvider, ttsModel);
+  })();
   return {
     ttsProvider,
     ttsVoice,
