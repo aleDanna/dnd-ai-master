@@ -65,6 +65,10 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     clearTurnError,
     finalizedSeq,
     clearStreamingMessage,
+    ttsPending,
+    ttsErrors,
+    imagePending,
+    imageError,
   } = useSessionStream(sessionId);
 
   // Derive live state: prefer snapshot from SSE, fall back to SSR props
@@ -469,6 +473,10 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
           disabledPlaceholder={!memoryReady ? 'Preparazione memoria in corso…' : `Waiting for ${currentPlayerName}…`}
           party={party}
           compact
+          ttsPending={ttsPending}
+          ttsErrors={ttsErrors}
+          imagePending={imagePending}
+          imageError={imageError}
         />
         <MobileMechanicsFab
           gameMode={inCombat ? 'combat' : 'exploration'}
@@ -603,6 +611,10 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
                   : `Waiting for ${currentPlayerName}…`
             }
             party={party}
+            ttsPending={ttsPending}
+            ttsErrors={ttsErrors}
+            imagePending={imagePending}
+            imageError={imageError}
           />
           {(sendError || streamError || turnError) && (
             <div
