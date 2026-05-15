@@ -22,10 +22,9 @@ describe('TopBar', () => {
     signOutMock.mockImplementation(() => Promise.resolve());
   });
 
-  it('routes the Settings button to /settings when clicked', () => {
+  it('does not render a Settings button (settings moved per-campaign)', () => {
     render(<TopBar />);
-    fireEvent.click(screen.getByRole('button', { name: /^settings$/i }));
-    expect(pushMock).toHaveBeenCalledWith('/settings');
+    expect(screen.queryByRole('button', { name: /^settings$/i })).toBeNull();
   });
 
   it('opens the user account menu when the avatar is clicked', () => {

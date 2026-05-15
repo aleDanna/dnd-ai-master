@@ -31,11 +31,10 @@ describe('UserMenu', () => {
     expect(screen.getByRole('menu')).toBeInTheDocument();
   });
 
-  it('exposes a Settings menu item that navigates to /settings', () => {
+  it('does not expose a Settings menu item (settings moved per-campaign)', () => {
     render(<UserMenu />);
     fireEvent.click(screen.getByRole('button', { name: /account menu/i }));
-    fireEvent.click(screen.getByRole('menuitem', { name: /^settings$/i }));
-    expect(pushMock).toHaveBeenCalledWith('/settings');
+    expect(screen.queryByRole('menuitem', { name: /^settings$/i })).toBeNull();
   });
 
   it('exposes a Sign out menu item that calls Clerk signOut with a redirect', async () => {

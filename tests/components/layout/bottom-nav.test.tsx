@@ -9,12 +9,13 @@ vi.mock('next/navigation', () => ({
 import { usePathname } from 'next/navigation';
 
 describe('BottomNav', () => {
-  it('renders the three tab labels', () => {
+  it('renders the two tab labels', () => {
     vi.mocked(usePathname).mockReturnValue('/hub');
     render(<BottomNav />);
     expect(screen.getByText('Campaigns')).toBeInTheDocument();
     expect(screen.getByText('Heroes')).toBeInTheDocument();
-    expect(screen.getByText('Settings')).toBeInTheDocument();
+    // Settings tab was removed when settings moved per-campaign
+    expect(screen.queryByText('Settings')).toBeNull();
   });
 
   it('marks /hub as the active tab when pathname is /hub', () => {
@@ -32,16 +33,10 @@ describe('BottomNav', () => {
     expect(screen.getByRole('link', { name: /Campaigns/ })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('marks /settings as the active tab when pathname is /settings', () => {
-    vi.mocked(usePathname).mockReturnValue('/settings');
-    render(<BottomNav />);
-    expect(screen.getByRole('link', { name: /Settings/ })).toHaveAttribute('aria-current', 'page');
-  });
-
   it('does not mark any tab active on unrelated paths', () => {
     vi.mocked(usePathname).mockReturnValue('/campaigns/abc-123');
     render(<BottomNav />);
-    for (const label of ['Campaigns', 'Heroes', 'Settings']) {
+    for (const label of ['Campaigns', 'Heroes']) {
       expect(screen.getByRole('link', { name: new RegExp(label) })).not.toHaveAttribute('aria-current');
     }
   });
