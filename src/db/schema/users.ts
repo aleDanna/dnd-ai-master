@@ -3,10 +3,11 @@ import { pgTable, text, timestamp, jsonb } from 'drizzle-orm/pg-core';
 import type { ProviderName, ImageProviderName } from '@/lib/ai-models';
 
 export interface UserPreferences {
-  /** TTS provider. 'openai' or 'gemini'. Anthropic has no TTS endpoint, so
-   *  this list is independent of `aiProvider`. Defaults to env TTS_PROVIDER
-   *  / 'openai' if unset. */
-  ttsProvider?: 'openai' | 'gemini';
+  /** TTS provider. 'openai', 'gemini', or 'local' (Piper/XTTS via env-gated
+   *  self-hosted services). Anthropic has no TTS endpoint, so this list is
+   *  independent of `aiProvider`. Defaults to env TTS_PROVIDER / 'openai'
+   *  if unset. 'local' is downgraded silently if env / isLocalEnvironment is off. */
+  ttsProvider?: 'openai' | 'gemini' | 'local';
   /** TTS voice slug. Namespace depends on `ttsProvider` — OpenAI uses
    *  alloy/onyx/…, Gemini uses Aoede/Kore/…. Defaults per-provider. */
   ttsVoice?: string;

@@ -43,6 +43,7 @@ const TTS_MODEL_BLURBS: Record<string, string> = {
 const TTS_PROVIDER_LABELS: Record<TtsProvider, string> = {
   openai: 'OpenAI',
   gemini: 'Gemini',
+  local: 'Local',
 };
 
 export function CampaignSettingsClient({ campaignId, initialSettings, canEdit, activeSessionId }: CampaignSettingsClientProps) {

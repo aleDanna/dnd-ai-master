@@ -15,7 +15,7 @@ export const campaignStatusEnum = pgEnum('campaign_status', ['active', 'ended'])
 export interface CampaignSettings {
   aiProvider?: ProviderName;
   aiMasterModel?: string;
-  ttsProvider?: 'openai' | 'gemini';
+  ttsProvider?: 'openai' | 'gemini' | 'local';
   ttsVoice?: string;
   ttsModel?: string;
   manualRolls?: boolean;
