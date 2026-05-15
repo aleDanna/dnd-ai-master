@@ -18,8 +18,14 @@ export default async function CampaignSettingsPage({ params }: { params: Promise
 
   const settings = await getCampaignSettings(id);
   const canEdit = data.campaign.userId === userId;
+  const activeSessionId = data.activeSession?.id ?? null;
 
   return (
-    <CampaignSettingsClient campaignId={id} initialSettings={settings} canEdit={canEdit} />
+    <CampaignSettingsClient
+      campaignId={id}
+      initialSettings={settings}
+      canEdit={canEdit}
+      activeSessionId={activeSessionId}
+    />
   );
 }

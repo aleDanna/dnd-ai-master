@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Eyebrow } from '@/components/ui/eyebrow';
 import { Icon } from '@/components/ui/icon';
+import { RebuildMemoryButton } from '@/components/rebuild-memory-button';
 import {
   TTS_PROVIDERS,
   type TtsProvider,
@@ -28,6 +29,7 @@ export interface CampaignSettingsClientProps {
   campaignId: string;
   initialSettings: Required<CampaignSettings>;
   canEdit: boolean;
+  activeSessionId: string | null;
 }
 
 const TTS_MODEL_BLURBS: Record<string, string> = {
@@ -43,7 +45,7 @@ const TTS_PROVIDER_LABELS: Record<TtsProvider, string> = {
   gemini: 'Gemini',
 };
 
-export function CampaignSettingsClient({ campaignId, initialSettings, canEdit }: CampaignSettingsClientProps) {
+export function CampaignSettingsClient({ campaignId, initialSettings, canEdit, activeSessionId }: CampaignSettingsClientProps) {
   const [settings, setSettings] = React.useState<Required<CampaignSettings>>(initialSettings);
   const [busy, setBusy] = React.useState(false);
   const [savedOnce, setSavedOnce] = React.useState(false);
@@ -474,6 +476,25 @@ export function CampaignSettingsClient({ campaignId, initialSettings, canEdit }:
                 style={{ padding: 10, borderRadius: 6, border: '1px solid var(--border-strong)', background: 'var(--bg-card)', color: 'var(--fg)', fontFamily: 'var(--font-ui)', fontSize: 13, resize: 'vertical' }} />
             )}
           </div>
+        )}
+      </Card>
+
+      <div style={{ height: 16 }} />
+
+      <Card>
+        <div>
+          <Eyebrow>Maintenance</Eyebrow>
+          <h2 style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>Memoria</h2>
+          <p style={{ marginTop: 4, fontSize: 13, color: 'var(--fg-muted)' }}>
+            Rigenera il codex della sessione attiva da zero. Utile se un crash a metà turno ha lasciato l&apos;estrattore di memoria in uno stato incoerente.
+          </p>
+        </div>
+        {activeSessionId ? (
+          <RebuildMemoryButton sessionId={activeSessionId} />
+        ) : (
+          <p style={{ fontSize: 13, color: 'var(--fg-muted)', margin: 0 }}>
+            Nessuna sessione attiva per questa campagna.
+          </p>
         )}
       </Card>
 
