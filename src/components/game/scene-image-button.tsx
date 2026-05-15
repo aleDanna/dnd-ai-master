@@ -6,6 +6,12 @@ import { SpinningDie } from './spinning-die';
 export interface SceneImageButtonProps {
   sessionId: string;
   messageId: string;
+  /** True when any client in the session has an image-generation job in
+   *  flight. Renders a shared spinner regardless of who triggered it. */
+  sharedPending?: boolean;
+  /** Transient broadcast error from any client's failed generation.
+   *  Auto-clears upstream after ~5s. */
+  sharedError?: string | null;
 }
 
 type State = 'idle' | 'loading' | 'done' | 'error';
@@ -17,7 +23,7 @@ type State = 'idle' | 'loading' | 'done' | 'error';
  * rendering happens in the right Scene panel; this button is just the
  * trigger + loading/error feedback.
  */
-export function SceneImageButton({ sessionId, messageId }: SceneImageButtonProps) {
+export function SceneImageButton({ sessionId, messageId, sharedPending = false, sharedError = null }: SceneImageButtonProps) {
   const [state, setState] = React.useState<State>('idle');
   const [error, setError] = React.useState<string | null>(null);
 
@@ -44,19 +50,21 @@ export function SceneImageButton({ sessionId, messageId }: SceneImageButtonProps
     }
   };
 
+  const effectiveState: State =
+    sharedError ? 'error' : sharedPending ? 'loading' : state;
+  const effectiveError = sharedError ?? error;
+
   const label =
-    state === 'loading'
-      ? 'Generating…'
-      : state === 'done'
-        ? 'Generated'
-        : state === 'error'
-          ? 'Retry'
-          : 'Image';
+    effectiveState === 'loading' ? 'Generating…'
+      : effectiveState === 'done' ? 'Generated'
+      : effectiveState === 'error' ? 'Failed'
+      : 'Image';
 
   return (
     <button
       onClick={onClick}
-      title={error ?? label}
+      disabled={sharedPending}
+      title={effectiveError ?? label}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -64,25 +72,25 @@ export function SceneImageButton({ sessionId, messageId }: SceneImageButtonProps
         height: 22,
         padding: '0 9px',
         background:
-          state === 'error'
+          effectiveState === 'error'
             ? 'rgba(196, 95, 71, 0.10)'
-            : state === 'done'
+            : effectiveState === 'done'
               ? 'rgba(122, 79, 184, 0.10)'
               : 'transparent',
         border:
           '1px solid ' +
-          (state === 'error' ? 'var(--ember)' : state === 'done' ? 'var(--arcane)' : 'var(--border)'),
+          (effectiveState === 'error' ? 'var(--ember)' : effectiveState === 'done' ? 'var(--arcane)' : 'var(--border)'),
         borderRadius: 999,
         color:
-          state === 'error' ? 'var(--ember)' : state === 'done' ? 'var(--arcane)' : 'var(--fg-muted)',
+          effectiveState === 'error' ? 'var(--ember)' : effectiveState === 'done' ? 'var(--arcane)' : 'var(--fg-muted)',
         fontFamily: 'var(--font-ui)',
         fontSize: 11,
-        cursor: state === 'loading' ? 'wait' : 'pointer',
+        cursor: effectiveState === 'loading' ? 'wait' : 'pointer',
       }}
     >
-      {state === 'loading' ? (
+      {effectiveState === 'loading' ? (
         <SpinningDie size={11} />
-      ) : state === 'done' ? (
+      ) : effectiveState === 'done' ? (
         <Icon name="check" size={11} />
       ) : (
         <Icon name="sparkle" size={11} />
