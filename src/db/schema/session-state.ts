@@ -27,6 +27,14 @@ export const sessionState = pgTable('session_state', {
   sceneImageData: bytea('scene_image_data'),
   sceneImagePrompt: text('scene_image_prompt'),
   sceneImageVersion: integer('scene_image_version').notNull().default(0),
+  /** True while a scene-image generation job is in flight; UI renders a
+   *  shared spinner across all clients. Set false on success/failure. */
+  sceneImagePending: boolean('scene_image_pending').notNull().default(false),
+  /** Lock timestamp for TTL-based orphan re-claim (60s). */
+  sceneImagePendingAt: timestamp('scene_image_pending_at', { withTimezone: true }),
+  /** Provider/error message when the last image attempt failed. NULL after
+   *  success or while pending. */
+  sceneImageFailedReason: text('scene_image_failed_reason'),
   /**
    * PHB §5.2: timestamp of the most recent successful long rest. Used to
    * enforce the "at most one long rest per 24 hours" cooldown. NULL when

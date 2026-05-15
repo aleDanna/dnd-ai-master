@@ -55,7 +55,7 @@ export async function GET(
     )
     .limit(1);
 
-  if (cached) {
+  if (cached?.audioMp3 && cached.mimeType) {
     return new Response(new Uint8Array(cached.audioMp3), {
       headers: {
         'Content-Type': cached.mimeType,
