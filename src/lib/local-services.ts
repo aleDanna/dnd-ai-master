@@ -1,3 +1,5 @@
+import { XTTS_LANGUAGES } from './tts-voices';
+
 /**
  * True when the current process is a local development environment.
  *
@@ -94,6 +96,40 @@ export function normalizeOllamaLabel(name: string): string {
   const tag = colon >= 0 ? stripped.slice(colon + 1) : '';
   const clean = path.replace(/-GGUF$/i, '');
   return tag ? `${clean} (${tag})` : clean;
+}
+
+interface PiperVoiceEntry { id: string; language?: string; quality?: string }
+
+/** Fetches the installed Piper voices from /v1/audio/voices (OpenAI-compat).
+ *  Returns [] on any failure. */
+export async function fetchPiperVoices(): Promise<ModelOption[]> {
+  const base = process.env.PIPER_BASE_URL;
+  if (!base) return [];
+  try {
+    const res = await fetch(`${base}/v1/audio/voices`, {
+      signal: AbortSignal.timeout(2000),
+      cache: 'no-store',
+    });
+    if (!res.ok) return [];
+    const voices = (await res.json()) as PiperVoiceEntry[];
+    return voices.map((v) => ({
+      slug: v.id,
+      label: v.id,
+      blurb: [v.language, v.quality].filter(Boolean).join(' · ') || 'piper',
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/** Returns the static XTTSv2 language catalog. Voice cloning is phase 2 — for
+ *  now we expose one default speaker per supported language. */
+export function listXttsVoices(): ModelOption[] {
+  return XTTS_LANGUAGES.map((l) => ({
+    slug: l.code,
+    label: `${l.label} (default)`,
+    blurb: 'xtts · neural',
+  }));
 }
 
 interface OllamaTagsResponse {
