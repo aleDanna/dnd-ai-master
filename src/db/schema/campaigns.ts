@@ -12,7 +12,7 @@ export const campaignStatusEnum = pgEnum('campaign_status', ['active', 'ended'])
  * were backfilled by migration 0031.
  */
 export interface CampaignSettings {
-  aiProvider?: 'anthropic' | 'openai' | 'gemini';
+  aiProvider?: 'anthropic' | 'openai' | 'gemini' | 'ollama';
   aiMasterModel?: string;
   ttsProvider?: 'openai' | 'gemini';
   ttsVoice?: string;

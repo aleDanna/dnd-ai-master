@@ -1,7 +1,7 @@
 import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions, users, campaigns, type UserPreferences, isMasterGuidanceLevel, isImageStylePreset, isNarrationPace, type CampaignSettings } from '@/db/schema';
-import { isKnownProvider, isKnownMasterModel, isKnownImageProvider, isKnownImageModel } from '@/lib/ai-models';
+import { isKnownProvider, isKnownMasterModel, isKnownImageProvider, isKnownImageModel, type ProviderName } from '@/lib/ai-models';
 
 export type { UserPreferences };
 export {
@@ -28,16 +28,18 @@ import {
  * cascade from env vars when user hasn't picked anything; if env is also unset,
  * fall back to anthropic + claude-sonnet-4-5 (the historical default).
  */
-function envDefaultProvider(): 'anthropic' | 'openai' | 'gemini' {
+function envDefaultProvider(): ProviderName {
   const raw = (process.env.MASTER_PROVIDER ?? '').trim().toLowerCase();
   if (raw === 'openai') return 'openai';
   if (raw === 'gemini') return 'gemini';
+  if (raw === 'ollama') return 'ollama';
   return 'anthropic';
 }
 
-function envDefaultMasterModel(provider: 'anthropic' | 'openai' | 'gemini'): string {
+function envDefaultMasterModel(provider: ProviderName): string {
   if (provider === 'openai') return process.env.OPENAI_MASTER_MODEL ?? 'gpt-5';
   if (provider === 'gemini') return process.env.GEMINI_MASTER_MODEL ?? 'gemini-2.5-pro';
+  if (provider === 'ollama') return process.env.OLLAMA_MASTER_MODEL ?? '';
   return process.env.ANTHROPIC_MASTER_MODEL ?? 'claude-sonnet-4-5';
 }
 

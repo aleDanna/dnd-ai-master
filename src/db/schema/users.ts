@@ -23,7 +23,7 @@ export interface UserPreferences {
    */
   manualRolls?: boolean;
   /** Provider for the AI master. When unset, falls back to MASTER_PROVIDER env. */
-  aiProvider?: 'anthropic' | 'openai' | 'gemini';
+  aiProvider?: 'anthropic' | 'openai' | 'gemini' | 'ollama';
   /** Specific model used for master narration + wizard proposals. When unset, falls back to env defaults. */
   aiMasterModel?: string;
   /**

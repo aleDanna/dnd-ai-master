@@ -6,7 +6,7 @@
  * actionable failure.
  */
 
-export type ProviderName = 'anthropic' | 'openai' | 'gemini';
+export type ProviderName = 'anthropic' | 'openai' | 'gemini' | 'ollama';
 export type ImageProviderName = 'openai' | 'gemini';
 
 export interface ModelOption {
@@ -83,11 +83,16 @@ export const GEMINI_IMAGE_MODELS: ModelOption[] = [
 export function modelsForProvider(p: ProviderName): ModelOption[] {
   if (p === 'anthropic') return ANTHROPIC_MASTER_MODELS;
   if (p === 'openai') return OPENAI_MASTER_MODELS;
-  return GEMINI_MASTER_MODELS;
+  if (p === 'gemini') return GEMINI_MASTER_MODELS;
+  // Ollama's list is supplied at runtime from /api/tags, not enumerated here.
+  return [];
 }
 
 export function defaultModelForProvider(p: ProviderName): string {
   const list = modelsForProvider(p);
+  // Ollama has no enumerated list — the caller must supply the runtime list.
+  // Returning '' here lets the caller detect "no static default" and pick from the live probe.
+  if (list.length === 0) return '';
   return list.find((m) => m.recommended)?.slug ?? list[0]!.slug;
 }
 
@@ -101,16 +106,18 @@ export function defaultImageModelForProvider(p: ImageProviderName): string {
 }
 
 export function isKnownProvider(value: unknown): value is ProviderName {
-  return value === 'anthropic' || value === 'openai' || value === 'gemini';
+  return value === 'anthropic' || value === 'openai' || value === 'gemini' || value === 'ollama';
 }
 
 export function isKnownImageProvider(value: unknown): value is ImageProviderName {
   return value === 'openai' || value === 'gemini';
 }
 
-/** Validates that the slug is in the union of known master model slugs. */
-export function isKnownMasterModel(value: unknown): boolean {
+/** Validates that the slug is in the union of known master model slugs.
+ *  For Ollama, slugs are dynamic — accept any non-empty string ≤200 chars. */
+export function isKnownMasterModel(value: unknown, provider?: ProviderName): boolean {
   if (typeof value !== 'string') return false;
+  if (provider === 'ollama') return value.length > 0 && value.length <= 200;
   return [...ANTHROPIC_MASTER_MODELS, ...OPENAI_MASTER_MODELS, ...GEMINI_MASTER_MODELS].some(
     (m) => m.slug === value,
   );
