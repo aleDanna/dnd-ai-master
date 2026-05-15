@@ -225,6 +225,13 @@
       "when": 1778839768612,
       "tag": "0031_flashy_the_hunter",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1778853774182,
+      "tag": "0032_chubby_clea",
+      "breakpoints": true
     }
   ]
 }
