@@ -2,6 +2,7 @@ import { auth } from '@clerk/nextjs/server';
 import { notFound, redirect } from 'next/navigation';
 import { getCampaign } from '@/campaigns/persist';
 import { getCampaignSettings } from '@/lib/preferences';
+import { fetchLocalServicesStatus } from '@/lib/local-services';
 import { ensureUser } from '@/db/users';
 import { CampaignSettingsClient } from './settings-client';
 
@@ -16,7 +17,10 @@ export default async function CampaignSettingsPage({ params }: { params: Promise
   const data = await getCampaign(userId, id);
   if (!data) notFound();
 
-  const settings = await getCampaignSettings(id);
+  const [settings, localServices] = await Promise.all([
+    getCampaignSettings(id),
+    fetchLocalServicesStatus(),
+  ]);
   const canEdit = data.campaign.userId === userId;
   const activeSessionId = data.activeSession?.id ?? null;
 
@@ -26,6 +30,7 @@ export default async function CampaignSettingsPage({ params }: { params: Promise
       initialSettings={settings}
       canEdit={canEdit}
       activeSessionId={activeSessionId}
+      localServices={localServices}
     />
   );
 }
