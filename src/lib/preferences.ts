@@ -1,6 +1,7 @@
 import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { sessions, users, type UserPreferences } from '@/db/schema';
+import { sessions, users, type UserPreferences, isMasterGuidanceLevel, isImageStylePreset, isNarrationPace, type CampaignSettings } from '@/db/schema';
+import { isKnownProvider, isKnownMasterModel, isKnownImageProvider, isKnownImageModel } from '@/lib/ai-models';
 
 export type { UserPreferences };
 export {
@@ -16,6 +17,9 @@ import {
   defaultModelForProvider as ttsModelDefault,
   voicesForModel as ttsVoicesForModel,
   modelsForProvider as ttsModelsFor,
+  isValidTtsProvider,
+  isValidTtsVoice,
+  isValidTtsModel,
   type TtsProvider,
 } from './tts-voices';
 
@@ -193,5 +197,92 @@ export async function getSessionMasterPreferences(
     .limit(1);
   if (!row) throw new Error(`getSessionMasterPreferences: session ${sessionId} not found`);
   return getResolvedPreferences(row.userId);
+}
+
+export type ValidatedSettings = Partial<CampaignSettings & { ttsAutoplay?: boolean }>;
+
+export type ValidateResult =
+  | { ok: true; patch: ValidatedSettings }
+  | { ok: false; error: string };
+
+/**
+ * Shared field-by-field validation for settings patches. Accepts the full
+ * superset (campaign keys + ttsAutoplay). Callers decide which keys are
+ * allowed for their endpoint and pre-filter the body before calling.
+ *
+ * Returns the same shape as the input on success — useful so the caller
+ * can persist exactly what the validator OK'd.
+ */
+export function validateSettingsPatch(body: ValidatedSettings): ValidateResult {
+  const out: ValidatedSettings = {};
+  if ('ttsProvider' in body) {
+    if (body.ttsProvider === undefined || body.ttsProvider === null) out.ttsProvider = undefined;
+    else if (!isValidTtsProvider(body.ttsProvider)) return { ok: false, error: 'invalid-ttsProvider' };
+    else out.ttsProvider = body.ttsProvider;
+  }
+  if ('ttsVoice' in body) {
+    if (body.ttsVoice === undefined || body.ttsVoice === null) out.ttsVoice = undefined;
+    else if (!isValidTtsVoice(body.ttsVoice)) return { ok: false, error: 'invalid-ttsVoice' };
+    else out.ttsVoice = body.ttsVoice;
+  }
+  if ('ttsModel' in body) {
+    if (body.ttsModel === undefined || body.ttsModel === null) out.ttsModel = undefined;
+    else if (!isValidTtsModel(body.ttsModel)) return { ok: false, error: 'invalid-ttsModel' };
+    else out.ttsModel = body.ttsModel;
+  }
+  if ('ttsAutoplay' in body) {
+    if (typeof body.ttsAutoplay !== 'boolean') return { ok: false, error: 'invalid-ttsAutoplay' };
+    out.ttsAutoplay = body.ttsAutoplay;
+  }
+  if ('manualRolls' in body) {
+    if (typeof body.manualRolls !== 'boolean') return { ok: false, error: 'invalid-manualRolls' };
+    out.manualRolls = body.manualRolls;
+  }
+  if ('aiProvider' in body) {
+    if (!isKnownProvider(body.aiProvider)) return { ok: false, error: 'invalid-aiProvider' };
+    out.aiProvider = body.aiProvider;
+  }
+  if ('aiMasterModel' in body) {
+    if (body.aiMasterModel !== undefined && !isKnownMasterModel(body.aiMasterModel)) {
+      return { ok: false, error: 'invalid-aiMasterModel' };
+    }
+    out.aiMasterModel = body.aiMasterModel as string | undefined;
+  }
+  if ('masterGuidanceLevel' in body) {
+    if (!isMasterGuidanceLevel(body.masterGuidanceLevel)) return { ok: false, error: 'invalid-masterGuidanceLevel' };
+    out.masterGuidanceLevel = body.masterGuidanceLevel;
+  }
+  if ('showDifficultyNumbers' in body) {
+    if (typeof body.showDifficultyNumbers !== 'boolean') return { ok: false, error: 'invalid-showDifficultyNumbers' };
+    out.showDifficultyNumbers = body.showDifficultyNumbers;
+  }
+  if ('narrationPace' in body) {
+    if (!isNarrationPace(body.narrationPace)) return { ok: false, error: 'invalid-narrationPace' };
+    out.narrationPace = body.narrationPace;
+  }
+  if ('imageGenerationEnabled' in body) {
+    if (typeof body.imageGenerationEnabled !== 'boolean') return { ok: false, error: 'invalid-imageGenerationEnabled' };
+    out.imageGenerationEnabled = body.imageGenerationEnabled;
+  }
+  if ('imageStylePreset' in body) {
+    if (!isImageStylePreset(body.imageStylePreset)) return { ok: false, error: 'invalid-imageStylePreset' };
+    out.imageStylePreset = body.imageStylePreset;
+  }
+  if ('imageStyleCustom' in body) {
+    if (typeof body.imageStyleCustom !== 'string') return { ok: false, error: 'invalid-imageStyleCustom' };
+    if (body.imageStyleCustom.length > 500) return { ok: false, error: 'imageStyleCustom-too-long' };
+    out.imageStyleCustom = body.imageStyleCustom;
+  }
+  if ('imageProvider' in body) {
+    if (!isKnownImageProvider(body.imageProvider)) return { ok: false, error: 'invalid-imageProvider' };
+    out.imageProvider = body.imageProvider;
+  }
+  if ('imageModel' in body) {
+    if (body.imageModel !== undefined && !isKnownImageModel(body.imageModel)) {
+      return { ok: false, error: 'invalid-imageModel' };
+    }
+    out.imageModel = body.imageModel as string | undefined;
+  }
+  return { ok: true, patch: out };
 }
 
