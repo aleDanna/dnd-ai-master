@@ -49,4 +49,30 @@ describe('createCampaign', () => {
       createCampaign({ userId: 'someone-else', name: 'X', premise: 'Y', characterTemplateId: templateId })
     ).rejects.toThrow(/character-forbidden/);
   });
+
+  it('snapshots the creator\'s preferences into campaigns.settings, dropping ttsAutoplay', async () => {
+    // Set non-default global preferences on the creator before forging.
+    await db.update(users).set({
+      preferences: {
+        aiProvider: 'openai',
+        aiMasterModel: 'gpt-5',
+        narrationPace: 'brisk',
+        manualRolls: true,
+        ttsAutoplay: true,         // must NOT carry over — autoplay stays per-viewer
+        ttsVoice: 'onyx',
+      },
+    }).where(eq(users.id, userId));
+
+    const { campaign } = await createCampaign({
+      userId, name: 'Snapshot test', premise: 'p',
+      characterTemplateId: templateId,
+    });
+
+    expect(campaign.settings.aiProvider).toBe('openai');
+    expect(campaign.settings.aiMasterModel).toBe('gpt-5');
+    expect(campaign.settings.narrationPace).toBe('brisk');
+    expect(campaign.settings.manualRolls).toBe(true);
+    expect(campaign.settings.ttsVoice).toBe('onyx');
+    expect('ttsAutoplay' in campaign.settings).toBe(false);
+  });
 });

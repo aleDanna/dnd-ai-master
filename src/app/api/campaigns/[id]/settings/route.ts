@@ -9,6 +9,23 @@ import {
   type CampaignSettings,
 } from '@/lib/preferences';
 
+const ALLOWED_KEYS: ReadonlySet<keyof CampaignSettings> = new Set<keyof CampaignSettings>([
+  'aiProvider',
+  'aiMasterModel',
+  'ttsProvider',
+  'ttsVoice',
+  'ttsModel',
+  'manualRolls',
+  'masterGuidanceLevel',
+  'showDifficultyNumbers',
+  'narrationPace',
+  'imageGenerationEnabled',
+  'imageStylePreset',
+  'imageStyleCustom',
+  'imageProvider',
+  'imageModel',
+]);
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -48,9 +65,13 @@ export async function PUT(
     return NextResponse.json({ error: 'invalid-body' }, { status: 400 });
   }
 
-  // Reject ttsAutoplay — it lives on users.preferences, not campaigns.settings.
-  if ('ttsAutoplay' in body) {
-    return NextResponse.json({ error: 'unknown-key', key: 'ttsAutoplay' }, { status: 400 });
+  // Reject any key that isn't a valid CampaignSettings field. Surfaces stale
+  // clients (or typos) instead of silently dropping the patch on the floor.
+  // Notably this also rejects ttsAutoplay, which lives on users.preferences.
+  for (const key of Object.keys(body)) {
+    if (!ALLOWED_KEYS.has(key as keyof CampaignSettings)) {
+      return NextResponse.json({ error: 'unknown-key', key }, { status: 400 });
+    }
   }
 
   const result = validateSettingsPatch(body as Partial<CampaignSettings>);
@@ -58,11 +79,8 @@ export async function PUT(
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
 
-  // validateSettingsPatch returns the superset (incl. ttsAutoplay) but we
-  // already rejected ttsAutoplay above, so the patch is safe to persist.
-  const { ttsAutoplay: _ignored, ...campaignPatch } = result.patch;
-  void _ignored;
-  await updateCampaignSettings(id, campaignPatch);
+  // Patch came through ALLOWED_KEYS — no ttsAutoplay possible. Persist as-is.
+  await updateCampaignSettings(id, result.patch as Partial<CampaignSettings>);
 
   const settings = await getCampaignSettings(id);
   return NextResponse.json({ settings });

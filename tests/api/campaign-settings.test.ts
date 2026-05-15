@@ -115,4 +115,22 @@ describe('GET/PUT /api/campaigns/[id]/settings', () => {
     const body = await res.json();
     expect(body.error).toBe('invalid-aiProvider');
   });
+
+  it('PUT with unknown key returns 400 unknown-key (no silent drop)', async () => {
+    CALLER = HOST;
+    const res = await PUT(putReq({ totallyBogusKey: 'x' }), { params: Promise.resolve({ id: campaignId }) });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe('unknown-key');
+    expect(body.key).toBe('totallyBogusKey');
+  });
+
+  it('PUT with ttsAutoplay (lives on users.preferences) returns 400 unknown-key', async () => {
+    CALLER = HOST;
+    const res = await PUT(putReq({ ttsAutoplay: true }), { params: Promise.resolve({ id: campaignId }) });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe('unknown-key');
+    expect(body.key).toBe('ttsAutoplay');
+  });
 });

@@ -8,7 +8,7 @@ import { UserMenu } from '@/components/layout/user-menu';
 import { Icon } from '@/components/ui/icon';
 import { useIsMobile } from '@/lib/use-is-mobile';
 
-const HUB_ROUTES = new Set(['/hub', '/campaigns', '/settings']);
+const HUB_ROUTES = new Set(['/hub', '/campaigns']);
 
 function isSessionPage(pathname: string): boolean {
   return pathname.startsWith('/sessions/');
@@ -26,7 +26,6 @@ function pageLabelFor(pathname: string): string {
   if (pathname.startsWith('/r/')) return 'Invite';
   if (pathname === '/hub') return 'Heroes';
   if (pathname === '/campaigns') return 'Campaigns';
-  if (pathname === '/settings') return 'Settings';
   return 'AI&Games';
 }
 
