@@ -7,6 +7,12 @@ import { setActiveAudio, subscribePlayback, getActiveAudio, getActiveMessageId, 
 export interface TtsButtonProps {
   sessionId: string;
   messageId: string;
+  /** True when ANY client in the session has an in-flight TTS job for this
+   *  message. The button shows a shared spinner regardless of who clicked. */
+  sharedPending?: boolean;
+  /** When non-null, render the transient "Failed" state. Parent clears this
+   *  after ~5s on its own. */
+  sharedError?: string | null;
 }
 
 type State = 'idle' | 'loading' | 'playing' | 'error';
@@ -20,7 +26,7 @@ type State = 'idle' | 'loading' | 'playing' | 'error';
  * messageId, we adopt that audio so clicking the button pauses it (UI shows
  * "Pause" instead of the stale "Listen").
  */
-export function TtsButton({ sessionId, messageId }: TtsButtonProps) {
+export function TtsButton({ sessionId, messageId, sharedPending = false, sharedError = null }: TtsButtonProps) {
   const [state, setState] = React.useState<State>('idle');
   const [error, setError] = React.useState<string | null>(null);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
@@ -145,31 +151,39 @@ export function TtsButton({ sessionId, messageId }: TtsButtonProps) {
     }
   };
 
+  const effectiveState: State =
+    sharedError ? 'error' : sharedPending && state !== 'playing' ? 'loading' : state;
+  const effectiveError = sharedError ?? error;
+
   const label =
-    state === 'playing' ? 'Pause' : state === 'loading' ? 'Generando…' : state === 'error' ? 'Retry' : 'Listen';
+    effectiveState === 'playing' ? 'Pause'
+      : effectiveState === 'loading' ? 'Generando…'
+      : effectiveState === 'error' ? 'Failed'
+      : 'Listen';
 
   return (
     <button
       onClick={onClick}
-      title={error ?? label}
+      disabled={sharedPending && state !== 'playing'}
+      title={effectiveError ?? label}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
         gap: 6,
         height: 22,
         padding: '0 9px',
-        background: state === 'error' ? 'rgba(196, 95, 71, 0.10)' : 'transparent',
-        border: '1px solid ' + (state === 'error' ? 'var(--ember)' : 'var(--border)'),
+        background: effectiveState === 'error' ? 'rgba(196, 95, 71, 0.10)' : 'transparent',
+        border: '1px solid ' + (effectiveState === 'error' ? 'var(--ember)' : 'var(--border)'),
         borderRadius: 999,
-        color: state === 'error' ? 'var(--ember)' : 'var(--fg-muted)',
+        color: effectiveState === 'error' ? 'var(--ember)' : 'var(--fg-muted)',
         fontFamily: 'var(--font-ui)',
         fontSize: 11,
-        cursor: state === 'loading' ? 'wait' : 'pointer',
+        cursor: effectiveState === 'loading' ? 'wait' : 'pointer',
       }}
     >
-      {state === 'loading' ? (
+      {effectiveState === 'loading' ? (
         <SpinningDie size={11} />
-      ) : state === 'playing' ? (
+      ) : effectiveState === 'playing' ? (
         <Icon name="pause" size={11} />
       ) : (
         <Icon name="volume" size={11} />
