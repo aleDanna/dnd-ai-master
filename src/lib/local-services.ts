@@ -95,3 +95,38 @@ export function normalizeOllamaLabel(name: string): string {
   const clean = path.replace(/-GGUF$/i, '');
   return tag ? `${clean} (${tag})` : clean;
 }
+
+interface OllamaTagsResponse {
+  models?: {
+    name: string;
+    details?: { parameter_size?: string; quantization_level?: string; family?: string };
+  }[];
+}
+
+/** Fetches the list of installed Ollama models from /api/tags, filters by the
+ *  LLM whitelist, and shapes them as ModelOption[] for the Settings dropdown.
+ *  Returns [] on any failure (env unset, network error, non-2xx). */
+export async function fetchOllamaModels(): Promise<ModelOption[]> {
+  const base = process.env.OLLAMA_BASE_URL;
+  if (!base) return [];
+  try {
+    const res = await fetch(`${base}/api/tags`, {
+      signal: AbortSignal.timeout(2000),
+      cache: 'no-store',
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as OllamaTagsResponse;
+    const models = json.models ?? [];
+    return models
+      .filter((m) => matchesLlmWhitelist(m.name))
+      .map((m) => ({
+        slug: m.name,
+        label: normalizeOllamaLabel(m.name),
+        blurb: [m.details?.parameter_size, m.details?.quantization_level]
+          .filter(Boolean)
+          .join(' · ') || 'local',
+      }));
+  } catch {
+    return [];
+  }
+}
