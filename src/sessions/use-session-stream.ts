@@ -32,6 +32,10 @@ export function useSessionStream(sessionId: string | null) {
   // the SSE chunks drop in transit and only the final `message` event lands.
   // After: the message body shows up without a page refresh either way.
   const [finalizedSeq, setFinalizedSeq] = useState(0);
+  const [ttsPending, setTtsPending] = useState<Set<string>>(new Set());
+  const [ttsErrors, setTtsErrors] = useState<Map<string, string>>(new Map());
+  const [imagePending, setImagePending] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
 
   const refetch = useCallback(async () => {
     if (!sessionId) return;
@@ -95,6 +99,58 @@ export function useSessionStream(sessionId: string | null) {
             // (xp, inventory, etc. can land even when narration didn't).
             refetch();
             break;
+          case 'tts-pending':
+            setTtsPending((prev) => {
+              if (prev.has(ev.messageId)) return prev;
+              const next = new Set(prev);
+              next.add(ev.messageId);
+              return next;
+            });
+            setTtsErrors((prev) => {
+              if (!prev.has(ev.messageId)) return prev;
+              const next = new Map(prev);
+              next.delete(ev.messageId);
+              return next;
+            });
+            break;
+          case 'tts-ready':
+            setTtsPending((prev) => {
+              if (!prev.has(ev.messageId)) return prev;
+              const next = new Set(prev);
+              next.delete(ev.messageId);
+              return next;
+            });
+            break;
+          case 'tts-failed':
+            setTtsPending((prev) => {
+              if (!prev.has(ev.messageId)) return prev;
+              const next = new Set(prev);
+              next.delete(ev.messageId);
+              return next;
+            });
+            setTtsErrors((prev) => new Map(prev).set(ev.messageId, ev.reason ?? 'failed'));
+            setTimeout(() => {
+              setTtsErrors((prev) => {
+                if (!prev.has(ev.messageId)) return prev;
+                const next = new Map(prev);
+                next.delete(ev.messageId);
+                return next;
+              });
+            }, 5_000);
+            break;
+          case 'image-pending':
+            setImagePending(true);
+            setImageError(null);
+            break;
+          case 'image-ready':
+            setImagePending(false);
+            void refetch();
+            break;
+          case 'image-failed':
+            setImagePending(false);
+            setImageError(ev.reason ?? 'failed');
+            setTimeout(() => setImageError(null), 5_000);
+            break;
         }
       } catch (err) {
         console.error('parse SSE event failed', err);
@@ -109,9 +165,13 @@ export function useSessionStream(sessionId: string | null) {
     streamingMessage,
     error,
     turnError,
-    clearTurnError,
-    refetch,
     finalizedSeq,
+    refetch,
+    clearTurnError,
     clearStreamingMessage,
+    ttsPending,
+    ttsErrors,
+    imagePending,
+    imageError,
   };
 }
