@@ -95,18 +95,7 @@ src/ai/provider/
                                             (system blocks, tool defs, messages,
                                             response, usage, stopReason)
 
-src/ai/tts/
-├── local.ts                             — voice-prefix dispatcher:
-│                                            'piper:*' → piper.ts
-│                                            'xtts:*'  → xtts.ts
-├── piper.ts                             — POST PIPER_BASE_URL/v1/audio/speech
-└── xtts.ts                              — POST XTTS_BASE_URL/tts_to_audio/
-                                            + WAV→MP3 via existing helper
-
 src/sessions/image-providers/
-├── local.ts                             — model-prefix dispatcher:
-│                                            'comfyui:*'    → comfyui.ts
-│                                            'draw-things:*' → draw-things.ts
 ├── comfyui.ts                           — workflow template injection +
 │                                            queue + polling + GET /view
 ├── draw-things.ts                       — POST /sdapi/v1/txt2img +
@@ -119,9 +108,10 @@ tests/lib/local-services.test.ts         — env detection, whitelist, label
                                             normalization, health checks
 tests/ai/provider/local.test.ts          — provider with mocked fetch
 tests/ai/provider/ollama-adapter.test.ts — round-trip adapter conversions
-tests/ai/tts/local.test.ts               — dispatcher + piper/xtts mocked
-tests/sessions/image-providers/local.test.ts — comfyui+drawthings mocked
-tests/api/preferences-local.test.ts      — PUT validation for 'local'
+tests/ai/tts-local.test.ts               — piper + xtts synthesis branches
+tests/sessions/image-providers/comfyui.test.ts
+tests/sessions/image-providers/draw-things.test.ts
+tests/api/campaign-settings-local.test.ts — PUT validation for 'local'
 ```
 
 ### Modified files
@@ -130,15 +120,19 @@ tests/api/preferences-local.test.ts      — PUT validation for 'local'
 |---|---|
 | `src/ai/provider/index.ts` | `getProviderByName('local')` returns `LocalProvider`; reset hook |
 | `src/ai/provider/types.ts` | `ProviderName` union extended with `'local'` |
-| `src/ai/tts/index.ts` | `synthesizeSpeech` dispatches to `local.ts` when `provider==='local'` |
-| `src/ai/tts/voices.ts` | adds `LOCAL_PIPER_VOICES`, `LOCAL_XTTS_VOICES`, `DEFAULT_VOICE.local`, `isValidVoice('local', ...)` |
-| `src/sessions/image-providers/index.ts` | dispatches to `local.ts` when `provider==='local'` |
-| `src/lib/preferences.ts` | `envDefaultProvider` accepts `'local'`; `getResolvedPreferences` downgrades stored `'local'` when `isLocalEnvironment()===false` |
-| `src/lib/ai-models.ts` | `ProviderName` union; `modelsForProvider('local')` returns `[]` (runtime list passed separately); `isKnownProvider` accepts `'local'`; `isKnownMasterModel` for `'local'` accepts any non-empty string ≤200 chars |
-| `src/db/schema/users.ts` | `UserPreferences` type unions extended with `'local'` for all three providers (JSONB shape — no SQL migration) |
-| `src/app/api/preferences/route.ts` | `'local'` rejected with 400 unless `isLocalEnvironment()` AND the relevant backing service is set; `aiMasterModel`/`ttsVoice`/`imageModel` validation relaxed for `'local'` |
-| `src/app/(authed)/settings/page.tsx` | server-side: calls `fetchLocalServicesStatus()`, passes `localServices` prop |
-| `src/app/(authed)/settings/settings-client.tsx` | new "Local" radio per surface (when enabled); new "Engine" selector for TTS/Image when `local`; dynamic model dropdown; status badges with ✓/✗ per engine |
+| `src/ai/tts.ts` | `synthesizeSpeech` dispatches to `synthesizePiper` / `synthesizeXtts` when `provider==='local'`; new helpers inline (the file is single-module today, mirroring how the OpenAI/Gemini branches live there) |
+| `src/lib/tts-voices.ts` | adds `'local'` to `TTS_PROVIDERS`; new `LOCAL_TTS_MODELS=['piper','xtts']`; new `XTTS_LANGUAGES` catalog; new helpers `voicesForLocal(model, runtimeList)`, `defaultVoiceForLocal(model)`; relaxes `isValidVoice*` for `'local'` (runtime-listed) |
+| `src/sessions/image-providers/openai.ts` | (no change — kept for reference) |
+| `src/sessions/image-providers/gemini.ts` | (no change) |
+| `src/sessions/scene-image-job.ts` | extends provider dispatch with `'local'` branch that prefix-routes to `comfyui.ts` or `draw-things.ts` |
+| `src/lib/preferences.ts` | `envDefaultProvider` accepts `'local'`; `getResolvedPreferences` AND `getCampaignSettings` downgrade stored `'local'` when `isLocalEnvironment()===false` or the matching backing env is unset; `validateSettingsPatch` accepts `'local'` and routes voice/model validation to local-aware helpers |
+| `src/lib/ai-models.ts` | `ProviderName` and `ImageProviderName` unions extended with `'local'`; `modelsForProvider('local')` returns `[]` (runtime list passed separately); `isKnownProvider`/`isKnownImageProvider` accept `'local'`; `isKnownMasterModel`/`isKnownImageModel` for `'local'` accept any non-empty string ≤200 chars |
+| `src/db/schema/users.ts` | `UserPreferences` type unions extended with `'local'` for all three provider fields (JSONB shape — no SQL migration) |
+| `src/db/schema/campaigns.ts` | `CampaignSettings` type unions extended with `'local'` for the three provider fields (JSONB shape — no SQL migration) |
+| `src/app/api/campaigns/[id]/settings/route.ts` | `'local'` rejected with 400 unless `isLocalEnvironment()` AND the relevant backing service env is set; model/voice slug validation relaxed for `'local'` (any non-empty string) |
+| `src/app/api/preferences/route.ts` | same gating applied to per-user preferences PUT (kept narrow — only the few fields that are still per-user) |
+| `src/app/(authed)/campaigns/[id]/settings/page.tsx` | server-side: calls `fetchLocalServicesStatus()`, passes `localServices` prop |
+| `src/app/(authed)/campaigns/[id]/settings/settings-client.tsx` | new "Local" radio per surface (when enabled); new "Engine" selector for TTS/Image when `local`; dynamic model dropdown; status badges with ✓/✗ per engine |
 
 ### Files NOT touched
 
@@ -307,60 +301,74 @@ Stop reason:
 
 ## TTS — Piper and XTTSv2
 
-The dispatcher in `src/ai/tts/index.ts` gains a third branch:
+The existing single-file dispatcher in `src/ai/tts.ts` gains a third branch
+in `synthesizeSpeech`. We do NOT refactor into a folder structure — the spec
+2026-05-07 proposed that but the codebase chose the single-file extension
+pattern instead, and we follow it:
 
 ```ts
-export async function synthesizeSpeech(input: SynthesizeInput): Promise<ArrayBuffer> {
-  if (input.provider === 'local') return synthesizeSpeechLocal(input);
-  if (input.provider === 'gemini') return synthesizeSpeechGemini(input);
-  return synthesizeSpeechOpenAI(input);
+export async function synthesizeSpeech(input: SynthesizeInput): Promise<SynthesizeOutput> {
+  if (!input.text.trim()) throw new Error('tts: empty input');
+  const provider = input.provider ?? 'openai';
+  if (provider === 'local')  return synthesizeLocal(input);
+  if (provider === 'gemini') return synthesizeGemini(input);
+  return synthesizeOpenAI(input);
+}
+
+async function synthesizeLocal(input: SynthesizeInput): Promise<SynthesizeOutput> {
+  // Engine identity lives in input.model ('piper' or 'xtts'), not in voice prefix.
+  const engine = input.model;
+  if (engine === 'piper') return synthesizePiper(input);
+  if (engine === 'xtts')  return synthesizeXtts(input);
+  throw new Error(`local tts: unknown engine "${engine}" (expected 'piper' or 'xtts')`);
 }
 ```
 
-`src/ai/tts/local.ts` looks at the voice prefix:
-
-```ts
-export async function synthesizeSpeechLocal(input): Promise<ArrayBuffer> {
-  if (input.voice.startsWith('piper:')) return synthesizeSpeechPiper(input);
-  if (input.voice.startsWith('xtts:'))  return synthesizeSpeechXtts(input);
-  throw new Error(`local tts: voice "${input.voice}" has no valid engine prefix`);
-}
-```
+The `(provider, model, voice)` triplet maps to local as:
+- `provider: 'local'` — surfaces the local dispatcher
+- `model: 'piper' | 'xtts'` — picks the engine
+- `voice: <slug>` — bare voice id, namespace depends on engine
+  - For Piper: a Piper voice name like `'en_US-amy-low'`
+  - For XTTS: a language code like `'en'` or `'it'`
 
 ### Piper (via openedai-speech-min)
 
 The chosen wrapper exposes an OpenAI-compatible endpoint, so the call shape
-mirrors the existing `openai.ts`:
+mirrors the existing `synthesizeOpenAI` function in `tts.ts`:
 
 ```ts
-async function synthesizeSpeechPiper(input): Promise<ArrayBuffer> {
-  const voiceId = input.voice.slice('piper:'.length);  // strip prefix
+async function synthesizePiper(input: SynthesizeInput): Promise<SynthesizeOutput> {
+  // input.voice is the bare voice id ('en_US-amy-low', etc) — engine
+  // identity lives in input.model ('piper'). No prefix needed.
   const res = await fetch(`${PIPER_BASE_URL}/v1/audio/speech`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       model: 'piper',
-      voice: voiceId,
+      voice: input.voice,
       input: input.text,
       response_format: 'mp3',
     }),
   });
   if (!res.ok) throw new Error(`piper ${res.status}: ${await res.text()}`);
-  return await res.arrayBuffer();
+  return { bytes: await res.arrayBuffer(), mimeType: 'audio/mpeg' };
 }
 ```
 
-Output is MP3 directly, identical content-type to the existing `tts_cache`
-schema. No transcoding needed.
+Output is MP3 directly, identical content-type to the existing OpenAI path.
 
 ### XTTSv2 (via xtts-api-server)
 
-`xtts-api-server` returns WAV. We reuse the existing `pcm-to-mp3.ts` helper
-from the Gemini TTS work to transcode:
+`xtts-api-server` returns a complete WAV file. The existing `tts.ts` already
+ships WAV bytes through to the client for Gemini, so we return WAV verbatim
+— no MP3 transcoding needed. The cache schema stores bytes opaquely with the
+`mimeType` shown in the response, matching the existing Gemini path.
 
 ```ts
-async function synthesizeSpeechXtts(input): Promise<ArrayBuffer> {
-  const langCode = input.voice.slice('xtts:'.length);
+async function synthesizeXtts(input: SynthesizeInput): Promise<SynthesizeOutput> {
+  // input.voice is the bare language code ('en', 'it', ...) — engine
+  // identity lives in input.model ('xtts'). No prefix needed.
+  const langCode = input.voice ?? 'en';
   const res = await fetch(`${XTTS_BASE_URL}/tts_to_audio/`, {  // trailing slash matters
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -371,75 +379,84 @@ async function synthesizeSpeechXtts(input): Promise<ArrayBuffer> {
     }),
   });
   if (!res.ok) throw new Error(`xtts ${res.status}: ${await res.text()}`);
-  const wavBuffer = Buffer.from(await res.arrayBuffer());
-
-  // xtts-api-server returns a full WAV file (44-byte RIFF header + PCM L16
-  // little-endian at 24kHz mono). Strip the header before encoding.
-  const pcm = wavBuffer.subarray(44);
-  return encodePcmToMp3(pcm, { sampleRate: 24000, channels: 1 });
+  return { bytes: await res.arrayBuffer(), mimeType: 'audio/wav' };
 }
 ```
 
 ## Image — ComfyUI and Draw Things
 
-The dispatcher in `src/sessions/image-providers/index.ts` gains a third branch:
+The existing image provider directory `src/sessions/image-providers/` has
+no index.ts dispatcher — providers are picked inline in
+`src/sessions/scene-image-job.ts`. We extend the same `if/else` block to
+add a `'local'` branch that prefix-routes by the `imageModel` field:
 
 ```ts
-export async function generateImage(input: GenerateImageInput): Promise<Buffer> {
-  if (input.provider === 'local') return generateImageLocal(input);
-  if (input.provider === 'gemini') return generateImageGemini(input);
-  return generateImageOpenAI(input);
+// In scene-image-job.ts, inside generateAndPersist:
+let result: ImageGenResult;
+if (provider === 'local') {
+  if (model.startsWith('comfyui:')) {
+    result = await generateBytesComfyUI(fullPrompt, model.slice('comfyui:'.length));
+  } else if (model.startsWith('draw-things:')) {
+    result = await generateBytesDrawThings(fullPrompt, model.slice('draw-things:'.length));
+  } else {
+    result = { ok: false, reason: 'api_error', detail: `unknown local engine in model "${model}"` };
+  }
+} else if (provider === 'gemini') {
+  result = await generateBytesGemini(fullPrompt, model);
+} else {
+  result = await generateBytesOpenAI(fullPrompt, model);
 }
 ```
 
-`src/sessions/image-providers/local.ts` dispatches by model prefix:
-
-```ts
-export async function generateImageLocal(input): Promise<Buffer> {
-  if (input.model.startsWith('comfyui:'))     return generateImageComfyUI(input);
-  if (input.model.startsWith('draw-things:')) return generateImageDrawThings(input);
-  throw new Error(`local image: model "${input.model}" has no valid engine prefix`);
-}
-```
+The two new functions live in `src/sessions/image-providers/comfyui.ts` and
+`draw-things.ts`, mirroring the existing `openai.ts` and `gemini.ts` pattern
+(exporting a `generateBytes*` function that returns `ImageGenResult`).
 
 ### ComfyUI
 
-ComfyUI is a node graph. We ship a small set of workflow JSON templates with
-the app and inject the prompt as text replacement:
+ComfyUI is a node graph. We ship a small set of workflow JSON templates
+with the app and inject the prompt as text replacement. Returns the
+codebase-standard `ImageGenResult` shape:
 
 ```ts
-async function generateImageComfyUI(input): Promise<Buffer> {
-  const workflowName = process.env.COMFYUI_FLUX_WORKFLOW ?? 'flux-schnell';
-  const template = await loadWorkflowTemplate(workflowName);  // reads JSON from disk
-  const workflow = JSON.parse(template.replace('{{PROMPT}}', escapeJson(input.fullPrompt)));
+export async function generateBytesComfyUI(prompt: string, workflowSlug: string): Promise<ImageGenResult> {
+  try {
+    const workflowName = workflowSlug || process.env.COMFYUI_FLUX_WORKFLOW || 'flux-schnell';
+    const template = await loadWorkflowTemplate(workflowName);  // reads from disk
+    const workflow = JSON.parse(template.replace('{{PROMPT}}', escapeJsonString(prompt)));
 
-  // 1. Submit
-  const submitRes = await fetch(`${COMFYUI_BASE_URL}/prompt`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ prompt: workflow, client_id: crypto.randomUUID() }),
-  });
-  const { prompt_id } = await submitRes.json();
+    // 1. Submit
+    const submitRes = await fetch(`${process.env.COMFYUI_BASE_URL}/prompt`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: workflow, client_id: crypto.randomUUID() }),
+    });
+    if (!submitRes.ok) return { ok: false, reason: 'api_error', detail: `submit ${submitRes.status}` };
+    const { prompt_id } = await submitRes.json();
 
-  // 2. Poll history
-  const startTime = Date.now();
-  while (Date.now() - startTime < 60_000) {
-    const histRes = await fetch(`${COMFYUI_BASE_URL}/history/${prompt_id}`);
-    const hist = await histRes.json();
-    const entry = hist[prompt_id];
-    if (entry?.status?.completed) {
-      const output = entry.outputs?.['9']?.images?.[0];  // node 9 = SaveImage
-      if (!output) throw new Error('comfyui: no image in output');
-      // 3. Fetch image bytes
-      const viewRes = await fetch(
-        `${COMFYUI_BASE_URL}/view?filename=${encodeURIComponent(output.filename)}` +
-        `&subfolder=${encodeURIComponent(output.subfolder ?? '')}&type=output`
-      );
-      return Buffer.from(await viewRes.arrayBuffer());
+    // 2. Poll history
+    const startTime = Date.now();
+    while (Date.now() - startTime < 60_000) {
+      const histRes = await fetch(`${process.env.COMFYUI_BASE_URL}/history/${prompt_id}`);
+      const hist = await histRes.json();
+      const entry = hist[prompt_id];
+      if (entry?.status?.completed) {
+        const output = entry.outputs?.['9']?.images?.[0];  // node 9 = SaveImage in our template
+        if (!output) return { ok: false, reason: 'empty_response' };
+        // 3. Fetch image bytes
+        const viewRes = await fetch(
+          `${process.env.COMFYUI_BASE_URL}/view?filename=${encodeURIComponent(output.filename)}` +
+          `&subfolder=${encodeURIComponent(output.subfolder ?? '')}&type=output`
+        );
+        if (!viewRes.ok) return { ok: false, reason: 'api_error', detail: `view ${viewRes.status}` };
+        return { ok: true, bytes: Buffer.from(await viewRes.arrayBuffer()) };
+      }
+      await sleep(1000);
     }
-    await sleep(1000);
+    return { ok: false, reason: 'api_error', detail: 'comfyui: 60s timeout' };
+  } catch (e) {
+    return { ok: false, reason: 'api_error', detail: e instanceof Error ? e.message : String(e) };
   }
-  throw new Error('comfyui: 60s timeout');
 }
 ```
 
@@ -450,29 +467,31 @@ replaced by `"{{PROMPT}}"`. Phase 1 ships only this one. Future workflows
 
 ### Draw Things
 
-Draw Things exposes the AUTOMATIC1111 Stable Diffusion API. Identical pattern
-to a SD-WebUI integration:
+Draw Things exposes the AUTOMATIC1111 Stable Diffusion API:
 
 ```ts
-async function generateImageDrawThings(input): Promise<Buffer> {
-  const modelName = input.model.slice('draw-things:'.length);
-  const res = await fetch(`${DRAW_THINGS_BASE_URL}/sdapi/v1/txt2img`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      prompt: input.fullPrompt,
-      negative_prompt: '',
-      width: 1024,
-      height: 1024,
-      steps: 8,
-      sampler_name: 'DPM++ 2M Karras',
-      override_settings: { sd_model_checkpoint: modelName },
-    }),
-  });
-  if (!res.ok) throw new Error(`draw-things ${res.status}: ${await res.text()}`);
-  const json = await res.json() as { images: string[] };
-  if (!json.images?.[0]) throw new Error('draw-things: no image in response');
-  return Buffer.from(json.images[0], 'base64');
+export async function generateBytesDrawThings(prompt: string, modelName: string): Promise<ImageGenResult> {
+  try {
+    const res = await fetch(`${process.env.DRAW_THINGS_BASE_URL}/sdapi/v1/txt2img`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        prompt,
+        negative_prompt: '',
+        width: 1024,
+        height: 1024,
+        steps: 8,
+        sampler_name: 'DPM++ 2M Karras',
+        override_settings: { sd_model_checkpoint: modelName },
+      }),
+    });
+    if (!res.ok) return { ok: false, reason: 'api_error', detail: `${res.status}` };
+    const json = await res.json() as { images?: string[] };
+    if (!json.images?.[0]) return { ok: false, reason: 'empty_response' };
+    return { ok: true, bytes: Buffer.from(json.images[0], 'base64') };
+  } catch (e) {
+    return { ok: false, reason: 'api_error', detail: e instanceof Error ? e.message : String(e) };
+  }
 }
 ```
 
@@ -676,24 +695,45 @@ new engine (impossible by prefix design, but defensive), no reset happens.
 
 ## Preferences storage
 
-All three provider fields are JSONB keys in `users.preferences`. Union types
-in `src/db/schema/users.ts` are widened to include `'local'`. **No SQL
-migration** is required — the field is JSONB.
+All three provider fields are JSONB keys in `users.preferences` AND
+`campaigns.settings`. Union types in both `src/db/schema/users.ts`
+(`UserPreferences`) and `src/db/schema/campaigns.ts` (`CampaignSettings`)
+are widened to include `'local'`. **No SQL migration** is required — both
+fields are JSONB.
 
 ```ts
+// users.ts — UserPreferences
 type UserPreferences = {
   aiProvider?:    'anthropic' | 'openai' | 'gemini' | 'local';
   aiMasterModel?: string;  // e.g. 'qwen3:30b-a3b', 'hf.co/unsloth/gpt-oss-20b-GGUF:F16'
   ttsProvider?:   'openai' | 'gemini' | 'local';
-  ttsVoice?:      string;  // 'piper:en_US-amy-low' | 'xtts:en' | ...
+  ttsModel?:      string;  // for 'local': 'piper' | 'xtts'
+  ttsVoice?:      string;  // bare voice id depending on ttsModel
   imageProvider?: 'openai' | 'gemini' | 'local';
-  imageModel?:    string;  // 'comfyui:flux-schnell' | 'draw-things:realisticVisionV60' | ...
+  imageModel?:    string;  // for 'local': 'comfyui:flux-schnell' | 'draw-things:<checkpoint>'
+  // ... existing fields ...
+};
+
+// campaigns.ts — CampaignSettings (same provider fields, no ttsAutoplay)
+type CampaignSettings = {
+  aiProvider?:    'anthropic' | 'openai' | 'gemini' | 'local';
+  aiMasterModel?: string;
+  ttsProvider?:   'openai' | 'gemini' | 'local';
+  ttsModel?:      string;
+  ttsVoice?:      string;
+  imageProvider?: 'openai' | 'gemini' | 'local';
+  imageModel?:    string;
   // ... existing fields ...
 };
 ```
 
-The engine identity (`piper`/`xtts`/`comfyui`/`draw-things`) is encoded in
-the slug prefix. No new fields, no migration.
+For TTS, engine identity (`piper`/`xtts`) lives in **`ttsModel`** — this
+follows the existing `(provider, model, voice)` triplet pattern already used
+for OpenAI/Gemini. Voice slug is bare (no `engine:` prefix).
+
+For Image, the codebase uses only `(provider, model)` — so engine identity
+is encoded in the `imageModel` slug prefix: `comfyui:flux-schnell`,
+`draw-things:realisticVisionV60`.
 
 ### Validation rules (PUT `/api/preferences`)
 
