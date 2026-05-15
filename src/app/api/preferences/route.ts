@@ -1,21 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { ensureUser } from '@/db/users';
-import {
-  getUserPreferences,
-  updateUserPreferences,
-  isValidTtsVoice,
-  isValidTtsModel,
-  isValidTtsProvider,
-  type UserPreferences,
-} from '@/lib/preferences';
-import {
-  isKnownProvider,
-  isKnownMasterModel,
-  isKnownImageProvider,
-  isKnownImageModel,
-} from '@/lib/ai-models';
-import { isMasterGuidanceLevel, isImageStylePreset, isNarrationPace } from '@/db/schema/users';
+import { getUserPreferences, updateUserPreferences, type UserPreferences } from '@/lib/preferences';
+
+const ALLOWED_KEYS = new Set(['ttsAutoplay']);
 
 export async function GET() {
   const { userId } = await auth();
@@ -30,114 +18,25 @@ export async function PUT(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   await ensureUser(userId);
 
-  const body = (await req.json().catch(() => null)) as Partial<UserPreferences> | null;
+  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body || typeof body !== 'object') {
     return NextResponse.json({ error: 'invalid-body' }, { status: 400 });
   }
 
+  // Reject any non-allowed keys up front — surfaces stale clients that
+  // still try to PUT campaign-scoped settings here.
+  for (const key of Object.keys(body)) {
+    if (!ALLOWED_KEYS.has(key)) {
+      return NextResponse.json({ error: 'unknown-key', key }, { status: 400 });
+    }
+  }
+
   const patch: Partial<UserPreferences> = {};
-  if ('ttsProvider' in body) {
-    if (body.ttsProvider === undefined || body.ttsProvider === null) {
-      patch.ttsProvider = undefined;
-    } else if (!isValidTtsProvider(body.ttsProvider)) {
-      return NextResponse.json({ error: 'invalid-ttsProvider' }, { status: 400 });
-    } else {
-      patch.ttsProvider = body.ttsProvider;
-    }
-  }
-  if ('ttsVoice' in body) {
-    if (body.ttsVoice === undefined || body.ttsVoice === null) {
-      // Caller wants to reset to default — drop the key
-      patch.ttsVoice = undefined;
-    } else if (!isValidTtsVoice(body.ttsVoice)) {
-      return NextResponse.json({ error: 'invalid-ttsVoice' }, { status: 400 });
-    } else {
-      patch.ttsVoice = body.ttsVoice;
-    }
-  }
-  if ('ttsModel' in body) {
-    if (body.ttsModel === undefined || body.ttsModel === null) {
-      patch.ttsModel = undefined;
-    } else if (!isValidTtsModel(body.ttsModel)) {
-      return NextResponse.json({ error: 'invalid-ttsModel' }, { status: 400 });
-    } else {
-      patch.ttsModel = body.ttsModel;
-    }
-  }
   if ('ttsAutoplay' in body) {
     if (typeof body.ttsAutoplay !== 'boolean') {
       return NextResponse.json({ error: 'invalid-ttsAutoplay' }, { status: 400 });
     }
     patch.ttsAutoplay = body.ttsAutoplay;
-  }
-  if ('manualRolls' in body) {
-    if (typeof body.manualRolls !== 'boolean') {
-      return NextResponse.json({ error: 'invalid-manualRolls' }, { status: 400 });
-    }
-    patch.manualRolls = body.manualRolls;
-  }
-  if ('aiProvider' in body) {
-    if (!isKnownProvider(body.aiProvider)) {
-      return NextResponse.json({ error: 'invalid-aiProvider' }, { status: 400 });
-    }
-    patch.aiProvider = body.aiProvider;
-  }
-  if ('aiMasterModel' in body) {
-    if (body.aiMasterModel !== undefined && !isKnownMasterModel(body.aiMasterModel)) {
-      return NextResponse.json({ error: 'invalid-aiMasterModel' }, { status: 400 });
-    }
-    patch.aiMasterModel = body.aiMasterModel as string | undefined;
-  }
-  if ('masterGuidanceLevel' in body) {
-    if (!isMasterGuidanceLevel(body.masterGuidanceLevel)) {
-      return NextResponse.json({ error: 'invalid-masterGuidanceLevel' }, { status: 400 });
-    }
-    patch.masterGuidanceLevel = body.masterGuidanceLevel;
-  }
-  if ('showDifficultyNumbers' in body) {
-    if (typeof body.showDifficultyNumbers !== 'boolean') {
-      return NextResponse.json({ error: 'invalid-showDifficultyNumbers' }, { status: 400 });
-    }
-    patch.showDifficultyNumbers = body.showDifficultyNumbers;
-  }
-  if ('narrationPace' in body) {
-    if (!isNarrationPace(body.narrationPace)) {
-      return NextResponse.json({ error: 'invalid-narrationPace' }, { status: 400 });
-    }
-    patch.narrationPace = body.narrationPace;
-  }
-  if ('imageGenerationEnabled' in body) {
-    if (typeof body.imageGenerationEnabled !== 'boolean') {
-      return NextResponse.json({ error: 'invalid-imageGenerationEnabled' }, { status: 400 });
-    }
-    patch.imageGenerationEnabled = body.imageGenerationEnabled;
-  }
-  if ('imageStylePreset' in body) {
-    if (!isImageStylePreset(body.imageStylePreset)) {
-      return NextResponse.json({ error: 'invalid-imageStylePreset' }, { status: 400 });
-    }
-    patch.imageStylePreset = body.imageStylePreset;
-  }
-  if ('imageStyleCustom' in body) {
-    if (typeof body.imageStyleCustom !== 'string') {
-      return NextResponse.json({ error: 'invalid-imageStyleCustom' }, { status: 400 });
-    }
-    if (body.imageStyleCustom.length > 500) {
-      return NextResponse.json({ error: 'imageStyleCustom-too-long' }, { status: 400 });
-    }
-    patch.imageStyleCustom = body.imageStyleCustom;
-  }
-  if ('imageProvider' in body) {
-    if (!isKnownImageProvider(body.imageProvider)) {
-      return NextResponse.json({ error: 'invalid-imageProvider' }, { status: 400 });
-    }
-    patch.imageProvider = body.imageProvider;
-  }
-  if ('imageModel' in body) {
-    if (body.imageModel !== undefined && !isKnownImageModel(body.imageModel)) {
-      return NextResponse.json({ error: 'invalid-imageModel' }, { status: 400 });
-    }
-    patch.imageModel = body.imageModel as string | undefined;
   }
 
   const updated = await updateUserPreferences(userId, patch);
