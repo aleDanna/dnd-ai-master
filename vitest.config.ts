@@ -29,7 +29,12 @@ export default defineConfig({
         },
       },
       {
-        resolve: { alias },
+        resolve: {
+          alias: {
+            ...alias,
+            'server-only': fileURLToPath(new URL('./tests/mocks/server-only.ts', import.meta.url)),
+          },
+        },
         test: {
           name: 'node',
           environment: 'node',
@@ -40,6 +45,7 @@ export default defineConfig({
             'tests/e2e/**',
             'tests/components/**',
           ],
+          setupFiles: ['./tests/setup-node.ts'],
         },
       },
     ],
