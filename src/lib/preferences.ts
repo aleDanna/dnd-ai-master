@@ -1,6 +1,6 @@
 import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { sessions, users, type UserPreferences, isMasterGuidanceLevel, isImageStylePreset, isNarrationPace, type CampaignSettings } from '@/db/schema';
+import { sessions, users, campaigns, type UserPreferences, isMasterGuidanceLevel, isImageStylePreset, isNarrationPace, type CampaignSettings } from '@/db/schema';
 import { isKnownProvider, isKnownMasterModel, isKnownImageProvider, isKnownImageModel } from '@/lib/ai-models';
 
 export type { UserPreferences };
@@ -197,6 +197,88 @@ export async function getSessionMasterPreferences(
     .limit(1);
   if (!row) throw new Error(`getSessionMasterPreferences: session ${sessionId} not found`);
   return getResolvedPreferences(row.userId);
+}
+
+export type { CampaignSettings };
+
+/**
+ * Read raw stored settings for a campaign. Returns `{}` if the row is
+ * unpopulated. Throws if the campaign is missing or soft-deleted.
+ */
+async function getCampaignSettingsRaw(campaignId: string): Promise<CampaignSettings> {
+  const [row] = await db
+    .select({ settings: campaigns.settings })
+    .from(campaigns)
+    .where(and(eq(campaigns.id, campaignId), isNull(campaigns.deletedAt)))
+    .limit(1);
+  if (!row) throw new Error(`getCampaignSettings: campaign ${campaignId} not found`);
+  return row.settings ?? {};
+}
+
+/**
+ * Campaign-scoped resolved settings — the authoritative source for every
+ * shared decision (AI provider/model, TTS voice/model, narration pace,
+ * master guidance, difficulty visibility, image generation, manual rolls).
+ *
+ * Defaults cascade exactly like `getResolvedPreferences`: stored value
+ * (if any) → env var (if provided) → static default. Resolution happens
+ * at call time so a redeploy with new env defaults flows through to
+ * existing campaigns that never explicitly set a value.
+ *
+ * Throws on missing / soft-deleted campaign id — programmer error.
+ */
+export async function getCampaignSettings(
+  campaignId: string,
+): Promise<Required<CampaignSettings>> {
+  const prefs = await getCampaignSettingsRaw(campaignId);
+  const envProvider = envDefaultProvider();
+  const provider = prefs.aiProvider ?? envProvider;
+  const masterModel = prefs.aiMasterModel ?? envDefaultMasterModel(provider);
+  const imageGenerationEnabled = prefs.imageGenerationEnabled ?? DEFAULT_PREFERENCES.imageGenerationEnabled;
+  const imageStylePreset = prefs.imageStylePreset ?? DEFAULT_PREFERENCES.imageStylePreset;
+  const imageStyleCustom = prefs.imageStyleCustom ?? DEFAULT_PREFERENCES.imageStyleCustom;
+  const imageProvider = prefs.imageProvider ?? envDefaultImageProvider();
+  const imageModel = prefs.imageModel ?? envDefaultImageModel(imageProvider);
+  const ttsProvider = prefs.ttsProvider ?? envDefaultTtsProvider();
+  const storedModel = prefs.ttsModel;
+  const ttsModel =
+    storedModel && ttsModelsFor(ttsProvider).includes(storedModel)
+      ? storedModel
+      : envDefaultTtsModel(ttsProvider);
+  const storedVoice = prefs.ttsVoice;
+  const ttsVoice =
+    storedVoice && ttsVoicesForModel(ttsProvider, ttsModel).includes(storedVoice)
+      ? storedVoice
+      : envDefaultTtsVoice(ttsProvider, ttsModel);
+  return {
+    ttsProvider,
+    ttsVoice,
+    ttsModel,
+    manualRolls: prefs.manualRolls ?? DEFAULT_PREFERENCES.manualRolls,
+    aiProvider: provider,
+    aiMasterModel: masterModel,
+    masterGuidanceLevel: prefs.masterGuidanceLevel ?? DEFAULT_PREFERENCES.masterGuidanceLevel,
+    showDifficultyNumbers: prefs.showDifficultyNumbers ?? DEFAULT_PREFERENCES.showDifficultyNumbers,
+    narrationPace: prefs.narrationPace ?? DEFAULT_PREFERENCES.narrationPace,
+    imageGenerationEnabled,
+    imageStylePreset,
+    imageStyleCustom,
+    imageProvider,
+    imageModel,
+  };
+}
+
+export async function updateCampaignSettings(
+  campaignId: string,
+  patch: Partial<CampaignSettings>,
+): Promise<CampaignSettings> {
+  const current = await getCampaignSettingsRaw(campaignId);
+  const merged: CampaignSettings = { ...current, ...patch };
+  await db
+    .update(campaigns)
+    .set({ settings: merged, updatedAt: new Date() })
+    .where(and(eq(campaigns.id, campaignId), isNull(campaigns.deletedAt)));
+  return merged;
 }
 
 export type ValidatedSettings = Partial<CampaignSettings & { ttsAutoplay?: boolean }>;
