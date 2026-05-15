@@ -10,7 +10,6 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { DeleteCardButton } from '@/components/ui/delete-card-button';
-import { SettingsLink } from '@/components/ui/settings-link';
 import { MiniStat } from '@/components/layout/mini-stat';
 import { CampaignCard } from '@/components/campaigns/campaign-card';
 
@@ -68,7 +67,6 @@ export default async function HubPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <SettingsLink variant="ghost" size="md" />
           <Link href="/characters/new"><Button variant="secondary" size="md" icon="plus">New character</Button></Link>
           {hasCharacters && (
             <Link href="/campaigns/new"><Button variant="primary" size="md" iconRight="arrow-right">New campaign</Button></Link>

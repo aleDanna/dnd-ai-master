@@ -12,7 +12,6 @@ import { SpellModal } from '@/components/game/spell-modal';
 import { PartyStrip } from '@/components/sessions/party-strip';
 import { useSessionStream } from '@/sessions/use-session-stream';
 import { AutoplayToggle } from '@/components/game/autoplay-toggle';
-import { SettingsLink } from '@/components/ui/settings-link';
 import { MemoryStatusBanner } from '@/components/memory-status-banner';
 import { setActiveAudio, getActiveAudio, setLoadingMessageId } from '@/lib/tts-playback';
 import type { Character } from '@/engine/types';
@@ -439,7 +438,6 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
           trailing={
             <>
               <AutoplayToggle value={autoplay} onChange={setAutoplay} />
-              <SettingsLink variant="ghost" size="sm" iconOnly />
             </>
           }
         />
@@ -548,7 +546,6 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
           </div>
         </div>
         <AutoplayToggle value={autoplay} onChange={setAutoplay} />
-        <SettingsLink variant="ghost" size="sm" iconOnly />
         <Chip tone="accent" dot>SSE live</Chip>
         <Wordmark size={14} style={{ opacity: 0.7 }} />
       </header>
