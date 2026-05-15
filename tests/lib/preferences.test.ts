@@ -2,11 +2,12 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import {
   DEFAULT_PREFERENCES,
   getSessionMasterPreferences,
-  updateUserPreferences,
+  updateCampaignSettings,
 } from '@/lib/preferences';
 import { isImageStylePreset, isNarrationPace } from '@/db/schema/users';
 import { db, pool } from '@/db/client';
 import { users, campaigns, characters, sessions } from '@/db/schema';
+import { sql } from 'drizzle-orm';
 
 describe('image-generation preferences', () => {
   it('defaults to disabled with pastel preset and empty custom', () => {
@@ -43,25 +44,22 @@ describe('narrationPace preference', () => {
   });
 });
 
-/**
- * Multiplayer rule: only the host's AI prefs drive the session's Master loop.
- * If we resolved per-caller, a guest with `aiProvider: 'gemini'` could crash
- * a turn the host expected to run on Anthropic, or worse swap narration
- * voices mid-session.
- */
-describe('getSessionMasterPreferences — session-scoped resolution', () => {
+describe('getSessionMasterPreferences — campaign-scoped resolution', () => {
   const HOST = 'user_master_prefs_host';
   const GUEST = 'user_master_prefs_guest';
   let sessionId: string;
+  let campaignId: string;
 
   beforeAll(async () => {
     await db.insert(users).values([
-      { id: HOST, displayName: 'Host', preferences: { aiProvider: 'anthropic', aiMasterModel: 'claude-sonnet-4-5' } },
-      { id: GUEST, displayName: 'Guest', preferences: { aiProvider: 'gemini', aiMasterModel: 'gemini-2.5-flash' } },
+      { id: HOST, displayName: 'Host', preferences: {} },
+      { id: GUEST, displayName: 'Guest', preferences: {} },
     ]).onConflictDoNothing();
     const [c] = await db.insert(campaigns).values({
       userId: HOST, name: 'Prefs Test', premise: 'p',
+      settings: { aiProvider: 'anthropic', aiMasterModel: 'claude-sonnet-4-5' },
     }).returning();
+    campaignId = c!.id;
     const [tpl] = await db.insert(characters).values({
       userId: HOST, name: 'T',
       raceSlug: 'human', classSlug: 'fighter', backgroundSlug: 'soldier',
@@ -90,28 +88,26 @@ describe('getSessionMasterPreferences — session-scoped resolution', () => {
   });
 
   afterAll(async () => {
-    await db.execute(`DELETE FROM campaigns WHERE user_id = '${HOST}'`);
-    await db.execute(`DELETE FROM users WHERE id IN ('${HOST}', '${GUEST}')`);
+    await db.execute(sql`DELETE FROM campaigns WHERE user_id = ${HOST}`);
+    await db.execute(sql`DELETE FROM users WHERE id IN (${HOST}, ${GUEST})`);
     await pool.end();
   });
 
-  it('returns the host\'s AI provider even when a guest is asking', async () => {
-    // Imagine the guest's POST /turn or /memory/rebuild hits the server —
-    // the helper takes only the sessionId, ignores the caller, and resolves
-    // against the session owner.
+  it('returns the campaign-stored AI provider regardless of which user asks', async () => {
     const prefs = await getSessionMasterPreferences(sessionId);
     expect(prefs.aiProvider).toBe('anthropic');
     expect(prefs.aiMasterModel).toBe('claude-sonnet-4-5');
   });
 
-  it('reflects updates to the host\'s prefs (host stays in control)', async () => {
-    await updateUserPreferences(HOST, { aiProvider: 'openai', aiMasterModel: 'gpt-5' });
+  it('reflects updates written to the campaign settings', async () => {
+    await updateCampaignSettings(campaignId, { aiProvider: 'openai', aiMasterModel: 'gpt-5' });
     const prefs = await getSessionMasterPreferences(sessionId);
     expect(prefs.aiProvider).toBe('openai');
     expect(prefs.aiMasterModel).toBe('gpt-5');
   });
 
-  it('throws on unknown / soft-deleted session id (programmer error)', async () => {
-    await expect(getSessionMasterPreferences('00000000-0000-0000-0000-000000000000')).rejects.toThrow(/not found/);
+  it('throws on unknown / soft-deleted session id', async () => {
+    await expect(getSessionMasterPreferences('00000000-0000-0000-0000-000000000000'))
+      .rejects.toThrow(/not found/);
   });
 });

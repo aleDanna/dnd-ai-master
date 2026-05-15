@@ -167,36 +167,33 @@ export async function updateUserPreferences(userId: string, patch: Partial<UserP
 }
 
 /**
- * Session-scoped resolved preferences — returns the **host's** preferences for
- * the given session, regardless of who's calling.
+ * Session-scoped resolved settings — proxies to the session's campaign.
  *
- * Multiplayer rule: only the host decides which AI provider/model the Master
- * uses, whether image generation is on, what tonal-frame defaults apply, etc.
- * If we resolved per-caller, a guest's quirky preference (say, Gemini when the
- * host has Anthropic) would either crash the turn or silently switch the
- * narration's voice mid-session. Everything that touches the Master loop or
- * shared session state (image regen on a past message, memory rebuild, the
- * /turn endpoint) MUST go through this helper so the session has one
- * canonical AI configuration.
+ * Multiplayer rule: every shared decision (provider, model, narration
+ * pace, image gen, manual rolls, master guidance, difficulty visibility,
+ * TTS voice/model) is owned by the campaign, editable only by the
+ * creator. This helper exists so call sites that have a sessionId in
+ * hand (turn endpoint, memory rebuild, scene-image, TTS) don't have to
+ * look up the campaign themselves.
  *
- * Personal-device choices (TTS voice/model, autoplay) still resolve
- * per-viewer via `getResolvedPreferences(viewerId)` — those don't affect
- * other party members.
+ * Returns a shape compatible with the old `UserPreferences`-keyed
+ * result: we add `ttsAutoplay: false` as a no-op so the type doesn't
+ * narrow at call sites. Autoplay is per-viewer — call
+ * `getResolvedPreferences(viewerId)` if you actually need it.
  *
- * Throws if the session doesn't exist or has been soft-deleted; callers
- * upstream of this helper have always done auth first, so a missing row is
- * a programmer error worth surfacing.
+ * Throws if the session is missing or soft-deleted (programmer error).
  */
 export async function getSessionMasterPreferences(
   sessionId: string,
 ): Promise<Required<UserPreferences>> {
   const [row] = await db
-    .select({ userId: sessions.userId })
+    .select({ campaignId: sessions.campaignId })
     .from(sessions)
     .where(and(eq(sessions.id, sessionId), isNull(sessions.deletedAt)))
     .limit(1);
   if (!row) throw new Error(`getSessionMasterPreferences: session ${sessionId} not found`);
-  return getResolvedPreferences(row.userId);
+  const camp = await getCampaignSettings(row.campaignId);
+  return { ...camp, ttsAutoplay: false };
 }
 
 export type { CampaignSettings };
