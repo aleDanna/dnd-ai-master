@@ -63,3 +63,35 @@ export interface LocalServicesStatus {
     engines: { comfyui: EngineStatus; drawThings: EngineStatus };
   };
 }
+
+// LLM whitelist — phase 1 supports qwen3 and gpt-oss families, both from the
+// official registry and from HuggingFace mirrors. Adding a new family is a
+// one-line edit.
+const LOCAL_LLM_PATTERNS: RegExp[] = [
+  /^qwen3(:|$)/i,
+  /^gpt-oss(:|$)/i,
+  /^hf\.co\/.+\/qwen3[^/]*/i,
+  /^hf\.co\/.+\/gpt-oss[^/]*/i,
+];
+
+export function matchesLlmWhitelist(name: string): boolean {
+  return LOCAL_LLM_PATTERNS.some((p) => p.test(name));
+}
+
+/**
+ * Pretty-print an Ollama model tag for the Settings dropdown. Plain registry
+ * tags pass through; HuggingFace mirror paths get the `hf.co/` prefix
+ * stripped, the `-GGUF` suffix removed, and the tag floated to a parenthesis.
+ *
+ *   qwen3:30b-a3b                            → qwen3:30b-a3b
+ *   hf.co/unsloth/gpt-oss-20b-GGUF:F16       → unsloth/gpt-oss-20b (F16)
+ */
+export function normalizeOllamaLabel(name: string): string {
+  if (!name.startsWith('hf.co/')) return name;
+  const stripped = name.slice('hf.co/'.length);
+  const colon = stripped.lastIndexOf(':');
+  const path = colon >= 0 ? stripped.slice(0, colon) : stripped;
+  const tag = colon >= 0 ? stripped.slice(colon + 1) : '';
+  const clean = path.replace(/-GGUF$/i, '');
+  return tag ? `${clean} (${tag})` : clean;
+}
