@@ -20,8 +20,32 @@ import {
   isValidTtsProvider,
   isValidTtsVoice,
   isValidTtsModel,
+  isValidVoiceForModel,
   type TtsProvider,
 } from './tts-voices';
+import { isLocalEnvironment } from './local-services';
+
+/**
+ * True when the named local sub-engine is currently usable. Used by
+ * validateSettingsPatch to gate 'local' acceptance, and by getResolvedPreferences
+ * / getCampaignSettings to downgrade silently when the backing env disappears.
+ *
+ * For 'tts'/'image' surfaces, pass the engine slug (e.g. 'piper', 'xtts',
+ * 'comfyui:flux-schnell', 'draw-things:...') to gate on the specific service.
+ * Omit `subModel` to accept if ANY engine in the surface is enabled.
+ */
+function isLocalSurfaceAvailable(surface: 'ai' | 'tts' | 'image', subModel?: string): boolean {
+  if (!isLocalEnvironment()) return false;
+  if (surface === 'ai') return !!process.env.OLLAMA_BASE_URL;
+  if (surface === 'tts') {
+    if (subModel === 'piper') return !!process.env.PIPER_BASE_URL;
+    if (subModel === 'xtts')  return !!process.env.XTTS_BASE_URL;
+    return !!process.env.PIPER_BASE_URL || !!process.env.XTTS_BASE_URL;
+  }
+  if (subModel?.startsWith('comfyui:'))     return !!process.env.COMFYUI_BASE_URL;
+  if (subModel?.startsWith('draw-things:')) return !!process.env.DRAW_THINGS_BASE_URL;
+  return !!process.env.COMFYUI_BASE_URL || !!process.env.DRAW_THINGS_BASE_URL;
+}
 
 /**
  * Defaults are merged on top of stored prefs at read time. Provider/model defaults
@@ -302,17 +326,47 @@ export function validateSettingsPatch(body: ValidatedSettings): ValidateResult {
   if ('ttsProvider' in body) {
     if (body.ttsProvider === undefined || body.ttsProvider === null) out.ttsProvider = undefined;
     else if (!isValidTtsProvider(body.ttsProvider)) return { ok: false, error: 'invalid-ttsProvider' };
-    else out.ttsProvider = body.ttsProvider;
-  }
-  if ('ttsVoice' in body) {
-    if (body.ttsVoice === undefined || body.ttsVoice === null) out.ttsVoice = undefined;
-    else if (!isValidTtsVoice(body.ttsVoice)) return { ok: false, error: 'invalid-ttsVoice' };
-    else out.ttsVoice = body.ttsVoice;
+    else if (body.ttsProvider === 'local' && !isLocalSurfaceAvailable('tts')) {
+      return { ok: false, error: 'invalid-ttsProvider' };
+    } else out.ttsProvider = body.ttsProvider;
   }
   if ('ttsModel' in body) {
-    if (body.ttsModel === undefined || body.ttsModel === null) out.ttsModel = undefined;
-    else if (!isValidTtsModel(body.ttsModel)) return { ok: false, error: 'invalid-ttsModel' };
-    else out.ttsModel = body.ttsModel;
+    if (body.ttsModel === undefined || body.ttsModel === null) {
+      out.ttsModel = undefined;
+    } else if (typeof body.ttsModel !== 'string') {
+      return { ok: false, error: 'invalid-ttsModel' };
+    } else {
+      const resolvedProvider = out.ttsProvider ?? body.ttsProvider;
+      if (resolvedProvider === 'local') {
+        if (body.ttsModel !== 'piper' && body.ttsModel !== 'xtts') {
+          return { ok: false, error: 'invalid-ttsModel' };
+        }
+        if (!isLocalSurfaceAvailable('tts', body.ttsModel)) {
+          return { ok: false, error: 'invalid-ttsModel' };
+        }
+      } else if (!isValidTtsModel(body.ttsModel)) {
+        return { ok: false, error: 'invalid-ttsModel' };
+      }
+      out.ttsModel = body.ttsModel;
+    }
+  }
+  if ('ttsVoice' in body) {
+    if (body.ttsVoice === undefined || body.ttsVoice === null) {
+      out.ttsVoice = undefined;
+    } else if (typeof body.ttsVoice !== 'string') {
+      return { ok: false, error: 'invalid-ttsVoice' };
+    } else {
+      const resolvedProvider = out.ttsProvider ?? body.ttsProvider;
+      const resolvedModel = out.ttsModel ?? body.ttsModel;
+      if (resolvedProvider === 'local' && typeof resolvedModel === 'string') {
+        if (!isValidVoiceForModel(body.ttsVoice, 'local', resolvedModel)) {
+          return { ok: false, error: 'invalid-ttsVoice' };
+        }
+      } else if (!isValidTtsVoice(body.ttsVoice)) {
+        return { ok: false, error: 'invalid-ttsVoice' };
+      }
+      out.ttsVoice = body.ttsVoice;
+    }
   }
   if ('ttsAutoplay' in body) {
     if (typeof body.ttsAutoplay !== 'boolean') return { ok: false, error: 'invalid-ttsAutoplay' };
@@ -324,11 +378,21 @@ export function validateSettingsPatch(body: ValidatedSettings): ValidateResult {
   }
   if ('aiProvider' in body) {
     if (!isKnownProvider(body.aiProvider)) return { ok: false, error: 'invalid-aiProvider' };
+    if (body.aiProvider === 'local' && !isLocalSurfaceAvailable('ai')) {
+      return { ok: false, error: 'invalid-aiProvider' };
+    }
     out.aiProvider = body.aiProvider;
   }
   if ('aiMasterModel' in body) {
-    if (body.aiMasterModel !== undefined && !isKnownMasterModel(body.aiMasterModel)) {
-      return { ok: false, error: 'invalid-aiMasterModel' };
+    if (body.aiMasterModel !== undefined) {
+      const m = body.aiMasterModel;
+      if (typeof m !== 'string' || m.length === 0 || m.length > 200) {
+        return { ok: false, error: 'invalid-aiMasterModel' };
+      }
+      const resolvedProvider = out.aiProvider ?? body.aiProvider;
+      if (resolvedProvider !== 'local' && !isKnownMasterModel(m)) {
+        return { ok: false, error: 'invalid-aiMasterModel' };
+      }
     }
     out.aiMasterModel = body.aiMasterModel as string | undefined;
   }
@@ -359,11 +423,22 @@ export function validateSettingsPatch(body: ValidatedSettings): ValidateResult {
   }
   if ('imageProvider' in body) {
     if (!isKnownImageProvider(body.imageProvider)) return { ok: false, error: 'invalid-imageProvider' };
+    if (body.imageProvider === 'local' && !isLocalSurfaceAvailable('image')) {
+      return { ok: false, error: 'invalid-imageProvider' };
+    }
     out.imageProvider = body.imageProvider;
   }
   if ('imageModel' in body) {
-    if (body.imageModel !== undefined && !isKnownImageModel(body.imageModel)) {
-      return { ok: false, error: 'invalid-imageModel' };
+    if (body.imageModel !== undefined) {
+      if (!isKnownImageModel(body.imageModel)) {
+        return { ok: false, error: 'invalid-imageModel' };
+      }
+      const resolvedProvider = out.imageProvider ?? body.imageProvider;
+      if (resolvedProvider === 'local') {
+        if (!isLocalSurfaceAvailable('image', body.imageModel)) {
+          return { ok: false, error: 'invalid-imageModel' };
+        }
+      }
     }
     out.imageModel = body.imageModel as string | undefined;
   }
