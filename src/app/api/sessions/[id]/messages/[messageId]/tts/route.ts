@@ -4,7 +4,7 @@ import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions, sessionMessages, ttsCache } from '@/db/schema';
 import { synthesizeSpeech } from '@/ai/tts';
-import { getResolvedPreferences } from '@/lib/preferences';
+import { getSessionMasterPreferences } from '@/lib/preferences';
 import { checkPartyAccess } from '@/multiplayer/access';
 
 export async function GET(
@@ -36,11 +36,12 @@ export async function GET(
     return NextResponse.json({ error: 'tts-master-only' }, { status: 400 });
   }
 
-  // Resolve user-preferred provider + voice + model. Cache key is
+  // Resolve campaign-scoped provider + voice + model so every party
+  // member hears the same narration voice. Cache key is
   // (message, voice, model); voice/model namespaces are disjoint across
   // providers, so we don't need provider in the PK. We do store provider +
   // mimeType as columns so the route can return the right Content-Type.
-  const prefs = await getResolvedPreferences(userId);
+  const prefs = await getSessionMasterPreferences(sessionId);
   const provider = prefs.ttsProvider;
   const voice = prefs.ttsVoice;
   const model = prefs.ttsModel;
