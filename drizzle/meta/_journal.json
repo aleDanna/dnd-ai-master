@@ -218,6 +218,13 @@
       "when": 1778802679409,
       "tag": "0030_per_character_slot_state",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1778839768612,
+      "tag": "0031_flashy_the_hunter",
+      "breakpoints": true
     }
   ]
 }
