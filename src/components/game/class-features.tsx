@@ -17,31 +17,21 @@ export interface ClassFeaturesProps {
 }
 
 /**
- * The "loud" section under the character pane: class glyph header, spell
- * slots (if any), then a tile per counted/pool feature with a rest-chip
- * (SR/LR/ENC), accent-colored pips, and a hint. Replaces the older standalone
- * Spell-slots and Resources blocks.
+ * The "loud" section under the character pane: class glyph header, then a
+ * tile per counted/pool feature with a rest-chip (SR/LR/ENC), accent-colored
+ * pips, and a hint. Spell slots used to render here too; they now live
+ * inside the Spellbook modal, surfaced via the `SpellbookCard` entry in the
+ * character pane.
  */
 export function ClassFeatures({ character, state }: ClassFeaturesProps) {
   const glyph = CLASS_GLYPH[character.classSlug] ?? DEFAULT_GLYPH;
-  const slotsMax = character.spellcasting?.slotsMax;
-  const slotsUsed = state.spellSlotsUsed;
   const countedFeatures = character.features.filter((f) => f.usesMax !== 'unlimited');
-  const hasSlots = slotsMax && Object.keys(slotsMax).length > 0;
 
-  if (!hasSlots && countedFeatures.length === 0) return null;
+  if (countedFeatures.length === 0) return null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <ClassFeaturesHeader glyph={glyph} level={character.level} />
-
-      {hasSlots && (
-        <SpellSlotsTile
-          slots={slotsMax as Record<string, number>}
-          used={slotsUsed}
-          recharge={character.classSlug === 'warlock' ? 'short' : 'long'}
-        />
-      )}
 
       {countedFeatures.map((f) => (
         <ResourceTile
@@ -161,7 +151,7 @@ export function RestChip({ rest }: { rest: RestKind }) {
   );
 }
 
-function SpellSlotsTile({
+export function SpellSlotsTile({
   slots,
   used,
   recharge,

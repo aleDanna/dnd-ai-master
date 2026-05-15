@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { CharacterPane } from '@/components/game/character-pane';
 import type { Character } from '@/engine/types';
 import type { SessionStateRow } from '@/sessions/client-types';
@@ -40,24 +40,26 @@ const baseCharacter: Character = {
   hitDieSize: 10,
 };
 
-describe('CharacterPane Spells section', () => {
-  it('does not render Spells for non-spellcasters', () => {
+// The Spells UI lives in a single clickable card ("Spellbook") that opens
+// a modal. The pane no longer inlines the spell list above the inventory.
+describe('CharacterPane Spellbook card', () => {
+  it('does not render the Spellbook card for non-spellcasters', () => {
     render(<CharacterPane character={baseCharacter} state={baseState} />);
-    expect(screen.queryByText('Spells')).not.toBeInTheDocument();
+    expect(screen.queryByText('Spellbook')).not.toBeInTheDocument();
   });
 
-  it('renders Spells with empty fallback for a caster class even when spellcasting is null (legacy character)', () => {
+  it('renders the Spellbook card for caster classes even when spellcasting is null (legacy character)', () => {
     const legacyWizard: Character = {
       ...baseCharacter,
       classSlug: 'wizard',
       spellcasting: null,
     };
     render(<CharacterPane character={legacyWizard} state={baseState} />);
-    expect(screen.getByText('Spells')).toBeInTheDocument();
+    expect(screen.getByText('Spellbook')).toBeInTheDocument();
     expect(screen.getByText(/No spells known yet/i)).toBeInTheDocument();
   });
 
-  it('renders known spell labels for spellcasters', () => {
+  it('summarises spells known + slot availability in the card label', () => {
     const wizard: Character = {
       ...baseCharacter,
       classSlug: 'wizard',
@@ -71,15 +73,40 @@ describe('CharacterPane Spells section', () => {
       },
     };
     render(<CharacterPane character={wizard} state={baseState} />);
-    expect(screen.getByText('Spells')).toBeInTheDocument();
+    expect(screen.getByText('Spellbook')).toBeInTheDocument();
+    // Compact summary on the card itself — full list lives inside the modal.
+    expect(screen.getByText('3 known · 2/2 slots')).toBeInTheDocument();
+    // Until the user opens the modal the individual spell rows must not leak
+    // back into the side panel.
+    expect(screen.queryByText('Magic Missile')).not.toBeInTheDocument();
+    expect(screen.queryByText('Fire Bolt')).not.toBeInTheDocument();
+  });
+
+  it('opens the modal with full spell info when the card is clicked', () => {
+    const wizard: Character = {
+      ...baseCharacter,
+      classSlug: 'wizard',
+      spellcasting: {
+        ability: 'INT',
+        spellSaveDC: 13,
+        spellAttackBonus: 5,
+        slotsMax: { 1: 2 },
+        spellsKnown: ['magic-missile', 'fire-bolt', 'shield'],
+        spellsPrepared: ['magic-missile', 'shield'],
+      },
+    };
+    render(<CharacterPane character={wizard} state={baseState} />);
+    fireEvent.click(screen.getByLabelText(/Open spellbook/));
+    // Modal shows spell save DC, slot tile, and the full list with prep badges.
+    expect(screen.getByText('Save DC')).toBeInTheDocument();
+    expect(screen.getByText('Spell slots')).toBeInTheDocument();
     expect(screen.getByText('Magic Missile')).toBeInTheDocument();
     expect(screen.getByText('Fire Bolt')).toBeInTheDocument();
     expect(screen.getByText('Shield')).toBeInTheDocument();
-    // Two prepared spells get the "prep" badge; the unprepared one does not.
     expect(screen.getAllByText('prep')).toHaveLength(2);
   });
 
-  it('shows empty fallback when spellsKnown is empty for a spellcaster', () => {
+  it('shows the empty fallback inside the modal when spellsKnown is empty', () => {
     const noviceCaster: Character = {
       ...baseCharacter,
       classSlug: 'sorcerer',
@@ -93,8 +120,11 @@ describe('CharacterPane Spells section', () => {
       },
     };
     render(<CharacterPane character={noviceCaster} state={baseState} />);
-    expect(screen.getByText('Spells')).toBeInTheDocument();
-    expect(screen.getByText(/No spells known yet/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText(/Open spellbook/));
+    // The empty hint appears on the card summary AND in the modal body — two
+    // hits is exactly what we expect after the click (the card is still
+    // mounted behind the modal).
+    expect(screen.getAllByText(/No spells known yet/i).length).toBeGreaterThanOrEqual(2);
   });
 
   it('does not show prep badges when prepared equals known (sorcerer/warlock pattern)', () => {
@@ -111,6 +141,7 @@ describe('CharacterPane Spells section', () => {
       },
     };
     render(<CharacterPane character={sorcerer} state={baseState} />);
+    fireEvent.click(screen.getByLabelText(/Open spellbook/));
     expect(screen.queryByText('prep')).not.toBeInTheDocument();
   });
 });

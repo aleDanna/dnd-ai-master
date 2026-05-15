@@ -2,11 +2,13 @@
 import * as React from 'react';
 import { Eyebrow } from '@/components/ui/eyebrow';
 import { Chip } from '@/components/ui/chip';
+import { Icon } from '@/components/ui/icon';
 import { categorizeInventory, formatInventoryDisplay, slugToLabel } from '@/lib/inventory';
 import type { Character } from '@/engine/types';
 import type { SessionStateRow } from '@/sessions/client-types';
 import type { MasterInventoryView } from '@/srd/enrich-inventory';
 import { ClassFeatures } from './class-features';
+import { SpellbookModal } from './spellbook-modal';
 
 // Classes that learn spells at any level. Used to decide whether to render
 // the Spells section even when `character.spellcasting` is null (e.g. older
@@ -26,6 +28,7 @@ export interface CharacterPaneProps {
 export function CharacterPane({ character, state, enrichedInventory, compact = false }: CharacterPaneProps) {
   const hpPct = character.hpMax > 0 ? Math.round((state.hpCurrent / character.hpMax) * 100) : 0;
   const hpTone = hpPct <= 25 ? 'var(--ember)' : hpPct <= 50 ? 'var(--gold)' : 'var(--verdigris)';
+  const [spellbookOpen, setSpellbookOpen] = React.useState(false);
 
   return (
     <aside
@@ -149,15 +152,24 @@ export function CharacterPane({ character, state, enrichedInventory, compact = f
       )}
 
       {SPELLCASTER_CLASSES.has(character.classSlug) && (
-        <SpellsSection
-          spellsKnown={character.spellcasting?.spellsKnown ?? []}
-          spellsPrepared={character.spellcasting?.spellsPrepared ?? []}
+        <SpellbookCard
+          character={character}
+          state={state}
+          onOpen={() => setSpellbookOpen(true)}
         />
       )}
 
       <ClassFeatures character={character} state={state} />
 
       <InventorySection inventory={character.inventory} enriched={enrichedInventory} />
+
+      {spellbookOpen && (
+        <SpellbookModal
+          character={character}
+          state={state}
+          onClose={() => setSpellbookOpen(false)}
+        />
+      )}
     </aside>
   );
 }
@@ -379,78 +391,86 @@ function InventoryRow({
   );
 }
 
-function SpellsSection({ spellsKnown, spellsPrepared }: { spellsKnown: string[]; spellsPrepared: string[] }) {
-  if (spellsKnown.length === 0) {
-    return (
-      <div>
-        <Eyebrow style={{ marginBottom: 6 }}>Spells</Eyebrow>
-        <div
-          style={{
-            padding: '8px 10px',
-            background: 'var(--bg-card)',
-            border: '1px dashed var(--border)',
-            borderRadius: 6,
-            fontSize: 12,
-            fontStyle: 'italic',
-            color: 'var(--fg-muted)',
-            lineHeight: 1.4,
-          }}
-        >
-          No spells known yet.
-        </div>
-      </div>
-    );
-  }
-
-  const preparedSet = new Set(spellsPrepared);
-  // Show "prep" indicator only when the class actually distinguishes prepared
-  // from known (i.e. the prepared list is a non-empty proper subset). For
-  // know-everything casters (sorcerer, warlock) the two arrays are equal —
-  // highlighting every row would be noise.
-  const showsPrepared =
-    spellsPrepared.length > 0 && spellsPrepared.length < spellsKnown.length;
-
-  const sorted = [...spellsKnown].sort((a, b) => a.localeCompare(b));
+/**
+ * The "Spells" entry in the character pane. Collapses the previous inline
+ * list of known spells into a single clickable card with a one-line summary
+ * (spells known + slot availability). Tapping opens the `SpellbookModal`
+ * with the full sheet — stats, slot grid, prepared list, search filter.
+ *
+ * Rendered only for classes that learn spells (`SPELLCASTER_CLASSES`).
+ * Spell-less classes get no card at all; their pane skips straight to
+ * `ClassFeatures` and `InventorySection`.
+ */
+function SpellbookCard({
+  character,
+  state,
+  onOpen,
+}: {
+  character: Character;
+  state: SessionStateRow;
+  onOpen: () => void;
+}) {
+  const spellsKnown = character.spellcasting?.spellsKnown ?? [];
+  const slotsMax = character.spellcasting?.slotsMax ?? {};
+  const slotsUsed = state.spellSlotsUsed ?? {};
+  const totalMax = Object.values(slotsMax).reduce((a, b) => a + b, 0);
+  const totalUsed = Object.values(slotsUsed).reduce((a, b) => a + b, 0);
+  const remaining = Math.max(0, totalMax - totalUsed);
+  const summary: string[] = [`${spellsKnown.length} known`];
+  if (totalMax > 0) summary.push(`${remaining}/${totalMax} slots`);
 
   return (
     <div>
       <Eyebrow style={{ marginBottom: 6 }}>Spells</Eyebrow>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-        {sorted.map((slug) => {
-          const isPrepared = preparedSet.has(slug);
-          const highlight = showsPrepared && isPrepared;
-          return (
-            <div
-              key={slug}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                fontSize: 12,
-                padding: '3px 6px',
-                borderRadius: 4,
-                background: highlight ? 'rgba(122,79,184,0.08)' : 'transparent',
-                border: highlight ? '1px solid rgba(122,79,184,0.3)' : '1px solid transparent',
-              }}
-            >
-              <span style={{ flex: 1 }}>{slugToLabel(slug)}</span>
-              {highlight && (
-                <span
-                  style={{
-                    fontFamily: 'var(--font-mono)',
-                    color: 'var(--arcane)',
-                    fontSize: 9,
-                    letterSpacing: '0.06em',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  prep
-                </span>
-              )}
-            </div>
-          );
-        })}
-      </div>
+      <button
+        onClick={onOpen}
+        aria-label={`Open spellbook (${summary.join(', ')})`}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          padding: '10px 12px',
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border)',
+          borderRadius: 8,
+          cursor: 'pointer',
+          textAlign: 'left',
+          color: 'inherit',
+          fontFamily: 'inherit',
+          transition: 'background 120ms, border-color 120ms',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = 'var(--arcane)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = 'var(--border)';
+        }}
+      >
+        <span
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 6,
+            background: 'rgba(122,79,184,0.12)',
+            border: '1px solid rgba(122,79,184,0.4)',
+            color: 'var(--arcane-2)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <Icon name="spell" size={14} />
+        </span>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: 'block', fontSize: 13, fontWeight: 600 }}>Spellbook</span>
+          <span style={{ display: 'block', fontSize: 11, color: 'var(--fg-muted)', marginTop: 2 }}>
+            {spellsKnown.length === 0 ? 'No spells known yet' : summary.join(' · ')}
+          </span>
+        </span>
+        <span style={{ color: 'var(--fg-subtle)', fontSize: 14, flexShrink: 0 }}>›</span>
+      </button>
     </div>
   );
 }

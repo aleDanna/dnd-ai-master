@@ -43,7 +43,10 @@ describe('ClassFeatures', () => {
     expect(screen.getByText(/Lv 3/)).toBeInTheDocument();
   });
 
-  it('renders the spell slots tile for a spellcaster', () => {
+  it('does NOT render the spell-slots tile inside ClassFeatures (moved to the Spellbook modal)', () => {
+    // Pre-redesign the slot tile lived in the class-features block above the
+    // inventory. It now lives inside the Spellbook modal so the side panel
+    // collapses spells under a single "Spellbook" entry.
     const c = character({
       classSlug: 'wizard',
       spellcasting: {
@@ -52,27 +55,28 @@ describe('ClassFeatures', () => {
         spellsKnown: [], spellsPrepared: [],
       },
     } as Partial<Character>);
-    render(<ClassFeatures character={c} state={state({ spellSlotsUsed: { 1: 1 } })} />);
-    expect(screen.getByText('Spell slots')).toBeInTheDocument();
-    // Slot remaining display for level 1 -> 3/4
-    expect(screen.getByText('3/4')).toBeInTheDocument();
-    // Slot remaining display for level 2 -> 2/2
-    expect(screen.getByText('2/2')).toBeInTheDocument();
+    const { container } = render(<ClassFeatures character={c} state={state({ spellSlotsUsed: { 1: 1 } })} />);
+    // Wizard has no counted/pool features — with the slot tile gone, the
+    // whole block returns null and renders nothing.
+    expect(container.firstChild).toBeNull();
+    expect(screen.queryByText('Spell slots')).not.toBeInTheDocument();
   });
 
-  it('renders the warlock spell slots tile with a short-rest chip', () => {
+  it('still renders class-feature tiles for half-casters (slot tile is in the modal, other resources stay here)', () => {
     const c = character({
-      classSlug: 'warlock',
+      classSlug: 'paladin',
       spellcasting: {
         ability: 'CHA', spellSaveDC: 13, spellAttackBonus: 5,
         slotsMax: { 1: 2 },
         spellsKnown: [], spellsPrepared: [],
       },
+      features: [{ slug: 'lay-on-hands', source: 'class', usesMax: 15, description: '' }],
     } as Partial<Character>);
     render(<ClassFeatures character={c} state={state()} />);
-    // SR chip text appears next to the Spell slots row
-    expect(screen.getByText('Spell slots')).toBeInTheDocument();
-    expect(screen.getByText('SR')).toBeInTheDocument();
+    // Lay on Hands resource stays in this block.
+    expect(screen.getByText('Lay on Hands')).toBeInTheDocument();
+    // Spell slots tile is now exclusively in the spellbook modal.
+    expect(screen.queryByText('Spell slots')).not.toBeInTheDocument();
   });
 
   it('renders a resource tile with name + action chip when available', () => {
