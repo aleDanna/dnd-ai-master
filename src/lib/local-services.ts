@@ -202,3 +202,82 @@ export async function fetchOllamaModels(): Promise<ModelOption[]> {
     return [];
   }
 }
+
+// ── Aggregate status orchestrator ──────────────────────────────────────────
+
+async function buildAiStatus(): Promise<EngineStatus> {
+  const enabled = !!process.env.OLLAMA_BASE_URL;
+  if (!enabled) return { enabled: false, reachable: false, models: [] };
+  const reachable = await pingService(process.env.OLLAMA_BASE_URL!, '/api/tags');
+  const models = reachable ? await fetchOllamaModels() : [];
+  return { enabled, reachable, models, ...(reachable ? {} : { error: 'unreachable' }) };
+}
+
+async function buildPiperStatus(): Promise<EngineStatus> {
+  const enabled = !!process.env.PIPER_BASE_URL;
+  if (!enabled) return { enabled: false, reachable: false, models: [] };
+  const reachable = await pingService(process.env.PIPER_BASE_URL!, '/v1/audio/voices');
+  const models = reachable ? await fetchPiperVoices() : [];
+  return { enabled, reachable, models, ...(reachable ? {} : { error: 'unreachable' }) };
+}
+
+async function buildXttsStatus(): Promise<EngineStatus> {
+  const enabled = !!process.env.XTTS_BASE_URL;
+  if (!enabled) return { enabled: false, reachable: false, models: [] };
+  const reachable = await pingService(process.env.XTTS_BASE_URL!, '/speakers_list');
+  // XTTS voices are static (hardcoded language list); shown regardless of reachability.
+  const models = listXttsVoices();
+  return { enabled, reachable, models, ...(reachable ? {} : { error: 'unreachable' }) };
+}
+
+async function buildComfyUIStatus(): Promise<EngineStatus> {
+  const enabled = !!process.env.COMFYUI_BASE_URL;
+  if (!enabled) return { enabled: false, reachable: false, models: [] };
+  const reachable = await pingService(process.env.COMFYUI_BASE_URL!, '/system_stats');
+  const models = listComfyUIWorkflows();
+  return { enabled, reachable, models, ...(reachable ? {} : { error: 'unreachable' }) };
+}
+
+async function buildDrawThingsStatus(): Promise<EngineStatus> {
+  const enabled = !!process.env.DRAW_THINGS_BASE_URL;
+  if (!enabled) return { enabled: false, reachable: false, models: [] };
+  const reachable = await pingService(process.env.DRAW_THINGS_BASE_URL!, '/sdapi/v1/options');
+  const models = reachable ? await fetchDrawThingsModels() : [];
+  return { enabled, reachable, models, ...(reachable ? {} : { error: 'unreachable' }) };
+}
+
+/** Server-side aggregator: runs all five health checks in parallel and
+ *  returns the shape consumed by the Settings client component. Always
+ *  resolves — never throws. */
+export async function fetchLocalServicesStatus(): Promise<LocalServicesStatus> {
+  if (!isLocalEnvironment()) {
+    const empty: EngineStatus = { enabled: false, reachable: false, models: [] };
+    return {
+      isLocal: false,
+      ai: empty,
+      tts: { enabled: false, engines: { piper: empty, xtts: empty } },
+      image: { enabled: false, engines: { comfyui: empty, drawThings: empty } },
+    };
+  }
+
+  const [ai, piper, xtts, comfyui, drawThings] = await Promise.all([
+    buildAiStatus(),
+    buildPiperStatus(),
+    buildXttsStatus(),
+    buildComfyUIStatus(),
+    buildDrawThingsStatus(),
+  ]);
+
+  return {
+    isLocal: true,
+    ai,
+    tts: {
+      enabled: piper.enabled || xtts.enabled,
+      engines: { piper, xtts },
+    },
+    image: {
+      enabled: comfyui.enabled || drawThings.enabled,
+      engines: { comfyui, drawThings },
+    },
+  };
+}
