@@ -57,6 +57,9 @@ export default async function CampaignDetail({ params }: { params: Promise<{ id:
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <Link href={`/campaigns/${campaign.id}/settings`}>
+            <Button variant="ghost" size="md" icon="settings">Settings</Button>
+          </Link>
           {activeSession ? (
             <Link href={`/sessions/${activeSession.id}`}>
               <Button variant="primary" size="md" iconRight="arrow-right">Continue</Button>
