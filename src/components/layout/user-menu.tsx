@@ -1,6 +1,5 @@
 'use client';
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
 import { useUser, useClerk } from '@clerk/nextjs';
 import { Icon } from '@/components/ui/icon';
 
@@ -12,7 +11,6 @@ export interface UserMenuProps {
 }
 
 export function UserMenu({ align = 'right', size = 28 }: UserMenuProps) {
-  const router = useRouter();
   const { user, isLoaded } = useUser();
   const { signOut } = useClerk();
   const [open, setOpen] = React.useState(false);
@@ -36,11 +34,6 @@ export function UserMenu({ align = 'right', size = 28 }: UserMenuProps) {
       document.removeEventListener('keydown', handleKey);
     };
   }, [open]);
-
-  const goToSettings = () => {
-    setOpen(false);
-    router.push('/settings');
-  };
 
   const handleSignOut = async () => {
     if (signingOut) return;
@@ -138,7 +131,6 @@ export function UserMenu({ align = 'right', size = 28 }: UserMenuProps) {
               </div>
             ) : null}
           </div>
-          <MenuButton onClick={goToSettings} icon="settings" label="Settings" />
           <MenuButton
             onClick={handleSignOut}
             icon="log-out"
@@ -154,7 +146,7 @@ export function UserMenu({ align = 'right', size = 28 }: UserMenuProps) {
 
 interface MenuButtonProps {
   onClick: () => void;
-  icon: 'settings' | 'log-out';
+  icon: 'log-out';
   label: string;
   tone?: 'default' | 'danger';
   disabled?: boolean;
