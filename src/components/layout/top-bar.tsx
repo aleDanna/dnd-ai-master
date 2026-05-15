@@ -4,7 +4,6 @@ import { usePathname } from 'next/navigation';
 import { Icon } from '@/components/ui/icon';
 import { Wordmark } from '@/components/ui/wordmark';
 import { Chip } from '@/components/ui/chip';
-import { SettingsLink } from '@/components/ui/settings-link';
 import { UserMenu } from '@/components/layout/user-menu';
 
 export interface TopBarProps {
@@ -57,7 +56,6 @@ export function TopBar({ mode = 'Solo' }: TopBarProps) {
       </nav>
       <div style={{ flex: 1 }} />
       <Chip tone="accent" dot>{mode}</Chip>
-      <SettingsLink variant="ghost" size="sm" iconOnly />
       <UserMenu />
     </header>
   );
