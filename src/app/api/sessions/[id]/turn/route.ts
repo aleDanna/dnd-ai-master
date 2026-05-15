@@ -14,7 +14,7 @@ import { buildMasterSystemPrompt } from '@/ai/master/system-prompt';
 import { detectLanguage } from '@/ai/master/language';
 import { runToolLoop } from '@/ai/master/tool-loop';
 import { buildToolDefinitions } from '@/engine';
-import { getProviderByName } from '@/ai/provider';
+import { getProviderByName, isCloudProvider } from '@/ai/provider';
 import { recordUsage } from '@/ai/master/usage';
 import { checkQuotas } from '@/ai/master/quotas';
 import { getSessionMasterPreferences } from '@/lib/preferences';
@@ -149,6 +149,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (!campaign.language) {
           const detectText = isBegin ? campaign.premise : body!.message!;
           if (detectText && detectText.trim().length > 0) {
+            // Local providers are not supported for language detection
+            if (!isCloudProvider(userPrefs.aiProvider)) {
+              return jsonResponse({ error: 'unsupported-provider-for-turn' }, 400);
+            }
             const code = await detectLanguage({ text: detectText, userId, sessionId, provider: userPrefs.aiProvider });
             if (code) {
               await db.update(campaigns).set({ language: code }).where(eq(campaigns.id, campaign.id));
@@ -225,7 +229,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // 5. Run the tool loop — events forwarded to SSE subscribers via notifySession.
         // Provider + model are resolved from user prefs (with env fallback) so each
         // user can pick their own AI without redeploying.
-        const provider = getProviderByName(userPrefs.aiProvider);
+        // Local providers are not supported for master narration (requires cloud API)
+        const providerName = userPrefs.aiProvider;
+        if (!isCloudProvider(providerName)) {
+          return jsonResponse({ error: 'unsupported-provider-for-turn' }, 400);
+        }
+        const provider = getProviderByName(providerName);
         const masterModel = userPrefs.aiMasterModel;
         const tools = buildToolDefinitions({ imageGenerationEnabled: userPrefs.imageGenerationEnabled });
         const result = await runToolLoop({

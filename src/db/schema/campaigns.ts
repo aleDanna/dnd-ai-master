@@ -1,6 +1,7 @@
 import { pgTable, text, uuid, timestamp, pgEnum, varchar, jsonb, index } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { users } from './users';
+import type { ProviderName, ImageProviderName } from '@/lib/ai-models';
 
 export const campaignStatusEnum = pgEnum('campaign_status', ['active', 'ended']);
 
@@ -12,7 +13,7 @@ export const campaignStatusEnum = pgEnum('campaign_status', ['active', 'ended'])
  * were backfilled by migration 0031.
  */
 export interface CampaignSettings {
-  aiProvider?: 'anthropic' | 'openai' | 'gemini';
+  aiProvider?: ProviderName;
   aiMasterModel?: string;
   ttsProvider?: 'openai' | 'gemini';
   ttsVoice?: string;
@@ -24,7 +25,7 @@ export interface CampaignSettings {
   imageGenerationEnabled?: boolean;
   imageStylePreset?: 'pastel' | 'watercolor' | 'oil' | 'ink' | 'photo' | 'custom';
   imageStyleCustom?: string;
-  imageProvider?: 'openai' | 'gemini';
+  imageProvider?: ImageProviderName;
   imageModel?: string;
 }
 

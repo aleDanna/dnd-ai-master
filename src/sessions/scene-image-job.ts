@@ -4,10 +4,15 @@ import { sessionState } from '@/db/schema';
 import { buildImagePrompt } from '@/ai/master/image-style';
 import { generateBytesOpenAI, __setOpenAIClientForTest } from './image-providers/openai';
 import { generateBytesGemini, __setGeminiClientForTest } from './image-providers/gemini';
+import type { ImageProviderName } from '@/lib/ai-models';
 
 export { __setOpenAIClientForTest, __setGeminiClientForTest };
 
 export type ImageProvider = 'openai' | 'gemini';
+
+export function isCloudImageProvider(value: unknown): value is ImageProvider {
+  return value === 'openai' || value === 'gemini';
+}
 
 export type GenerateResult =
   | { ok: true; version: number }
@@ -27,10 +32,14 @@ export async function generateAndPersist(
   visualPrompt: string,
   styleText: string,
   expectedVersion: number,
-  provider: ImageProvider = 'openai',
+  provider: ImageProviderName = 'openai',
   model?: string,
   characterAppearance?: string,
 ): Promise<GenerateResult> {
+  // Local providers are not supported for image generation
+  if (!isCloudImageProvider(provider)) {
+    return { ok: false, reason: 'api_error', detail: `Unsupported image provider: ${provider}` };
+  }
   const fullPrompt = buildImagePrompt(visualPrompt, styleText, characterAppearance);
   const result =
     provider === 'gemini'

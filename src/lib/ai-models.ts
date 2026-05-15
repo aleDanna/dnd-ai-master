@@ -6,8 +6,8 @@
  * actionable failure.
  */
 
-export type ProviderName = 'anthropic' | 'openai' | 'gemini';
-export type ImageProviderName = 'openai' | 'gemini';
+export type ProviderName = 'anthropic' | 'openai' | 'gemini' | 'local';
+export type ImageProviderName = 'openai' | 'gemini' | 'local';
 
 export interface ModelOption {
   slug: string;
@@ -83,34 +83,38 @@ export const GEMINI_IMAGE_MODELS: ModelOption[] = [
 export function modelsForProvider(p: ProviderName): ModelOption[] {
   if (p === 'anthropic') return ANTHROPIC_MASTER_MODELS;
   if (p === 'openai') return OPENAI_MASTER_MODELS;
-  return GEMINI_MASTER_MODELS;
+  if (p === 'gemini') return GEMINI_MASTER_MODELS;
+  return [];  // 'local' — runtime list passed separately
 }
 
 export function defaultModelForProvider(p: ProviderName): string {
+  if (p === 'local') return '';  // caller must override with runtime list
   const list = modelsForProvider(p);
   return list.find((m) => m.recommended)?.slug ?? list[0]!.slug;
 }
 
 export function imageModelsForProvider(p: ImageProviderName): ModelOption[] {
+  if (p === 'local') return [];
   return p === 'openai' ? OPENAI_IMAGE_MODELS : GEMINI_IMAGE_MODELS;
 }
 
 export function defaultImageModelForProvider(p: ImageProviderName): string {
+  if (p === 'local') return '';
   const list = imageModelsForProvider(p);
   return list.find((m) => m.recommended)?.slug ?? list[0]!.slug;
 }
 
 export function isKnownProvider(value: unknown): value is ProviderName {
-  return value === 'anthropic' || value === 'openai' || value === 'gemini';
+  return value === 'anthropic' || value === 'openai' || value === 'gemini' || value === 'local';
 }
 
 export function isKnownImageProvider(value: unknown): value is ImageProviderName {
-  return value === 'openai' || value === 'gemini';
+  return value === 'openai' || value === 'gemini' || value === 'local';
 }
 
 /** Validates that the slug is in the union of known master model slugs. */
 export function isKnownMasterModel(value: unknown): boolean {
-  if (typeof value !== 'string') return false;
+  if (typeof value !== 'string' || value.length === 0 || value.length > 200) return false;
   return [...ANTHROPIC_MASTER_MODELS, ...OPENAI_MASTER_MODELS, ...GEMINI_MASTER_MODELS].some(
     (m) => m.slug === value,
   );
@@ -118,6 +122,8 @@ export function isKnownMasterModel(value: unknown): boolean {
 
 /** Validates that the slug is in the union of known image model slugs. */
 export function isKnownImageModel(value: unknown): boolean {
-  if (typeof value !== 'string') return false;
-  return [...OPENAI_IMAGE_MODELS, ...GEMINI_IMAGE_MODELS].some((m) => m.slug === value);
+  if (typeof value !== 'string' || value.length === 0 || value.length > 200) return false;
+  const inCloudCatalog = [...OPENAI_IMAGE_MODELS, ...GEMINI_IMAGE_MODELS].some((m) => m.slug === value);
+  if (inCloudCatalog) return true;
+  return value.startsWith('comfyui:') || value.startsWith('draw-things:');
 }

@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { pgTable, text, timestamp, jsonb } from 'drizzle-orm/pg-core';
+import type { ProviderName, ImageProviderName } from '@/lib/ai-models';
 
 export interface UserPreferences {
   /** TTS provider. 'openai' or 'gemini'. Anthropic has no TTS endpoint, so
@@ -23,7 +24,7 @@ export interface UserPreferences {
    */
   manualRolls?: boolean;
   /** Provider for the AI master. When unset, falls back to MASTER_PROVIDER env. */
-  aiProvider?: 'anthropic' | 'openai' | 'gemini';
+  aiProvider?: ProviderName;
   /** Specific model used for master narration + wizard proposals. When unset, falls back to env defaults. */
   aiMasterModel?: string;
   /**
@@ -67,7 +68,7 @@ export interface UserPreferences {
   /** Free-text style description, used only when imageStylePreset === 'custom'. */
   imageStyleCustom?: string;
   /** Provider for scene illustration. When unset, falls back to IMAGE_PROVIDER env (default 'openai'). */
-  imageProvider?: 'openai' | 'gemini';
+  imageProvider?: ImageProviderName;
   /** Specific image model slug. When unset, falls back to provider env default. */
   imageModel?: string;
 }

@@ -1,6 +1,12 @@
 import type { Anthropic } from '@anthropic-ai/sdk';
 
+/** Cloud provider names supported by the provider implementations */
 export type ProviderName = 'anthropic' | 'openai' | 'gemini';
+
+/** Guard function to narrow from the broader ai-models ProviderName union */
+export function isCloudProvider(value: unknown): value is ProviderName {
+  return value === 'anthropic' || value === 'openai' || value === 'gemini';
+}
 
 /** The Anthropic-shaped tool definition is the canonical form across the codebase. */
 export type ToolDef = Anthropic.Messages.Tool;

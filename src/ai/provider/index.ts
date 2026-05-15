@@ -43,3 +43,4 @@ export function _resetMasterProviderForTests(): void {
 }
 
 export type { MasterProvider, ProviderName } from './types';
+export { isCloudProvider } from './types';

@@ -1,7 +1,7 @@
 import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions, users, campaigns, type UserPreferences, isMasterGuidanceLevel, isImageStylePreset, isNarrationPace, type CampaignSettings } from '@/db/schema';
-import { isKnownProvider, isKnownMasterModel, isKnownImageProvider, isKnownImageModel } from '@/lib/ai-models';
+import { isKnownProvider, isKnownMasterModel, isKnownImageProvider, isKnownImageModel, type ProviderName, type ImageProviderName } from '@/lib/ai-models';
 
 export type { UserPreferences };
 export {
@@ -28,25 +28,30 @@ import {
  * cascade from env vars when user hasn't picked anything; if env is also unset,
  * fall back to anthropic + claude-sonnet-4-5 (the historical default).
  */
-function envDefaultProvider(): 'anthropic' | 'openai' | 'gemini' {
+function envDefaultProvider(): ProviderName {
   const raw = (process.env.MASTER_PROVIDER ?? '').trim().toLowerCase();
   if (raw === 'openai') return 'openai';
   if (raw === 'gemini') return 'gemini';
+  if (raw === 'local') return 'local';
   return 'anthropic';
 }
 
-function envDefaultMasterModel(provider: 'anthropic' | 'openai' | 'gemini'): string {
+function envDefaultMasterModel(provider: ProviderName): string {
+  if (provider === 'local') return '';
   if (provider === 'openai') return process.env.OPENAI_MASTER_MODEL ?? 'gpt-5';
   if (provider === 'gemini') return process.env.GEMINI_MASTER_MODEL ?? 'gemini-2.5-pro';
   return process.env.ANTHROPIC_MASTER_MODEL ?? 'claude-sonnet-4-5';
 }
 
-function envDefaultImageProvider(): 'openai' | 'gemini' {
+function envDefaultImageProvider(): ImageProviderName {
   const raw = (process.env.IMAGE_PROVIDER ?? '').trim().toLowerCase();
-  return raw === 'gemini' ? 'gemini' : 'openai';
+  if (raw === 'gemini') return 'gemini';
+  if (raw === 'local') return 'local';
+  return 'openai';
 }
 
-function envDefaultImageModel(provider: 'openai' | 'gemini'): string {
+function envDefaultImageModel(provider: ImageProviderName): string {
+  if (provider === 'local') return '';
   if (provider === 'gemini') return process.env.GEMINI_IMAGE_MODEL ?? 'gemini-2.5-flash-image';
   return process.env.OPENAI_IMAGE_MODEL ?? 'gpt-image-1';
 }
