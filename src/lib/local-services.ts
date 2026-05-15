@@ -1,5 +1,3 @@
-import 'server-only';
-
 /**
  * True when the current process is a local development environment.
  *
