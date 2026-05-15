@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import { Icon, type IconName } from '@/components/ui/icon';
 
 interface Tab {
-  key: 'campaigns' | 'heroes' | 'settings';
+  key: 'campaigns' | 'heroes';
   href: string;
   label: string;
   icon: IconName;
@@ -13,7 +13,6 @@ interface Tab {
 const TABS: Tab[] = [
   { key: 'campaigns', href: '/campaigns', label: 'Campaigns', icon: 'book' },
   { key: 'heroes', href: '/hub', label: 'Heroes', icon: 'user' },
-  { key: 'settings', href: '/settings', label: 'Settings', icon: 'settings' },
 ];
 
 export function BottomNav() {
