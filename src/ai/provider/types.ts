@@ -1,10 +1,15 @@
 import type { Anthropic } from '@anthropic-ai/sdk';
 
-/** Cloud provider names supported by the provider implementations */
-export type ProviderName = 'anthropic' | 'openai' | 'gemini';
+/** All provider implementations available via `getProviderByName`. */
+export type ProviderName = 'anthropic' | 'openai' | 'gemini' | 'local';
 
-/** Guard function to narrow from the broader ai-models ProviderName union */
-export function isCloudProvider(value: unknown): value is ProviderName {
+/** Subset of `ProviderName` referring to cloud-hosted SDK providers (not local).
+ *  Some call sites (e.g. the turn route's language-detection branch) opt into
+ *  cloud-only behavior; narrow with `isCloudProvider` to handle that path. */
+export type CloudProviderName = Exclude<ProviderName, 'local'>;
+
+/** Guard function to narrow a ProviderName to the cloud subset. */
+export function isCloudProvider(value: unknown): value is CloudProviderName {
   return value === 'anthropic' || value === 'openai' || value === 'gemini';
 }
 
