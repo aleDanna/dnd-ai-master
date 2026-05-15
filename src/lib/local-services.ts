@@ -142,6 +142,42 @@ interface OllamaTagsResponse {
 /** Fetches the list of installed Ollama models from /api/tags, filters by the
  *  LLM whitelist, and shapes them as ModelOption[] for the Settings dropdown.
  *  Returns [] on any failure (env unset, network error, non-2xx). */
+interface DrawThingsModel { title: string; model_name: string }
+
+/** Fetches the installed Stable Diffusion checkpoints from Draw Things via
+ *  /sdapi/v1/sd-models. Returns slugs prefixed with `draw-things:` so the
+ *  Settings dispatcher can route by prefix at request time. */
+export async function fetchDrawThingsModels(): Promise<ModelOption[]> {
+  const base = process.env.DRAW_THINGS_BASE_URL;
+  if (!base) return [];
+  try {
+    const res = await fetch(`${base}/sdapi/v1/sd-models`, {
+      signal: AbortSignal.timeout(2000),
+      cache: 'no-store',
+    });
+    if (!res.ok) return [];
+    const models = (await res.json()) as DrawThingsModel[];
+    return models.map((m) => ({
+      slug: `draw-things:${m.model_name}`,
+      label: m.title,
+      blurb: 'draw-things · core-ml',
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/** Curated ComfyUI workflow list. Phase 1 ships only Flux Schnell; the slugs
+ *  are stable, so future workflows just drop a new JSON in
+ *  `src/sessions/image-providers/comfyui-workflows/` and add an entry here. */
+const COMFYUI_WORKFLOWS: ModelOption[] = [
+  { slug: 'comfyui:flux-schnell', label: 'Flux.1 Schnell', blurb: 'fast · 4 steps' },
+];
+
+export function listComfyUIWorkflows(): ModelOption[] {
+  return [...COMFYUI_WORKFLOWS];
+}
+
 export async function fetchOllamaModels(): Promise<ModelOption[]> {
   const base = process.env.OLLAMA_BASE_URL;
   if (!base) return [];

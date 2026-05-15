@@ -4,15 +4,13 @@ import { sessionState } from '@/db/schema';
 import { buildImagePrompt } from '@/ai/master/image-style';
 import { generateBytesOpenAI, __setOpenAIClientForTest } from './image-providers/openai';
 import { generateBytesGemini, __setGeminiClientForTest } from './image-providers/gemini';
+import { generateBytesComfyUI } from './image-providers/comfyui';
+import { generateBytesDrawThings } from './image-providers/draw-things';
 import type { ImageProviderName } from '@/lib/ai-models';
 
 export { __setOpenAIClientForTest, __setGeminiClientForTest };
 
-export type ImageProvider = 'openai' | 'gemini';
-
-export function isCloudImageProvider(value: unknown): value is ImageProvider {
-  return value === 'openai' || value === 'gemini';
-}
+export type ImageProvider = 'openai' | 'gemini' | 'local';
 
 export type GenerateResult =
   | { ok: true; version: number }
@@ -36,15 +34,22 @@ export async function generateAndPersist(
   model?: string,
   characterAppearance?: string,
 ): Promise<GenerateResult> {
-  // Local providers are not supported for image generation
-  if (!isCloudImageProvider(provider)) {
-    return { ok: false, reason: 'api_error', detail: `Unsupported image provider: ${provider}` };
-  }
   const fullPrompt = buildImagePrompt(visualPrompt, styleText, characterAppearance);
-  const result =
-    provider === 'gemini'
-      ? await generateBytesGemini(fullPrompt, model)
-      : await generateBytesOpenAI(fullPrompt, model);
+  let result;
+  if (provider === 'local') {
+    const m = model ?? '';
+    if (m.startsWith('comfyui:')) {
+      result = await generateBytesComfyUI(fullPrompt, m.slice('comfyui:'.length));
+    } else if (m.startsWith('draw-things:')) {
+      result = await generateBytesDrawThings(fullPrompt, m.slice('draw-things:'.length));
+    } else {
+      result = { ok: false as const, reason: 'api_error' as const, detail: `unknown local engine in model "${m}"` };
+    }
+  } else if (provider === 'gemini') {
+    result = await generateBytesGemini(fullPrompt, model);
+  } else {
+    result = await generateBytesOpenAI(fullPrompt, model);
+  }
 
   if (!result.ok) {
     if (result.reason === 'api_error') {
