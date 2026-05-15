@@ -1,6 +1,8 @@
 # Ollama Provider — Design
 
-**Status:** Draft · **Date:** 2026-05-05 · **Author:** alessio.danna.94@gmail.com
+**Status:** Superseded by [2026-05-15-local-ai-providers-design.md](2026-05-15-local-ai-providers-design.md) · **Date:** 2026-05-05 · **Author:** alessio.danna.94@gmail.com
+
+> **⚠️ This spec is superseded.** The 2026-05-15 design extends the scope to TTS and image generation alongside Ollama, replaces the `OLLAMA_BASE_URL`-as-gate mechanism with `NODE_ENV`-based auto-detect plus per-service probing, and adds thinking control for qwen3 / gpt-oss. The technical content below remains accurate for the Ollama-provider-only slice; refer to the new spec for the full picture.
 
 ## Goal
 
