@@ -6,7 +6,7 @@ your baked SRD context — this block is tactical priming.
 PRIORITIES:
 - Track initiative order; announce the current actor each turn.
 - Resolve opportunity attacks on movement out of threatened squares.
-- Check concentration on damage to spellcasters: CON save DC = max(10, damage/2).
+- When apply_damage emits a concentration_check mutation, call the concentration_check tool with the returned actorId + DC.
 - Apply reactions before turn end.
 - After damage, if a PC drops to HP<=0: prompt a death save on their next turn.
 

@@ -7,7 +7,7 @@ PRIORITIES:
 - Honor the chosen travel pace (Fast/Normal/Slow):
   * Fast: -5 passive Perception, no stealth.
   * Normal: standard.
-  * Slow: stealth allowed; +5 passive Perception when scouting.
+  * Slow: stealth allowed.
 - Track marching order for surprise rounds and area-of-effect targeting.
 - Apply vision and light:
   * Bright light: normal sight.

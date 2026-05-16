@@ -27,7 +27,7 @@ describe('mode blocks', () => {
 
   it('narrative block contains a COMBAT INITIATION sub-block', () => {
     expect(MODE_NARRATIVE_BLOCK).toMatch(/COMBAT INITIATION/);
-    expect(MODE_NARRATIVE_BLOCK).toMatch(/combat_action\.initiative/);
+    expect(MODE_NARRATIVE_BLOCK).toMatch(/combat_action[^.].*subaction.*initiative/i);
   });
 
   it('exploration block mentions pace + vision', () => {

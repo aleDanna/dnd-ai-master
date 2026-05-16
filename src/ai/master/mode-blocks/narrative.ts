@@ -16,7 +16,7 @@ PRIORITIES:
 
 If you describe an ambush, hostile encounter, or aggression that will lead
 to combat:
-  1. FIRST call combat_action.initiative, listing all combatants.
+  1. FIRST call combat_action with subaction="initiative", listing all combatants.
   2. THEN narrate the opening of the fight.
 
 Do NOT narrate combat actions (attacks, damage, conditions) without
