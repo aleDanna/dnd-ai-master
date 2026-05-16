@@ -73,14 +73,16 @@ describe('buildMasterSystemPrompt — mode injection', () => {
     expect(overlayBlock?.cache_control).toEqual({ type: 'ephemeral' });
   });
 
-  it('mode block appears AFTER static blocks and BEFORE dynamic tail (cache stability)', () => {
+  it('mode block appears AFTER static blocks and BEFORE active character / scene (cache stability)', () => {
     const { system } = buildMasterSystemPrompt(baseInput({ mode: 'combat' }));
     const texts = system.map((b) => b.text);
     const baseIdx = texts.findIndex((t) => t.includes('HANDBOOK_CONTENT'));
     const modeIdx = texts.findIndex((t) => t.includes('MODE: COMBAT'));
-    const dynamicIdx = texts.findIndex((t) => t.includes('Current snapshot'));
+    const activeCharIdx = texts.findIndex((t) => t.includes('ACTIVE PLAYER CHARACTER'));
+    const sceneIdx = texts.findIndex((t) => t.includes('CURRENT SCENE'));
     expect(baseIdx).toBeLessThan(modeIdx);
-    expect(modeIdx).toBeLessThan(dynamicIdx);
+    expect(modeIdx).toBeLessThan(activeCharIdx);
+    expect(activeCharIdx).toBeLessThan(sceneIdx);
   });
 
   it('NO mode block injected when mode is undefined (backward compat with Plan B+C+D)', () => {

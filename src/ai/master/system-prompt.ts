@@ -1725,7 +1725,13 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
   const partyModeBlock = buildPartyModeBlock(input.party ?? [], input.currentPlayerCharacterId ?? null);
   // dynamicTail no longer carries langHint — langHint is hoisted up into the
   // session-stable section so the per-turn dynamic tail can stay short.
-  const dynamicTail = `## Current snapshot\n\n### Character\n\`\`\`json\n${input.characterMonoSpace}\n\`\`\`\n\n### Scene\n${input.scene || '(no scene set yet)'}`;
+  // Character snapshot is the single most important block for the master to
+  // see clearly — small local models (3-4B) regress to "I don't know your
+  // character" when it sits in the middle of a wall of mode-aware/party/scene
+  // blocks. We hoist it to a dedicated, top-billed block (pushed first in
+  // section 3 below) with an unmistakable header.
+  const activeCharacterBlock = `## ACTIVE PLAYER CHARACTER (authoritative sheet — the PG currently acting)\n\nThis is the player character you must reference for HP, AC, abilities, inventory, conditions, slots, features. Treat this as the single source of truth for the PG's stats this turn.\n\n\`\`\`json\n${input.characterMonoSpace}\n\`\`\``;
+  const sceneTailBlock = `## CURRENT SCENE\n${input.scene || '(no scene set yet)'}`;
 
   // Block ordering matters for Ollama KV cache: Ollama matches the longest
   // identical prefix between requests, so EVERY truly-static block must come
@@ -1824,6 +1830,11 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
   }
 
   // ── (3) PER-TURN DYNAMIC — invalidates the cache from this point onward. ──
+  // Order chosen for small-model attention: the ACTIVE PG sheet is pushed FIRST
+  // so 3-4B models (llama3.2:3b, qwen3:4b) anchor on it. Then party + memory +
+  // codex (cross-references). Scene tail goes last as it's the most volatile
+  // and the closest cue to the player's next message.
+  blocks.push({ type: 'text', text: activeCharacterBlock });
   if (partyModeBlock) {
     blocks.push({ type: 'text', text: partyModeBlock });
   }
@@ -1845,7 +1856,7 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
       text: `## Codex index\n\n${input.codexIndex}`,
     });
   }
-  blocks.push({ type: 'text', text: dynamicTail });
+  blocks.push({ type: 'text', text: sceneTailBlock });
 
   return { system: blocks };
 }
