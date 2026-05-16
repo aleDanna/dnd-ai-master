@@ -181,6 +181,12 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
     void save({ compactPrompt: next });
   };
 
+  const onModeAwarePromptToggle = (): void => {
+    const next = !settings.useModeAwarePrompt;
+    setSettings((s) => ({ ...s, useModeAwarePrompt: next }));
+    void save({ useModeAwarePrompt: next });
+  };
+
   const onImageStylePresetChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
     const next = e.target.value as NonNullable<CampaignSettings['imageStylePreset']>;
     if (next === settings.imageStylePreset) return;
@@ -678,6 +684,18 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
                 opacity: (!canEdit || settings.aiMasterModel.startsWith('dnd-master-')) ? 0.5 : 1 }}>
               <Icon name="sparkle" size={14} />
               {settings.compactPrompt ? 'Compact prompt on' : 'Compact prompt off'}
+            </button>
+            <button onClick={onModeAwarePromptToggle} disabled={disabled} aria-pressed={settings.useModeAwarePrompt}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 10, height: 36, padding: '0 14px',
+                background: settings.useModeAwarePrompt ? 'var(--arcane)' : 'transparent',
+                border: '1px solid ' + (settings.useModeAwarePrompt ? 'var(--arcane)' : 'var(--border-strong)'),
+                borderRadius: 999, color: settings.useModeAwarePrompt ? 'var(--bone)' : 'var(--fg-muted)',
+                fontFamily: 'var(--font-ui)', fontSize: 13, fontWeight: 600,
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                opacity: !canEdit ? 0.7 : 1,
+                marginLeft: 8 }}>
+              <Icon name="sparkle" size={14} />
+              {settings.useModeAwarePrompt ? 'Mode-aware prompt on' : 'Mode-aware prompt off'}
             </button>
           </Card>
         </>
