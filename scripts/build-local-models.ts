@@ -32,31 +32,37 @@ import { buildSrdContext } from '../src/ai/master/srd-context';
 import { getBakedModelName, computeMasterPromptHash } from '../src/ai/master/baked-models';
 
 /**
- * Curated list of base model slugs we know how to customise. We only
- * actually build the ones the user has installed (intersected with
- * `ollama list`); the rest are skipped with a one-line note.
- *
- * Add new entries here as we validate more bases. Don't include
- * `dnd-master-*` — those are the OUTPUT, not the input.
+ * Models we explicitly EXCLUDE from auto-bake (no chat use case):
+ *  - dnd-master-*: those ARE the output, not the input — don't re-bake.
+ *  - *embed*: embedding models (nomic-embed-text, mxbai-embed, ...)
+ *    have no chat template and ollama create would fail.
+ *  - *whisper*, *bge-*, *reranker*: other utility models.
  */
-const BASE_MODELS_TO_BUILD = [
-  'qwen3:14b',
-  'qwen3:30b',
-  'qwen3:30b-a3b',
-  'gpt-oss:20b',
-];
+function isBuildableBase(slug: string): boolean {
+  if (slug.startsWith('dnd-master-')) return false;
+  const lower = slug.toLowerCase();
+  if (lower.includes('embed')) return false;
+  if (lower.includes('whisper')) return false;
+  if (lower.includes('bge-')) return false;
+  if (lower.includes('reranker')) return false;
+  return true;
+}
 
 /**
  * Per-base Ollama PARAMETER overrides. Tuned for D&D narration:
- *  - num_ctx 65536: matches the runtime turn-route override; baking it
- *    here means we don't depend on the request specifying it.
+ *  - num_ctx 49152: enough headroom for the baked ~28k SYSTEM + the
+ *    ~3k user-role preamble (Plan D Path B) + ~10-20k of session
+ *    history. Each 8k of context costs ~2-4 GB of KV-cache RAM.
+ *  - num_predict 2048: master responses are typically 100-500 tokens;
+ *    2048 caps runaway generation without truncating legitimate prose.
  *  - temperature / top_p / repeat_penalty: starting points; profile if
  *    a specific base wants different defaults.
  *
  * Override per-base by adding a key; otherwise DEFAULT_PARAMS apply.
  */
 const DEFAULT_PARAMS: Record<string, string | number> = {
-  num_ctx: 65536,
+  num_ctx: 49152,
+  num_predict: 2048,
   temperature: 0.7,
   top_p: 0.9,
   repeat_penalty: 1.1,
@@ -264,23 +270,27 @@ async function main(): Promise<void> {
   const installed = await listInstalledOllamaModels();
   console.log(`[build-local-models] found ${installed.size} installed models in Ollama`);
 
-  // Pick target bases: either a single --base if provided, or the
-  // intersection of BASE_MODELS_TO_BUILD with what's installed.
+  // Pick target bases. With --base, build that one specifically.
+  // Without --base, build a dnd-master variant for EVERY installed model
+  // that isn't already a baked variant or a clearly-non-chat utility
+  // (embeddings, rerankers, ...). If a model lacks tool-calling
+  // capability the build will still succeed, but turns at runtime will
+  // surface the error — the user picks which variant to keep.
   const targets = args.base
     ? [args.base]
-    : BASE_MODELS_TO_BUILD.filter((b) => installed.has(b));
+    : [...installed].filter(isBuildableBase).sort();
 
   if (targets.length === 0) {
     if (args.base) {
       console.error(`[build-local-models] base model "${args.base}" not found in Ollama. Run \`ollama pull ${args.base}\` first.`);
     } else {
-      console.error(`[build-local-models] none of the supported bases (${BASE_MODELS_TO_BUILD.join(', ')}) are installed.`);
+      console.error(`[build-local-models] no buildable base models found in Ollama.`);
       console.error(`[build-local-models] pull one with e.g. \`ollama pull qwen3:30b\` then re-run.`);
     }
     process.exit(1);
   }
 
-  console.log(`[build-local-models] target bases: ${targets.join(', ')}`);
+  console.log(`[build-local-models] target bases (${targets.length}): ${targets.join(', ')}`);
   console.log(`[build-local-models] building static prompt content...`);
   const systemContent = await buildStaticSystemContent();
   const contentHash = await computeContentHash(systemContent);

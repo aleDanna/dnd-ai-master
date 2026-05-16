@@ -49,8 +49,10 @@ This script:
 
 1. Reads the current static prompt content (5 prompt constants + full master handbook + full world lore + full SRD context, ~105 KB total).
 2. Computes a sha256 content hash + stamps it into the generated Modelfile.
-3. Calls `ollama create dnd-master-<base> -f <path>` for each installed base in the curated list (`qwen3:14b`, `qwen3:30b`, `qwen3:30b-a3b`, `gpt-oss:20b`).
+3. Calls `ollama create dnd-master-<base> -f <path>` for **every chat-capable base model installed in Ollama** — excluding existing `dnd-master-*` variants and clearly-non-chat utilities (embeddings, rerankers).
 4. Skips bases already up-to-date (hash matches). Use `--force` to rebuild anyway.
+
+Each baked variant carries tuned defaults: `num_ctx 49152` (enough for the baked ~28k SYSTEM + ~3k preamble + ~10-20k of session history while saving ~25% KV-cache RAM vs the old default), `num_predict 2048` (~6 paragraphs of prose cap), and per-base temperature overrides for the qwen3 thinking variants.
 
 Flags: `--base <slug>`, `--force`, `--dry-run`, `--help`.
 
