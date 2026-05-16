@@ -1686,14 +1686,41 @@ const LANGUAGE_NAMES: Record<string, string> = {
   ko: 'Korean',
 };
 
+/** Native-language imperative for each supported language. Small local
+ *  models (3-4B) regress to the system prompt's language when the
+ *  override is itself written in English. Writing the override in the
+ *  TARGET language activates the right token distribution from the
+ *  first attention pass. Empty string for English (no override needed). */
+const NATIVE_LANGUAGE_INSTRUCTIONS: Record<string, string> = {
+  en: '',
+  it: 'IMPORTANTE: TUTTA la tua narrazione DEVE essere scritta in italiano. NON rispondere mai in inglese, anche se il system prompt è in inglese. Usa parole, grammatica e struttura italiana per ogni risposta. Se ti viene da scrivere in inglese, FERMATI e riscrivi in italiano.',
+  es: 'IMPORTANTE: TODA tu narración DEBE estar escrita en español. NUNCA respondas en inglés, incluso si el system prompt está en inglés. Usa palabras, gramática y estructura españolas en cada respuesta.',
+  fr: 'IMPORTANT: TOUTE ta narration DOIT être écrite en français. NE réponds JAMAIS en anglais, même si le system prompt est en anglais. Utilise des mots, une grammaire et une structure françaises dans chaque réponse.',
+  de: 'WICHTIG: DEINE GESAMTE Erzählung MUSS auf Deutsch geschrieben sein. Antworte NIEMALS auf Englisch, auch wenn der System-Prompt auf Englisch ist. Verwende deutsche Wörter, Grammatik und Struktur in jeder Antwort.',
+  pt: 'IMPORTANTE: TODA a sua narração DEVE ser escrita em português. NUNCA responda em inglês, mesmo que o system prompt esteja em inglês. Use palavras, gramática e estrutura portuguesas em cada resposta.',
+  nl: 'BELANGRIJK: AL JE narratie MOET in het Nederlands worden geschreven. Antwoord NOOIT in het Engels, zelfs als de system prompt in het Engels is.',
+  pl: 'WAŻNE: CAŁA Twoja narracja MUSI być napisana po polsku. NIGDY nie odpowiadaj po angielsku, nawet jeśli system prompt jest po angielsku.',
+  ja: '重要: あなたのナレーション全てを日本語で書いてください。たとえシステムプロンプトが英語であっても、絶対に英語で答えないでください。',
+  zh: '重要：你的所有叙述必须用中文写。即使系统提示是英文的，也绝不要用英文回答。',
+  ru: 'ВАЖНО: ВСЁ ваше повествование ДОЛЖНО быть написано на русском. НИКОГДА не отвечайте на английском, даже если системный промпт на английском.',
+  ar: 'مهم: يجب كتابة كل سردك باللغة العربية. لا تجب أبدًا بالإنجليزية، حتى لو كان system prompt بالإنجليزية.',
+  ko: '중요: 모든 나레이션을 한국어로 작성하세요. 시스템 프롬프트가 영어로 되어 있어도 절대 영어로 답하지 마세요.',
+};
+
 export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }[] } {
   const langName = input.language ? (LANGUAGE_NAMES[input.language] ?? input.language) : null;
   // Spelled-out language name + emphatic phrasing — smaller local models (e.g.
   // gpt-oss:20b) confuse bare "it" with the English pronoun and end up replying
   // in English anyway. The repeated emphasis is a tax we pay to keep the
   // instruction unmissable on weaker instruction-followers.
+  //
+  // For 3-4B local models the English override gets drowned by the surrounding
+  // English-only system content (baked slim manifest + mode blocks). We prepend
+  // the same imperative in the TARGET language so the model sees the
+  // instruction in its own output distribution from the first attention pass.
+  const nativeOverride = input.language ? (NATIVE_LANGUAGE_INSTRUCTIONS[input.language] ?? '') : '';
   const langHint = langName
-    ? `## NARRATIVE LANGUAGE (MANDATORY)\nThe entire campaign — every line you write, in-character or out-of-character — MUST be written in **${langName}**. Do NOT respond in English unless the campaign language is English. This rule overrides any default tendency to reply in the same language as the system prompt.`
+    ? `## NARRATIVE LANGUAGE (MANDATORY) — OUTPUT LANGUAGE: ${langName.toUpperCase()}\n\n${nativeOverride ? nativeOverride + '\n\n' : ''}The entire campaign — every line you write, in-character or out-of-character — MUST be written in **${langName}**. Do NOT respond in English unless the campaign language is English. This rule overrides any default tendency to reply in the same language as the system prompt.`
     : '';
   const partyModeBlock = buildPartyModeBlock(input.party ?? [], input.currentPlayerCharacterId ?? null);
   // dynamicTail no longer carries langHint — langHint is hoisted up into the
