@@ -11,6 +11,7 @@ import { acquireTurnLock, releaseTurnLock } from '@/sessions/lock';
 import { buildSrdContext } from '@/ai/master/srd-context';
 import { getMasterHandbook, getMasterWorldLore } from '@/ai/master/handbook';
 import { buildMasterSystemPrompt } from '@/ai/master/system-prompt';
+import { deriveMode, needsSpellcastingOverlay } from '@/ai/master/mode';
 import { isBakedModel, warnIfBakedModelStale } from '@/ai/master/baked-models';
 import { getRuntimePromptHash } from '@/ai/master/runtime-prompt-hash';
 import { detectLanguage } from '@/ai/master/language';
@@ -219,6 +220,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           })();
         }
         const memory = await loadMemoryContext(sessionId, snap.scene);
+
+        // Plan E.1: mode-aware prompt. When enabled, derive the active mode from
+        // engine state + check whether the active PC is a spellcaster.
+        const useModeAware = userPrefs.useModeAwarePrompt;  // already resolved by getResolvedPreferences (Task 8)
+        const mode = useModeAware ? deriveMode(snap.state) : undefined;
+        const needsSpellcasting = useModeAware ? needsSpellcastingOverlay(snap) : undefined;
+
         const sys = buildMasterSystemPrompt({
           srdContext: srd,
           handbook,
@@ -252,6 +260,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // prompt — they are already inside the model's weights via
           // Modelfile SYSTEM.
           staticBlocksAlreadyBaked: baked,
+          // Plan E.1: mode-aware prompt fields. When useModeAware=false they're
+          // undefined and buildMasterSystemPrompt skips the mode/overlay injection
+          // entirely (back-compat path).
+          mode,
+          needsSpellcasting,
         });
 
         let history: Anthropic.Messages.MessageParam[];
