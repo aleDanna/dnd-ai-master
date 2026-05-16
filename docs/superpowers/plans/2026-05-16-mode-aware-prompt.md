@@ -97,7 +97,7 @@ describe('deriveMode', () => {
 
   it('returns "exploration" when travel.pace is set and not in combat', () => {
     const state = makeState({
-      travel: { pace: 'Normal', lightLevel: 'bright', marchingOrder: [] },
+      travel: { pace: 'normal', lightLevel: 'bright', marchingOrder: { front: [], middle: [], back: [] } },
     });
     expect(deriveMode(state)).toBe<MasterMode>('exploration');
   });
@@ -109,7 +109,7 @@ describe('deriveMode', () => {
   it('combat wins over travel when both are set (ambush en route)', () => {
     const state = makeState({
       combat: { round: 1, turnOrder: [], currentIdx: 0 },
-      travel: { pace: 'Normal', lightLevel: 'bright', marchingOrder: [] },
+      travel: { pace: 'normal', lightLevel: 'bright', marchingOrder: { front: [], middle: [], back: [] } },
     });
     expect(deriveMode(state)).toBe<MasterMode>('combat');
   });
@@ -1487,7 +1487,7 @@ describe('mode transitions through a session', () => {
     const exploration: EngineState = {
       characters: [], combatActors: [], runtime: {}, combat: null,
       scene: '',
-      travel: { pace: 'Normal', lightLevel: 'bright', marchingOrder: [] } as any,
+      travel: { pace: 'normal', lightLevel: 'bright', marchingOrder: { front: [], middle: [], back: [] } },
       tonalFrame: null, engagementProfile: [],
     } as EngineState;
     expect(asText(buildPrompt(exploration))).toMatch(/MODE: EXPLORATION/);

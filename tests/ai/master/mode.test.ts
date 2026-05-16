@@ -39,7 +39,7 @@ describe('deriveMode', () => {
 
   it('returns "exploration" when travel.pace is set and not in combat', () => {
     const state = makeState({
-      travel: { pace: 'Normal', lightLevel: 'bright', marchingOrder: [] },
+      travel: { pace: 'normal', lightLevel: 'bright', marchingOrder: { front: [], middle: [], back: [] } },
     });
     expect(deriveMode(state)).toBe<MasterMode>('exploration');
   });
@@ -51,7 +51,7 @@ describe('deriveMode', () => {
   it('combat wins over travel when both are set (ambush en route)', () => {
     const state = makeState({
       combat: { round: 1, turnOrder: [], currentIdx: 0 },
-      travel: { pace: 'Normal', lightLevel: 'bright', marchingOrder: [] },
+      travel: { pace: 'normal', lightLevel: 'bright', marchingOrder: { front: [], middle: [], back: [] } },
     });
     expect(deriveMode(state)).toBe<MasterMode>('combat');
   });
