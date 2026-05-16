@@ -27,21 +27,9 @@ const KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE ?? '5m';
 // prefix cache misses on every turn because Ollama's sliding-window
 // truncation shifts the effective prefix between requests.
 // Both qwen3:30b-a3b and gpt-oss:20b support 128k context natively.
-//
-// Memory cost: each extra 8k of num_ctx allocates ~2-4 GB of KV cache RAM
-// (model dependent). Plan D (baked models, see baked-models.ts) bakes the
-// ~28k-token static portion into the Modelfile SYSTEM, so the runtime
-// budget only needs to cover the user-role preamble (~3k) + history
-// (~10-20k for a long session). 49152 leaves comfortable headroom while
-// saving ~25% KV-cache RAM vs the previous 65536 default. Bump via
-// OLLAMA_NUM_CTX env var if your sessions grow past ~50 turns.
-const NUM_CTX = Number(process.env.OLLAMA_NUM_CTX ?? '49152');
-
-// Master output cap. The master typically writes 2-6 sentences = 100-500
-// tokens. 2048 is generous (~6 paragraphs of solid prose) and leaves room
-// for tool_call JSON. Caps runaway generation without truncating real
-// narration. Tune via OLLAMA_MAX_TOKENS env var.
-const MASTER_NUM_PREDICT = Number(process.env.OLLAMA_MAX_TOKENS ?? '2048');
+// Cost: each extra 8k of num_ctx allocates ~2-4GB of KV cache RAM (model
+// dependent). User can lower via OLLAMA_NUM_CTX if RAM-bound.
+const NUM_CTX = Number(process.env.OLLAMA_NUM_CTX ?? '65536');
 
 /**
  * "Thinking models" (qwen3, deepseek-r1, etc.) emit a separate `thinking`
@@ -193,7 +181,7 @@ export class LocalProvider implements MasterProvider {
       stream: false,
       keep_alive: KEEP_ALIVE,
       think: isThinkingModel(input.model) ? false : undefined,
-      options: { num_predict: input.maxTokens ?? MASTER_NUM_PREDICT, num_ctx: NUM_CTX },
+      options: { num_predict: input.maxTokens ?? 4096, num_ctx: NUM_CTX },
     });
     const contentBlocks = ollamaResponseToContentBlocks(json.message);
     const hasToolCalls = contentBlocks.some((b) => b.type === 'tool_use');

@@ -52,7 +52,7 @@ This script:
 3. Calls `ollama create dnd-master-<base> -f <path>` for **every chat-capable base model installed in Ollama** — excluding existing `dnd-master-*` variants and clearly-non-chat utilities (embeddings, rerankers).
 4. Skips bases already up-to-date (hash matches). Use `--force` to rebuild anyway.
 
-Each baked variant carries tuned defaults: `num_ctx 49152` (enough for the baked ~28k SYSTEM + ~3k preamble + ~10-20k of session history while saving ~25% KV-cache RAM vs the old default), `num_predict 2048` (~6 paragraphs of prose cap), and per-base temperature overrides for the qwen3 thinking variants.
+Each baked variant carries tuned defaults: `num_ctx 65536` (matches the runtime override; comfortably fits the baked ~28k SYSTEM + ~3k preamble + extensive session history) and per-base temperature overrides for the qwen3 thinking variants. `num_predict` is intentionally NOT baked — observed to interfere with tool-using turns on qwen3 chat templates when set as a Modelfile PARAMETER; the runtime sends a per-call value instead.
 
 Flags: `--base <slug>`, `--force`, `--dry-run`, `--help`.
 

@@ -50,19 +50,19 @@ function isBuildableBase(slug: string): boolean {
 
 /**
  * Per-base Ollama PARAMETER overrides. Tuned for D&D narration:
- *  - num_ctx 49152: enough headroom for the baked ~28k SYSTEM + the
- *    ~3k user-role preamble (Plan D Path B) + ~10-20k of session
- *    history. Each 8k of context costs ~2-4 GB of KV-cache RAM.
- *  - num_predict 2048: master responses are typically 100-500 tokens;
- *    2048 caps runaway generation without truncating legitimate prose.
+ *  - num_ctx 65536: matches the runtime turn-route override; baking it
+ *    here means we don't depend on the request specifying it.
  *  - temperature / top_p / repeat_penalty: starting points; profile if
  *    a specific base wants different defaults.
+ *
+ * NOTE: do NOT bake `num_predict` in the Modelfile — the runtime sends
+ * a per-call override and an additional baked default has been observed
+ * to interfere with tool-using turns on qwen3 chat templates.
  *
  * Override per-base by adding a key; otherwise DEFAULT_PARAMS apply.
  */
 const DEFAULT_PARAMS: Record<string, string | number> = {
-  num_ctx: 49152,
-  num_predict: 2048,
+  num_ctx: 65536,
   temperature: 0.7,
   top_p: 0.9,
   repeat_penalty: 1.1,
