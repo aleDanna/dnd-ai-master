@@ -1233,10 +1233,24 @@ function buildPartyModeBlock(
 }
 
 export interface MasterPromptInput {
+  /**
+   * SRD reference text injected as a cached system block. Loaded via
+   * `buildSrdContext()`; pass `{ compact: true }` upstream when
+   * `compactPrompt` is on (drops sub-rules + class/race/background
+   * rosters, keeps combat + conditions + core mechanics).
+   */
   srdContext: string;
-  /** Curated DM craft guidance from the 5e DMG 2024 (chapters 1-3). Loaded via getMasterHandbook(). */
+  /**
+   * Curated DM craft guidance (5e DMG 2024 chapters 1-3). Loaded via
+   * `getMasterHandbook()`; pass `{ compact: true }` upstream when
+   * `compactPrompt` is on for the ~3x smaller imperative-only variant.
+   */
   handbook: string;
-  /** Curated world & lore guidance — cosmology, magic, cultures, REWARDS. Loaded via getMasterWorldLore(). */
+  /**
+   * Curated world & lore guidance — cosmology, magic, cultures, REWARDS.
+   * Loaded via `getMasterWorldLore()`; pass `{ compact: true }` upstream
+   * when `compactPrompt` is on.
+   */
   worldLore: string;
   characterMonoSpace: string;
   scene: string;

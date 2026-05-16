@@ -167,9 +167,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const snap = await buildSnapshot(sessionId, userId);
 
         // 4. Build system prompt + history
-        const srd = await buildSrdContext();
-        const handbook = getMasterHandbook();
-        const worldLore = getMasterWorldLore();
+        //
+        // Plan C: when `compactPrompt` is on (resolved from CampaignSettings;
+        // defaults true for aiProvider='local', false for cloud), load the
+        // trimmed variants of the SRD reference, the DM handbook, and the
+        // world lore. Combined savings: ~30 KB of prompt → fits comfortably
+        // in num_ctx=65536 on a small local model (qwen3:14b) while keeping
+        // the rules + rewards mandate intact.
+        const useCompact = userPrefs.compactPrompt;
+        const srd = await buildSrdContext({ compact: useCompact });
+        const handbook = getMasterHandbook({ compact: useCompact });
+        const worldLore = getMasterWorldLore({ compact: useCompact });
         const memory = await loadMemoryContext(sessionId, snap.scene);
         const sys = buildMasterSystemPrompt({
           srdContext: srd,
