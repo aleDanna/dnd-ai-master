@@ -60,6 +60,7 @@ interface OllamaChatResponse {
 }
 
 async function chat(body: unknown): Promise<OllamaChatResponse> {
+  const t0 = Date.now();
   const res = await fetch(`${baseUrl()}/api/chat`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -69,7 +70,15 @@ async function chat(body: unknown): Promise<OllamaChatResponse> {
     const text = await res.text();
     throw new Error(`ollama chat ${res.status}: ${text}`);
   }
-  return await res.json() as OllamaChatResponse;
+  const json = await res.json() as OllamaChatResponse;
+  // eslint-disable-next-line no-console
+  console.log('[ollama]', `${Date.now() - t0}ms`,
+    'done_reason=', json.done_reason,
+    'content.len=', json.message?.content?.length ?? 0,
+    'content.head=', JSON.stringify(json.message?.content?.slice(0, 80) ?? ''),
+    'tool_calls=', json.message?.tool_calls?.length ?? 0,
+    'eval=', json.eval_count, 'prompt_eval=', json.prompt_eval_count);
+  return json;
 }
 
 export class LocalProvider implements MasterProvider {

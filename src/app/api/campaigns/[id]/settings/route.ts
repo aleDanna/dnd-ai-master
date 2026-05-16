@@ -75,6 +75,8 @@ export async function PUT(
   }
 
   const result = validateSettingsPatch(body as Partial<CampaignSettings>);
+  // eslint-disable-next-line no-console
+  console.log('[settings-PUT] body=', JSON.stringify(body), 'validated=', JSON.stringify(result), 'env.PIPER=', !!process.env.PIPER_BASE_URL, 'env.XTTS=', !!process.env.XTTS_BASE_URL, 'env.OLLAMA=', !!process.env.OLLAMA_BASE_URL, 'NODE_ENV=', process.env.NODE_ENV, 'VERCEL=', !!process.env.VERCEL);
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
@@ -83,5 +85,7 @@ export async function PUT(
   await updateCampaignSettings(id, result.patch as Partial<CampaignSettings>);
 
   const settings = await getCampaignSettings(id);
+  // eslint-disable-next-line no-console
+  console.log('[settings-PUT] returning settings=', JSON.stringify({ aiProvider: settings.aiProvider, ttsProvider: settings.ttsProvider, ttsModel: settings.ttsModel, ttsVoice: settings.ttsVoice, imageProvider: settings.imageProvider }));
   return NextResponse.json({ settings });
 }

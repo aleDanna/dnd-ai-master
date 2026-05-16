@@ -442,6 +442,11 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
           trailing={
             <>
               <AutoplayToggle value={autoplay} onChange={setAutoplay} />
+              {campaign && (
+                <Link href={`/campaigns/${campaign.id}/settings`} aria-label="Campaign settings">
+                  <Button variant="ghost" size="sm" icon="settings" />
+                </Link>
+              )}
             </>
           }
         />
@@ -555,6 +560,11 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
         </div>
         <AutoplayToggle value={autoplay} onChange={setAutoplay} />
         <Chip tone="accent" dot>SSE live</Chip>
+        {campaign && (
+          <Link href={`/campaigns/${campaign.id}/settings`} aria-label="Campaign settings">
+            <Button variant="ghost" size="sm" icon="settings" />
+          </Link>
+        )}
         <Wordmark size={14} style={{ opacity: 0.7 }} />
       </header>
 
