@@ -6,6 +6,7 @@ import {
   ollamaResponseToContentBlocks,
   ollamaDoneReasonToStopReason,
   normalizeOllamaUsage,
+  stripThinkingFromContent,
 } from '@/ai/provider/ollama-adapter';
 
 describe('anthropicSystemToOllamaMessage', () => {
@@ -132,6 +133,27 @@ describe('ollamaDoneReasonToStopReason', () => {
   });
   it('other → other', () => {
     expect(ollamaDoneReasonToStopReason('something', false)).toBe('other');
+  });
+});
+
+describe('stripThinkingFromContent', () => {
+  it('passes through plain content unchanged', () => {
+    expect(stripThinkingFromContent('Hello world')).toBe('Hello world');
+  });
+
+  it('strips everything up to and including </think>', () => {
+    const raw = "Okay, the user wants X. I'll respond with Y.\n</think>\n\nYou see a tavern.";
+    expect(stripThinkingFromContent(raw)).toBe('You see a tavern.');
+  });
+
+  it('handles nested or multiple </think> by stripping up to the LAST one', () => {
+    const raw = '<think>first thought</think> intermediate <think>second</think>\nFinal answer.';
+    expect(stripThinkingFromContent(raw)).toBe('Final answer.');
+  });
+
+  it('returns empty string if content is exactly the thinking block', () => {
+    const raw = "I'm thinking...\n</think>";
+    expect(stripThinkingFromContent(raw)).toBe('');
   });
 });
 

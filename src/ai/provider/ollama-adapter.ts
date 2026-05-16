@@ -93,12 +93,25 @@ export function anthropicToolToOllama(tool: ToolDef): OllamaTool {
   };
 }
 
+/** Some thinking models (qwen3, deepseek-r1) ignore the API-level `think: false`
+ *  flag and emit their chain-of-thought wrapped in `<think>…</think>` tags
+ *  inside `message.content`. The player must NOT see this internal reasoning.
+ *  Strip everything up to and including the closing tag (last occurrence wins,
+ *  in case the model nests). When no closing tag is present, the content is
+ *  returned verbatim — assumed to be regular narration. */
+export function stripThinkingFromContent(content: string): string {
+  const idx = content.lastIndexOf('</think>');
+  if (idx === -1) return content;
+  return content.slice(idx + '</think>'.length).trimStart();
+}
+
 /** Converts the Ollama response message into our canonical content blocks.
  *  Synthesizes a UUID for any tool_call that lacks an `id` field. */
 export function ollamaResponseToContentBlocks(msg: OllamaResponseMessage): ContentBlock[] {
   const blocks: ContentBlock[] = [];
-  if (msg.content && msg.content.length > 0) {
-    blocks.push({ type: 'text', text: msg.content });
+  const cleanContent = msg.content ? stripThinkingFromContent(msg.content) : '';
+  if (cleanContent.length > 0) {
+    blocks.push({ type: 'text', text: cleanContent });
   }
   for (const tc of msg.tool_calls ?? []) {
     blocks.push({
