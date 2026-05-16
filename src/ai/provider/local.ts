@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type {
   CompleteMessageInput,
   CompleteMessageOutput,
@@ -56,7 +57,21 @@ interface OllamaChatResponse {
   message: OllamaResponseMessage;
   done_reason?: string;
   prompt_eval_count?: number;
+  prompt_eval_duration?: number;
   eval_count?: number;
+  eval_duration?: number;
+  load_duration?: number;
+}
+
+function fingerprintSystem(body: unknown): string {
+  try {
+    const b = body as { messages?: { role: string; content: string }[] };
+    const sys = b.messages?.find((m) => m.role === 'system')?.content ?? '';
+    const h = createHash('md5').update(sys).digest('hex').slice(0, 8);
+    return `len=${sys.length} h=${h}`;
+  } catch {
+    return 'n/a';
+  }
 }
 
 async function chat(body: unknown): Promise<OllamaChatResponse> {
@@ -71,13 +86,19 @@ async function chat(body: unknown): Promise<OllamaChatResponse> {
     throw new Error(`ollama chat ${res.status}: ${text}`);
   }
   const json = await res.json() as OllamaChatResponse;
+  const promptMs = Math.round((json.prompt_eval_duration ?? 0) / 1_000_000);
+  const evalMs = Math.round((json.eval_duration ?? 0) / 1_000_000);
+  const loadMs = Math.round((json.load_duration ?? 0) / 1_000_000);
+  const tokPerSec = json.eval_count && evalMs > 0 ? Math.round((json.eval_count / evalMs) * 1000) : 0;
   // eslint-disable-next-line no-console
   console.log('[ollama]', `${Date.now() - t0}ms`,
     'done_reason=', json.done_reason,
     'content.len=', json.message?.content?.length ?? 0,
-    'content.head=', JSON.stringify(json.message?.content?.slice(0, 80) ?? ''),
     'tool_calls=', json.message?.tool_calls?.length ?? 0,
-    'eval=', json.eval_count, 'prompt_eval=', json.prompt_eval_count);
+    `prompt(tok=${json.prompt_eval_count} ms=${promptMs})`,
+    `eval(tok=${json.eval_count} ms=${evalMs} = ${tokPerSec}tok/s)`,
+    `load=${loadMs}ms`,
+    `sys[${fingerprintSystem(body)}]`);
   return json;
 }
 
