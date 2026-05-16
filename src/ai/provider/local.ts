@@ -46,6 +46,31 @@ function isThinkingModel(model: string | undefined): boolean {
     || m.startsWith('gpt-oss') || m.includes('/gpt-oss');
 }
 
+/** qwen3 specifically responds to the `/no_think` control token at the start
+ *  of a user message — it suppresses the chain-of-thought completely (not
+ *  just hides it). The Ollama `think: false` API flag is silently ignored
+ *  by the model, so this is the only reliable way to keep qwen3 fast on
+ *  multi-turn conversations. Mutates the LAST user message in-place; safe
+ *  no-op for other models (they ignore unknown control tokens). */
+function isQwen3(model: string | undefined): boolean {
+  if (!model) return false;
+  const m = model.toLowerCase();
+  return m.startsWith('qwen3') || m.includes('/qwen3');
+}
+
+function prependNoThinkIfQwen3(messages: OllamaMessage[], model: string | undefined): OllamaMessage[] {
+  if (!isQwen3(model)) return messages;
+  // Find the last user message and prepend "/no_think " if not already present.
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg && msg.role === 'user' && !msg.content.startsWith('/no_think')) {
+      messages[i] = { ...msg, content: `/no_think ${msg.content}` };
+      break;
+    }
+  }
+  return messages;
+}
+
 const TRIVIAL_TOKENS = new Set(['ok', 'yes', 'no', 'sì', 'si', 'k', 'np']);
 function isTrivial(text: string): boolean {
   const cleaned = text.trim().toLowerCase();
@@ -114,10 +139,10 @@ export class LocalProvider implements MasterProvider {
 
   async completeMessage(input: CompleteMessageInput): Promise<CompleteMessageOutput> {
     const systemMsg = anthropicSystemToOllamaMessage(input.systemBlocks);
-    const messages: OllamaMessage[] = [
+    const messages: OllamaMessage[] = prependNoThinkIfQwen3([
       ...(systemMsg ? [systemMsg] : []),
       ...anthropicMessagesToOllama(input.messages),
-    ];
+    ], input.model);
     const json = await chat({
       model: input.model,
       messages,
@@ -176,10 +201,10 @@ export class LocalProvider implements MasterProvider {
   async proposeWizard(input: ProposeWizardInput): Promise<ProposeWizardOutput> {
     const json = await chat({
       model: input.model,
-      messages: [
+      messages: prependNoThinkIfQwen3([
         { role: 'system', content: input.systemPrompt },
         { role: 'user', content: input.userMessage },
-      ],
+      ], input.model),
       tools: [anthropicToolToOllama(input.toolDefinition)],
       stream: false,
       keep_alive: KEEP_ALIVE,
