@@ -27,6 +27,14 @@ export interface CampaignSettings {
   imageStyleCustom?: string;
   imageProvider?: ImageProviderName;
   imageModel?: string;
+  /**
+   * When true, the master system prompt uses compact variants of the SRD
+   * + handbook + world lore (Plan C). Trades narrative depth for raw
+   * latency on small local models. When undefined, defaults to true for
+   * `aiProvider === 'local'` and false for cloud providers (where the
+   * full prompt fits comfortably under the model's context).
+   */
+  compactPrompt?: boolean;
 }
 
 export const campaigns = pgTable(

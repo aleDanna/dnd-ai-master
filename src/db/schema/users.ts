@@ -72,6 +72,13 @@ export interface UserPreferences {
   imageProvider?: ImageProviderName;
   /** Specific image model slug. When unset, falls back to provider env default. */
   imageModel?: string;
+  /**
+   * When true, the master system prompt uses compact variants of the SRD
+   * + handbook + world lore (Plan C). Trades narrative depth for raw
+   * latency on small local models. When undefined, defaults to true for
+   * `aiProvider === 'local'` and false for cloud providers.
+   */
+  compactPrompt?: boolean;
 }
 
 export type MasterGuidanceLevel = NonNullable<UserPreferences['masterGuidanceLevel']>;

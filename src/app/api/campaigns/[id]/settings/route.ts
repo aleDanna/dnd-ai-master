@@ -27,6 +27,7 @@ const ALLOWED_KEYS: ReadonlySet<keyof CampaignSettings> = new Set<keyof Campaign
   'imageStyleCustom',
   'imageProvider',
   'imageModel',
+  'compactPrompt',
 ]);
 
 export async function GET(

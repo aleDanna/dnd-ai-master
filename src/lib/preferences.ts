@@ -156,6 +156,11 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   imageStyleCustom: '',
   imageProvider: 'openai',
   imageModel: 'gpt-image-1',
+  // Compact-prompt is provider-conditional: getResolvedPreferences /
+  // getCampaignSettings flip it to `true` when aiProvider is 'local'.
+  // The static default is only used when both prefs.compactPrompt and
+  // the provider check fall through (cloud provider, undefined value).
+  compactPrompt: false,
 };
 
 export async function getUserPreferences(userId: string): Promise<UserPreferences> {
@@ -205,6 +210,10 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
       ? storedVoice
       : envDefaultTtsVoice(ttsProvider, ttsModel);
   })();
+  // Compact-prompt default depends on the resolved provider: on for local
+  // (where prompt budget matters), off for cloud (full prompt fits easily).
+  // Explicit user pick wins over the provider-conditional default.
+  const compactPrompt = prefs.compactPrompt ?? (provider === 'local');
   return {
     ttsProvider,
     ttsVoice,
@@ -221,6 +230,7 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
     imageStyleCustom,
     imageProvider,
     imageModel,
+    compactPrompt,
   };
 }
 
@@ -324,6 +334,9 @@ export async function getCampaignSettings(
       ? storedVoice
       : envDefaultTtsVoice(ttsProvider, ttsModel);
   })();
+  // Same provider-conditional default as getResolvedPreferences: on for
+  // local, off for cloud, explicit pick always wins.
+  const compactPrompt = prefs.compactPrompt ?? (provider === 'local');
   return {
     ttsProvider,
     ttsVoice,
@@ -339,6 +352,7 @@ export async function getCampaignSettings(
     imageStyleCustom,
     imageProvider,
     imageModel,
+    compactPrompt,
   };
 }
 
@@ -500,6 +514,10 @@ export function validateSettingsPatch(
       }
     }
     out.imageModel = body.imageModel as string | undefined;
+  }
+  if ('compactPrompt' in body) {
+    if (typeof body.compactPrompt !== 'boolean') return { ok: false, error: 'invalid-compactPrompt' };
+    out.compactPrompt = body.compactPrompt;
   }
   return { ok: true, patch: out };
 }
