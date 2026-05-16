@@ -14,7 +14,6 @@
 import { loadDbEnv } from '../src/db/connection-url';
 loadDbEnv();
 
-import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -30,7 +29,7 @@ import {
 } from '../src/ai/master/system-prompt';
 import { getMasterHandbook, getMasterWorldLore } from '../src/ai/master/handbook';
 import { buildSrdContext } from '../src/ai/master/srd-context';
-import { getBakedModelName } from '../src/ai/master/baked-models';
+import { getBakedModelName, computeMasterPromptHash } from '../src/ai/master/baked-models';
 
 /**
  * Curated list of base model slugs we know how to customise. We only
@@ -157,11 +156,10 @@ async function buildStaticSystemContent(): Promise<string> {
   return blocks.join('\n\n');
 }
 
-function computeContentHash(systemContent: string): string {
-  const h = createHash('sha256');
-  h.update(`v${MASTER_PROMPT_VERSION}\n`);
-  h.update(systemContent);
-  return h.digest('hex').slice(0, 16); // 64 bits is plenty for drift detection
+async function computeContentHash(systemContent: string): Promise<string> {
+  // Delegate to the shared helper so build-time and runtime hashes
+  // always agree — that's what the staleness check depends on.
+  return computeMasterPromptHash(systemContent, MASTER_PROMPT_VERSION);
 }
 
 function buildModelfile(baseSlug: string, systemContent: string, contentHash: string): string {
@@ -285,7 +283,7 @@ async function main(): Promise<void> {
   console.log(`[build-local-models] target bases: ${targets.join(', ')}`);
   console.log(`[build-local-models] building static prompt content...`);
   const systemContent = await buildStaticSystemContent();
-  const contentHash = computeContentHash(systemContent);
+  const contentHash = await computeContentHash(systemContent);
   console.log(`[build-local-models] static prompt: ${systemContent.length.toLocaleString()} bytes, hash=${contentHash}, version=${MASTER_PROMPT_VERSION}`);
 
   // Persist generated Modelfiles into .ollama/ at repo root — gitignored.

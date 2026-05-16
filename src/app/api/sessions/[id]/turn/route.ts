@@ -11,7 +11,8 @@ import { acquireTurnLock, releaseTurnLock } from '@/sessions/lock';
 import { buildSrdContext } from '@/ai/master/srd-context';
 import { getMasterHandbook, getMasterWorldLore } from '@/ai/master/handbook';
 import { buildMasterSystemPrompt } from '@/ai/master/system-prompt';
-import { isBakedModel } from '@/ai/master/baked-models';
+import { isBakedModel, warnIfBakedModelStale } from '@/ai/master/baked-models';
+import { getRuntimePromptHash } from '@/ai/master/runtime-prompt-hash';
 import { detectLanguage } from '@/ai/master/language';
 import { runToolLoop } from '@/ai/master/tool-loop';
 import { buildToolDefinitions } from '@/engine';
@@ -185,6 +186,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const srd = baked ? '' : await buildSrdContext({ compact: useCompact });
         const handbook = baked ? '' : getMasterHandbook({ compact: useCompact });
         const worldLore = baked ? '' : getMasterWorldLore({ compact: useCompact });
+
+        // Plan D: fire-and-forget staleness check. Memoised inside —
+        // logs at most one warning per (model, hash, hash) per process.
+        // Never throws (the helper swallows fetch errors).
+        if (baked && process.env.OLLAMA_BASE_URL) {
+          const ollamaBase = process.env.OLLAMA_BASE_URL;
+          void (async () => {
+            try {
+              const runtimeHash = await getRuntimePromptHash();
+              await warnIfBakedModelStale({
+                modelName: userPrefs.aiMasterModel,
+                ollamaBase,
+                runtimeHash,
+              });
+            } catch {
+              /* never block a turn on this */
+            }
+          })();
+        }
         const memory = await loadMemoryContext(sessionId, snap.scene);
         const sys = buildMasterSystemPrompt({
           srdContext: srd,

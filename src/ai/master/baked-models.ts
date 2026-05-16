@@ -69,3 +69,102 @@ export function getBakedModelName(baseSlug: string): string | null {
   if (colonIdx < 0) return null;
   return BAKED_PREFIX + baseSlug.slice(0, colonIdx) + '-' + baseSlug.slice(colonIdx + 1);
 }
+
+/**
+ * Compute the 16-hex-character content hash the build script stamps into
+ * each Modelfile. The hash covers `v<MASTER_PROMPT_VERSION>\n` + the
+ * concatenated static blocks in the runtime emit order. Both build-time
+ * and runtime callers must produce the same hash for the staleness
+ * check to work — keep this function and `computeContentHash` in the
+ * build script in sync.
+ */
+export async function computeMasterPromptHash(systemContent: string, promptVersion: number): Promise<string> {
+  const { createHash } = await import('node:crypto');
+  const h = createHash('sha256');
+  h.update(`v${promptVersion}\n`);
+  h.update(systemContent);
+  return h.digest('hex').slice(0, 16);
+}
+
+// ── Runtime staleness check ────────────────────────────────────────────────
+//
+// When the user selects a `dnd-master-*` model, we want to warn them if
+// the baked content drifted from what the runtime would have emitted —
+// e.g. handbook.md was edited but the model wasn't rebuilt.
+//
+// Memoise per (slug, modelHash, runtimeHash) tuple so we log at most one
+// warning per process per stale combination. Don't spam on every turn.
+
+const _warnedKeys = new Set<string>();
+
+interface StalenessResult {
+  stale: boolean;
+  modelHash: string | null;
+  runtimeHash: string;
+}
+
+/**
+ * Read the baked model's Modelfile from Ollama via /api/show and parse
+ * the `# Source content hash:` comment. Returns null on any failure
+ * (model missing, Ollama unreachable, no hash line found) — callers
+ * should treat that as "can't verify; assume fine".
+ */
+export async function readBakedModelHash(
+  modelName: string,
+  ollamaBase: string,
+): Promise<string | null> {
+  try {
+    const res = await fetch(`${ollamaBase}/api/show`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: modelName }),
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { modelfile?: string };
+    if (!data.modelfile) return null;
+    const m = /^# Source content hash: ([a-f0-9]+)\s*$/m.exec(data.modelfile);
+    return m ? m[1]! : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fire-and-forget staleness check + one-shot warning. Safe to call from
+ * the turn route after the response is dispatched (e.g. inside
+ * waitUntil). Awaits its own work — never throws.
+ *
+ *  - runtimeHashPromise: a resolved-once promise carrying the current
+ *    runtime's prompt hash. The caller is responsible for memoising it
+ *    so we don't recompute on every turn.
+ */
+export async function warnIfBakedModelStale(args: {
+  modelName: string;
+  ollamaBase: string;
+  runtimeHash: string;
+}): Promise<StalenessResult | null> {
+  const modelHash = await readBakedModelHash(args.modelName, args.ollamaBase);
+  const result: StalenessResult = {
+    stale: modelHash !== null && modelHash !== args.runtimeHash,
+    modelHash,
+    runtimeHash: args.runtimeHash,
+  };
+  if (!result.stale) return result;
+
+  const key = `${args.modelName}|${modelHash}|${args.runtimeHash}`;
+  if (_warnedKeys.has(key)) return result;
+  _warnedKeys.add(key);
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[baked-model] ${args.modelName} is stale: ` +
+      `model hash=${modelHash} vs runtime hash=${args.runtimeHash}. ` +
+      `Run \`pnpm build-local-models\` to refresh.`,
+  );
+  return result;
+}
+
+/** Test seam — clear the warned-keys memo between tests. */
+export function _clearStaleWarningCache(): void {
+  _warnedKeys.clear();
+}
