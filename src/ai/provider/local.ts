@@ -24,6 +24,20 @@ const KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE ?? '5m';
 // 24k by default; user can raise via env if running a model with bigger ctx.
 const NUM_CTX = Number(process.env.OLLAMA_NUM_CTX ?? '24576');
 
+/**
+ * "Thinking models" (qwen3, deepseek-r1, etc.) emit a separate `thinking`
+ * field instead of putting content in `message.content`. When the loop sees
+ * an empty content + tool_calls absent, it has nothing to render. We disable
+ * thinking mode at the API level for models we know carry it, so they emit
+ * actual content directly. `think: false` is a top-level Ollama option (not
+ * inside `options`); models that don't recognize it ignore it silently.
+ */
+function isThinkingModel(model: string | undefined): boolean {
+  if (!model) return false;
+  const m = model.toLowerCase();
+  return m.startsWith('qwen3') || m.includes('/qwen3') || m.startsWith('deepseek-r1');
+}
+
 const TRIVIAL_TOKENS = new Set(['ok', 'yes', 'no', 'sì', 'si', 'k', 'np']);
 function isTrivial(text: string): boolean {
   const cleaned = text.trim().toLowerCase();
@@ -73,6 +87,7 @@ export class LocalProvider implements MasterProvider {
       tools: input.tools.map(anthropicToolToOllama),
       stream: false,
       keep_alive: KEEP_ALIVE,
+      think: isThinkingModel(input.model) ? false : undefined,
       options: { num_predict: input.maxTokens ?? 4096, num_ctx: NUM_CTX },
     });
     const contentBlocks = ollamaResponseToContentBlocks(json.message);
@@ -90,14 +105,16 @@ export class LocalProvider implements MasterProvider {
   async detectLanguage(input: DetectLanguageInput): Promise<string | null> {
     if (isTrivial(input.text)) return null;
     try {
+      const langModel = process.env.OLLAMA_LANGUAGE_MODEL ?? process.env.OLLAMA_MASTER_MODEL;
       const json = await chat({
-        model: process.env.OLLAMA_LANGUAGE_MODEL ?? process.env.OLLAMA_MASTER_MODEL,
+        model: langModel,
         messages: [
           { role: 'system', content: 'You are a language detector. Reply with ONLY the ISO 639-1 lowercase 2-letter language code of the user message (e.g. "en", "it", "es"). No prose, no punctuation.' },
           { role: 'user', content: input.text },
         ],
         stream: false,
         keep_alive: KEEP_ALIVE,
+        think: isThinkingModel(langModel) ? false : undefined,
         options: { num_predict: 8, num_ctx: NUM_CTX },
       });
       if (input.userId) {
@@ -129,6 +146,7 @@ export class LocalProvider implements MasterProvider {
       tools: [anthropicToolToOllama(input.toolDefinition)],
       stream: false,
       keep_alive: KEEP_ALIVE,
+      think: isThinkingModel(input.model) ? false : undefined,
       options: { num_predict: 1024, num_ctx: NUM_CTX },
     });
     if (input.userId) {
