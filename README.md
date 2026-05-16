@@ -73,3 +73,39 @@ The runtime auto-detects drift: when the baked variant's hash diverges from the 
 - **"Ollama unreachable"** → start Ollama (`ollama serve`) and set `OLLAMA_BASE_URL` (typically `http://localhost:11434`).
 - **"base model not found"** → `ollama pull <slug>` first (e.g. `ollama pull qwen3:30b`).
 - **Variant works but quality regressed** → check the `[baked-model] stale` warning; rebuild with `pnpm build-local-models --force`.
+
+### Plan E.1 — Mode-aware prompt (local provider)
+
+The local provider can ship a smaller per-turn prompt by loading only
+the mode block relevant to the current scene type:
+
+- **combat**: tactical priming, opportunity attacks, concentration check delegation.
+- **exploration**: travel pace, vision, marching order, forced march.
+- **narrative**: scene framing, social DCs, combat-initiation sub-block.
+
+Plus a conditional **spellcasting overlay** when the active PC is a caster.
+
+Mode is derived deterministically from engine state:
+- `state.combat !== null` → combat
+- `state.travel?.pace` set → exploration
+- else → narrative
+
+Enable via **Settings → Local optimization → "Mode-aware prompt"** (default
+ON for local, OFF for cloud). Combine with Plan C "Compact prompt" and
+Plan D "Baked models" for ~9K context window (vs ~15K with B+C+D alone).
+Full design at
+[`docs/superpowers/specs/2026-05-16-mode-aware-rag-prompt-design.md`](docs/superpowers/specs/2026-05-16-mode-aware-rag-prompt-design.md).
+
+After enabling, re-bake your installed models:
+```bash
+pnpm build-local-models --force
+```
+
+The bake uses the new slim manifest (drops world_lore + standalone
+roll_triggers, ultra-slim handbook, slim base/tool_contract/rewards/
+memory_tool_rule). `MASTER_PROMPT_VERSION` was bumped to 2 — existing
+baked models will surface a stale warning until rebuilt.
+
+To validate the optimization, check the telemetry for `prompt_eval_count`
+per `(mode, model)` tuple in the `ai_usage` table (new `mode` and
+`needs_spellcasting` columns landed in migration `0033_*.sql`).
