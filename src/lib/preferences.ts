@@ -369,7 +369,18 @@ export type ValidateResult =
  * Returns the same shape as the input on success — useful so the caller
  * can persist exactly what the validator OK'd.
  */
-export function validateSettingsPatch(body: ValidatedSettings): ValidateResult {
+/** Validates a settings patch.
+ *
+ *  `stored` is the optional current state (typically what
+ *  getCampaignSettings returned). When provided, branches that depend on
+ *  the resolved provider fall back to the stored provider if the patch
+ *  itself doesn't carry one. Without `stored`, a patch like
+ *  `{ aiMasterModel: 'qwen3:30b-a3b' }` (no aiProvider) cannot know it
+ *  belongs to a 'local' campaign and the cloud-catalog check rejects it. */
+export function validateSettingsPatch(
+  body: ValidatedSettings,
+  stored?: { aiProvider?: string; ttsProvider?: string; imageProvider?: string },
+): ValidateResult {
   const out: ValidatedSettings = {};
   if ('ttsProvider' in body) {
     if (body.ttsProvider === undefined || body.ttsProvider === null) out.ttsProvider = undefined;
@@ -384,7 +395,7 @@ export function validateSettingsPatch(body: ValidatedSettings): ValidateResult {
     } else if (typeof body.ttsModel !== 'string') {
       return { ok: false, error: 'invalid-ttsModel' };
     } else {
-      const resolvedProvider = out.ttsProvider ?? body.ttsProvider;
+      const resolvedProvider = out.ttsProvider ?? body.ttsProvider ?? stored?.ttsProvider;
       if (resolvedProvider === 'local') {
         if (body.ttsModel !== 'piper' && body.ttsModel !== 'xtts') {
           return { ok: false, error: 'invalid-ttsModel' };
@@ -404,7 +415,7 @@ export function validateSettingsPatch(body: ValidatedSettings): ValidateResult {
     } else if (typeof body.ttsVoice !== 'string') {
       return { ok: false, error: 'invalid-ttsVoice' };
     } else {
-      const resolvedProvider = out.ttsProvider ?? body.ttsProvider;
+      const resolvedProvider = out.ttsProvider ?? body.ttsProvider ?? stored?.ttsProvider;
       const resolvedModel = out.ttsModel ?? body.ttsModel;
       if (resolvedProvider === 'local' && typeof resolvedModel === 'string') {
         if (!isValidVoiceForModel(body.ttsVoice, 'local', resolvedModel)) {
@@ -437,7 +448,7 @@ export function validateSettingsPatch(body: ValidatedSettings): ValidateResult {
       if (typeof m !== 'string' || m.length === 0 || m.length > 200) {
         return { ok: false, error: 'invalid-aiMasterModel' };
       }
-      const resolvedProvider = out.aiProvider ?? body.aiProvider;
+      const resolvedProvider = out.aiProvider ?? body.aiProvider ?? stored?.aiProvider;
       if (resolvedProvider !== 'local' && !isKnownMasterModel(m)) {
         return { ok: false, error: 'invalid-aiMasterModel' };
       }
@@ -481,7 +492,7 @@ export function validateSettingsPatch(body: ValidatedSettings): ValidateResult {
       if (!isKnownImageModel(body.imageModel)) {
         return { ok: false, error: 'invalid-imageModel' };
       }
-      const resolvedProvider = out.imageProvider ?? body.imageProvider;
+      const resolvedProvider = out.imageProvider ?? body.imageProvider ?? stored?.imageProvider;
       if (resolvedProvider === 'local') {
         if (!isLocalSurfaceAvailable('image', body.imageModel)) {
           return { ok: false, error: 'invalid-imageModel' };

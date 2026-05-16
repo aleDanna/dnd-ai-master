@@ -93,7 +93,15 @@ export async function PUT(
     }
   }
 
-  const result = validateSettingsPatch(body as Partial<CampaignSettings>);
+  // Pass the current stored settings as the validator's `stored` context so a
+  // partial patch like { aiMasterModel: 'qwen3:30b-a3b' } (no aiProvider)
+  // can still be resolved against the stored aiProvider='local'.
+  const currentSettings = await getCampaignSettings(id);
+  const result = validateSettingsPatch(body as Partial<CampaignSettings>, {
+    aiProvider: currentSettings.aiProvider,
+    ttsProvider: currentSettings.ttsProvider,
+    imageProvider: currentSettings.imageProvider,
+  });
   // eslint-disable-next-line no-console
   console.log('[settings-PUT] body=', JSON.stringify(body), 'validated=', JSON.stringify(result), 'env.PIPER=', !!process.env.PIPER_BASE_URL, 'env.XTTS=', !!process.env.XTTS_BASE_URL, 'env.OLLAMA=', !!process.env.OLLAMA_BASE_URL, 'NODE_ENV=', process.env.NODE_ENV, 'VERCEL=', !!process.env.VERCEL);
   if (!result.ok) {
