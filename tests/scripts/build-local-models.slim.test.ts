@@ -1,4 +1,59 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Mock the db so buildSrdContext (called by buildStaticSystemContent) doesn't
+// need a live Postgres connection. Pattern copied verbatim from
+// tests/ai/master/srd-context.test.ts.
+
+const STUB_RULES = [
+  { sectionPath: '1.1 The d20 Test', anchor: 'a', markdown: 'core mechanic body' },
+  { sectionPath: '3.1 Attacks', anchor: 'c', markdown: 'combat body' },
+  { sectionPath: '4.1 Blinded', anchor: 'd', markdown: 'conditions body' },
+  { sectionPath: '18.1 DM-Facing', anchor: 'g', markdown: 'dm rules body' },
+];
+const STUB_CLASSES = [
+  { name: 'Fighter', hitDie: 'd10', savingThrows: ['STR', 'CON'] },
+];
+const STUB_RACES = [
+  { name: 'Human', parentRaceSlug: null },
+];
+const STUB_BACKGROUNDS = [
+  { name: 'Soldier', skillProficiencies: ['Athletics', 'Intimidation'] },
+];
+const STUB_CONDITIONS = [
+  { name: 'Blinded', description: 'cannot see' },
+  { name: 'Charmed', description: 'cannot attack the charmer' },
+];
+
+vi.mock('@/db/schema', () => ({
+  srdRuleDoc: { __tag: 'rules' },
+  srdClass: { __tag: 'classes' },
+  srdRace: { __tag: 'races' },
+  srdBackground: { __tag: 'backgrounds' },
+  srdCondition: { __tag: 'conditions' },
+}));
+
+vi.mock('@/db/client', () => {
+  const rowsFor = (table: { __tag: string }): unknown[] => {
+    switch (table.__tag) {
+      case 'rules':       return STUB_RULES;
+      case 'classes':     return STUB_CLASSES;
+      case 'races':       return STUB_RACES;
+      case 'backgrounds': return STUB_BACKGROUNDS;
+      case 'conditions':  return STUB_CONDITIONS;
+      default:            return [];
+    }
+  };
+  return {
+    db: {
+      select: () => ({
+        from: (table: { __tag: string }) => ({
+          orderBy: async () => rowsFor(table),
+        }),
+      }),
+    },
+  };
+});
+
 import { buildStaticSystemContent } from '../../scripts/build-local-models';
 
 describe('Plan E.1 slim baked manifest', () => {

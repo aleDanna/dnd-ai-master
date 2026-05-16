@@ -1,5 +1,5 @@
 /**
- * Plan D — bake the master's static system prompt into customised Ollama
+ * Plan D + E.1 — bake the master's static system prompt (now slim per E.1) into customised Ollama
  * models so per-turn requests can ship a tiny dynamic-only prompt.
  *
  * Usage:
@@ -170,12 +170,6 @@ export async function buildStaticSystemContent(): Promise<string> {
     MASTER_MEMORY_TOOL_RULE_SLIM,
     MASTER_HANDBOOK_ULTRA_SLIM,
     srdContext,
-    // Plan E.1 manifest changes vs B+C+D:
-    //  - BASE/TOOL_CONTRACT/REWARDS/MEMORY_TOOL_RULE: full -> slim
-    //  - HANDBOOK: full -> ultra-slim (full content moves to RAG in Plan E.2)
-    //  - WORLD_LORE: dropped entirely (full content moves to RAG in Plan E.2)
-    //  - ROLL_TRIGGERS: dropped (distributed across mode blocks)
-    //  - SRD compact: unchanged per design decision (keep intact for reliability)
   ];
   return blocks.join('\n\n');
 }

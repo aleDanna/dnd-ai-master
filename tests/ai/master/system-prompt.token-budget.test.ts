@@ -40,12 +40,12 @@ function bakedInput(overrides: Partial<Parameters<typeof buildMasterSystemPrompt
 
 // Targets from the Plan E.1 design (Appendix). Tolerances allow for the
 // "guidance balanced" + "lang hint" + "party mode block" overhead.
-const WIRE_BUDGET: Record<string, number> = {
+const WIRE_BUDGET = {
   narrative: 2500,
   exploration: 2500,
   combat: 2500,
   'combat+spell': 3200,
-};
+} as const;
 
 describe('Plan E.1 token budget (baked model turn, wire only)', () => {
   for (const mode of ['narrative', 'exploration', 'combat'] as const) {

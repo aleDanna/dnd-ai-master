@@ -10,10 +10,12 @@ import { MODE_BLOCKS, SPELLCASTING_OVERLAY_BLOCK } from './mode-blocks';
  * value into the generated Modelfile; the runtime compares it against
  * the stamped value and emits a stale-model warning when they differ.
  *
- * "Static portion" = MASTER_SYSTEM_PROMPT_BASE + MASTER_TOOL_CONTRACT +
- * MASTER_META_TOOLS_INSTRUCTION + MASTER_ROLL_TRIGGERS +
- * MASTER_REWARDS_MANDATE + getMasterHandbook() + getMasterWorldLore() +
- * MASTER_MEMORY_TOOL_RULE + buildSrdContext().
+ * "Static portion" = MASTER_SYSTEM_PROMPT_BASE_SLIM + MASTER_TOOL_CONTRACT_SLIM
+ * + MASTER_META_TOOLS_INSTRUCTION + MASTER_REWARDS_MANDATE_SLIM
+ * + MASTER_MEMORY_TOOL_RULE_SLIM + MASTER_HANDBOOK_ULTRA_SLIM
+ * + buildSrdContext({ compact: true })
+ * (Plan E.1: dropped world_lore + standalone roll_triggers; slim variants
+ * of base/tool_contract/rewards/memory_tool_rule; ultra-slim handbook.)
  *
  * Per-campaign / per-turn blocks (guidance, manual rolls, narration
  * pace, langHint, party mode, snapshot, ...) are NOT counted — those
