@@ -19,6 +19,10 @@ import {
 import { recordUsage } from '@/ai/master/usage';
 
 const KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE ?? '5m';
+// Ollama defaults `num_ctx` to 2048 which truncates the master prompt
+// (system + history + 18 tool defs is typically 4-16k tokens). Override to
+// 24k by default; user can raise via env if running a model with bigger ctx.
+const NUM_CTX = Number(process.env.OLLAMA_NUM_CTX ?? '24576');
 
 const TRIVIAL_TOKENS = new Set(['ok', 'yes', 'no', 'sì', 'si', 'k', 'np']);
 function isTrivial(text: string): boolean {
@@ -69,7 +73,7 @@ export class LocalProvider implements MasterProvider {
       tools: input.tools.map(anthropicToolToOllama),
       stream: false,
       keep_alive: KEEP_ALIVE,
-      options: { num_predict: input.maxTokens ?? 4096 },
+      options: { num_predict: input.maxTokens ?? 4096, num_ctx: NUM_CTX },
     });
     const contentBlocks = ollamaResponseToContentBlocks(json.message);
     const hasToolCalls = contentBlocks.some((b) => b.type === 'tool_use');
@@ -94,7 +98,7 @@ export class LocalProvider implements MasterProvider {
         ],
         stream: false,
         keep_alive: KEEP_ALIVE,
-        options: { num_predict: 8 },
+        options: { num_predict: 8, num_ctx: NUM_CTX },
       });
       if (input.userId) {
         await recordUsage({
@@ -125,7 +129,7 @@ export class LocalProvider implements MasterProvider {
       tools: [anthropicToolToOllama(input.toolDefinition)],
       stream: false,
       keep_alive: KEEP_ALIVE,
-      options: { num_predict: 1024 },
+      options: { num_predict: 1024, num_ctx: NUM_CTX },
     });
     if (input.userId) {
       await recordUsage({

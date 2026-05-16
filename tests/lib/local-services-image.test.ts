@@ -19,19 +19,24 @@ describe('fetchDrawThingsModels', () => {
     vi.unstubAllEnvs();
   });
 
-  it('maps /sdapi/v1/sd-models with draw-things: slug prefix', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response(JSON.stringify([
-      { title: 'Realistic Vision v6.0 [abc123]', model_name: 'realisticVisionV60' },
-      { title: 'SDXL Base 1.0 [def456]', model_name: 'sdxlBase10' },
-    ]), { status: 200 }));
+  it('maps /sdapi/v1/options.model into a single ModelOption', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response(JSON.stringify({
+      model: 'flux_1_schnell_q8p.ckpt',
+      sd_model_checkpoint: 'flux_1_schnell_q8p',
+    }), { status: 200 }));
 
     const r = await fetchDrawThingsModels();
-    expect(r).toHaveLength(2);
+    expect(r).toHaveLength(1);
     expect(r[0]).toEqual({
-      slug: 'draw-things:realisticVisionV60',
-      label: 'Realistic Vision v6.0 [abc123]',
-      blurb: 'draw-things · core-ml',
+      slug: 'draw-things:flux_1_schnell_q8p.ckpt',
+      label: 'flux_1_schnell_q8p',
+      blurb: 'draw-things · active model',
     });
+  });
+
+  it('returns [] when options has no model field', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 200 }));
+    expect(await fetchDrawThingsModels()).toEqual([]);
   });
 
   it('returns [] when fetch throws', async () => {

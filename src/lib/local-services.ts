@@ -142,26 +142,26 @@ interface OllamaTagsResponse {
 /** Fetches the list of installed Ollama models from /api/tags, filters by the
  *  LLM whitelist, and shapes them as ModelOption[] for the Settings dropdown.
  *  Returns [] on any failure (env unset, network error, non-2xx). */
-interface DrawThingsModel { title: string; model_name: string }
-
-/** Fetches the installed Stable Diffusion checkpoints from Draw Things via
- *  /sdapi/v1/sd-models. Returns slugs prefixed with `draw-things:` so the
- *  Settings dispatcher can route by prefix at request time. */
+/** Fetches the *active* Draw Things checkpoint via /sdapi/v1/options.
+ *  Draw Things does NOT expose `/sdapi/v1/sd-models` (returns 404) — only
+ *  the single currently-loaded model name lives in `options.model`. Users
+ *  switch model from inside the app. */
 export async function fetchDrawThingsModels(): Promise<ModelOption[]> {
   const base = process.env.DRAW_THINGS_BASE_URL;
   if (!base) return [];
   try {
-    const res = await fetch(`${base}/sdapi/v1/sd-models`, {
+    const res = await fetch(`${base}/sdapi/v1/options`, {
       signal: AbortSignal.timeout(2000),
       cache: 'no-store',
     });
     if (!res.ok) return [];
-    const models = (await res.json()) as DrawThingsModel[];
-    return models.map((m) => ({
-      slug: `draw-things:${m.model_name}`,
-      label: m.title,
-      blurb: 'draw-things · core-ml',
-    }));
+    const opts = (await res.json()) as { model?: string };
+    if (!opts.model) return [];
+    return [{
+      slug: `draw-things:${opts.model}`,
+      label: opts.model.replace(/\.ckpt$|\.safetensors$/i, ''),
+      blurb: 'draw-things · active model',
+    }];
   } catch {
     return [];
   }
