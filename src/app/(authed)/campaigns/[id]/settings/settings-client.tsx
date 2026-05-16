@@ -29,6 +29,7 @@ import type { LocalServicesStatus, ModelOption as LocalModelOption } from '@/lib
 export interface CampaignSettingsClientProps {
   campaignId: string;
   initialSettings: Required<CampaignSettings>;
+  initialLanguage: string | null;
   canEdit: boolean;
   activeSessionId: string | null;
   localServices: LocalServicesStatus;
@@ -38,6 +39,20 @@ export interface CampaignSettingsClientProps {
    *  tune provider/model before the first turn. */
   firstRunSessionId?: string | null;
 }
+
+const CAMPAIGN_LANGUAGES: { code: string; label: string }[] = [
+  { code: '',   label: 'Auto-detect (from first player message)' },
+  { code: 'en', label: 'English' },
+  { code: 'it', label: 'Italiano' },
+  { code: 'es', label: 'Español' },
+  { code: 'fr', label: 'Français' },
+  { code: 'de', label: 'Deutsch' },
+  { code: 'pt', label: 'Português' },
+  { code: 'nl', label: 'Nederlands' },
+  { code: 'pl', label: 'Polski' },
+  { code: 'ja', label: '日本語' },
+  { code: 'zh', label: '中文' },
+];
 
 const TTS_MODEL_BLURBS: Record<string, string> = {
   'gpt-4o-mini-tts': 'Newer, voice-steering supported',
@@ -53,13 +68,14 @@ const TTS_PROVIDER_LABELS: Record<TtsProvider, string> = {
   local: 'Local',
 };
 
-export function CampaignSettingsClient({ campaignId, initialSettings, canEdit, activeSessionId, localServices, firstRunSessionId }: CampaignSettingsClientProps) {
+export function CampaignSettingsClient({ campaignId, initialSettings, initialLanguage, canEdit, activeSessionId, localServices, firstRunSessionId }: CampaignSettingsClientProps) {
   const [settings, setSettings] = React.useState<Required<CampaignSettings>>(initialSettings);
+  const [language, setLanguage] = React.useState<string>(initialLanguage ?? '');
   const [busy, setBusy] = React.useState(false);
   const [savedOnce, setSavedOnce] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  const save = async (patch: Partial<CampaignSettings>): Promise<void> => {
+  const save = async (patch: Partial<CampaignSettings> & { language?: string | null }): Promise<void> => {
     if (!canEdit) return;
     setBusy(true);
     setError(null);
@@ -73,8 +89,9 @@ export function CampaignSettingsClient({ campaignId, initialSettings, canEdit, a
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error ?? `HTTP ${res.status}`);
       }
-      const { settings: next } = (await res.json()) as { settings: Required<CampaignSettings> };
+      const { settings: next, language: nextLanguage } = (await res.json()) as { settings: Required<CampaignSettings>; language?: string | null };
       setSettings(next);
+      if (nextLanguage !== undefined) setLanguage(nextLanguage ?? '');
       setSavedOnce(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'failed');
@@ -226,6 +243,13 @@ export function CampaignSettingsClient({ campaignId, initialSettings, canEdit, a
     void save({ aiMasterModel: slug });
   };
 
+  const onLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
+    const next = e.target.value;  // '' for auto-detect, else 2-letter code
+    setLanguage(next);
+    // Send null to the API when blank — explicit reset to auto-detect.
+    void save({ language: next === '' ? null : next });
+  };
+
   // For provider='local' the runtime list of Ollama models comes from the
   // server-side fetch passed through localServices.ai.models.
   const availableModels: (LocalModelOption | { slug: string; label: string; blurb: string; recommended?: boolean })[] =
@@ -341,6 +365,27 @@ export function CampaignSettingsClient({ campaignId, initialSettings, canEdit, a
                 </option>
               ))
             )}
+          </select>
+        </div>
+      </Card>
+
+      <div style={{ height: 16 }} />
+
+      <Card>
+        <div>
+          <Eyebrow>Language</Eyebrow>
+          <h2 style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>Campaign language</h2>
+          <p style={{ marginTop: 4, fontSize: 13, color: 'var(--fg-muted)' }}>
+            Lingua usata dal master per narrare. &ldquo;Auto-detect&rdquo; lascia che il master la deduca dal primo messaggio del giocatore.
+          </p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <label htmlFor="campaignLanguage" style={{ fontSize: 13, color: 'var(--fg-muted)', minWidth: 80 }}>Language</label>
+          <select id="campaignLanguage" value={language} onChange={onLanguageChange} disabled={disabled}
+            style={{ flex: 1, padding: '8px 12px', background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 8, color: 'var(--fg)', fontFamily: 'var(--font-ui)', fontSize: 14 }}>
+            {CAMPAIGN_LANGUAGES.map((l) => (
+              <option key={l.code || 'auto'} value={l.code}>{l.label}</option>
+            ))}
           </select>
         </div>
       </Card>
@@ -690,24 +735,28 @@ export function CampaignSettingsClient({ campaignId, initialSettings, canEdit, a
         )}
       </Card>
 
-      <div style={{ height: 16 }} />
+      {!firstRunSessionId && (
+        <>
+          <div style={{ height: 16 }} />
 
-      <Card>
-        <div>
-          <Eyebrow>Maintenance</Eyebrow>
-          <h2 style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>Memoria</h2>
-          <p style={{ marginTop: 4, fontSize: 13, color: 'var(--fg-muted)' }}>
-            Rigenera il codex della sessione attiva da zero. Utile se un crash a metà turno ha lasciato l&apos;estrattore di memoria in uno stato incoerente.
-          </p>
-        </div>
-        {activeSessionId ? (
-          <RebuildMemoryButton sessionId={activeSessionId} />
-        ) : (
-          <p style={{ fontSize: 13, color: 'var(--fg-muted)', margin: 0 }}>
-            Nessuna sessione attiva per questa campagna.
-          </p>
-        )}
-      </Card>
+          <Card>
+            <div>
+              <Eyebrow>Maintenance</Eyebrow>
+              <h2 style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>Memoria</h2>
+              <p style={{ marginTop: 4, fontSize: 13, color: 'var(--fg-muted)' }}>
+                Rigenera il codex della sessione attiva da zero. Utile se un crash a metà turno ha lasciato l&apos;estrattore di memoria in uno stato incoerente.
+              </p>
+            </div>
+            {activeSessionId ? (
+              <RebuildMemoryButton sessionId={activeSessionId} />
+            ) : (
+              <p style={{ fontSize: 13, color: 'var(--fg-muted)', margin: 0 }}>
+                Nessuna sessione attiva per questa campagna.
+              </p>
+            )}
+          </Card>
+        </>
+      )}
 
       <div style={{ marginTop: 16, fontSize: 12, color: 'var(--fg-subtle)', textAlign: 'right', minHeight: 18 }}>
         {error ? <span style={{ color: 'var(--ember)' }}>Save failed: {error}</span>

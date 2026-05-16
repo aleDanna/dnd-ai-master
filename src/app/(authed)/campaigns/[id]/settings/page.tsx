@@ -39,6 +39,7 @@ export default async function CampaignSettingsPage({
     <CampaignSettingsClient
       campaignId={id}
       initialSettings={settings}
+      initialLanguage={data.campaign.language ?? null}
       canEdit={canEdit}
       activeSessionId={activeSessionId}
       localServices={localServices}
