@@ -272,7 +272,9 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
         }
         // Hard timeout — stop polling so we don't hammer the API forever on a
         // truly broken turn (master errored out without persisting anything).
-        if (Date.now() - startedAt > 90_000) clearSafetyPoll();
+        // Bumped from 90s to 180s for local LLMs that may need full minute on
+        // first warm-up (qwen3:30b loading weights + first 4k-context turn).
+        if (Date.now() - startedAt > 180_000) clearSafetyPoll();
       }).catch(() => { /* network blip — keep polling */ });
     }, 3000);
   }, [messages, fetchSessionData, clearSafetyPoll, clearStreamingMessage]);
@@ -302,14 +304,17 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
   // returning 202) and the master starting to stream the response. It powers
   // both the "Master is responding…" indicator (via `busy`) and the composer
   // lock (so the player can't double-submit during that gap). Cleared by the
-  // first streamed chunk, by a turn-error, or by a 12s safety ceiling.
+  // first streamed chunk, by a turn-error, or by a 120s safety ceiling.
+  // (Local providers like qwen3:30b can take 30-90s for the first run when
+  // weights are being loaded; the safety poll separately catches the case
+  // where SSE drops silently — see startSafetyPoll, 90s window.)
   React.useEffect(() => {
     if (!pendingTurn) return;
     if (streamingMessage || turnError) {
       setPendingTurn(false);
       return;
     }
-    const t = setTimeout(() => setPendingTurn(false), 12_000);
+    const t = setTimeout(() => setPendingTurn(false), 120_000);
     return () => clearTimeout(t);
   }, [pendingTurn, streamingMessage, turnError]);
 
