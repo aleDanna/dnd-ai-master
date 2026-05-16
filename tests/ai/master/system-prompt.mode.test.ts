@@ -57,6 +57,22 @@ describe('buildMasterSystemPrompt — mode injection', () => {
     expect(withoutText).not.toMatch(/OVERLAY: SPELLCASTING/);
   });
 
+  it('overlay absent when needsSpellcasting is undefined (back-compat)', () => {
+    const { system } = buildMasterSystemPrompt(baseInput({ mode: 'combat' }));
+    const text = system.map((b) => b.text).join('\n');
+    expect(text).not.toMatch(/OVERLAY: SPELLCASTING/);
+  });
+
+  it('mode block + overlay carry ephemeral cache_control', () => {
+    const { system } = buildMasterSystemPrompt(
+      baseInput({ mode: 'combat', needsSpellcasting: true }),
+    );
+    const modeBlock = system.find((b) => b.text.includes('MODE: COMBAT'));
+    const overlayBlock = system.find((b) => b.text.includes('OVERLAY: SPELLCASTING'));
+    expect(modeBlock?.cache_control).toEqual({ type: 'ephemeral' });
+    expect(overlayBlock?.cache_control).toEqual({ type: 'ephemeral' });
+  });
+
   it('mode block appears AFTER static blocks and BEFORE dynamic tail (cache stability)', () => {
     const { system } = buildMasterSystemPrompt(baseInput({ mode: 'combat' }));
     const texts = system.map((b) => b.text);

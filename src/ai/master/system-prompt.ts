@@ -1,5 +1,6 @@
 import type { TonalFrame, EngagementProfile } from '@/engine/types';
 import { TONAL_FRAME_GUIDANCE } from '@/engine/npc-tonal';
+import type { MasterMode } from './mode';
 import { MODE_BLOCKS, SPELLCASTING_OVERLAY_BLOCK } from './mode-blocks';
 
 /**
@@ -1358,7 +1359,7 @@ export interface MasterPromptInput {
    */
   staticBlocksAlreadyBaked?: boolean;
   /** Plan E.1: which mode block to inject. When undefined, no mode block is added (back-compat). */
-  mode?: 'combat' | 'exploration' | 'narrative';
+  mode?: MasterMode;
   /** Plan E.1: whether the active PC has spellcasting (overlay gate). */
   needsSpellcasting?: boolean;
 }
