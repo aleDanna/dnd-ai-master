@@ -95,7 +95,9 @@ describe('generateBytesDrawThings', () => {
     expect(body.prompt).toBe('a wizard');
     expect(body.width).toBe(1024);
     expect(body.height).toBe(1024);
-    expect(body.override_settings.sd_model_checkpoint).toBe('realisticVisionV60');
+    // Draw Things rejects override_settings (HTTP 422 'Unrecognized keys'),
+    // so we don't include it. Model switching happens in the app itself.
+    expect(body.override_settings).toBeUndefined();
   });
 
   it('returns api_error when API returns non-2xx', async () => {
