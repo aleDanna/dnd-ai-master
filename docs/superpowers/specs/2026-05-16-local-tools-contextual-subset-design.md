@@ -1,413 +1,269 @@
-# Local Tools — Contextual Subset (Plan A) — Design
+# Local Provider Speed & Coverage — Plan B (meta-tools local-only) + Plan C (compact prompt toggle)
 
-**Status:** Draft · **Date:** 2026-05-16 · **Author:** alessio.danna.94@gmail.com
+**Status:** Approved · **Date:** 2026-05-16 · **Author:** alessio.danna.94@gmail.com
+**Supersedes:** the earlier "Plan A" contextual subsetting draft in this same file (the rebalance was effectively a no-op on prompt size; we go for the real fix instead).
 **Builds on:** [2026-05-16-local-ai-provider-design.md](./2026-05-16-local-ai-provider-design.md)
 
-## Goal
+## Goals
 
-Local-provider master turns currently expose a flat **22-tool subset** of the
-72-tool `ALWAYS_ON` catalogue. The subset is good enough to play but is
-context-blind: every turn carries 22 tool definitions regardless of whether
-the party is in combat or exploring. We want to swap to **contextual
-subsetting**: the master sees a stable **15-tool core** every turn, plus
-~5-8 tools that are unique to the current mode (combat vs exploration).
+Two complementary optimizations targeted **only at the `local` provider**, to make a local LLM (qwen3:14b on Mac M-series with 48GB unified memory) a viable D&D master for full sessions:
 
-Effects:
+1. **Plan B — Local-only meta-tools**: collapse the 72 tools of `ALWAYS_ON` into **8 meta-tools** with sub-action discriminators, exposed ONLY when `aiProvider === 'local'`. Cloud providers (Anthropic/OpenAI/Gemini) keep the flat 72-tool list and are completely untouched. Goal: give local models access to ALL 72 game-engine features without making them choose between 72 options each turn.
 
-- **Exploration mode**: 15 core + 5 exploration-specific = **20 tools** (prompt
-  shrinks by ~10% vs today, removes irrelevant combat tools the master might
-  call by mistake)
-- **Combat mode**: 15 core + 8 combat-specific = **23 tools** (1 more tool
-  than today, but the new ones — `cast_spell`, `end_combat`,
-  `concentration_check` — are critical for combat correctness)
-- **Cloud providers**: untouched, still get the full 72-tool list
+2. **Plan C — Compact prompt toggle**: add a per-campaign Settings toggle `Use compact prompt (faster, for local LLMs)`. When ON, the master prompt swaps handbook/world-lore/SRD-context blocks for trimmed versions (~60% smaller). Default OFF on cloud providers, default ON on local (auto-set when the user picks `aiProvider='local'` the first time, but freely toggleable).
+
+Combined effect on a local turn with qwen3:14b:
+
+| Component | Today | Plan B alone | Plan B + C |
+|---|---|---|---|
+| Tool defs in prompt | ~5K tok (22 tools) | ~1.5K tok (8 meta) | ~1.5K tok |
+| Master handbook | ~5K tok | ~5K tok | ~1K tok |
+| World lore | ~3K tok | ~3K tok | ~500 tok |
+| SRD context | ~10K tok | ~10K tok | ~3K tok |
+| Memory + dynamic | ~5-10K tok | ~5-10K tok | ~5-10K tok |
+| **Total** | **~40K tok** | **~36K tok** | **~15-18K tok** |
+| **Warm turn (qwen3:14b)** | ~30-60s | ~25-50s | **~8-15s** |
+| **Available features** | 22 tools | **all 72** | **all 72** |
 
 ## Non-goals
 
-- ❌ Mode override UI in Settings — auto-detection from `state.inCombat` is
-  the only signal. Manual override deferred to a future ticket.
-- ❌ New "downtime" / "travel" modes — Plan A v1 only splits combat vs
-  exploration. Downtime/travel-specific tools (crafting, vehicles, mounts)
-  stay OFF for local providers, matching current behaviour.
-- ❌ Restoring full feature parity with cloud — local stays a curated subset.
-  This change ONLY rebalances within the 20-25 tool budget.
-- ❌ Refactoring the cloud path — `buildToolDefinitions(prefs)` without the
-  new opts still returns the full `ALWAYS_ON` list, no regression.
+- ❌ Touch cloud provider behaviour — Anthropic/OpenAI/Gemini stay on `ALWAYS_ON` 72 tools with the full prompt. Zero regression risk.
+- ❌ Refactor the game engine's tool handlers (the underlying functions stay individual — only the LLM-facing schema changes).
+- ❌ Migrate the 50+ existing game-engine tests — they keep working against the underlying tool handlers, untouched.
+- ❌ Hot-swap the prompt mode mid-session — the toggle is read at turn-build time, takes effect on next turn.
+- ❌ Add downtime / travel mode detection — covered by `meta_action` sub-actions, no per-mode subsetting needed.
 
 ## Architecture
 
-A single extension to `buildToolDefinitions`:
+### Plan B — Meta-tools (local only)
 
-```ts
-buildToolDefinitions(
-  prefs,
-  opts?: {
-    localOptimized?: boolean;
-    mode?: 'combat' | 'exploration';
-  },
-)
-```
+Eight meta-tools, each with a `subaction` discriminator + payload schema that varies per sub-action:
 
-When `localOptimized=true`, the function returns:
-
-```
-CORE_LOCAL_TOOLS  ∪  MODE_TOOLS[mode]
-```
-
-When `localOptimized=false` (or omitted), behaviour is unchanged — full
-`ALWAYS_ON` list.
-
-`mode` defaults to `'exploration'` when the caller doesn't provide one (safe
-fallback for the rare callsites that don't have session state).
-
-The turn route reads `state.inCombat` from the snapshot and passes the right
-`mode`:
-
-```ts
-const localOptimized = userPrefs.aiProvider === 'local';
-const tools = buildToolDefinitions(
-  { imageGenerationEnabled: userPrefs.imageGenerationEnabled },
-  {
-    localOptimized,
-    mode: snap.state.inCombat ? 'combat' : 'exploration',
-  },
-);
-```
-
-## Tool catalogue
-
-### CORE (15 tools, exposed every turn when localOptimized=true)
-
-```
-roll_dice
-roll_d20
-ability_check
-saving_throw
-lookup_codex
-set_current_player
-add_narrative_item
-award_xp
-apply_condition
-remove_condition
-add_item
-remove_item
-take_action
-short_rest
-long_rest
-```
-
-Rationale: these cover the must-have actions every D&D session needs
-regardless of whether the party is fighting or talking — dice, checks, basic
-narration items, rewards, conditions, inventory, rest cycles.
-
-### COMBAT-ONLY (8 tools, added when `mode='combat'`)
-
-```
-roll_initiative
-make_attack
-apply_damage
-end_turn
-end_combat
-cast_spell
-use_resource
-concentration_check
-```
-
-Rationale: tools that ONLY make sense in combat. `cast_spell` is here (not
-in core) because outside combat the master narrates spell effects without
-the formal tool. `use_resource` is the generic counterpart for limited-use
-features triggered during combat (rage charges, action surge, ki points,
-etc. — formerly each had its own tool, now folded into `use_resource` for
-local).
-
-### EXPLORATION-ONLY (5 tools, added when `mode='exploration'`)
-
-```
-set_travel_pace
-set_light_level
-set_marching_order
-forced_march
-check_vision
-```
-
-Rationale: tools that only matter outside combat — pacing, marching order,
-ambient lighting, vision checks, forced-march checks. In combat the master
-narrates these without the tool.
-
-### Permanently dropped from local exposure (vs ALWAYS_ON)
-
-Same as Plan-A-predecessor:
-- Crafting workflow (`start_crafting`, `progress_crafting`, …)
-- Downtime activities + hirelings
-- Bastions, mounts, vehicles
-- Attunement / focus equipment
-- Class-specific features (`start_rage`, `use_action_surge`,
-  `use_channel_divinity`, `grant_bardic_inspiration`, `use_lay_on_hands`)
-- Death saves + stabilize (combat handles via narrative + `apply_damage`)
-- Inspiration grant/spend
-- Meta tools (`set_tonal_frame`, `set_engagement_profile`,
-  `update_npc_beats`)
-- Multi-class progression (`level_up`, `add_class_level`)
-
-If a player needs these on a local turn, the recommended workaround is to
-flip the provider to a cloud one temporarily (Settings → AI master →
-Anthropic/OpenAI/Gemini). The campaign settings persist per-campaign so
-the cloud key isn't needed permanently.
-
-## Data flow
-
-```
-turn route
-  → resolved userPrefs.aiProvider
-  → buildSnapshot → snap.state.inCombat (boolean)
-  → buildToolDefinitions(prefs, {
-       localOptimized: aiProvider === 'local',
-       mode: snap.state.inCombat ? 'combat' : 'exploration',
-     })
-  → tool list passed to runToolLoop
-```
-
-The mode can change between turns within the same session (e.g. the master
-calls `roll_initiative` mid-exploration → next turn `inCombat=true` → 8
-combat tools become available; later `end_combat` flips it back → 5
-exploration tools come back, 8 combat tools drop).
-
-## Edge cases
-
-- **First turn of a session (`isBegin=true`)**: snapshot exists; `inCombat`
-  defaults to `false` from session bootstrap, so the master sees the
-  exploration set. Correct (the master always opens a campaign with a
-  non-combat scene).
-- **Master tries to call a tool not in the current mode**: tool loop returns
-  `error: 'unknown_tool'` as today. Master narrates around it on next round.
-  E.g. master calls `cast_spell` outside combat → error → master narrates
-  the spell effect in prose without mechanical resolution. Acceptable
-  degrade for local; cloud is unaffected.
-- **Mode toggles mid-session due to a tool call**: the NEXT turn picks up
-  the new mode. Within the current tool loop (same prompt) the model
-  doesn't see the new toolset — has to wait for the next user message.
-  No fix needed: tool loops typically end with narration and a fresh prompt
-  arrives for the next interaction anyway.
-- **Cloud provider gets `mode` arg too**: ignored (`localOptimized=false`
-  short-circuits before mode is consulted). Forward-compatible if a future
-  optimisation wants to use mode for cloud too.
-
-## File map
-
-**Modified files:**
-
-| File | Change |
+| Meta-tool | Sub-actions (count) |
 |---|---|
-| `src/engine/tools/index.ts` | Add `MODE_LOCAL_TOOLS` map + extend `buildToolDefinitions` signature + new conditional return path |
-| `src/app/api/sessions/[id]/turn/route.ts` | Pass `mode: snap.state.inCombat ? 'combat' : 'exploration'` to `buildToolDefinitions` |
+| `combat_action` | initiative, attack, damage, end_turn, end_combat, swap_target, condition_apply, condition_remove, falling, death_save, stabilize, concentration_check (14) |
+| `spell_action` | cast_spell, use_resource, focus_equip, focus_unequip, attune, unattune (6) |
+| `inventory_action` | add_item, remove_item, add_narrative_item, equip, unequip, recompute_ac (6) |
+| `character_action` | level_up, add_class_level, award_xp, grant_inspiration, spend_inspiration, use_class_feature, start_rage, end_rage, use_action_surge, use_channel_divinity, grant_bardic, use_lay_on_hands (12) |
+| `rest_action` | short_rest, long_rest (2) |
+| `narrative_action` | lookup_codex, set_current_player, take_action, ability_check, saving_throw, roll_dice, roll_d20, update_npc_beats (8) |
+| `environment_action` | set_travel_pace, set_light_level, set_marching_order, set_senses, check_vision, forced_march, apply_starvation, apply_dehydration, apply_suffocation (9) |
+| `meta_action` | set_tonal_frame, set_engagement_profile, start_crafting, progress_crafting, complete_crafting, cancel_crafting, start_downtime, complete_downtime, hire, dismiss_hireling, set_bastion, add_bastion_room, mount, dismount, set_mount_mode, embark_vehicle, disembark_vehicle (17) |
 
-**New files:** none.
+Tot sub-actions: 74 (slight overlap allowed). Coverage of all 72 original `ALWAYS_ON` tools.
 
-**Test files modified:**
+**Schema strategy**: each meta-tool exposes a discriminated union via JSON schema `oneOf`:
 
-| File | Change |
-|---|---|
-| `tests/engine/tools/build-tool-definitions.test.ts` (new or extend existing) | Cover: (1) localOptimized=false returns 72; (2) localOptimized=true, mode='exploration' returns CORE+EXPLORATION (20); (3) localOptimized=true, mode='combat' returns CORE+COMBAT (23); (4) localOptimized=true, no mode returns CORE+EXPLORATION (default); (5) all returned tool names exist in ALWAYS_ON (typo guard) |
-
-## Implementation plan
-
-### Step 1 — Define the tool sets in `src/engine/tools/index.ts`
-
-Replace the current `LOCAL_ESSENTIAL_TOOL_NAMES: Set<string>` constant with
-three sets:
-
-```ts
-const CORE_LOCAL_TOOL_NAMES = new Set<string>([
-  'roll_dice', 'roll_d20', 'ability_check', 'saving_throw',
-  'lookup_codex', 'set_current_player', 'add_narrative_item', 'award_xp',
-  'apply_condition', 'remove_condition',
-  'add_item', 'remove_item',
-  'take_action',
-  'short_rest', 'long_rest',
-]);
-
-const COMBAT_LOCAL_TOOL_NAMES = new Set<string>([
-  'roll_initiative', 'make_attack', 'apply_damage',
-  'end_turn', 'end_combat',
-  'cast_spell', 'use_resource', 'concentration_check',
-]);
-
-const EXPLORATION_LOCAL_TOOL_NAMES = new Set<string>([
-  'set_travel_pace', 'set_light_level', 'set_marching_order',
-  'forced_march', 'check_vision',
-]);
-```
-
-Extend the function signature:
-
-```ts
-export function buildToolDefinitions(
-  _prefs: Pick<UserPreferences, 'imageGenerationEnabled'>,
-  opts?: { localOptimized?: boolean; mode?: 'combat' | 'exploration' },
-): AnthropicTool[] {
-  if (!opts?.localOptimized) return ALWAYS_ON;
-  const mode = opts.mode ?? 'exploration';
-  const allowed = new Set<string>([
-    ...CORE_LOCAL_TOOL_NAMES,
-    ...(mode === 'combat' ? COMBAT_LOCAL_TOOL_NAMES : EXPLORATION_LOCAL_TOOL_NAMES),
-  ]);
-  return ALWAYS_ON.filter((t) => allowed.has(t.name));
+```json
+{
+  "name": "combat_action",
+  "description": "Combat-related actions. Pick the sub-action and provide its payload.",
+  "input_schema": {
+    "type": "object",
+    "required": ["subaction"],
+    "properties": {
+      "subaction": {
+        "type": "string",
+        "enum": ["initiative", "attack", "damage", "end_turn", ...]
+      }
+    },
+    "additionalProperties": true
+  }
 }
 ```
 
-### Step 2 — Wire the route
+Note: we use `additionalProperties: true` instead of `oneOf` because (a) qwen3 and other local models handle flat schemas with discriminator + free additionalProps better than oneOf-of-schemas, and (b) we validate at runtime in the dispatcher.
 
-In `src/app/api/sessions/[id]/turn/route.ts`, replace:
+**Dispatcher**: a new `src/engine/tools/meta-dispatcher.ts` reads `name === 'combat_action'`, picks `subaction` from `input`, validates the remaining input against the underlying tool's schema, and forwards to the existing tool handler unchanged. Output is unchanged.
 
-```ts
-const localOptimized = userPrefs.aiProvider === 'local';
-const tools = buildToolDefinitions(
-  { imageGenerationEnabled: userPrefs.imageGenerationEnabled },
-  { localOptimized },
-);
+**Where it plugs in**:
+
+- `buildToolDefinitions(prefs, { localOptimized })` returns the 8 META tools when `localOptimized=true`, the 72 flat tools otherwise. (No `mode` arg — replaced by sub-actions.)
+- `runToolLoop` doesn't need changes — it still calls `applyMutations(toolName, toolInput)` against the engine. The applicator gets a meta-dispatcher wrapper that recognises meta names and rewrites them into the underlying call.
+
+### Plan C — Compact prompt toggle
+
+Add `compactPrompt?: boolean` to `CampaignSettings` (and `UserPreferences` for symmetry, though only campaign-scoped matters for the master).
+
+When `true`:
+- Master handbook → use `MASTER_HANDBOOK_COMPACT` (1K tok instead of 5K)
+- World lore → use `MASTER_WORLD_LORE_COMPACT` (500 tok instead of 3K)
+- SRD context → `buildSrdContext({ compact: true })` (3K tok instead of 10K — keeps combat + spell rules core, drops detailed sub-rules)
+
+When `false` (default for cloud): unchanged.
+
+**Defaults**:
+- `compactPrompt: undefined` by default
+- `getCampaignSettings()` resolves: if undefined, default to `aiProvider === 'local'` (i.e. local turns ON by default, cloud turns OFF).
+- Explicit `true`/`false` always honoured.
+
+**Settings UI**: a new section "Local optimization" in the campaign Settings page (visible only when `aiProvider === 'local'` to avoid clutter for cloud users), with a single toggle `Use compact prompt (faster, simpler narration)`. Default state mirrors the resolved value.
+
+## File map
+
+### New files
+
+```
+src/engine/tools/meta-tools.ts          — META_TOOL_DEFINITIONS + sub-action enum maps
+src/engine/tools/meta-dispatcher.ts     — Routes meta tool calls to the underlying tool handlers
+src/ai/master/system-prompt-compact.ts  — MASTER_HANDBOOK_COMPACT + MASTER_WORLD_LORE_COMPACT constants
+src/srd/context-compact.ts              — buildSrdContextCompact() (or extend buildSrdContext with compact option)
+
+tests/engine/tools/meta-dispatcher.test.ts
+tests/engine/tools/meta-tools-coverage.test.ts (every ALWAYS_ON tool name appears in exactly one meta sub-action)
+tests/ai/master/system-prompt-compact.test.ts
 ```
 
-With:
+### Modified files
 
-```ts
-const localOptimized = userPrefs.aiProvider === 'local';
-const tools = buildToolDefinitions(
-  { imageGenerationEnabled: userPrefs.imageGenerationEnabled },
-  {
-    localOptimized,
-    mode: snap.state.inCombat ? 'combat' : 'exploration',
-  },
-);
-```
+| File | Change |
+|---|---|
+| `src/engine/tools/index.ts` | `buildToolDefinitions` returns `META_TOOL_DEFINITIONS` when `localOptimized=true`; export both |
+| `src/ai/master/tool-loop.ts` | When the master returns a meta-tool call, pre-process via meta-dispatcher BEFORE applying mutations |
+| `src/sessions/applicator.ts` | Hook the dispatcher at the top of `applyMutations` so the rest of the file sees the original tool name |
+| `src/ai/master/system-prompt.ts` | Accept `compactPrompt: boolean`; swap handbook/lore/srd blocks for compact versions when true; instruct the model on meta-tool usage when local (sub-section in MASTER_TOOL_CONTRACT) |
+| `src/db/schema/campaigns.ts` | Add `compactPrompt?: boolean` to `CampaignSettings` |
+| `src/db/schema/users.ts` | Add `compactPrompt?: boolean` to `UserPreferences` (symmetry, defensive) |
+| `src/lib/preferences.ts` | Resolve `compactPrompt` (default-from-provider rule); validate in `validateSettingsPatch` |
+| `src/app/api/campaigns/[id]/settings/route.ts` | Add `compactPrompt` to ALLOWED_KEYS |
+| `src/app/(authed)/campaigns/[id]/settings/settings-client.tsx` | New "Local optimization" card with toggle, visible when `aiProvider==='local'` |
+| `src/app/api/sessions/[id]/turn/route.ts` | Pass `compactPrompt: userPrefs.compactPrompt` to `buildMasterSystemPrompt` |
 
-Update the existing `[turn]` debug log line to include the mode:
+### Files NOT touched
 
-```ts
-console.log('[turn]', sessionId, 'provider resolved:', provider.name,
-  'calling runToolLoop with model=', userPrefs.aiMasterModel,
-  'tools=', tools.length, 'localOptimized=', localOptimized,
-  'mode=', snap.state.inCombat ? 'combat' : 'exploration');
-```
+- Cloud provider implementations (`anthropic.ts`, `openai.ts`, `gemini.ts`) — completely unchanged
+- Local provider (`local.ts`, `ollama-adapter.ts`) — completely unchanged
+- 70+ existing game-engine tool handler unit tests — they test the underlying handlers, unaffected by the meta-dispatch
+- Cloud provider live-smoke tests — should still pass, no behavior change
 
-### Step 3 — Tests
+## Implementation plan
 
-Create `tests/engine/tools/local-subsetting.test.ts`:
+The two plans are independent. Plan B is the more risky/cross-cutting one, so we ship it first behind a feature gate (`localOptimized=true` already gates it). Plan C is additive and depends on nothing from Plan B.
 
-```ts
-import { describe, it, expect } from 'vitest';
-import { buildToolDefinitions, TOOL_DEFINITIONS } from '@/engine/tools';
+### Phase 1 — Plan B (Local-only meta-tools)
 
-describe('buildToolDefinitions — contextual subsetting', () => {
-  it('returns the full ALWAYS_ON list when localOptimized is false (or omitted)', () => {
-    expect(buildToolDefinitions({ imageGenerationEnabled: false })).toEqual(TOOL_DEFINITIONS);
-    expect(buildToolDefinitions({ imageGenerationEnabled: false }, { localOptimized: false })).toEqual(TOOL_DEFINITIONS);
-  });
+**Task 1**: Define `META_TOOL_DEFINITIONS` in `src/engine/tools/meta-tools.ts`
 
-  it('returns CORE + EXPLORATION tools when localOptimized + mode="exploration"', () => {
-    const r = buildToolDefinitions(
-      { imageGenerationEnabled: false },
-      { localOptimized: true, mode: 'exploration' },
-    );
-    const names = r.map((t) => t.name).sort();
-    expect(names).toContain('roll_dice');           // core
-    expect(names).toContain('set_travel_pace');     // exploration
-    expect(names).not.toContain('make_attack');     // combat-only
-    expect(names).not.toContain('cast_spell');      // combat-only
-    expect(names).not.toContain('start_crafting');  // not in local subset
-    expect(r.length).toBeGreaterThanOrEqual(18);
-    expect(r.length).toBeLessThanOrEqual(22);
-  });
+- Export an array of 8 AnthropicTool objects
+- Each carries `name`, `description`, and `input_schema` with `subaction` enum + permissive additionalProperties
+- Description is verbose: lists every sub-action with a 1-line meaning + key input fields
+- Tests: schema is valid JSON Schema; enum lists match the underlying tool names
 
-  it('returns CORE + COMBAT tools when localOptimized + mode="combat"', () => {
-    const r = buildToolDefinitions(
-      { imageGenerationEnabled: false },
-      { localOptimized: true, mode: 'combat' },
-    );
-    const names = r.map((t) => t.name).sort();
-    expect(names).toContain('roll_dice');           // core
-    expect(names).toContain('make_attack');         // combat
-    expect(names).toContain('cast_spell');          // combat
-    expect(names).toContain('concentration_check'); // combat
-    expect(names).not.toContain('set_travel_pace'); // exploration-only
-    expect(names).not.toContain('start_crafting');  // not in local subset
-    expect(r.length).toBeGreaterThanOrEqual(20);
-    expect(r.length).toBeLessThanOrEqual(25);
-  });
+**Task 2**: Build the meta-dispatcher (`src/engine/tools/meta-dispatcher.ts`)
 
-  it('defaults to exploration when localOptimized=true but mode is omitted', () => {
-    const r = buildToolDefinitions(
-      { imageGenerationEnabled: false },
-      { localOptimized: true },
-    );
-    expect(r.map((t) => t.name)).toContain('set_travel_pace');
-    expect(r.map((t) => t.name)).not.toContain('make_attack');
-  });
+- Single exported function `dispatchMetaCall(name, input)` returning `{ resolvedName, resolvedInput }`
+- If `name` is one of the 8 metas: extracts `subaction`, looks up the underlying tool, validates the rest of `input` against the underlying tool's schema (reusing the existing handler validation that already runs in applicator), returns the resolved name + input
+- If `name` is a plain tool (cloud path): returns name+input unchanged
+- Throws `Error('unknown_subaction')` if the discriminator doesn't match any sub-action of that meta
+- Tests: round-trip each underlying tool name through dispatch, validate error paths
 
-  it('every name in the subsets exists in ALWAYS_ON (typo guard)', () => {
-    const allNames = new Set(TOOL_DEFINITIONS.map((t) => t.name));
-    const subsets = buildToolDefinitions({ imageGenerationEnabled: false }, { localOptimized: true, mode: 'combat' })
-      .concat(buildToolDefinitions({ imageGenerationEnabled: false }, { localOptimized: true, mode: 'exploration' }));
-    for (const t of subsets) {
-      expect(allNames.has(t.name)).toBe(true);
-    }
-  });
-});
-```
+**Task 3**: Wire dispatch into `src/sessions/applicator.ts`
 
-### Step 4 — Manual smoke test
+- At the top of `applyMutations`, run each mutation's `name`/`input` through `dispatchMetaCall`
+- Keep the original `mutationName` for telemetry/logs; the rewritten name drives the handler lookup
+- Tests: existing applicator tests still pass; new test: applicator with `{ name: 'combat_action', input: { subaction: 'attack', ... } }` produces the same effect as `{ name: 'make_attack', input: { ... } }`
 
-1. `pnpm dev` from a fresh worktree (or main, since local-ai already merged)
-2. Create a campaign with `aiProvider=local`, `aiMasterModel=qwen3:14b` (or
-   whatever local model is fast enough)
-3. Start a turn outside combat → check `[turn]` log shows `tools=20
-   mode=exploration`
-4. Have the master call `roll_initiative` (or directly send "attack the
-   goblin") → state.inCombat becomes true
-5. Next turn → check `[turn]` log shows `tools=23 mode=combat`
-6. End combat → next turn back to `tools=20 mode=exploration`
+**Task 4**: Switch `buildToolDefinitions` to return META when `localOptimized=true`
 
-### Step 5 — Commit
+- Replace the current `LOCAL_ESSENTIAL_TOOL_NAMES` subset with `META_TOOL_DEFINITIONS`
+- Cloud path (no `localOptimized`) keeps `ALWAYS_ON`
+- Tests: `buildToolDefinitions({...}, { localOptimized: true })` returns 8 meta tools; `localOptimized: false` returns 72 flat
 
-```bash
-git add src/engine/tools/index.ts src/app/api/sessions/[id]/turn/route.ts \
-  tests/engine/tools/local-subsetting.test.ts
-git commit -m "perf(local-ai): contextual tool subsetting (combat vs exploration)
+**Task 5**: Update master prompt for local meta-tool usage
 
-Replaces the flat 22-tool local subset with a 15-tool core plus 5-8
-mode-specific tools (combat / exploration). The route picks the mode
-from snap.state.inCombat each turn. Cloud providers still get the
-full ALWAYS_ON list (no opts.localOptimized).
+- In `MASTER_TOOL_CONTRACT`, add a new sub-section "When running on a local model" explaining that the master sees 8 meta-tools and must pick a sub-action; show 1-2 examples
+- Only emit this block when `compactPrompt=true` (proxy for "local mode") or when explicitly told via a new `usesMetaTools: boolean` flag on `buildMasterSystemPrompt`
+- Tests: prompt includes the meta block iff the flag is set
 
-Effects on local provider turns:
-  - Exploration: 20 tools (was 22) — drops cast_spell, end_combat,
-    etc. that the master would never call outside combat anyway.
-  - Combat: 23 tools (was 22) — adds cast_spell, end_combat,
-    concentration_check which were missing.
+**Task 6**: Manual smoke test (Plan B)
 
-Net win: prompt slightly leaner overall, and the master can now
-properly handle combat-specific actions when it matters."
-```
+- Local + qwen3:14b: turn with player attacking a goblin → master should call `combat_action({ subaction: 'attack', ... })` → dispatcher rewrites → engine applies → narration appears
+- Check `[ollama-start]` log shows `tools=8` for local
+
+### Phase 2 — Plan C (Compact prompt toggle)
+
+**Task 7**: Add `compactPrompt` to the schemas + preferences resolution
+
+- `CampaignSettings.compactPrompt?: boolean`
+- `UserPreferences.compactPrompt?: boolean`
+- Defaults: in `getCampaignSettings`, if `compactPrompt === undefined`, default to `aiProvider === 'local'` (i.e. on for local, off for cloud)
+- Validation in `validateSettingsPatch`: typeof boolean check
+
+**Task 8**: Create `src/ai/master/system-prompt-compact.ts`
+
+- Export `MASTER_HANDBOOK_COMPACT` (~1K tok) — distilled from the existing handbook, keeping core rules and dropping verbose examples, edge cases, and stylistic guidance details
+- Export `MASTER_WORLD_LORE_COMPACT` (~500 tok) — narrative anchors only
+- These are NEW handcrafted constants — not auto-summarised. Write them once, review, ship.
+
+**Task 9**: Add `buildSrdContextCompact` (or extend `buildSrdContext` with `compact: true`)
+
+- Compact version omits: spell descriptions for spells not in the party, monster stats not on screen, equipment subtypes
+- Keeps: combat rules core, condition definitions, ability/skill rules, basic spellcasting flow
+
+**Task 10**: Wire `compactPrompt` into `buildMasterSystemPrompt`
+
+- Add `compactPrompt?: boolean` to `MasterPromptInput`
+- When true: swap `input.handbook` → `MASTER_HANDBOOK_COMPACT`, `input.worldLore` → `MASTER_WORLD_LORE_COMPACT`, `input.srdContext` → compact version
+- Default false (so cloud is unchanged)
+
+**Task 11**: Wire from turn route
+
+- Read `userPrefs.compactPrompt` (resolved via `getCampaignSettings`)
+- Pass to `buildMasterSystemPrompt({ ..., compactPrompt: userPrefs.compactPrompt })`
+
+**Task 12**: Settings UI — "Local optimization" card
+
+- New card in `settings-client.tsx`, rendered only when `settings.aiProvider === 'local'`
+- Single toggle: `Use compact prompt (faster, simpler narration)`
+- Default state: mirror the resolved value (from props)
+- Save handler: PUT `compactPrompt: boolean`
+
+**Task 13**: Tests for Plan C
+
+- Schema/validation: PUT compactPrompt accepted; getCampaignSettings resolution rule (default-from-provider)
+- buildMasterSystemPrompt with compactPrompt=true swaps blocks correctly
+- UI toggle round-trips state
+
+**Task 14**: Manual smoke test (Plan C)
+
+- Local + qwen3:14b + compactPrompt=true: check `[ollama-start]` log shows `sys[len=...]` ~60% smaller than before
+- Turn time drops to ~8-15s warm
+- Switch toggle off → next turn prompt is full size
+
+### Phase 3 — Final integration check
+
+**Task 15**: Live smoke against cloud providers (regression check)
+
+- Anthropic with claude-sonnet-4-5: trigger a few turns, verify nothing changed
+- OpenAI with gpt-5: same
+- Gemini with gemini-2.5-pro: same
+- All three should be byte-for-byte identical responses vs pre-refactor (they don't see meta-tools, don't see compact prompt by default)
 
 ## Estimated effort
 
-- Step 1 (code): 15 min
-- Step 2 (route wire): 5 min
-- Step 3 (tests): 20 min
-- Step 4 (manual smoke): 10 min
-- Step 5 (commit): 2 min
+- Phase 1 (Plan B): **1 day**
+  - Tasks 1-2 (meta defs + dispatcher): 3h
+  - Task 3 (applicator wire): 1h
+  - Task 4 (buildToolDefinitions switch): 30min
+  - Task 5 (prompt update): 1h
+  - Task 6 (smoke): 30min
+  - Tests: integrated in each task
 
-**Total: ~1 hour** for a fully tested, committed feature.
+- Phase 2 (Plan C): **1 day**
+  - Task 7 (schemas + prefs): 2h
+  - Task 8 (compact handbook + lore): 3h (writing distilled prompts is the bulk)
+  - Task 9 (compact SRD): 2h
+  - Task 10-11 (wire): 1h
+  - Task 12 (UI): 1h
+  - Task 13-14 (tests + smoke): 1h
 
-## Open questions / future work
+- Phase 3: **2-3 hours**
 
-- **Downtime mode**: when `narrative_set_mode('downtime')` or equivalent
-  exists, surface a third subset with `start_crafting`, `complete_crafting`,
-  `start_downtime_activity`, etc. Out of scope here.
-- **Travel mode**: same idea for mounts, vehicles, party logistics. Out of
-  scope.
-- **Mode override UI in Settings**: "Force tool set: auto / combat /
-  exploration / all" toggle. Useful for debugging master behaviour but
-  niche. Defer.
-- **Token-budget-driven trimming**: dynamically count tool-definition
-  tokens and drop the least-used ones once over a threshold. Smarter but
-  more complex; current static partition is good enough.
+**Total: ~2 days of focused work.**
+
+## Open questions / risks
+
+- **Meta-tool schema discoverability for local LLMs**: qwen3 / gpt-oss may struggle to navigate a single `combat_action` schema with 14 sub-actions and varying payloads. Mitigation: the `description` of each meta-tool lists every sub-action with a one-liner; live smoke (Task 6) is the empirical check.
+- **Compact prompt may degrade narration quality**: cutting handbook examples means the master has less "voice" guidance. Acceptable trade-off explicit to the user (toggle is labelled "simpler narration"). Cloud is unaffected because default is off.
+- **Default-from-provider rule may surprise users**: if a user creates a cloud campaign, then switches to local, `compactPrompt` is still `undefined` → resolved to `true` for the new local provider. Reasonable default, but worth documenting in the Settings tooltip.
+- **Test coverage on the dispatcher**: needs at least one round-trip test per underlying tool name to catch typos in the sub-action enum. Auto-generated test from the ALWAYS_ON list keeps it maintenance-free.
