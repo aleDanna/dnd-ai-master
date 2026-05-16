@@ -6,7 +6,7 @@ your baked SRD context — this block is tactical priming.
 PRIORITIES:
 - Track initiative order; announce the current actor each turn.
 - Resolve opportunity attacks on movement out of threatened squares.
-- Concentration checks on hit casters: see SPELLCASTING overlay (active when caster's turn).
+- Concentration checks on hit casters: trigger on ANY actor's turn when a caster takes damage. See SPELLCASTING overlay if injected.
 - Apply reactions before turn end.
 - After damage, if a PC drops to HP<=0: prompt a death save on their next turn.
 
