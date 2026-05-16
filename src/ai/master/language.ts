@@ -1,5 +1,4 @@
-import { getMasterProvider, getProviderByName, isCloudProvider } from '@/ai/provider';
-import type { ProviderName as AiModelsProviderName } from '@/lib/ai-models';
+import { getMasterProvider, getProviderByName, type ProviderName } from '@/ai/provider';
 
 export interface DetectInput {
   text: string;
@@ -8,7 +7,7 @@ export interface DetectInput {
   userId?: string;
   sessionId?: string;
   /** Optional provider override (per-user). When unset, falls back to MASTER_PROVIDER env. */
-  provider?: AiModelsProviderName;
+  provider?: ProviderName;
 }
 
 export async function detectLanguage(input: DetectInput): Promise<string | null> {
@@ -19,10 +18,6 @@ export async function detectLanguage(input: DetectInput): Promise<string | null>
     } catch {
       return null;
     }
-  }
-  // Local providers are not supported at this layer; should be caught at route level
-  if (input.provider && !isCloudProvider(input.provider)) {
-    throw new Error(`detectLanguage does not support provider: ${input.provider}`);
   }
   const provider = input.provider ? getProviderByName(input.provider) : getMasterProvider();
   return provider.detectLanguage({

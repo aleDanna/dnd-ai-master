@@ -1,7 +1,6 @@
 import { WIZARD_SYSTEM_PROMPT } from './system-prompt';
 import { PROPOSE_CHOICE_TOOL } from './tools';
-import { getMasterProvider, getProviderByName, isCloudProvider } from '@/ai/provider';
-import type { ProviderName as AiModelsProviderName } from '@/lib/ai-models';
+import { getMasterProvider, getProviderByName, type ProviderName } from '@/ai/provider';
 
 export interface ProposeInput {
   step: 'race' | 'class' | 'background' | 'abilities' | 'skills' | 'equipment' | 'identity';
@@ -11,7 +10,7 @@ export interface ProposeInput {
   userId?: string;
   sessionId?: string;
   /** Optional per-user override. When unset, falls back to MASTER_PROVIDER env. */
-  provider?: AiModelsProviderName;
+  provider?: ProviderName;
   /** Optional per-user model override. When unset, provider falls back to env. */
   model?: string;
 }
@@ -34,10 +33,6 @@ export async function proposeOne(input: ProposeInput): Promise<Proposal> {
     input.userPrompt,
   ].join('\n');
 
-  // Local providers are not supported for wizard proposals
-  if (input.provider && !isCloudProvider(input.provider)) {
-    throw new Error(`proposeOne does not support provider: ${input.provider}`);
-  }
   const provider = input.provider ? getProviderByName(input.provider) : getMasterProvider();
   const out = await provider.proposeWizard({
     systemPrompt: WIZARD_SYSTEM_PROMPT,

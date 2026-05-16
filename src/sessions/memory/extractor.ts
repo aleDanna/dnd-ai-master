@@ -16,9 +16,8 @@ import {
   formatMessagesForExtractor,
 } from './prompt';
 import type { CodexUpsert, ExtractorMode, MemoryPatch } from './types';
-import { getMasterProvider, getProviderByName, isCloudProvider } from '@/ai/provider';
+import { getMasterProvider, getProviderByName, type ProviderName } from '@/ai/provider';
 import type { MasterProvider } from '@/ai/provider/types';
-import type { ProviderName as AiModelsProviderName } from '@/lib/ai-models';
 
 const CHAPTER_SIZE = 40;
 
@@ -28,11 +27,8 @@ export function __setExtractorProviderForTest(p: MasterProvider | null): void {
   _override = p;
 }
 
-function provider(name?: AiModelsProviderName): MasterProvider {
+function provider(name?: ProviderName): MasterProvider {
   if (_override) return _override;
-  if (name && !isCloudProvider(name)) {
-    throw new Error(`rebuildMemoryStream does not support provider: ${name}`);
-  }
   return name ? getProviderByName(name) : getMasterProvider();
 }
 
@@ -227,7 +223,7 @@ function parseModelOutput(text: string): RawPatch | null {
  * will see `tryLock` fail and skip — desired behavior. */
 export async function* rebuildMemoryStream(
   sessionId: string,
-  providerName?: AiModelsProviderName,
+  providerName?: ProviderName,
 ): AsyncGenerator<{ event: 'chapter_done' | 'complete' | 'error'; data: unknown }, void, unknown> {
   const holder = await tryAcquireMemoryLock(sessionId);
   if (!holder) {
@@ -263,7 +259,7 @@ export async function* rebuildMemoryStream(
  * extractor falls back to the env-level MASTER_PROVIDER, which on this
  * deployment defaults to Anthropic and surfaces as "ANTHROPIC_API_KEY not set"
  * for users on OpenAI/Gemini. The turn route passes it through. */
-export async function extractMemory(sessionId: string, providerName?: AiModelsProviderName): Promise<void> {
+export async function extractMemory(sessionId: string, providerName?: ProviderName): Promise<void> {
   const holder = await tryAcquireMemoryLock(sessionId);
   if (!holder) return;
   try {
@@ -273,7 +269,7 @@ export async function extractMemory(sessionId: string, providerName?: AiModelsPr
   }
 }
 
-async function runExtraction(sessionId: string, providerName?: AiModelsProviderName): Promise<void> {
+async function runExtraction(sessionId: string, providerName?: ProviderName): Promise<void> {
   const ctx = await buildContext(sessionId);
   if (!ctx) return;
 
