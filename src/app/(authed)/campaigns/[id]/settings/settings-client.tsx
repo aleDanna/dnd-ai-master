@@ -32,6 +32,11 @@ export interface CampaignSettingsClientProps {
   canEdit: boolean;
   activeSessionId: string | null;
   localServices: LocalServicesStatus;
+  /** When set, the page renders a first-run banner + "Start campaign" CTA
+   *  that navigates to /sessions/{firstRunSessionId}. Used by the
+   *  /campaigns/new wizard which detours through here so the player can
+   *  tune provider/model before the first turn. */
+  firstRunSessionId?: string | null;
 }
 
 const TTS_MODEL_BLURBS: Record<string, string> = {
@@ -48,7 +53,7 @@ const TTS_PROVIDER_LABELS: Record<TtsProvider, string> = {
   local: 'Local',
 };
 
-export function CampaignSettingsClient({ campaignId, initialSettings, canEdit, activeSessionId, localServices }: CampaignSettingsClientProps) {
+export function CampaignSettingsClient({ campaignId, initialSettings, canEdit, activeSessionId, localServices, firstRunSessionId }: CampaignSettingsClientProps) {
   const [settings, setSettings] = React.useState<Required<CampaignSettings>>(initialSettings);
   const [busy, setBusy] = React.useState(false);
   const [savedOnce, setSavedOnce] = React.useState(false);
@@ -232,15 +237,35 @@ export function CampaignSettingsClient({ campaignId, initialSettings, canEdit, a
     <div style={{ maxWidth: 760, margin: '0 auto', padding: '40px 32px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 36, fontWeight: 600 }}>Campaign settings</h1>
+          <h1 style={{ fontSize: 36, fontWeight: 600 }}>
+            {firstRunSessionId ? 'Tune your campaign' : 'Campaign settings'}
+          </h1>
           <p style={{ marginTop: 6, color: 'var(--fg-muted)', fontFamily: 'var(--font-display)', fontStyle: 'italic' }}>
-            Tune the Master&apos;s voice and how it behaves at this campaign&apos;s table.
+            {firstRunSessionId
+              ? 'Pick provider, model, voice and style before the first turn — you can change them any time.'
+              : 'Tune the Master’s voice and how it behaves at this campaign’s table.'}
           </p>
         </div>
-        <Link href={`/campaigns/${campaignId}`}>
-          <Button variant="ghost" size="md" icon="arrow-left">Back to campaign</Button>
-        </Link>
+        {!firstRunSessionId && (
+          <Link href={`/campaigns/${campaignId}`}>
+            <Button variant="ghost" size="md" icon="arrow-left">Back to campaign</Button>
+          </Link>
+        )}
       </div>
+
+      {firstRunSessionId && (
+        <>
+          <Card>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Icon name="sparkle" size={16} />
+              <p style={{ margin: 0, fontSize: 13, color: 'var(--fg)' }}>
+                Welcome! Settings autosave as you change them. When you&apos;re ready, hit <strong>Start campaign</strong> at the bottom.
+              </p>
+            </div>
+          </Card>
+          <div style={{ height: 16 }} />
+        </>
+      )}
 
       {!canEdit && (
         <>
@@ -689,6 +714,17 @@ export function CampaignSettingsClient({ campaignId, initialSettings, canEdit, a
           : busy ? <span>Saving…</span>
           : savedOnce ? <span>Saved.</span> : null}
       </div>
+
+      {firstRunSessionId && (
+        <div style={{ marginTop: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+          <Link href={`/campaigns/${campaignId}`}>
+            <Button variant="ghost" size="md">Cancel</Button>
+          </Link>
+          <Link href={`/sessions/${firstRunSessionId}`}>
+            <Button variant="primary" size="lg" icon="sparkle">Start campaign</Button>
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

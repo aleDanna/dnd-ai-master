@@ -8,11 +8,18 @@ import { CampaignSettingsClient } from './settings-client';
 
 export const dynamic = 'force-dynamic';
 
-export default async function CampaignSettingsPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function CampaignSettingsPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ first?: string; session?: string }>;
+}) {
   const { userId } = await auth();
   if (!userId) redirect('/sign-in');
   await ensureUser(userId);
   const { id } = await params;
+  const { first, session } = await searchParams;
 
   const data = await getCampaign(userId, id);
   if (!data) notFound();
@@ -23,6 +30,10 @@ export default async function CampaignSettingsPage({ params }: { params: Promise
   ]);
   const canEdit = data.campaign.userId === userId;
   const activeSessionId = data.activeSession?.id ?? null;
+  // First-run detour from /campaigns/new — show CTA banner + Start button.
+  // Honour `?session=...` if present (newly-created session); else fall back
+  // to the active session for the campaign (also covers refresh-with-?first=1).
+  const firstRunSessionId = first === '1' ? (session ?? activeSessionId) : null;
 
   return (
     <CampaignSettingsClient
@@ -31,6 +42,7 @@ export default async function CampaignSettingsPage({ params }: { params: Promise
       canEdit={canEdit}
       activeSessionId={activeSessionId}
       localServices={localServices}
+      firstRunSessionId={firstRunSessionId}
     />
   );
 }
