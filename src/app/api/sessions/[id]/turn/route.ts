@@ -395,7 +395,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             (e) => console.warn('notifySession(message) failed:', e instanceof Error ? e.message : String(e)),
           );
           waitUntil(
-            extractMemory(sessionId, userPrefs.aiProvider).catch((e) => {
+            // Pass the master model as fallback — local users (Ollama) don't
+            // have MEMORY_EXTRACTOR_MODEL set, so without this we'd hit
+            // `400: model is required` on every turn.
+            extractMemory(sessionId, userPrefs.aiProvider, userPrefs.aiMasterModel).catch((e) => {
               console.error('memory.extract.fire_and_forget', e instanceof Error ? e.message : String(e));
             }),
           );
