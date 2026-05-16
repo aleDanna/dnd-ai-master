@@ -662,14 +662,20 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
                 30 KB lighter. Small local models (qwen3:14b, gpt-oss:20b) answer noticeably faster but narration is simpler.
                 Default ON for local, OFF for cloud.
               </p>
+              {settings.aiMasterModel.startsWith('dnd-master-') && (
+                <p style={{ marginTop: 4, fontSize: 12, color: 'var(--fg-subtle)', fontStyle: 'italic' }}>
+                  Has no effect when using an optimized (<code>dnd-master-*</code>) model — the full handbook is baked into the model weights, so compact vs full is identical at runtime.
+                </p>
+              )}
             </div>
-            <button onClick={onCompactPromptToggle} disabled={disabled} aria-pressed={settings.compactPrompt}
+            <button onClick={onCompactPromptToggle} disabled={disabled || settings.aiMasterModel.startsWith('dnd-master-')} aria-pressed={settings.compactPrompt}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 10, height: 36, padding: '0 14px',
                 background: settings.compactPrompt ? 'var(--arcane)' : 'transparent',
                 border: '1px solid ' + (settings.compactPrompt ? 'var(--arcane)' : 'var(--border-strong)'),
                 borderRadius: 999, color: settings.compactPrompt ? 'var(--bone)' : 'var(--fg-muted)',
                 fontFamily: 'var(--font-ui)', fontSize: 13, fontWeight: 600,
-                cursor: disabled ? 'not-allowed' : 'pointer', opacity: !canEdit ? 0.7 : 1 }}>
+                cursor: (disabled || settings.aiMasterModel.startsWith('dnd-master-')) ? 'not-allowed' : 'pointer',
+                opacity: (!canEdit || settings.aiMasterModel.startsWith('dnd-master-')) ? 0.5 : 1 }}>
               <Icon name="sparkle" size={14} />
               {settings.compactPrompt ? 'Compact prompt on' : 'Compact prompt off'}
             </button>
