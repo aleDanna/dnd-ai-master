@@ -57,6 +57,13 @@ export interface ModelOption {
    * variants quickly. Optional — only meaningful for local LLM lists.
    */
   kind?: 'baked' | 'raw';
+  /**
+   * Surface a known limitation of this model (e.g. small 3B llamas
+   * routinely lose the character snapshot in multi-block prompts).
+   * When set, the Settings UI prefixes the option with ⚠ and renders
+   * a helper line beneath the select. Free-form short string.
+   */
+  warning?: string;
 }
 
 /** Aggregate status passed from the settings server loader to the client. */
@@ -206,7 +213,14 @@ export async function fetchOllamaModels(): Promise<ModelOption[]> {
         : [m.details?.parameter_size, m.details?.quantization_level]
             .filter(Boolean)
             .join(' · ') || 'local';
-      return { slug: m.name, label, blurb, kind: baked ? 'baked' : 'raw' };
+      // Known small-model limitation: llama3.2:3b (and its baked variant)
+      // drops the character snapshot when the prompt has many blocks.
+      // Surface this in the UI so users picking a model see the caveat.
+      const effectiveSlug = baseSlug ?? m.name;
+      const warning = /llama3\.2.*3b/i.test(effectiveSlug)
+        ? 'small model — may lose character context on long prompts; prefer qwen3:4b'
+        : undefined;
+      return { slug: m.name, label, blurb, kind: baked ? 'baked' : 'raw', warning };
     });
   } catch {
     return [];

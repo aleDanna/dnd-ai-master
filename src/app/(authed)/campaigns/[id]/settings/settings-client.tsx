@@ -383,17 +383,23 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
                   <>
                     {baked.length > 0 && (
                       <optgroup label="Optimized (built locally)">
-                        {baked.map((m) => (
-                          <option key={m.slug} value={m.slug}>{m.label} — {m.blurb}</option>
-                        ))}
+                        {baked.map((m) => {
+                          const warn = 'warning' in m && (m as { warning?: string }).warning;
+                          return (
+                            <option key={m.slug} value={m.slug}>{warn ? '⚠ ' : ''}{m.label} — {m.blurb}</option>
+                          );
+                        })}
                       </optgroup>
                     )}
                     <optgroup label={baked.length > 0 ? 'Base models (slower)' : 'Installed models'}>
-                      {raw.map((m) => (
-                        <option key={m.slug} value={m.slug}>
-                          {m.label}{'recommended' in m && (m as { recommended?: boolean }).recommended ? ' (recommended)' : ''} — {m.blurb}
-                        </option>
-                      ))}
+                      {raw.map((m) => {
+                        const warn = 'warning' in m && (m as { warning?: string }).warning;
+                        return (
+                          <option key={m.slug} value={m.slug}>
+                            {warn ? '⚠ ' : ''}{m.label}{'recommended' in m && (m as { recommended?: boolean }).recommended ? ' (recommended)' : ''} — {m.blurb}
+                          </option>
+                        );
+                      })}
                     </optgroup>
                   </>
                 );
@@ -407,6 +413,20 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
             })()}
           </select>
         </div>
+
+        {/* Per-model warning surfaced when the active selection carries one
+            (e.g. llama3.2:3b drops character context on long prompts). */}
+        {settings.aiProvider === 'local' && (() => {
+          const sel = availableModels.find((m) => m.slug === settings.aiMasterModel);
+          const w = sel && 'warning' in sel ? (sel as { warning?: string }).warning : undefined;
+          if (!w) return null;
+          return (
+            <div style={{ fontSize: 12, color: 'var(--ember)', marginLeft: 70, display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+              <span aria-hidden>⚠</span>
+              <span>{w}</span>
+            </div>
+          );
+        })()}
 
         {settings.aiProvider === 'local'
           && localServices.ai.reachable
