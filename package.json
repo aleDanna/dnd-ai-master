@@ -25,7 +25,8 @@
     "db:down": "docker compose down",
     "db:snapshot": "tsx scripts/db-snapshot.ts",
     "db:restore": "tsx scripts/db-restore.ts",
-    "build-local-models": "tsx scripts/build-local-models.ts"
+    "build-local-models": "tsx scripts/build-local-models.ts",
+    "build-rag-index": "tsx scripts/build-rag-index.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",
