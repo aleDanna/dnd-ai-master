@@ -471,6 +471,16 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
           subtitle={`${inCombat ? 'COMBAT' : 'EXPLORATION'} · ${(campaign?.language ?? session.language)?.toUpperCase() ?? '—'} · ${party.length > 1 ? `${party.length}P` : 'SOLO'}`}
           trailing={
             <>
+              {campaign?.aiMasterModel ? (
+                (() => {
+                  const m = campaign.aiMasterModel;
+                  const baked = m.startsWith('dnd-master-');
+                  const label = baked
+                    ? m.replace(/^dnd-master-/, '').replace(/:latest$/, '')
+                    : m.replace(/:latest$/, '');
+                  return <Chip tone={baked ? 'ok' : 'neutral'} title={`Master model: ${m}${baked ? ' (baked)' : ''}`}>{label}</Chip>;
+                })()
+              ) : null}
               <AutoplayToggle value={autoplay} onChange={setAutoplay} />
               {campaign && (
                 <Link href={`/campaigns/${campaign.id}/settings`} aria-label="Campaign settings">
@@ -596,6 +606,16 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
           </div>
         </div>
         <AutoplayToggle value={autoplay} onChange={setAutoplay} />
+        {campaign?.aiMasterModel ? (
+          (() => {
+            const m = campaign.aiMasterModel;
+            const baked = m.startsWith('dnd-master-');
+            const label = baked
+              ? m.replace(/^dnd-master-/, '').replace(/:latest$/, '') + ' · baked'
+              : m.replace(/:latest$/, '');
+            return <Chip tone={baked ? 'ok' : 'neutral'} title={`Master model: ${m}`}>{label}</Chip>;
+          })()
+        ) : null}
         <Chip tone="accent" dot>SSE live</Chip>
         {campaign && (
           <Link href={`/campaigns/${campaign.id}/settings`} aria-label="Campaign settings">
