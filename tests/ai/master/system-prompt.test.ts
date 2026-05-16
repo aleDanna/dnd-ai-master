@@ -75,8 +75,10 @@ describe('buildMasterSystemPrompt — master guidance level', () => {
     for (let i = 0; i < 3; i++) {
       expect(system[i]!.cache_control).toEqual({ type: 'ephemeral' });
     }
-    // The guidance block itself is per-user, NOT cached.
-    expect(system[guidanceIdx]!.cache_control).toBeUndefined();
+    // The guidance block is session-stable (set at campaign creation, rarely
+    // changed), so it ALSO carries cache_control: ephemeral. It sits AFTER
+    // the cross-campaign static prefix but BEFORE any per-turn dynamic block.
+    expect(system[guidanceIdx]!.cache_control).toEqual({ type: 'ephemeral' });
   });
 
   it('appends the brisk-pacing rule when narrationPace=brisk', () => {
@@ -258,14 +260,17 @@ describe('buildMasterSystemPrompt — dynamic Campaign Tonal Frame block', () =>
     expect(heroicBlock).toMatch(/heroes|kingdom|magic|LotR|triumph|noble/i);
   });
 
-  it('places the dynamic block AFTER the cached static prefix', () => {
+  it('places the tonal-frame block AFTER the cross-campaign static prefix but still cached for session reuse', () => {
     const out = buildMasterSystemPrompt({ ...baseInput, tonalFrame: 'mythic' });
     const blockIdx = out.system.findIndex((b) =>
       b.text.startsWith('## Campaign Tonal Frame'),
     );
     expect(blockIdx).toBeGreaterThanOrEqual(3);
-    // The block itself is per-session, NOT cached.
-    expect(out.system[blockIdx]!.cache_control).toBeUndefined();
+    // The tonal frame is session-stable (set at campaign creation and rarely
+    // mutated), so it carries cache_control: ephemeral. It sits in the
+    // "session-stable" group AFTER the cross-campaign static prefix but
+    // BEFORE any per-turn dynamic block (party / scene / character).
+    expect(out.system[blockIdx]!.cache_control).toEqual({ type: 'ephemeral' });
   });
 });
 

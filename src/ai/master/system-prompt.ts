@@ -1581,16 +1581,24 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
   // in English anyway. The repeated emphasis is a tax we pay to keep the
   // instruction unmissable on weaker instruction-followers.
   const langHint = langName
-    ? `\n\n## NARRATIVE LANGUAGE (MANDATORY)\nThe entire campaign — every line you write, in-character or out-of-character — MUST be written in **${langName}**. Do NOT respond in English unless the campaign language is English. This rule overrides any default tendency to reply in the same language as the system prompt.`
+    ? `## NARRATIVE LANGUAGE (MANDATORY)\nThe entire campaign — every line you write, in-character or out-of-character — MUST be written in **${langName}**. Do NOT respond in English unless the campaign language is English. This rule overrides any default tendency to reply in the same language as the system prompt.`
     : '';
   const partyModeBlock = buildPartyModeBlock(input.party ?? [], input.currentPlayerCharacterId ?? null);
-  const dynamicTail = `## Current snapshot\n\n### Character\n\`\`\`json\n${input.characterMonoSpace}\n\`\`\`\n\n### Scene\n${input.scene || '(no scene set yet)'}${langHint}`;
+  // dynamicTail no longer carries langHint — langHint is hoisted up into the
+  // session-stable section so the per-turn dynamic tail can stay short.
+  const dynamicTail = `## Current snapshot\n\n### Character\n\`\`\`json\n${input.characterMonoSpace}\n\`\`\`\n\n### Scene\n${input.scene || '(no scene set yet)'}`;
 
-  const blocks: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }[] = [
-    // Static, cached. Order: ROLE → TOOLS → REWARDS_MANDATE → CRAFT →
-    // WORLD_LORE → SRD. The rewards mandate is hoisted out of the
-    // world-lore handbook into a top-level block because the player has
-    // explicitly flagged it as the most important behavioral rule.
+  // Block ordering matters for Ollama KV cache: Ollama matches the longest
+  // identical prefix between requests, so EVERY truly-static block must come
+  // BEFORE any block that varies turn-to-turn. The previous layout interleaved
+  // session-stable blocks (settings, tonal, langHint) AFTER dynamic ones
+  // (sceneCard, codexIndex), invalidating ~15k tokens of cache on every turn.
+  // Cloud providers (Anthropic via cache_control, OpenAI via prompt_cache_key)
+  // are agnostic to order; this hurts no one.
+  const blocks: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }[] = [];
+
+  // ── (1) STATIC ACROSS CAMPAIGNS — never varies between sessions/users. ──
+  blocks.push(
     { type: 'text', text: MASTER_SYSTEM_PROMPT_BASE, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: MASTER_TOOL_CONTRACT, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: MASTER_ROLL_TRIGGERS, cache_control: { type: 'ephemeral' } },
@@ -1599,15 +1607,60 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
     { type: 'text', text: input.worldLore, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: MASTER_MEMORY_TOOL_RULE, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: input.srdContext, cache_control: { type: 'ephemeral' } },
-  ];
+  );
 
-  // Memory injection — chapter digests stable WITHIN a turn (cacheable);
-  // codex index + scene card vary with player input (uncached).
+  // ── (2) STABLE PER SESSION — set at campaign creation, rarely mutated. ──
+  if (input.manualRolls) {
+    blocks.push({ type: 'text', text: MASTER_MANUAL_ROLLS_RULE, cache_control: { type: 'ephemeral' } });
+  }
+  const guidance = input.masterGuidanceLevel ?? 'balanced';
+  if (guidance === 'free') {
+    blocks.push({ type: 'text', text: MASTER_GUIDANCE_FREE, cache_control: { type: 'ephemeral' } });
+  } else if (guidance === 'structured') {
+    blocks.push({ type: 'text', text: MASTER_GUIDANCE_STRUCTURED, cache_control: { type: 'ephemeral' } });
+  } else {
+    blocks.push({ type: 'text', text: MASTER_GUIDANCE_BALANCED, cache_control: { type: 'ephemeral' } });
+  }
+  if (input.showDifficultyNumbers === false) {
+    blocks.push({ type: 'text', text: MASTER_HIDE_DIFFICULTY_RULE, cache_control: { type: 'ephemeral' } });
+  }
+  if (input.narrationPace === 'brisk') {
+    blocks.push({ type: 'text', text: MASTER_BRISK_PACING_RULE, cache_control: { type: 'ephemeral' } });
+  }
+  if (input.tonalFrame) {
+    const tonalGuidance = TONAL_FRAME_GUIDANCE[input.tonalFrame];
+    blocks.push({
+      type: 'text',
+      text:
+        `## Campaign Tonal Frame\n\n` +
+        `**Frame**: \`${input.tonalFrame}\`\n\n` +
+        `${tonalGuidance}\n\n` +
+        `Flavor every scene, NPC, and consequence according to this frame. The frame is the lens through which everything else is filtered.`,
+      cache_control: { type: 'ephemeral' },
+    });
+  }
+  if (input.engagementProfile && input.engagementProfile.length > 0) {
+    blocks.push({
+      type: 'text',
+      text:
+        `## Player Engagement Hint\n\n` +
+        `Detected profiles: ${input.engagementProfile.join(', ')}.\n\n` +
+        `Lean into scenes that reward these styles. Refine via \`set_engagement_profile\` if the player's preferences shift.`,
+      cache_control: { type: 'ephemeral' },
+    });
+  }
+  if (langHint) {
+    blocks.push({ type: 'text', text: langHint, cache_control: { type: 'ephemeral' } });
+  }
+
+  // ── (3) PER-TURN DYNAMIC — invalidates the cache from this point onward. ──
+  if (partyModeBlock) {
+    blocks.push({ type: 'text', text: partyModeBlock });
+  }
   if (input.chapterDigests && input.chapterDigests.length > 0) {
     blocks.push({
       type: 'text',
       text: `## Campaign chapter digests\n\n${input.chapterDigests}`,
-      cache_control: { type: 'ephemeral' },
     });
   }
   if (input.sceneCard && input.sceneCard.length > 0) {
@@ -1622,73 +1675,6 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
       text: `## Codex index\n\n${input.codexIndex}`,
     });
   }
-
-  // Per-user behaviour rules go AFTER static + memory blocks so the cache hits the static prefix.
-  if (input.manualRolls) {
-    blocks.push({ type: 'text', text: MASTER_MANUAL_ROLLS_RULE });
-  }
-
-  // Master guidance level: append exactly one of the three rules. When unset,
-  // falls back to 'balanced' so we always set a clear policy. The player can
-  // change this anytime in /settings.
-  const guidance = input.masterGuidanceLevel ?? 'balanced';
-  if (guidance === 'free') {
-    blocks.push({ type: 'text', text: MASTER_GUIDANCE_FREE });
-  } else if (guidance === 'structured') {
-    blocks.push({ type: 'text', text: MASTER_GUIDANCE_STRUCTURED });
-  } else {
-    blocks.push({ type: 'text', text: MASTER_GUIDANCE_BALANCED });
-  }
-
-  // Hide-difficulty rule: only when the player explicitly opted in. Default
-  // (showDifficultyNumbers omitted or true) keeps the existing behaviour
-  // where the master may show DC/AC numbers.
-  if (input.showDifficultyNumbers === false) {
-    blocks.push({ type: 'text', text: MASTER_HIDE_DIFFICULTY_RULE });
-  }
-
-  // Narration pace: only inject the BRISK rule when the user opted in.
-  // The detailed default needs no extra block — it's the baseline.
-  if (input.narrationPace === 'brisk') {
-    blocks.push({ type: 'text', text: MASTER_BRISK_PACING_RULE });
-  }
-
-  // Master World Lore §5.1 — when the campaign has a tonal frame, surface
-  // the corresponding 1-2 sentence guidance so the AI Master knows what
-  // register, prose density, and consequence flavor to apply. Skipped when
-  // unset to avoid an empty block.
-  if (input.tonalFrame) {
-    const guidance = TONAL_FRAME_GUIDANCE[input.tonalFrame];
-    blocks.push({
-      type: 'text',
-      text:
-        `## Campaign Tonal Frame\n\n` +
-        `**Frame**: \`${input.tonalFrame}\`\n\n` +
-        `${guidance}\n\n` +
-        `Flavor every scene, NPC, and consequence according to this frame. The frame is the lens through which everything else is filtered.`,
-    });
-  }
-
-  // Master Handbook §2.1 — when the master has registered detected
-  // engagement profiles, surface them so subsequent scene prep leans into
-  // the player's preferred styles. Skipped when empty/unset.
-  if (input.engagementProfile && input.engagementProfile.length > 0) {
-    blocks.push({
-      type: 'text',
-      text:
-        `## Player Engagement Hint\n\n` +
-        `Detected profiles: ${input.engagementProfile.join(', ')}.\n\n` +
-        `Lean into scenes that reward these styles. Refine via \`set_engagement_profile\` if the player's preferences shift.`,
-    });
-  }
-
-  // Party mode block — dynamic (varies with party composition and active
-  // player). Only injected when N > 1 characters are in the party.
-  if (partyModeBlock) {
-    blocks.push({ type: 'text', text: partyModeBlock });
-  }
-
-  // Dynamic, NOT cached
   blocks.push({ type: 'text', text: dynamicTail });
 
   return { system: blocks };
