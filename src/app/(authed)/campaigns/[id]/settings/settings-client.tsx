@@ -362,17 +362,54 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
           <label htmlFor="masterModel" style={{ fontSize: 13, color: 'var(--fg-muted)', minWidth: 60 }}>Model</label>
           <select id="masterModel" value={settings.aiMasterModel} onChange={onModelChange} disabled={disabled}
             style={{ flex: 1, padding: '8px 12px', background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 8, color: 'var(--fg)', fontFamily: 'var(--font-ui)', fontSize: 14 }}>
-            {availableModels.length === 0 && settings.aiProvider === 'local' ? (
-              <option disabled value="">{localServices.ai.reachable ? 'No qwen3/gpt-oss installed in Ollama' : 'Ollama unreachable'}</option>
-            ) : (
-              availableModels.map((m) => (
+            {(() => {
+              if (availableModels.length === 0 && settings.aiProvider === 'local') {
+                return (
+                  <option disabled value="">{localServices.ai.reachable ? 'No qwen3/gpt-oss installed in Ollama' : 'Ollama unreachable'}</option>
+                );
+              }
+              // Plan D: when local, split baked (dnd-master-*) from raw bases
+              // so users immediately see the optimised variants at the top.
+              if (settings.aiProvider === 'local') {
+                const baked = availableModels.filter((m) => 'kind' in m && m.kind === 'baked');
+                const raw = availableModels.filter((m) => !('kind' in m) || m.kind !== 'baked');
+                return (
+                  <>
+                    {baked.length > 0 && (
+                      <optgroup label="Optimized (built locally)">
+                        {baked.map((m) => (
+                          <option key={m.slug} value={m.slug}>{m.label} — {m.blurb}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                    <optgroup label={baked.length > 0 ? 'Base models (slower)' : 'Installed models'}>
+                      {raw.map((m) => (
+                        <option key={m.slug} value={m.slug}>
+                          {m.label}{'recommended' in m && (m as { recommended?: boolean }).recommended ? ' (recommended)' : ''} — {m.blurb}
+                        </option>
+                      ))}
+                    </optgroup>
+                  </>
+                );
+              }
+              // Cloud providers: flat list as before.
+              return availableModels.map((m) => (
                 <option key={m.slug} value={m.slug}>
-                  {m.label}{'recommended' in m && m.recommended ? ' (recommended)' : ''} — {m.blurb}
+                  {m.label}{'recommended' in m && (m as { recommended?: boolean }).recommended ? ' (recommended)' : ''} — {m.blurb}
                 </option>
-              ))
-            )}
+              ));
+            })()}
           </select>
         </div>
+
+        {settings.aiProvider === 'local'
+          && localServices.ai.reachable
+          && availableModels.length > 0
+          && availableModels.every((m) => !('kind' in m) || m.kind !== 'baked') && (
+          <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginLeft: 70 }}>
+            💡 Run <code style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-elev)', padding: '0 4px', borderRadius: 3 }}>pnpm build-local-models</code> in your terminal to enable optimized variants (~30s build, much faster turns).
+          </div>
+        )}
       </Card>
 
       <div style={{ height: 16 }} />

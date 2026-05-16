@@ -1,4 +1,5 @@
 import { XTTS_LANGUAGES } from './tts-voices';
+import { isBakedModel, getBakedBaseModel } from '@/ai/master/baked-models';
 
 /**
  * True when the current process is a local development environment.
@@ -50,6 +51,12 @@ export interface ModelOption {
   slug: string;
   label: string;
   blurb: string;
+  /**
+   * 'baked' for Plan D variants (dnd-master-*), 'raw' for everything
+   * else. The Settings UI groups by this so users can find optimised
+   * variants quickly. Optional — only meaningful for local LLM lists.
+   */
+  kind?: 'baked' | 'raw';
 }
 
 /** Aggregate status passed from the settings server loader to the client. */
@@ -186,13 +193,21 @@ export async function fetchOllamaModels(): Promise<ModelOption[]> {
     // we surface the failure at runtime rather than hide the option here.
     // matchesLlmWhitelist is still exported for callers that want curated
     // suggestions, but Settings shows the full list.
-    return models.map((m) => ({
-      slug: m.name,
-      label: normalizeOllamaLabel(m.name),
-      blurb: [m.details?.parameter_size, m.details?.quantization_level]
-        .filter(Boolean)
-        .join(' · ') || 'local',
-    }));
+    return models.map((m) => {
+      const baked = isBakedModel(m.name);
+      // For baked variants, show the underlying base in the label so users
+      // recognise "what model is this really?" — e.g. `qwen3:30b (optimized)`.
+      const baseSlug = baked ? getBakedBaseModel(m.name) : null;
+      const label = baked && baseSlug
+        ? `${baseSlug} (optimized)`
+        : normalizeOllamaLabel(m.name);
+      const blurb = baked
+        ? 'baked · D&D master prompt embedded'
+        : [m.details?.parameter_size, m.details?.quantization_level]
+            .filter(Boolean)
+            .join(' · ') || 'local';
+      return { slug: m.name, label, blurb, kind: baked ? 'baked' : 'raw' };
+    });
   } catch {
     return [];
   }

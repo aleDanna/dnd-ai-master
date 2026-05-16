@@ -61,5 +61,8 @@ next-env.d.ts
 # Local DB snapshots (pg_dump custom format)
 /.snapshots/
 
+# Generated Ollama Modelfiles (Plan D — pnpm build-local-models)
+/.ollama/
+
 # Brainstorming companion sessions
 .superpowers/
