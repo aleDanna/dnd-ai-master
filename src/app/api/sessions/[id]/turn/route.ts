@@ -232,10 +232,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // eslint-disable-next-line no-console
         console.log('[turn]', sessionId, 'about to dispatch provider=', userPrefs.aiProvider);
         const provider = getProviderByName(userPrefs.aiProvider);
+        // Local models can't reason effectively over the full 72-tool
+        // ALWAYS_ON set inside a 40k system prompt. Trim to ~20 essential
+        // tools when running on Ollama — cloud providers keep the full list.
+        const localOptimized = userPrefs.aiProvider === 'local';
+        const tools = buildToolDefinitions(
+          { imageGenerationEnabled: userPrefs.imageGenerationEnabled },
+          { localOptimized },
+        );
         // eslint-disable-next-line no-console
-        console.log('[turn]', sessionId, 'provider resolved:', provider.name, 'calling runToolLoop with model=', userPrefs.aiMasterModel);
+        console.log('[turn]', sessionId, 'provider resolved:', provider.name, 'calling runToolLoop with model=', userPrefs.aiMasterModel, 'tools=', tools.length, 'localOptimized=', localOptimized);
         const masterModel = userPrefs.aiMasterModel;
-        const tools = buildToolDefinitions({ imageGenerationEnabled: userPrefs.imageGenerationEnabled });
         const result = await runToolLoop({
           provider,
           model: masterModel,
