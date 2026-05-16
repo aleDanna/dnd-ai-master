@@ -32,14 +32,28 @@ import { buildSrdContext } from '../src/ai/master/srd-context';
 import { getBakedModelName, computeMasterPromptHash } from '../src/ai/master/baked-models';
 
 /**
- * Models we explicitly EXCLUDE from auto-bake (no chat use case):
+ * Models we explicitly EXCLUDE from auto-bake:
  *  - dnd-master-*: those ARE the output, not the input — don't re-bake.
  *  - *embed*: embedding models (nomic-embed-text, mxbai-embed, ...)
  *    have no chat template and ollama create would fail.
  *  - *whisper*, *bge-*, *reranker*: other utility models.
+ *  - qwen3:14b, qwen3:8b: their context window is 40960 tokens, smaller
+ *    than the ~45k-token combined prompt (baked SYSTEM ~28k + dynamic
+ *    preamble ~3-5k + history + cushion). Ollama silently truncates
+ *    keeping only the last 4 tokens of the prompt, producing garbled
+ *    output that times out after 5 min. Verified empirically against
+ *    a 14b baked variant: 45808 tok → "truncating input prompt
+ *    limit=40960 keep=4 new=40960" in the Ollama server log → 500.
+ *    Add more here if a future base also has too-small context.
  */
+const TOO_SMALL_CONTEXT_BASES = new Set([
+  'qwen3:14b',
+  'qwen3:8b',
+]);
+
 function isBuildableBase(slug: string): boolean {
   if (slug.startsWith('dnd-master-')) return false;
+  if (TOO_SMALL_CONTEXT_BASES.has(slug)) return false;
   const lower = slug.toLowerCase();
   if (lower.includes('embed')) return false;
   if (lower.includes('whisper')) return false;
