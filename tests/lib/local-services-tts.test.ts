@@ -4,28 +4,15 @@ import { fetchPiperVoices, listXttsVoices } from '@/lib/local-services';
 describe('fetchPiperVoices', () => {
   beforeEach(() => {
     vi.stubEnv('PIPER_BASE_URL', 'http://localhost:8050');
-    vi.stubGlobal('fetch', vi.fn());
   });
   afterEach(() => {
-    vi.unstubAllGlobals();
     vi.unstubAllEnvs();
   });
 
-  it('maps /v1/audio/voices to ModelOption[]', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response(JSON.stringify([
-      { id: 'en_US-amy-low',    language: 'en_US', quality: 'low' },
-      { id: 'it_IT-riccardo-x', language: 'it_IT', quality: 'x_low' },
-    ]), { status: 200 }));
-
+  it('returns the 6 OpenAI-compat voices that openedai-speech-min recognizes', async () => {
     const r = await fetchPiperVoices();
-    expect(r).toHaveLength(2);
-    expect(r[0]).toEqual({ slug: 'en_US-amy-low', label: 'en_US-amy-low', blurb: 'en_US · low' });
-    expect(r[1]).toEqual({ slug: 'it_IT-riccardo-x', label: 'it_IT-riccardo-x', blurb: 'it_IT · x_low' });
-  });
-
-  it('returns [] when fetch throws', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('boom'));
-    expect(await fetchPiperVoices()).toEqual([]);
+    expect(r.map((m) => m.slug)).toEqual(['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer']);
+    expect(r[0]).toEqual({ slug: 'alloy', label: 'alloy', blurb: 'piper · openai-compat' });
   });
 
   it('returns [] when PIPER_BASE_URL unset', async () => {

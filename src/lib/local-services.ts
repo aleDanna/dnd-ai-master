@@ -98,28 +98,20 @@ export function normalizeOllamaLabel(name: string): string {
   return tag ? `${clean} (${tag})` : clean;
 }
 
-interface PiperVoiceEntry { id: string; language?: string; quality?: string }
+/** openedai-speech-min does NOT expose a `/v1/audio/voices` endpoint
+ *  (404). It accepts a free-form `voice` string on POST /v1/audio/speech
+ *  and maps the 6 OpenAI canonical names to its internal Piper voices.
+ *  We surface those 6 as the dropdown options; user can override via
+ *  config files in the openedai-speech-min container if they want more. */
+const PIPER_OPENAI_COMPAT_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as const;
 
-/** Fetches the installed Piper voices from /v1/audio/voices (OpenAI-compat).
- *  Returns [] on any failure. */
 export async function fetchPiperVoices(): Promise<ModelOption[]> {
-  const base = process.env.PIPER_BASE_URL;
-  if (!base) return [];
-  try {
-    const res = await fetch(`${base}/v1/audio/voices`, {
-      signal: AbortSignal.timeout(2000),
-      cache: 'no-store',
-    });
-    if (!res.ok) return [];
-    const voices = (await res.json()) as PiperVoiceEntry[];
-    return voices.map((v) => ({
-      slug: v.id,
-      label: v.id,
-      blurb: [v.language, v.quality].filter(Boolean).join(' · ') || 'piper',
-    }));
-  } catch {
-    return [];
-  }
+  if (!process.env.PIPER_BASE_URL) return [];
+  return PIPER_OPENAI_COMPAT_VOICES.map((v) => ({
+    slug: v,
+    label: v,
+    blurb: 'piper · openai-compat',
+  }));
 }
 
 /** Returns the static XTTSv2 language catalog. Voice cloning is phase 2 — for
@@ -216,7 +208,8 @@ async function buildAiStatus(): Promise<EngineStatus> {
 async function buildPiperStatus(): Promise<EngineStatus> {
   const enabled = !!process.env.PIPER_BASE_URL;
   if (!enabled) return { enabled: false, reachable: false, models: [] };
-  const reachable = await pingService(process.env.PIPER_BASE_URL!, '/v1/audio/voices');
+  // openedai-speech-min exposes /health (200) for liveness; /v1/audio/voices is 404.
+  const reachable = await pingService(process.env.PIPER_BASE_URL!, '/health');
   const models = reachable ? await fetchPiperVoices() : [];
   return { enabled, reachable, models, ...(reachable ? {} : { error: 'unreachable' }) };
 }
