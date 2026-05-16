@@ -98,10 +98,18 @@ function fingerprintSystem(body: unknown): string {
 
 async function chat(body: unknown): Promise<OllamaChatResponse> {
   const t0 = Date.now();
+  // eslint-disable-next-line no-console
+  console.log('[ollama-start]', `sys[${fingerprintSystem(body)}]`,
+    `tools=${(body as { tools?: unknown[] }).tools?.length ?? 0}`,
+    `msgs=${(body as { messages?: unknown[] }).messages?.length ?? 0}`);
+  // Explicit 5-min timeout on the fetch — without this Node's default is
+  // infinite and a hung Ollama would deadlock the tool loop silently
+  // (the TURN_TIMEOUT_MS check upstream only runs between iterations).
   const res = await fetch(`${baseUrl()}/api/chat`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(300_000),
   });
   if (!res.ok) {
     const text = await res.text();
