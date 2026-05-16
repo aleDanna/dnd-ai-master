@@ -35,6 +35,14 @@ export interface CampaignSettings {
    * full prompt fits comfortably under the model's context).
    */
   compactPrompt?: boolean;
+  /**
+   * When true, the system prompt is selected based on the active AI mode
+   * (local vs cloud). Enables mode-aware prompt switching so local models
+   * receive a trimmed prompt while cloud models keep the full version.
+   * When undefined, defaults to true for `aiProvider === 'local'` and
+   * false for cloud providers.
+   */
+  useModeAwarePrompt?: boolean;
 }
 
 export const campaigns = pgTable(

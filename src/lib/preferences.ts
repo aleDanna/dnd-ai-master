@@ -161,6 +161,10 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   // The static default is only used when both prefs.compactPrompt and
   // the provider check fall through (cloud provider, undefined value).
   compactPrompt: false,
+  // Mode-aware-prompt is also provider-conditional (on for local, off for
+  // cloud). Explicit user pick always wins; the static default below is
+  // only used as a final fallback.
+  useModeAwarePrompt: false,
 };
 
 export async function getUserPreferences(userId: string): Promise<UserPreferences> {
@@ -214,6 +218,7 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
   // (where prompt budget matters), off for cloud (full prompt fits easily).
   // Explicit user pick wins over the provider-conditional default.
   const compactPrompt = prefs.compactPrompt ?? (provider === 'local');
+  const useModeAwarePrompt = resolveUseModeAwarePrompt({ aiProvider: provider, useModeAwarePrompt: prefs.useModeAwarePrompt });
   return {
     ttsProvider,
     ttsVoice,
@@ -231,6 +236,7 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
     imageProvider,
     imageModel,
     compactPrompt,
+    useModeAwarePrompt,
   };
 }
 
@@ -337,6 +343,7 @@ export async function getCampaignSettings(
   // Same provider-conditional default as getResolvedPreferences: on for
   // local, off for cloud, explicit pick always wins.
   const compactPrompt = prefs.compactPrompt ?? (provider === 'local');
+  const useModeAwarePrompt = resolveUseModeAwarePrompt({ aiProvider: provider, useModeAwarePrompt: prefs.useModeAwarePrompt });
   return {
     ttsProvider,
     ttsVoice,
@@ -353,6 +360,7 @@ export async function getCampaignSettings(
     imageProvider,
     imageModel,
     compactPrompt,
+    useModeAwarePrompt,
   };
 }
 
@@ -519,6 +527,25 @@ export function validateSettingsPatch(
     if (typeof body.compactPrompt !== 'boolean') return { ok: false, error: 'invalid-compactPrompt' };
     out.compactPrompt = body.compactPrompt;
   }
+  if ('useModeAwarePrompt' in body) {
+    if (typeof body.useModeAwarePrompt !== 'boolean') return { ok: false, error: 'invalid-useModeAwarePrompt' };
+    out.useModeAwarePrompt = body.useModeAwarePrompt;
+  }
   return { ok: true, patch: out };
+}
+
+/**
+ * Resolves the effective `useModeAwarePrompt` value.
+ *
+ * An explicit stored boolean always wins. When undefined, defaults to
+ * `true` for local providers (where mode-aware prompt switching matters)
+ * and `false` for cloud providers (which use the full prompt by default).
+ */
+export function resolveUseModeAwarePrompt(prefs: {
+  aiProvider: string;
+  useModeAwarePrompt?: boolean;
+}): boolean {
+  if (typeof prefs.useModeAwarePrompt === 'boolean') return prefs.useModeAwarePrompt;
+  return prefs.aiProvider === 'local';
 }
 
