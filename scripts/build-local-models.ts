@@ -20,14 +20,15 @@ import { spawnSync } from 'node:child_process';
 
 import {
   MASTER_PROMPT_VERSION,
-  MASTER_SYSTEM_PROMPT_BASE,
-  MASTER_TOOL_CONTRACT,
   MASTER_META_TOOLS_INSTRUCTION,
-  MASTER_ROLL_TRIGGERS,
-  MASTER_REWARDS_MANDATE,
-  MASTER_MEMORY_TOOL_RULE,
 } from '../src/ai/master/system-prompt';
-import { getMasterHandbook, getMasterWorldLore } from '../src/ai/master/handbook';
+import {
+  MASTER_SYSTEM_PROMPT_BASE_SLIM,
+  MASTER_TOOL_CONTRACT_SLIM,
+  MASTER_REWARDS_MANDATE_SLIM,
+  MASTER_MEMORY_TOOL_RULE_SLIM,
+  MASTER_HANDBOOK_ULTRA_SLIM,
+} from '../src/ai/master/slim-prompts';
 import { buildSrdContext } from '../src/ai/master/srd-context';
 import { getBakedModelName, computeMasterPromptHash } from '../src/ai/master/baked-models';
 
@@ -149,30 +150,33 @@ async function listInstalledOllamaModels(): Promise<Set<string>> {
 }
 
 /**
- * Concatenate the 9 static blocks in the same order the runtime
- * prompt-builder emits them (when staticBlocksAlreadyBaked is false).
- * This order matters because we want the baked model to behave
- * identically to a non-baked model that loaded the full prompt — any
- * permutation here is silently a different model.
+ * Concatenate the 7 slim/compact static blocks for Plan E.1.
+ * Vs the Plan B+C+D 9-block bake (~12.3K tok):
+ *  - BASE/TOOL_CONTRACT/REWARDS/MEMORY_TOOL_RULE: full -> slim
+ *  - HANDBOOK: full -> ultra-slim (full content moves to RAG in Plan E.2)
+ *  - WORLD_LORE: dropped entirely (full content moves to RAG in Plan E.2)
+ *  - ROLL_TRIGGERS: dropped (distributed across mode blocks added at turn time)
+ *  - SRD compact: unchanged per design decision (keep intact for reliability)
+ *
+ * Result: ~4.4K tok baked, well within the ~7K tok ceiling.
  */
-async function buildStaticSystemContent(): Promise<string> {
-  const handbook = getMasterHandbook(); // FULL, not compact
-  const worldLore = getMasterWorldLore(); // FULL, not compact
-  const srdContext = await buildSrdContext(); // FULL, not compact
+export async function buildStaticSystemContent(): Promise<string> {
+  const srdContext = await buildSrdContext({ compact: true });
   const blocks: string[] = [
-    MASTER_SYSTEM_PROMPT_BASE,
-    MASTER_TOOL_CONTRACT,
-    MASTER_META_TOOLS_INSTRUCTION,
-    MASTER_ROLL_TRIGGERS,
-    MASTER_REWARDS_MANDATE,
-    handbook,
-    worldLore,
-    MASTER_MEMORY_TOOL_RULE,
+    MASTER_SYSTEM_PROMPT_BASE_SLIM,
+    MASTER_TOOL_CONTRACT_SLIM,
+    MASTER_META_TOOLS_INSTRUCTION,   // unchanged - required for local meta-tools
+    MASTER_REWARDS_MANDATE_SLIM,
+    MASTER_MEMORY_TOOL_RULE_SLIM,
+    MASTER_HANDBOOK_ULTRA_SLIM,
     srdContext,
+    // Plan E.1 manifest changes vs B+C+D:
+    //  - BASE/TOOL_CONTRACT/REWARDS/MEMORY_TOOL_RULE: full -> slim
+    //  - HANDBOOK: full -> ultra-slim (full content moves to RAG in Plan E.2)
+    //  - WORLD_LORE: dropped entirely (full content moves to RAG in Plan E.2)
+    //  - ROLL_TRIGGERS: dropped (distributed across mode blocks)
+    //  - SRD compact: unchanged per design decision (keep intact for reliability)
   ];
-  // Two-newline separator matches what the runtime emits: each block is
-  // a distinct system message in the Anthropic shape, but for Ollama we
-  // collapse to one big system text — same content, different framing.
   return blocks.join('\n\n');
 }
 
