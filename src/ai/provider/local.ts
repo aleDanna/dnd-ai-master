@@ -46,28 +46,18 @@ function isThinkingModel(model: string | undefined): boolean {
     || m.startsWith('gpt-oss') || m.includes('/gpt-oss');
 }
 
-/** qwen3 specifically responds to the `/no_think` control token at the start
- *  of a user message — it suppresses the chain-of-thought completely (not
- *  just hides it). The Ollama `think: false` API flag is silently ignored
- *  by the model, so this is the only reliable way to keep qwen3 fast on
- *  multi-turn conversations. Mutates the LAST user message in-place; safe
- *  no-op for other models (they ignore unknown control tokens). */
-function isQwen3(model: string | undefined): boolean {
-  if (!model) return false;
-  const m = model.toLowerCase();
-  return m.startsWith('qwen3') || m.includes('/qwen3');
-}
-
-function prependNoThinkIfQwen3(messages: OllamaMessage[], model: string | undefined): OllamaMessage[] {
-  if (!isQwen3(model)) return messages;
-  // Find the last user message and prepend "/no_think " if not already present.
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    if (msg && msg.role === 'user' && !msg.content.startsWith('/no_think')) {
-      messages[i] = { ...msg, content: `/no_think ${msg.content}` };
-      break;
-    }
-  }
+/** qwen3 responds to a `/no_think` control token in the user message — BUT
+ *  only when the request has no tools. With tools present qwen3 silently
+ *  ignores the marker and still produces a chain-of-thought (which it parks
+ *  in the `thinking` field, leaving content empty and the tool loop with
+ *  nothing to render). Since we always include tools on master turns and on
+ *  wizard proposals, /no_think is a no-op for our use case — keep the
+ *  thinking phase, then strip the `<think>…</think>` envelope at the
+ *  adapter layer (stripThinkingFromContent in ollama-adapter.ts).
+ *
+ *  Kept as a stub so the call sites stay symmetric; can re-enable selectively
+ *  for tool-less calls later (e.g. detectLanguage already skips it). */
+function prependNoThinkIfQwen3(messages: OllamaMessage[], _model: string | undefined): OllamaMessage[] {
   return messages;
 }
 
