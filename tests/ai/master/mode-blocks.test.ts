@@ -4,6 +4,7 @@ import {
   MODE_NARRATIVE_BLOCK,
   MODE_EXPLORATION_BLOCK,
   MODE_BLOCKS,
+  SPELLCASTING_OVERLAY_BLOCK,
 } from '@/ai/master/mode-blocks';
 
 describe('mode blocks', () => {
@@ -39,5 +40,23 @@ describe('mode blocks', () => {
     expect(MODE_BLOCKS.combat).toBe(MODE_COMBAT_BLOCK);
     expect(MODE_BLOCKS.narrative).toBe(MODE_NARRATIVE_BLOCK);
     expect(MODE_BLOCKS.exploration).toBe(MODE_EXPLORATION_BLOCK);
+  });
+});
+
+describe('spellcasting overlay', () => {
+  it('is a non-empty string within ~600 token budget', () => {
+    expect(SPELLCASTING_OVERLAY_BLOCK.length).toBeGreaterThan(200);
+    expect(SPELLCASTING_OVERLAY_BLOCK.length).toBeLessThan(3000);
+  });
+
+  it('covers slot mechanics + concentration + components', () => {
+    expect(SPELLCASTING_OVERLAY_BLOCK).toMatch(/slot/i);
+    expect(SPELLCASTING_OVERLAY_BLOCK).toMatch(/concentration/i);
+    expect(SPELLCASTING_OVERLAY_BLOCK).toMatch(/components?/i);
+  });
+
+  it('mentions both spell attack rolls and save spells', () => {
+    expect(SPELLCASTING_OVERLAY_BLOCK).toMatch(/spell attack/i);
+    expect(SPELLCASTING_OVERLAY_BLOCK).toMatch(/(saving throw|save spell)/i);
   });
 });
