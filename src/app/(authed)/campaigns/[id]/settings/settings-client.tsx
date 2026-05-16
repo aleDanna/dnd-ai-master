@@ -175,6 +175,12 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
     void save({ imageGenerationEnabled: next });
   };
 
+  const onCompactPromptToggle = (): void => {
+    const next = !settings.compactPrompt;
+    setSettings((s) => ({ ...s, compactPrompt: next }));
+    void save({ compactPrompt: next });
+  };
+
   const onImageStylePresetChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
     const next = e.target.value as NonNullable<CampaignSettings['imageStylePreset']>;
     if (next === settings.imageStylePreset) return;
@@ -606,6 +612,33 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
           {settings.showDifficultyNumbers ? 'DC/AC visible' : 'DC/AC hidden'}
         </button>
       </Card>
+
+      {settings.aiProvider === 'local' && (
+        <>
+          <div style={{ height: 16 }} />
+          <Card>
+            <div>
+              <Eyebrow>Local optimization</Eyebrow>
+              <h2 style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>Compact prompt</h2>
+              <p style={{ marginTop: 4, fontSize: 13, color: 'var(--fg-muted)' }}>
+                Trims the master&apos;s system prompt (handbook, world lore, SRD reference) to imperative cheat-sheets — about
+                30 KB lighter. Small local models (qwen3:14b, gpt-oss:20b) answer noticeably faster but narration is simpler.
+                Default ON for local, OFF for cloud.
+              </p>
+            </div>
+            <button onClick={onCompactPromptToggle} disabled={disabled} aria-pressed={settings.compactPrompt}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 10, height: 36, padding: '0 14px',
+                background: settings.compactPrompt ? 'var(--arcane)' : 'transparent',
+                border: '1px solid ' + (settings.compactPrompt ? 'var(--arcane)' : 'var(--border-strong)'),
+                borderRadius: 999, color: settings.compactPrompt ? 'var(--bone)' : 'var(--fg-muted)',
+                fontFamily: 'var(--font-ui)', fontSize: 13, fontWeight: 600,
+                cursor: disabled ? 'not-allowed' : 'pointer', opacity: !canEdit ? 0.7 : 1 }}>
+              <Icon name="sparkle" size={14} />
+              {settings.compactPrompt ? 'Compact prompt on' : 'Compact prompt off'}
+            </button>
+          </Card>
+        </>
+      )}
 
       <div style={{ height: 16 }} />
 
