@@ -1556,8 +1556,33 @@ This means:
 - **NEVER narrate a roll result for any PG yourself.** "Tira... il risultato è 8" / "you roll... you get an 8" is FORBIDDEN. Always write only the formula, then stop. The player rolls.
 - **NEVER compute or invent a roll for a non-active PG.** You don't have their character sheet in the snapshot — only the active PG's stats. If you find yourself thinking "Kank rolls History 8…" while Bruce is active, STOP. Hand the turn to Kank first (set_current_player), then in the NEXT beat ask Kank to tira 1d20+modifier.`;
 
+/** ISO 639-1 → full English name. Codes not in the map fall back to the
+ *  bare code (the model usually still parses common ISO codes correctly). */
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: 'English',
+  it: 'Italian',
+  es: 'Spanish',
+  fr: 'French',
+  de: 'German',
+  pt: 'Portuguese',
+  nl: 'Dutch',
+  pl: 'Polish',
+  ja: 'Japanese',
+  zh: 'Chinese',
+  ru: 'Russian',
+  ar: 'Arabic',
+  ko: 'Korean',
+};
+
 export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }[] } {
-  const langHint = input.language ? `\n\nNarrative language for this session: ${input.language}. Mirror it.` : '';
+  const langName = input.language ? (LANGUAGE_NAMES[input.language] ?? input.language) : null;
+  // Spelled-out language name + emphatic phrasing — smaller local models (e.g.
+  // gpt-oss:20b) confuse bare "it" with the English pronoun and end up replying
+  // in English anyway. The repeated emphasis is a tax we pay to keep the
+  // instruction unmissable on weaker instruction-followers.
+  const langHint = langName
+    ? `\n\n## NARRATIVE LANGUAGE (MANDATORY)\nThe entire campaign — every line you write, in-character or out-of-character — MUST be written in **${langName}**. Do NOT respond in English unless the campaign language is English. This rule overrides any default tendency to reply in the same language as the system prompt.`
+    : '';
   const partyModeBlock = buildPartyModeBlock(input.party ?? [], input.currentPlayerCharacterId ?? null);
   const dynamicTail = `## Current snapshot\n\n### Character\n\`\`\`json\n${input.characterMonoSpace}\n\`\`\`\n\n### Scene\n${input.scene || '(no scene set yet)'}${langHint}`;
 
