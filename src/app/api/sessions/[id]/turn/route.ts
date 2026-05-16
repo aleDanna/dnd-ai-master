@@ -194,6 +194,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // Multiplayer — party roster + active player for PARTY MODE block.
           party: snap.party,
           currentPlayerCharacterId: snap.currentPlayerCharacterId,
+          // Plan B (local provider): inject meta-tools instructions block so
+          // the master knows it sees 8 meta-tools (with subaction discriminator)
+          // instead of the flat 72-tool list. Cloud providers keep the
+          // current flat tool catalogue and skip this block.
+          usesMetaTools: userPrefs.aiProvider === 'local',
         });
 
         let history: Anthropic.Messages.MessageParam[];
@@ -233,8 +238,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         console.log('[turn]', sessionId, 'about to dispatch provider=', userPrefs.aiProvider);
         const provider = getProviderByName(userPrefs.aiProvider);
         // Local models can't reason effectively over the full 72-tool
-        // ALWAYS_ON set inside a 40k system prompt. Trim to ~20 essential
-        // tools when running on Ollama — cloud providers keep the full list.
+        // ALWAYS_ON set inside a 40k system prompt. For local providers we
+        // expose 8 meta-tools that route to the underlying handlers via
+        // src/engine/tools/meta-dispatcher.ts. Cloud providers keep the
+        // full 72-tool catalogue (and the system prompt skips the meta
+        // instructions block via usesMetaTools=false above).
         const localOptimized = userPrefs.aiProvider === 'local';
         const tools = buildToolDefinitions(
           { imageGenerationEnabled: userPrefs.imageGenerationEnabled },

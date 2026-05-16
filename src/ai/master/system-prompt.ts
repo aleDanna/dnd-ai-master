@@ -55,6 +55,43 @@ The visible reply is **only** the player-facing prose. The mechanics that drive 
 
 If a player's question genuinely requires a meta answer (rules clarification, "how do I roll for X", "what is initiative"), answer briefly and *in character of the Dungeon Master speaking to the player* — never as the model talking about its own internal process. The DM doesn't have a system prompt to quote; the DM just knows the rules.`;
 
+/**
+ * Plan B (local provider only): the master sees 8 "meta-tools" instead of 72
+ * individual tools. Each meta wraps a family of underlying tools and is
+ * dispatched by a `subaction` discriminator field in the input. This block
+ * is injected into the system prompt only when usesMetaTools=true.
+ */
+export const MASTER_META_TOOLS_INSTRUCTION = `## Meta-tools (THIS SESSION ONLY)
+
+This session runs on a local model. To keep responses fast, the engine
+exposes its game actions through **8 meta-tools** instead of the usual
+flat catalogue. EACH meta-tool requires a \`subaction\` field in the input
+that picks the specific operation. Always include the other fields that
+the chosen sub-action needs.
+
+Concrete pattern:
+\`\`\`
+combat_action({ subaction: "attack", attacker: "pc-001", target: "goblin-1", weapon: "longsword" })
+combat_action({ subaction: "damage", target: "goblin-1", amount: 8, type: "slashing" })
+spell_action({ subaction: "cast_spell", caster: "pc-001", spell: "fireball", slotLevel: 3, target: "goblin-1" })
+inventory_action({ subaction: "add_item", actor: "pc-001", slug: "gp", qty: 50 })
+narrative_action({ subaction: "ability_check", actor: "pc-001", skill: "perception", dc: 12 })
+rest_action({ subaction: "short_rest", actors: ["pc-001"] })
+\`\`\`
+
+The 8 meta-tools and their domains:
+- \`combat_action\` — initiative, attack, damage, conditions, death saves, concentration, movement
+- \`spell_action\` — cast spells, use limited resources, manage focus / attunement
+- \`inventory_action\` — add/remove items, equip/unequip, AC recompute
+- \`character_action\` — level up, XP, inspiration, class features (rage, action surge, lay-on-hands, …)
+- \`rest_action\` — short/long rest
+- \`narrative_action\` — dice, checks, codex lookup, turn handoff, free-form actions
+- \`environment_action\` — travel pace, light, marching order, vision, exposure (falling, starvation, …)
+- \`meta_action\` — tonal frame, engagement profile, crafting, downtime, hirelings, bastions, mounts, vehicles
+
+Pick the meta-tool by domain, then set \`subaction\` to the operation. NEVER
+call the meta-tool without a \`subaction\` field — the call will fail.`;
+
 export const MASTER_TOOL_CONTRACT = `## Tools available this turn
 
 The system exposes the deterministic Plan B engine as tools. Common ones:
@@ -1252,6 +1289,15 @@ export interface MasterPromptInput {
    * Passed to buildPartyModeBlock to identify the active player.
    */
   currentPlayerCharacterId?: string | null;
+  /**
+   * Plan B (local provider only): when true, the master sees 8 meta-tools
+   * instead of the 72 flat ALWAYS_ON list. Triggers the
+   * MASTER_META_TOOLS_INSTRUCTION block so the model knows it must pick
+   * a sub-action via the discriminator. Set this to true iff the resolved
+   * aiProvider is 'local'. Cloud providers leave it falsy and see the
+   * normal tool catalogue.
+   */
+  usesMetaTools?: boolean;
 }
 
 export const MASTER_HIDE_DIFFICULTY_RULE = `## Hide difficulty numbers
@@ -1601,6 +1647,9 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
   blocks.push(
     { type: 'text', text: MASTER_SYSTEM_PROMPT_BASE, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: MASTER_TOOL_CONTRACT, cache_control: { type: 'ephemeral' } },
+    ...(input.usesMetaTools
+      ? [{ type: 'text' as const, text: MASTER_META_TOOLS_INSTRUCTION, cache_control: { type: 'ephemeral' as const } }]
+      : []),
     { type: 'text', text: MASTER_ROLL_TRIGGERS, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: MASTER_REWARDS_MANDATE, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: input.handbook, cache_control: { type: 'ephemeral' } },
