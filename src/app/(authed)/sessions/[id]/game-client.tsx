@@ -321,14 +321,13 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
   // returning 202) and the master starting to stream the response. It powers
   // both the "Master is responding…" indicator (via `busy`) and the composer
   // lock (so the player can't double-submit during that gap). Cleared by the
-  // first streamed chunk, by a turn-error, or by a 5-minute safety ceiling.
+  // first streamed chunk, by a turn-error, or by a 15-minute safety ceiling.
   //
-  // The previous 120s ceiling was too tight for cold local LLMs: a fresh
-  // qwen3:30b-a3b first-turn (28k-token baked SYSTEM cold prompt eval)
-  // takes ~4-5 minutes on M-series Macs. The user saw the indicator
-  // disappear at 120s while the master was still working, then the master
-  // message landed silently another 3 minutes later. Bumped to 5 minutes
-  // (matches the server-side AbortSignal.timeout on the Ollama fetch).
+  // The ceiling matches the server-side fetch timeout
+  // (OLLAMA_FETCH_TIMEOUT_MS, default 900000ms = 15 min) so the indicator
+  // stays alive for the entire window a local cold call can legitimately
+  // occupy. Cold qwen3:30b-a3b first-turn = ~5 min of prompt eval +
+  // generation; smaller models like qwen3:14b are usually under 2 min.
   // After the first cold turn, OLLAMA_KEEP_ALIVE keeps weights resident
   // and subsequent turns finish in seconds, so the ceiling rarely fires.
   React.useEffect(() => {
@@ -337,7 +336,7 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
       setPendingTurn(false);
       return;
     }
-    const t = setTimeout(() => setPendingTurn(false), 300_000);
+    const t = setTimeout(() => setPendingTurn(false), 900_000);
     return () => clearTimeout(t);
   }, [pendingTurn, streamingMessage, turnError]);
 

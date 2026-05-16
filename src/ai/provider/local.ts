@@ -103,14 +103,21 @@ async function chat(body: unknown): Promise<OllamaChatResponse> {
   console.log('[ollama-start]', `sys[${fingerprintSystem(body)}]`,
     `tools=${(body as { tools?: unknown[] }).tools?.length ?? 0}`,
     `msgs=${(body as { messages?: unknown[] }).messages?.length ?? 0}`);
-  // Explicit 5-min timeout on the fetch — without this Node's default is
+  // Explicit timeout on the fetch — without this Node's default is
   // infinite and a hung Ollama would deadlock the tool loop silently
   // (the TURN_TIMEOUT_MS check upstream only runs between iterations).
+  //
+  // 15 min is generous because Plan D cold starts on a3b / 30b models
+  // can spend 4-6 min just on prompt eval the first time. After the
+  // KEEP_ALIVE window (default 60m), the model unloads and the next
+  // first-call pays this again. Tune via OLLAMA_FETCH_TIMEOUT_MS env
+  // var if you have a slower machine or are baking even bigger models.
+  const fetchTimeoutMs = Number(process.env.OLLAMA_FETCH_TIMEOUT_MS ?? '900000');
   const res = await fetch(`${baseUrl()}/api/chat`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(300_000),
+    signal: AbortSignal.timeout(fetchTimeoutMs),
   });
   if (!res.ok) {
     const text = await res.text();
