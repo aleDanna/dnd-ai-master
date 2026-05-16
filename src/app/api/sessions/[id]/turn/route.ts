@@ -11,6 +11,7 @@ import { acquireTurnLock, releaseTurnLock } from '@/sessions/lock';
 import { buildSrdContext } from '@/ai/master/srd-context';
 import { getMasterHandbook, getMasterWorldLore } from '@/ai/master/handbook';
 import { buildMasterSystemPrompt } from '@/ai/master/system-prompt';
+import { isBakedModel } from '@/ai/master/baked-models';
 import { detectLanguage } from '@/ai/master/language';
 import { runToolLoop } from '@/ai/master/tool-loop';
 import { buildToolDefinitions } from '@/engine';
@@ -168,16 +169,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
         // 4. Build system prompt + history
         //
-        // Plan C: when `compactPrompt` is on (resolved from CampaignSettings;
-        // defaults true for aiProvider='local', false for cloud), load the
-        // trimmed variants of the SRD reference, the DM handbook, and the
-        // world lore. Combined savings: ~30 KB of prompt → fits comfortably
-        // in num_ctx=65536 on a small local model (qwen3:14b) while keeping
-        // the rules + rewards mandate intact.
-        const useCompact = userPrefs.compactPrompt;
-        const srd = await buildSrdContext({ compact: useCompact });
-        const handbook = getMasterHandbook({ compact: useCompact });
-        const worldLore = getMasterWorldLore({ compact: useCompact });
+        // Plan D (baked models): when aiMasterModel starts with `dnd-master-`,
+        // the static prompt blocks (BASE, TOOL_CONTRACT, META_TOOLS,
+        // ROLL_TRIGGERS, REWARDS_MANDATE, handbook, worldLore, MEMORY_TOOL_RULE,
+        // SRD context) are already baked into the model via Modelfile SYSTEM.
+        // We skip re-emitting them entirely and pass empty strings so the
+        // handbook/SRD readers don't fire from disk for nothing.
+        //
+        // Plan C (compact prompt): for non-baked local models, when
+        // `compactPrompt` is on (defaults true for local, false for cloud),
+        // load the trimmed variants — fits qwen3:14b's context window without
+        // losing the rules + rewards mandate.
+        const baked = isBakedModel(userPrefs.aiMasterModel);
+        const useCompact = !baked && userPrefs.compactPrompt;
+        const srd = baked ? '' : await buildSrdContext({ compact: useCompact });
+        const handbook = baked ? '' : getMasterHandbook({ compact: useCompact });
+        const worldLore = baked ? '' : getMasterWorldLore({ compact: useCompact });
         const memory = await loadMemoryContext(sessionId, snap.scene);
         const sys = buildMasterSystemPrompt({
           srdContext: srd,
@@ -207,6 +214,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // instead of the flat 72-tool list. Cloud providers keep the
           // current flat tool catalogue and skip this block.
           usesMetaTools: userPrefs.aiProvider === 'local',
+          // Plan D: when the chosen local model is a baked variant
+          // (dnd-master-*), skip emitting the 9 static blocks in the runtime
+          // prompt — they are already inside the model's weights via
+          // Modelfile SYSTEM.
+          staticBlocksAlreadyBaked: baked,
         });
 
         let history: Anthropic.Messages.MessageParam[];

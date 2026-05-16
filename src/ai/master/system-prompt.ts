@@ -1,6 +1,26 @@
 import type { TonalFrame, EngagementProfile } from '@/engine/types';
 import { TONAL_FRAME_GUIDANCE } from '@/engine/npc-tonal';
 
+/**
+ * Bump this integer whenever the *static* portion of the master system
+ * prompt changes in a way users of baked Ollama models (Plan D) need to
+ * pick up. The build script (`pnpm build-local-models`) stamps this
+ * value into the generated Modelfile; the runtime compares it against
+ * the stamped value and emits a stale-model warning when they differ.
+ *
+ * "Static portion" = MASTER_SYSTEM_PROMPT_BASE + MASTER_TOOL_CONTRACT +
+ * MASTER_META_TOOLS_INSTRUCTION + MASTER_ROLL_TRIGGERS +
+ * MASTER_REWARDS_MANDATE + getMasterHandbook() + getMasterWorldLore() +
+ * MASTER_MEMORY_TOOL_RULE + buildSrdContext().
+ *
+ * Per-campaign / per-turn blocks (guidance, manual rolls, narration
+ * pace, langHint, party mode, snapshot, ...) are NOT counted — those
+ * always run dynamically and don't need a rebuild.
+ *
+ * Bump policy: integer monotonic. Don't reset across releases.
+ */
+export const MASTER_PROMPT_VERSION = 1;
+
 export const MASTER_SYSTEM_PROMPT_BASE = `You are the Dungeon Master for a single player at a Dungeons & Dragons 5e (SRD) table run via this app.
 
 ## Your role
@@ -1312,6 +1332,30 @@ export interface MasterPromptInput {
    * normal tool catalogue.
    */
   usesMetaTools?: boolean;
+  /**
+   * Plan D (baked Ollama models): when true, the 9 static blocks
+   * (MASTER_SYSTEM_PROMPT_BASE, MASTER_TOOL_CONTRACT,
+   * MASTER_META_TOOLS_INSTRUCTION, MASTER_ROLL_TRIGGERS,
+   * MASTER_REWARDS_MANDATE, input.handbook, input.worldLore,
+   * MASTER_MEMORY_TOOL_RULE, input.srdContext) are NOT emitted in the
+   * runtime system prompt — they have already been baked into the
+   * model's Modelfile SYSTEM directive via `pnpm build-local-models`.
+   *
+   * Everything else (guidance level, manual rolls, hide-difficulty,
+   * brisk pacing, tonal frame, engagement profile, language hint, party
+   * mode, snapshot tail, chapter digests, scene card, codex index) is
+   * emitted normally — these vary per campaign / per turn and CANNOT be
+   * baked.
+   *
+   * Set this to true iff `aiMasterModel` starts with `dnd-master-`. The
+   * caller should also pass empty strings for handbook / worldLore /
+   * srdContext to avoid loading them from disk for nothing.
+   *
+   * Independent of `usesMetaTools` — they're set together for local
+   * baked models but stay separate flags so each is testable in
+   * isolation.
+   */
+  staticBlocksAlreadyBaked?: boolean;
 }
 
 export const MASTER_HIDE_DIFFICULTY_RULE = `## Hide difficulty numbers
@@ -1658,19 +1702,27 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
   const blocks: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }[] = [];
 
   // ── (1) STATIC ACROSS CAMPAIGNS — never varies between sessions/users. ──
-  blocks.push(
-    { type: 'text', text: MASTER_SYSTEM_PROMPT_BASE, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: MASTER_TOOL_CONTRACT, cache_control: { type: 'ephemeral' } },
-    ...(input.usesMetaTools
-      ? [{ type: 'text' as const, text: MASTER_META_TOOLS_INSTRUCTION, cache_control: { type: 'ephemeral' as const } }]
-      : []),
-    { type: 'text', text: MASTER_ROLL_TRIGGERS, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: MASTER_REWARDS_MANDATE, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: input.handbook, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: input.worldLore, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: MASTER_MEMORY_TOOL_RULE, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: input.srdContext, cache_control: { type: 'ephemeral' } },
-  );
+  //
+  // Plan D (baked models): when staticBlocksAlreadyBaked is true, these 9
+  // blocks are part of the model's Modelfile SYSTEM directive and we must
+  // NOT re-emit them in the runtime prompt — that would double-feed the
+  // content and waste tokens. The caller (turn route) sets the flag when
+  // it detects `dnd-master-*` in aiMasterModel.
+  if (!input.staticBlocksAlreadyBaked) {
+    blocks.push(
+      { type: 'text', text: MASTER_SYSTEM_PROMPT_BASE, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: MASTER_TOOL_CONTRACT, cache_control: { type: 'ephemeral' } },
+      ...(input.usesMetaTools
+        ? [{ type: 'text' as const, text: MASTER_META_TOOLS_INSTRUCTION, cache_control: { type: 'ephemeral' as const } }]
+        : []),
+      { type: 'text', text: MASTER_ROLL_TRIGGERS, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: MASTER_REWARDS_MANDATE, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: input.handbook, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: input.worldLore, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: MASTER_MEMORY_TOOL_RULE, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: input.srdContext, cache_control: { type: 'ephemeral' } },
+    );
+  }
 
   // ── (2) STABLE PER SESSION — set at campaign creation, rarely mutated. ──
   if (input.manualRolls) {
