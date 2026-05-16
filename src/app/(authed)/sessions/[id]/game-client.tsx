@@ -93,14 +93,17 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
   const [pendingTurn, setPendingTurn] = React.useState(false);
   const busy = streamingMessage !== null || sending || pendingTurn || turnStatus !== null;
 
-  // Context-aware label for the "responding…" indicator. The server-side
-  // turn-status event (emitted right after POST acceptance) tells us
-  // whether this is a campaign opener or a (possibly cold) local LLM call;
-  // we adjust copy accordingly so users wait patiently instead of giving
-  // up at 60s when the model is still doing cold prompt-eval.
+  // Context-aware label for the "responding…" indicator. Only the
+  // campaign-opener case gets a custom copy ("generating the campaign…")
+  // because that ONE turn is genuinely cold for local LLMs and routinely
+  // takes minutes. Subsequent turns — even on local providers — hit a
+  // warm KV cache and finish in seconds, so the generic "responding…"
+  // is accurate and avoids alarming users with "warming up" copy on
+  // turns that are actually warm. The server's turn-status event still
+  // fires every turn (we use it to drive `busy`), but the label only
+  // diverges for opener turns.
   const respondingLabel = React.useMemo(() => {
     if (turnStatus?.isBegin) return 'The Master is generating the campaign…';
-    if (turnStatus?.isLocalProvider) return 'The Master is warming up the model…';
     return 'The Master is responding…';
   }, [turnStatus]);
 
