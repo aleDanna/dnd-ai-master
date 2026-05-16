@@ -28,6 +28,11 @@ export interface NarrativePaneProps {
   history: MessageRow[];
   liveEvents: TurnEvent[];
   busy: boolean;
+  /** Context-aware label shown next to the spinner while busy. Defaults to
+   *  "The Master is responding…" for backward compatibility. Pass a more
+   *  specific string (e.g. "The Master is generating the campaign…") when
+   *  the caller knows what the master is actually doing. */
+  busyLabel?: string;
   onSend: (text: string) => void;
   onCastSpell?: () => void;
   /** When true, master messages get inline roll buttons parsed from their text. */
@@ -52,7 +57,7 @@ export interface NarrativePaneProps {
  *  link reveals an additional batch of this size with each click. */
 const PAGE_SIZE = 10;
 
-export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, onCastSpell, manualRolls, imageGenerationEnabled = false, disabled = false, disabledPlaceholder, party = [], compact = false, ttsPending, ttsErrors, imagePending = false, imageError = null }: NarrativePaneProps) {
+export function NarrativePane({ sessionId, history, liveEvents, busy, busyLabel = 'The Master is responding…', onSend, onCastSpell, manualRolls, imageGenerationEnabled = false, disabled = false, disabledPlaceholder, party = [], compact = false, ttsPending, ttsErrors, imagePending = false, imageError = null }: NarrativePaneProps) {
   const [draft, setDraft] = React.useState('');
   // Tamper-resistant pending roll. The text is set ONLY by handleRollResult
   // (called from the dice-button after the spinner settles) and rendered as
@@ -226,7 +231,7 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
           ))}
           {busy && (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', color: 'var(--fg-muted)', fontFamily: 'var(--font-display)', fontSize: 16, fontStyle: 'italic' }}>
-              <SpinningDie /> The Master is responding…
+              <SpinningDie /> {busyLabel}
             </div>
           )}
         </div>

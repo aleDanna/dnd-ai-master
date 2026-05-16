@@ -62,6 +62,8 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     streamingMessage,
     error: streamError,
     turnError,
+    turnStatus,
+    setTurnStatus,
     clearTurnError,
     finalizedSeq,
     clearStreamingMessage,
@@ -89,7 +91,18 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
   // multi-second gap where the spinner used to vanish. `pendingTurn` below
   // closes that gap.
   const [pendingTurn, setPendingTurn] = React.useState(false);
-  const busy = streamingMessage !== null || sending || pendingTurn;
+  const busy = streamingMessage !== null || sending || pendingTurn || turnStatus !== null;
+
+  // Context-aware label for the "responding…" indicator. The server-side
+  // turn-status event (emitted right after POST acceptance) tells us
+  // whether this is a campaign opener or a (possibly cold) local LLM call;
+  // we adjust copy accordingly so users wait patiently instead of giving
+  // up at 60s when the model is still doing cold prompt-eval.
+  const respondingLabel = React.useMemo(() => {
+    if (turnStatus?.isBegin) return 'The Master is generating the campaign…';
+    if (turnStatus?.isLocalProvider) return 'The Master is warming up the model…';
+    return 'The Master is responding…';
+  }, [turnStatus]);
 
   // Live character mutable fields from the SSE snapshot. Merging
   // onto the local React state on every snapshot tick makes the right-pane
@@ -290,8 +303,12 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     if (busy) return;
     if (messages.length > 0) return;
     beganRef.current = true;
-    // Light up the "Master is responding…" indicator immediately — the
-    // master can take a few seconds to produce the opening scene.
+    // Light up the indicator immediately. We KNOW this is a begin call,
+    // so we can optimistically set turnStatus.isBegin to render the
+    // "generating the campaign…" copy without waiting for the server's
+    // turn-status event (which arrives ~100-300ms later via SSE).
+    // isLocalProvider stays false here; the server event refines it.
+    setTurnStatus({ isBegin: true, isLocalProvider: false });
     setPendingTurn(true);
     void postTurn({ begin: true });
     // Mirror the regular `send()` path: arm the safety poll so a dropped
@@ -304,17 +321,23 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
   // returning 202) and the master starting to stream the response. It powers
   // both the "Master is responding…" indicator (via `busy`) and the composer
   // lock (so the player can't double-submit during that gap). Cleared by the
-  // first streamed chunk, by a turn-error, or by a 120s safety ceiling.
-  // (Local providers like qwen3:30b can take 30-90s for the first run when
-  // weights are being loaded; the safety poll separately catches the case
-  // where SSE drops silently — see startSafetyPoll, 90s window.)
+  // first streamed chunk, by a turn-error, or by a 5-minute safety ceiling.
+  //
+  // The previous 120s ceiling was too tight for cold local LLMs: a fresh
+  // qwen3:30b-a3b first-turn (28k-token baked SYSTEM cold prompt eval)
+  // takes ~4-5 minutes on M-series Macs. The user saw the indicator
+  // disappear at 120s while the master was still working, then the master
+  // message landed silently another 3 minutes later. Bumped to 5 minutes
+  // (matches the server-side AbortSignal.timeout on the Ollama fetch).
+  // After the first cold turn, OLLAMA_KEEP_ALIVE keeps weights resident
+  // and subsequent turns finish in seconds, so the ceiling rarely fires.
   React.useEffect(() => {
     if (!pendingTurn) return;
     if (streamingMessage || turnError) {
       setPendingTurn(false);
       return;
     }
-    const t = setTimeout(() => setPendingTurn(false), 120_000);
+    const t = setTimeout(() => setPendingTurn(false), 300_000);
     return () => clearTimeout(t);
   }, [pendingTurn, streamingMessage, turnError]);
 
@@ -475,12 +498,19 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
           history={messages}
           liveEvents={liveEvents}
           busy={busy}
+          busyLabel={respondingLabel}
           onSend={send}
           onCastSpell={!composerDisabled && character.spellcasting && slots.length > 0 ? () => setSpellOpen(true) : undefined}
           manualRolls={initialManualRolls}
           imageGenerationEnabled={initialImageGenerationEnabled}
           disabled={composerDisabled}
-          disabledPlaceholder={!memoryReady ? 'Preparazione memoria in corso…' : `Waiting for ${currentPlayerName}…`}
+          disabledPlaceholder={
+            !memoryReady
+              ? 'Preparazione memoria in corso…'
+              : busy
+                ? respondingLabel
+                : `Waiting for ${currentPlayerName}…`
+          }
           party={party}
           compact
           ttsPending={ttsPending}
@@ -609,6 +639,7 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
             history={messages}
             liveEvents={liveEvents}
             busy={busy}
+            busyLabel={respondingLabel}
             onSend={send}
             // Drop the spell-cast affordance when the composer is locked: an
             // open Spell modal would still call `send()` directly (bypassing
@@ -622,7 +653,7 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
               !memoryReady
                 ? 'Preparazione memoria in corso…'
                 : busy
-                  ? 'The Master is responding…'
+                  ? respondingLabel
                   : `Waiting for ${currentPlayerName}…`
             }
             party={party}

@@ -133,6 +133,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // eslint-disable-next-line no-console
         console.log('[turn]', sessionId, 'userPrefs aiProvider=', userPrefs.aiProvider, 'model=', userPrefs.aiMasterModel);
 
+        // Emit a turn-status notification ASAP so the client can derive the
+        // right "responding" label and lock the composer. Without this the
+        // client only knows a turn is in flight (via the POST 202 itself,
+        // optimistic) but has no idea whether it's an opener, a cold local
+        // call, or a regular warm cloud turn.
+        notifySession(sessionId, {
+          type: 'turn-status',
+          isBegin,
+          isLocalProvider: userPrefs.aiProvider === 'local',
+        }).catch((e) =>
+          console.warn('notifySession(turn-status) failed:', e instanceof Error ? e.message : String(e)),
+        );
+
         // 1. Persist player message — skipped on the synthetic "begin" turn
         // (no real player text exists yet; the master is opening the scene
         // from the campaign premise).

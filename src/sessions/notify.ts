@@ -8,6 +8,12 @@ export type NotifyPayload =
   | { type: 'state' }
   | { type: 'turn-change'; characterId: string }
   | { type: 'dice'; logId: string }
+  // Emitted once at the start of a turn, before any provider call. Lets the
+  // client show context-aware "responding" labels: a campaign opener
+  // ("generating the campaign…"), a cold local LLM call ("warming up the
+  // model…"), or the default. The flag tuple is the absolute minimum the
+  // client needs to derive the label.
+  | { type: 'turn-status'; isBegin: boolean; isLocalProvider: boolean }
   // Master loop completed without persisting a master message (empty finalText,
   // typically Gemini-style "tool calls only / end_turn"). The current player
   // stays the current player so they can retry. The client shows an inline
