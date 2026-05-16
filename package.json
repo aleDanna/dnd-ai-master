@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
+    "dev:log": "next dev --turbopack 2>&1 | tee .dev.log",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",

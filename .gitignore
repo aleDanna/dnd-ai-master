@@ -64,5 +64,8 @@ next-env.d.ts
 # Generated Ollama Modelfiles (Plan D — pnpm build-local-models)
 /.ollama/
 
+# Dev server log (Plan D smoke testing — `pnpm dev:log` writes here)
+/.dev.log
+
 # Brainstorming companion sessions
 .superpowers/
