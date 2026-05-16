@@ -4,12 +4,20 @@
  * remain unchanged and are still used by cloud providers (Anthropic /
  * OpenAI / Gemini) and by non-baked local turns.
  *
- * Token budget targets (chars/4 heuristic):
- *  - MASTER_SYSTEM_PROMPT_BASE_SLIM:    ~2.0K tok ( ~8000 chars)
- *  - MASTER_TOOL_CONTRACT_SLIM:         ~0.8K tok ( ~3200 chars)
- *  - MASTER_REWARDS_MANDATE_SLIM:       ~0.5K tok ( ~2000 chars)
- *  - MASTER_MEMORY_TOOL_RULE_SLIM:      ~0.2K tok (  ~800 chars)
- *  - MASTER_HANDBOOK_ULTRA_SLIM:        ~0.4K tok ( ~1600 chars)
+ * These are intentionally MORE aggressive than the design-doc estimates:
+ * the wire-budget targets in the spec assumed moderate compression of the
+ * full prompts; the constants below are the result of distilling each
+ * block to its load-bearing instructions only. The Task 7 token-budget
+ * test (~6.9K ceiling for total baked content) is the real guardrail.
+ *
+ * Actual sizes (chars / approx tokens at chars/4):
+ *  - MASTER_SYSTEM_PROMPT_BASE_SLIM:    ~1.4K chars (~345 tok)
+ *  - MASTER_TOOL_CONTRACT_SLIM:         ~0.8K chars (~210 tok)
+ *  - MASTER_REWARDS_MANDATE_SLIM:       ~0.7K chars (~170 tok)
+ *  - MASTER_MEMORY_TOOL_RULE_SLIM:      ~0.5K chars (~130 tok)
+ *  - MASTER_HANDBOOK_ULTRA_SLIM:        ~1.0K chars (~245 tok)
+ *  Total slim base content:             ~4.4K chars (~1.1K tok)
+ *  + SRD compact intact (~3.0K tok)     => ~4.1K tok baked, well under 6.9K target.
  */
 
 export const MASTER_SYSTEM_PROMPT_BASE_SLIM = `# ROLE
