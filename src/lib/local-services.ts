@@ -1,5 +1,6 @@
 import { XTTS_LANGUAGES } from './tts-voices';
 import { isBakedModel, getBakedBaseModel } from '@/ai/master/baked-models';
+import { pingEmbedder } from '@/ai/master/rag/embedder';
 
 /**
  * True when the current process is a local development environment.
@@ -78,6 +79,7 @@ export interface LocalServicesStatus {
     enabled: boolean;
     engines: { comfyui: EngineStatus; drawThings: EngineStatus };
   };
+  embedder: { reachable: boolean };
 }
 
 // LLM whitelist — phase 1 supports qwen3 and gpt-oss families, both from the
@@ -282,15 +284,17 @@ export async function fetchLocalServicesStatus(): Promise<LocalServicesStatus> {
       ai: empty,
       tts: { enabled: false, engines: { piper: empty, xtts: empty } },
       image: { enabled: false, engines: { comfyui: empty, drawThings: empty } },
+      embedder: { reachable: false },
     };
   }
 
-  const [ai, piper, xtts, comfyui, drawThings] = await Promise.all([
+  const [ai, piper, xtts, comfyui, drawThings, embedderReachable] = await Promise.all([
     buildAiStatus(),
     buildPiperStatus(),
     buildXttsStatus(),
     buildComfyUIStatus(),
     buildDrawThingsStatus(),
+    pingEmbedder().catch(() => false),
   ]);
 
   return {
@@ -304,5 +308,6 @@ export async function fetchLocalServicesStatus(): Promise<LocalServicesStatus> {
       enabled: comfyui.enabled || drawThings.enabled,
       engines: { comfyui, drawThings },
     },
+    embedder: { reachable: embedderReachable },
   };
 }
