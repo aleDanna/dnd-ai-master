@@ -42,9 +42,14 @@ const NUM_CTX = Number(process.env.OLLAMA_NUM_CTX ?? '65536');
 function isThinkingModel(model: string | undefined): boolean {
   if (!model) return false;
   const m = model.toLowerCase();
-  return m.startsWith('qwen3') || m.includes('/qwen3')
-    || m.startsWith('deepseek-r1')
-    || m.startsWith('gpt-oss') || m.includes('/gpt-oss');
+  // Match both raw bases (qwen3:30b, gpt-oss:20b) AND Plan D baked
+  // variants (dnd-master-qwen3-30b, dnd-master-gpt-oss-20b). Without
+  // recognising the baked variants we'd skip the `think: false` API
+  // flag and the model would emit a chain-of-thought even when our
+  // adapter is about to strip it — wasted generation tokens.
+  return m.startsWith('qwen3') || m.includes('/qwen3') || m.includes('qwen3')
+    || m.startsWith('deepseek-r1') || m.includes('deepseek-r1')
+    || m.startsWith('gpt-oss') || m.includes('/gpt-oss') || m.includes('gpt-oss');
 }
 
 /** qwen3 responds to a `/no_think` control token in the user message — BUT
