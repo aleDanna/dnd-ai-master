@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, timestamp, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, boolean, timestamp, index } from 'drizzle-orm/pg-core';
 import { sessions } from './sessions';
 
 export const aiUsage = pgTable(
@@ -13,6 +13,10 @@ export const aiUsage = pgTable(
     outputTokens: integer('output_tokens').notNull().default(0),
     cacheReadTokens: integer('cache_read_tokens').notNull().default(0),
     cacheCreationTokens: integer('cache_creation_tokens').notNull().default(0),
+    /** Plan E.1: master mode at turn execution time (master endpoint only). */
+    mode: text('mode'),
+    /** Plan E.1: whether the spellcasting overlay was injected this turn. */
+    needsSpellcasting: boolean('needs_spellcasting'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

@@ -232,6 +232,13 @@
       "when": 1778853774182,
       "tag": "0032_chubby_clea",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1778971321678,
+      "tag": "0033_legal_ender_wiggin",
+      "breakpoints": true
     }
   ]
 }

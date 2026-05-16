@@ -333,6 +333,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               endpoint: 'master',
               model: masterModel,
               usage,
+              mode,
+              needsSpellcasting,
             });
           },
           onEvent: (ev) => {
