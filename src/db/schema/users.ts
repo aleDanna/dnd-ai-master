@@ -87,6 +87,12 @@ export interface UserPreferences {
    * false for cloud providers.
    */
   useModeAwarePrompt?: boolean;
+  /**
+   * When true, the AI master retrieves relevant lore/world context via RAG
+   * before generating each response (Plan E.2). Default false in Phase 2
+   * (opt-in); Phase 3 flips the default to true for local providers.
+   */
+  useRagRetrieval?: boolean;
 }
 
 export type MasterGuidanceLevel = NonNullable<UserPreferences['masterGuidanceLevel']>;

@@ -165,6 +165,10 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   // cloud). Explicit user pick always wins; the static default below is
   // only used as a final fallback.
   useModeAwarePrompt: false,
+  // RAG retrieval is opt-in in Phase 2 (default OFF). Phase 3 will flip
+  // the default to ON for local providers once telemetry confirms recall
+  // quality is acceptable.
+  useRagRetrieval: false,
 };
 
 export async function getUserPreferences(userId: string): Promise<UserPreferences> {
@@ -219,6 +223,7 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
   // Explicit user pick wins over the provider-conditional default.
   const compactPrompt = prefs.compactPrompt ?? (provider === 'local');
   const useModeAwarePrompt = resolveUseModeAwarePrompt({ aiProvider: provider, useModeAwarePrompt: prefs.useModeAwarePrompt });
+  const useRagRetrieval = resolveUseRagRetrieval({ aiProvider: provider, useRagRetrieval: prefs.useRagRetrieval });
   return {
     ttsProvider,
     ttsVoice,
@@ -237,6 +242,7 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
     imageModel,
     compactPrompt,
     useModeAwarePrompt,
+    useRagRetrieval,
   };
 }
 
@@ -344,6 +350,7 @@ export async function getCampaignSettings(
   // local, off for cloud, explicit pick always wins.
   const compactPrompt = prefs.compactPrompt ?? (provider === 'local');
   const useModeAwarePrompt = resolveUseModeAwarePrompt({ aiProvider: provider, useModeAwarePrompt: prefs.useModeAwarePrompt });
+  const useRagRetrieval = resolveUseRagRetrieval({ aiProvider: provider, useRagRetrieval: prefs.useRagRetrieval });
   return {
     ttsProvider,
     ttsVoice,
@@ -361,6 +368,7 @@ export async function getCampaignSettings(
     imageModel,
     compactPrompt,
     useModeAwarePrompt,
+    useRagRetrieval,
   };
 }
 
@@ -531,6 +539,10 @@ export function validateSettingsPatch(
     if (typeof body.useModeAwarePrompt !== 'boolean') return { ok: false, error: 'invalid-useModeAwarePrompt' };
     out.useModeAwarePrompt = body.useModeAwarePrompt;
   }
+  if ('useRagRetrieval' in body) {
+    if (typeof body.useRagRetrieval !== 'boolean') return { ok: false, error: 'invalid-useRagRetrieval' };
+    out.useRagRetrieval = body.useRagRetrieval;
+  }
   return { ok: true, patch: out };
 }
 
@@ -547,5 +559,17 @@ export function resolveUseModeAwarePrompt(prefs: {
 }): boolean {
   if (typeof prefs.useModeAwarePrompt === 'boolean') return prefs.useModeAwarePrompt;
   return prefs.aiProvider === 'local';
+}
+
+/**
+ * Plan E.2 - opt-in RAG retrieval. Default OFF in Phase 2 until telemetry
+ * confirms recall is acceptable; Phase 3 flips the default to ON for local.
+ */
+export function resolveUseRagRetrieval(prefs: {
+  aiProvider: string;
+  useRagRetrieval?: boolean;
+}): boolean {
+  if (typeof prefs.useRagRetrieval === 'boolean') return prefs.useRagRetrieval;
+  return false;
 }
 
