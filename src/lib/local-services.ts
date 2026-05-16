@@ -181,15 +181,18 @@ export async function fetchOllamaModels(): Promise<ModelOption[]> {
     if (!res.ok) return [];
     const json = (await res.json()) as OllamaTagsResponse;
     const models = json.models ?? [];
-    return models
-      .filter((m) => matchesLlmWhitelist(m.name))
-      .map((m) => ({
-        slug: m.name,
-        label: normalizeOllamaLabel(m.name),
-        blurb: [m.details?.parameter_size, m.details?.quantization_level]
-          .filter(Boolean)
-          .join(' · ') || 'local',
-      }));
+    // Return EVERY installed model — no whitelist. The user picks freely; if
+    // a model lacks tool-calling capability or fails on the master prompt,
+    // we surface the failure at runtime rather than hide the option here.
+    // matchesLlmWhitelist is still exported for callers that want curated
+    // suggestions, but Settings shows the full list.
+    return models.map((m) => ({
+      slug: m.name,
+      label: normalizeOllamaLabel(m.name),
+      blurb: [m.details?.parameter_size, m.details?.quantization_level]
+        .filter(Boolean)
+        .join(' · ') || 'local',
+    }));
   } catch {
     return [];
   }

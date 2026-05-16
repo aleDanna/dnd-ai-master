@@ -11,7 +11,7 @@ describe('fetchOllamaModels', () => {
     vi.unstubAllEnvs();
   });
 
-  it('filters /api/tags response by whitelist', async () => {
+  it('returns every installed model verbatim (no whitelist)', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response(JSON.stringify({
       models: [
         { name: 'qwen3:30b-a3b',                        details: { parameter_size: '30B', quantization_level: 'Q4_K_M' } },
@@ -22,13 +22,15 @@ describe('fetchOllamaModels', () => {
     }), { status: 200 }));
 
     const r = await fetchOllamaModels();
-    expect(r).toHaveLength(2);
-    expect(r[0]).toEqual({ slug: 'qwen3:30b-a3b', label: 'qwen3:30b-a3b', blurb: '30B · Q4_K_M' });
-    expect(r[1]).toEqual({
-      slug: 'hf.co/unsloth/gpt-oss-20b-GGUF:F16',
-      label: 'unsloth/gpt-oss-20b (F16)',
-      blurb: '20B · F16',
-    });
+    expect(r).toHaveLength(4);
+    expect(r.map((m) => m.slug)).toEqual([
+      'qwen3:30b-a3b',
+      'llama3.1:8b',
+      'hf.co/unsloth/gpt-oss-20b-GGUF:F16',
+      'mistral:7b',
+    ]);
+    // Label normalization still rewrites hf.co paths for readability.
+    expect(r[2]?.label).toBe('unsloth/gpt-oss-20b (F16)');
   });
 
   it('returns [] when fetch throws', async () => {
