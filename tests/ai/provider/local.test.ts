@@ -108,4 +108,84 @@ describe('LocalProvider', () => {
       toolDefinition: { name: 'propose_choice', description: '', input_schema: { type: 'object' } },
     })).rejects.toThrow(/AI did not call propose_choice/);
   });
+
+  describe('Plan D — baked-model message shape', () => {
+    function lastFetchBody(): { messages: Array<{ role: string; content: string }> } {
+      const calls = (fetch as ReturnType<typeof vi.fn>).mock.calls;
+      const last = calls[calls.length - 1];
+      const body = JSON.parse(last![1].body as string) as { messages: Array<{ role: string; content: string }> };
+      return body;
+    }
+
+    it('non-baked model: passes systemBlocks as role:system (legacy path)', async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response(JSON.stringify({
+        message: { role: 'assistant', content: 'ok' },
+        done_reason: 'stop', prompt_eval_count: 10, eval_count: 5,
+      }), { status: 200 }));
+
+      const p = new LocalProvider();
+      await p.completeMessage({
+        systemBlocks: [{ type: 'text', text: 'GUIDANCE: balanced' }],
+        messages: [{ role: 'user', content: 'attack' }],
+        tools: [],
+        model: 'qwen3:30b',
+      });
+
+      const body = lastFetchBody();
+      expect(body.messages[0]!.role).toBe('system');
+      expect(body.messages[0]!.content).toContain('GUIDANCE: balanced');
+      expect(body.messages[1]!.role).toBe('user');
+    });
+
+    it('baked model: NO system role; injects systemBlocks as user-preamble + assistant ack', async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response(JSON.stringify({
+        message: { role: 'assistant', content: 'ok' },
+        done_reason: 'stop', prompt_eval_count: 10, eval_count: 5,
+      }), { status: 200 }));
+
+      const p = new LocalProvider();
+      await p.completeMessage({
+        systemBlocks: [{ type: 'text', text: 'GUIDANCE: balanced' }],
+        messages: [{ role: 'user', content: 'attack' }],
+        tools: [],
+        model: 'dnd-master-qwen3-30b',
+      });
+
+      const body = lastFetchBody();
+      // No system role anywhere — Modelfile SYSTEM must be the only system source.
+      expect(body.messages.every((m) => m.role !== 'system')).toBe(true);
+      // First message: user-role preamble carrying the dynamic blocks
+      expect(body.messages[0]!.role).toBe('user');
+      expect(body.messages[0]!.content).toContain('SYSTEM CONTEXT');
+      expect(body.messages[0]!.content).toContain('GUIDANCE: balanced');
+      expect(body.messages[0]!.content).toContain('END SYSTEM CONTEXT');
+      // Second message: assistant ack
+      expect(body.messages[1]!.role).toBe('assistant');
+      expect(body.messages[1]!.content).toMatch(/Acknowledged/);
+      // Third message: the actual user input
+      expect(body.messages[2]!.role).toBe('user');
+      expect(body.messages[2]!.content).toBe('attack');
+    });
+
+    it('baked model: empty systemBlocks still injects the preamble framing', async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response(JSON.stringify({
+        message: { role: 'assistant', content: 'ok' },
+        done_reason: 'stop', prompt_eval_count: 10, eval_count: 5,
+      }), { status: 200 }));
+
+      const p = new LocalProvider();
+      await p.completeMessage({
+        systemBlocks: [],
+        messages: [{ role: 'user', content: 'attack' }],
+        tools: [],
+        model: 'dnd-master-qwen3-30b',
+      });
+
+      const body = lastFetchBody();
+      // Still wraps even with no dynamic content — keeps the cache prefix stable
+      expect(body.messages[0]!.role).toBe('user');
+      expect(body.messages[0]!.content).toContain('SYSTEM CONTEXT');
+      expect(body.messages[1]!.role).toBe('assistant');
+    });
+  });
 });

@@ -18,6 +18,7 @@ import {
   type OllamaResponseMessage,
 } from './ollama-adapter';
 import { recordUsage } from '@/ai/master/usage';
+import { isBakedModel } from '@/ai/master/baked-models';
 
 const KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE ?? '5m';
 // Ollama defaults `num_ctx` to 2048 which truncates the master prompt
@@ -136,11 +137,43 @@ export class LocalProvider implements MasterProvider {
   readonly name = 'local' as const;
 
   async completeMessage(input: CompleteMessageInput): Promise<CompleteMessageOutput> {
-    const systemMsg = anthropicSystemToOllamaMessage(input.systemBlocks);
-    const messages: OllamaMessage[] = prependNoThinkIfQwen3([
-      ...(systemMsg ? [systemMsg] : []),
-      ...anthropicMessagesToOllama(input.messages),
-    ], input.model);
+    // Plan D (baked models) — Ollama OVERRIDES the Modelfile's SYSTEM
+    // directive when the chat request includes a `role: 'system'` message
+    // in its `messages` array. Empirically verified: with SYSTEM=DM in
+    // the Modelfile and a "you are a pirate" system in the request, the
+    // model behaves as a pirate.
+    //
+    // To preserve the baked content (role description, tool contract,
+    // handbook, SRD, ...) we must NOT pass a system role when calling a
+    // baked variant. Instead we inject the runtime dynamic blocks
+    // (guidance, langHint, snapshot tail, ...) as a user→assistant
+    // preamble before the real history. The acknowledgement turn keeps
+    // the conversation coherent and gives Ollama a stable cache prefix
+    // (Modelfile SYSTEM + preamble framing are byte-identical across
+    // turns — only the dynamic content inside the preamble changes).
+    const baked = isBakedModel(input.model ?? '');
+    let messages: OllamaMessage[];
+    if (baked) {
+      const dynamicContent = input.systemBlocks.map((b) => b.text).join('\n\n');
+      messages = prependNoThinkIfQwen3([
+        {
+          role: 'user',
+          content:
+            `[SYSTEM CONTEXT — per-turn campaign settings + snapshot. Follow these alongside your baked role/handbook/SRD.]\n\n${dynamicContent}\n\n[END SYSTEM CONTEXT]`,
+        },
+        {
+          role: 'assistant',
+          content: 'Acknowledged. Ready for the next player turn.',
+        },
+        ...anthropicMessagesToOllama(input.messages),
+      ], input.model);
+    } else {
+      const systemMsg = anthropicSystemToOllamaMessage(input.systemBlocks);
+      messages = prependNoThinkIfQwen3([
+        ...(systemMsg ? [systemMsg] : []),
+        ...anthropicMessagesToOllama(input.messages),
+      ], input.model);
+    }
     const json = await chat({
       model: input.model,
       messages,
