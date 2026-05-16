@@ -1,7 +1,7 @@
 export const SPELLCASTING_OVERLAY_BLOCK = `## OVERLAY: SPELLCASTING
 
 The active PC is a spellcaster. The full SRD spell-rules section is in your
-baked content — this overlay provides quick reference for in-turn calls.
+baked content - this overlay provides quick reference for in-turn calls.
 
 SLOT MECHANICS:
 - spell_action with subaction="cast_spell" consumes a slot of the cast level.
@@ -11,9 +11,8 @@ SLOT MECHANICS:
 - Short rest: only warlock pact slots and explicitly short-rest features regain.
 
 CONCENTRATION:
-- Only one concentration spell at a time per caster.
-- Taking damage triggers a CON save: DC = max(10, damage/2). Fail = drop.
-- Casting a new concentration spell ends any current concentration.
+- Only one concentration spell at a time per caster. Casting a new one drops any current.
+- For damage-triggered drops: the engine emits a concentration_check mutation - call the concentration_check tool with the returned actorId + DC.
 
 COMPONENTS:
 - V/S/M check available. Costed material components are consumed.

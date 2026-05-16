@@ -55,8 +55,8 @@ describe('spellcasting overlay', () => {
     expect(SPELLCASTING_OVERLAY_BLOCK).toMatch(/components?/i);
   });
 
-  it('mentions both spell attack rolls and save spells', () => {
+  it('mentions both spell attack rolls and save DC formula', () => {
     expect(SPELLCASTING_OVERLAY_BLOCK).toMatch(/spell attack/i);
-    expect(SPELLCASTING_OVERLAY_BLOCK).toMatch(/(saving throw|save spell)/i);
+    expect(SPELLCASTING_OVERLAY_BLOCK).toMatch(/DC\s*=\s*8\s*\+\s*spellcasting/i);
   });
 });
