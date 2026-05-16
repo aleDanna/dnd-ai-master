@@ -1,5 +1,6 @@
 import type { TonalFrame, EngagementProfile } from '@/engine/types';
 import { TONAL_FRAME_GUIDANCE } from '@/engine/npc-tonal';
+import { MODE_BLOCKS, SPELLCASTING_OVERLAY_BLOCK } from './mode-blocks';
 
 /**
  * Bump this integer whenever the *static* portion of the master system
@@ -1356,6 +1357,10 @@ export interface MasterPromptInput {
    * isolation.
    */
   staticBlocksAlreadyBaked?: boolean;
+  /** Plan E.1: which mode block to inject. When undefined, no mode block is added (back-compat). */
+  mode?: 'combat' | 'exploration' | 'narrative';
+  /** Plan E.1: whether the active PC has spellcasting (overlay gate). */
+  needsSpellcasting?: boolean;
 }
 
 export const MASTER_HIDE_DIFFICULTY_RULE = `## Hide difficulty numbers
@@ -1766,6 +1771,26 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
   }
   if (langHint) {
     blocks.push({ type: 'text', text: langHint, cache_control: { type: 'ephemeral' } });
+  }
+
+  // ── (2.5) PLAN E.1 MODE BLOCK + SPELLCASTING OVERLAY ──
+  // Both fields are optional: when undefined (toggle OFF / cloud provider /
+  // pre-E.1 callers) we inject NOTHING here, preserving Plan B+C+D
+  // behaviour byte-for-byte. Only callers that opt in by passing
+  // `mode: <value>` get the new block.
+  if (input.mode) {
+    blocks.push({
+      type: 'text',
+      text: MODE_BLOCKS[input.mode],
+      cache_control: { type: 'ephemeral' },
+    });
+  }
+  if (input.needsSpellcasting) {
+    blocks.push({
+      type: 'text',
+      text: SPELLCASTING_OVERLAY_BLOCK,
+      cache_control: { type: 'ephemeral' },
+    });
   }
 
   // ── (3) PER-TURN DYNAMIC — invalidates the cache from this point onward. ──
