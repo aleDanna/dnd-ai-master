@@ -157,28 +157,37 @@ export class LocalProvider implements MasterProvider {
     //
     // To preserve the baked content (role description, tool contract,
     // handbook, SRD, ...) we must NOT pass a system role when calling a
-    // baked variant. Instead we inject the runtime dynamic blocks
-    // (guidance, langHint, snapshot tail, ...) as a user→assistant
-    // preamble before the real history. The acknowledgement turn keeps
-    // the conversation coherent and gives Ollama a stable cache prefix
-    // (Modelfile SYSTEM + preamble framing are byte-identical across
-    // turns — only the dynamic content inside the preamble changes).
+    // baked variant. The runtime dynamic content (guidance, langHint,
+    // snapshot tail, ...) is injected INTO the latest user message
+    // instead of as a separate user-role preamble at the start. This
+    // matters for KV-cache: the dynamic content varies per turn
+    // (snapshot HP/scene change), so if it sits at the start of the
+    // messages array the cache breaks immediately after SYSTEM+tools.
+    // By moving it onto the last user message, the entire history
+    // before that message stays byte-identical across turns — Ollama
+    // hits the cache up to the second-to-last message, dropping
+    // prompt-eval time from ~45s to ~10s on warm turns.
     const baked = isBakedModel(input.model ?? '');
     let messages: OllamaMessage[];
     if (baked) {
       const dynamicContent = input.systemBlocks.map((b) => b.text).join('\n\n');
-      messages = prependNoThinkIfQwen3([
-        {
-          role: 'user',
-          content:
-            `[SYSTEM CONTEXT — per-turn campaign settings + snapshot. Follow these alongside your baked role/handbook/SRD.]\n\n${dynamicContent}\n\n[END SYSTEM CONTEXT]`,
-        },
-        {
-          role: 'assistant',
-          content: 'Acknowledged. Ready for the next player turn.',
-        },
-        ...anthropicMessagesToOllama(input.messages),
-      ], input.model);
+      const history = anthropicMessagesToOllama(input.messages);
+      // Splice the dynamic state into the LAST user message in history.
+      // For the synthetic isBegin turn there's only one user message and
+      // it carries BEGIN_INSTRUCTION — wrap with state header. For
+      // regular turns we wrap the player's input. We splice (not mutate)
+      // so the original history array stays a stable reference for
+      // anyone else holding it.
+      const withState = history.map((m, idx) => {
+        if (idx === history.length - 1 && m.role === 'user') {
+          return {
+            ...m,
+            content: `[CURRENT STATE — per-turn campaign settings + snapshot. Treat as authoritative for THIS turn alongside your baked role/handbook/SRD.]\n\n${dynamicContent}\n\n[END CURRENT STATE]\n\n${m.content}`,
+          };
+        }
+        return m;
+      });
+      messages = prependNoThinkIfQwen3(withState, input.model);
     } else {
       const systemMsg = anthropicSystemToOllamaMessage(input.systemBlocks);
       messages = prependNoThinkIfQwen3([

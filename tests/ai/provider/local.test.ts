@@ -137,7 +137,7 @@ describe('LocalProvider', () => {
       expect(body.messages[1]!.role).toBe('user');
     });
 
-    it('baked model: NO system role; injects systemBlocks as user-preamble + assistant ack', async () => {
+    it('baked model: NO system role; dynamic state injected into the LAST user message', async () => {
       (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response(JSON.stringify({
         message: { role: 'assistant', content: 'ok' },
         done_reason: 'stop', prompt_eval_count: 10, eval_count: 5,
@@ -154,20 +154,47 @@ describe('LocalProvider', () => {
       const body = lastFetchBody();
       // No system role anywhere — Modelfile SYSTEM must be the only system source.
       expect(body.messages.every((m) => m.role !== 'system')).toBe(true);
-      // First message: user-role preamble carrying the dynamic blocks
+      // Single user message containing both the state header AND the player input.
+      expect(body.messages.length).toBe(1);
       expect(body.messages[0]!.role).toBe('user');
-      expect(body.messages[0]!.content).toContain('SYSTEM CONTEXT');
+      expect(body.messages[0]!.content).toContain('CURRENT STATE');
       expect(body.messages[0]!.content).toContain('GUIDANCE: balanced');
-      expect(body.messages[0]!.content).toContain('END SYSTEM CONTEXT');
-      // Second message: assistant ack
-      expect(body.messages[1]!.role).toBe('assistant');
-      expect(body.messages[1]!.content).toMatch(/Acknowledged/);
-      // Third message: the actual user input
-      expect(body.messages[2]!.role).toBe('user');
-      expect(body.messages[2]!.content).toBe('attack');
+      expect(body.messages[0]!.content).toContain('END CURRENT STATE');
+      // The actual player input comes AFTER the state block.
+      expect(body.messages[0]!.content).toMatch(/END CURRENT STATE\][\s\S]*attack/);
     });
 
-    it('baked model: empty systemBlocks still injects the preamble framing', async () => {
+    it('baked model with history: state injected only into the LATEST user message', async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response(JSON.stringify({
+        message: { role: 'assistant', content: 'ok' },
+        done_reason: 'stop', prompt_eval_count: 10, eval_count: 5,
+      }), { status: 200 }));
+
+      const p = new LocalProvider();
+      await p.completeMessage({
+        systemBlocks: [{ type: 'text', text: 'GUIDANCE: balanced' }],
+        messages: [
+          { role: 'user', content: 'old player message' },
+          { role: 'assistant', content: 'old master response' },
+          { role: 'user', content: 'current input' },
+        ],
+        tools: [],
+        model: 'dnd-master-qwen3-30b',
+      });
+
+      const body = lastFetchBody();
+      expect(body.messages.length).toBe(3);
+      // Old messages: bare content, NO state header (KV cache prefix stays stable).
+      expect(body.messages[0]!.content).toBe('old player message');
+      expect(body.messages[0]!.content).not.toContain('CURRENT STATE');
+      expect(body.messages[1]!.content).toBe('old master response');
+      // Latest message: state injected before the player input.
+      expect(body.messages[2]!.content).toContain('CURRENT STATE');
+      expect(body.messages[2]!.content).toContain('GUIDANCE: balanced');
+      expect(body.messages[2]!.content).toMatch(/END CURRENT STATE\][\s\S]*current input/);
+    });
+
+    it('baked model: empty systemBlocks still wraps the last user message (cache prefix stability)', async () => {
       (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response(JSON.stringify({
         message: { role: 'assistant', content: 'ok' },
         done_reason: 'stop', prompt_eval_count: 10, eval_count: 5,
@@ -182,10 +209,10 @@ describe('LocalProvider', () => {
       });
 
       const body = lastFetchBody();
-      // Still wraps even with no dynamic content — keeps the cache prefix stable
+      expect(body.messages.length).toBe(1);
       expect(body.messages[0]!.role).toBe('user');
-      expect(body.messages[0]!.content).toContain('SYSTEM CONTEXT');
-      expect(body.messages[1]!.role).toBe('assistant');
+      expect(body.messages[0]!.content).toContain('CURRENT STATE');
+      expect(body.messages[0]!.content).toContain('attack');
     });
   });
 });
