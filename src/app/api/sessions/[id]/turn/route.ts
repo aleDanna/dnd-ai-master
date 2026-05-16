@@ -120,12 +120,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   waitUntil(
     (async () => {
       try {
+        // eslint-disable-next-line no-console
+        console.log('[turn]', sessionId, 'start, isBegin=', isBegin);
         // 0. Resolve session-scoped (host's) prefs once — the AI provider/model
         // and master-behavior flags MUST be uniform across the party regardless
         // of who's posting this turn. Personal-device prefs (TTS voice etc.)
         // are not consumed here; they only matter for /messages/<id>/tts which
         // resolves per-viewer.
         const userPrefs = await getSessionMasterPreferences(sessionId);
+        // eslint-disable-next-line no-console
+        console.log('[turn]', sessionId, 'userPrefs aiProvider=', userPrefs.aiProvider, 'model=', userPrefs.aiMasterModel);
 
         // 1. Persist player message — skipped on the synthetic "begin" turn
         // (no real player text exists yet; the master is opening the scene
@@ -225,9 +229,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // 5. Run the tool loop — events forwarded to SSE subscribers via notifySession.
         // Provider + model are resolved from user prefs (with env fallback) so each
         // user can pick their own AI without redeploying.
+        // eslint-disable-next-line no-console
+        console.log('[turn]', sessionId, 'about to dispatch provider=', userPrefs.aiProvider);
         const provider = getProviderByName(userPrefs.aiProvider);
+        // Local models can't reason effectively over the full 72-tool
+        // ALWAYS_ON set inside a 40k system prompt. Trim to ~20 essential
+        // tools when running on Ollama — cloud providers keep the full list.
+        const localOptimized = userPrefs.aiProvider === 'local';
+        const tools = buildToolDefinitions(
+          { imageGenerationEnabled: userPrefs.imageGenerationEnabled },
+          { localOptimized },
+        );
+        // eslint-disable-next-line no-console
+        console.log('[turn]', sessionId, 'provider resolved:', provider.name, 'calling runToolLoop with model=', userPrefs.aiMasterModel, 'tools=', tools.length, 'localOptimized=', localOptimized);
         const masterModel = userPrefs.aiMasterModel;
-        const tools = buildToolDefinitions({ imageGenerationEnabled: userPrefs.imageGenerationEnabled });
         const result = await runToolLoop({
           provider,
           model: masterModel,

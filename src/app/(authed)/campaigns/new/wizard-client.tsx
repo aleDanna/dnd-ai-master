@@ -47,8 +47,11 @@ export function NewCampaignWizard({ templates, presets }: { templates: TemplateO
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error ?? `HTTP ${res.status}`);
       }
-      const { sessionId } = await res.json();
-      router.push(`/sessions/${sessionId}`);
+      const { campaign, sessionId } = (await res.json()) as { campaign: { id: string }; sessionId: string };
+      // Detour through Campaign Settings so the player can pick provider/model
+      // before the first turn. The settings page renders a "Start campaign"
+      // CTA when `first=1` is set; clicking it does the final hop to /sessions/{id}.
+      router.push(`/campaigns/${campaign.id}/settings?first=1&session=${sessionId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'unknown');
       setSubmitting(false);

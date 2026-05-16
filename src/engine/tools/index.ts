@@ -1266,17 +1266,66 @@ const ALWAYS_ON: AnthropicTool[] = [
   },
 ];
 
-/**
- * Build the tool list for a turn. Currently a thin wrapper over `ALWAYS_ON` —
- * the prefs argument is retained for forward-compatibility (e.g. future
- * opt-in tools).
+/** Subset of tools exposed to local LLMs (qwen3, gpt-oss, etc.). The full
+ *  list is 72 tools — too many for a sub-20B local model to reason over
+ *  with a 40k system prompt and still respond in a reasonable time. This
+ *  set keeps the ~20 tools needed for 90% of D&D sessions: dice, checks,
+ *  combat, conditions, basic spellcasting, rest, inventory, multiplayer.
  *
- * Note: scene-image generation USED to live here as a master-callable tool
- * gated on `prefs.imageGenerationEnabled`. It was removed because gpt-5
- * called it too aggressively when given the chance. Image generation is now
- * a manual user action (button in the chat next to Listen).
+ *  Cut from local exposure (still available on cloud providers):
+ *   - Crafting (start/progress/complete/cancel_crafting)
+ *   - Downtime activities + hirelings
+ *   - Bastions
+ *   - Mounts / vehicles
+ *   - Attunement / focus equipment
+ *   - Detailed environment (light/march/senses/vision/falling/suffocation)
+ *   - Class-specific features (rage, action surge, bardic, lay-on-hands…)
+ *   - Inspiration grant/spend
+ *   - Death saves + stabilize
+ *   - Concentration checks
+ *   - Tonal frame / engagement profile (meta tools)
+ *   - NPC beats tracker
+ *   - Level up / multiclass
+ *
+ *  If you want one of these back on a local turn, add the slug to
+ *  LOCAL_ESSENTIAL_TOOL_NAMES. Cloud providers (Anthropic/OpenAI/Gemini)
+ *  always get the full ALWAYS_ON list — they have the headroom. */
+const LOCAL_ESSENTIAL_TOOL_NAMES = new Set<string>([
+  // Dice & checks
+  'roll_dice', 'roll_d20', 'ability_check', 'saving_throw',
+  // Combat core
+  'roll_initiative', 'make_attack', 'apply_damage', 'end_turn', 'end_combat',
+  // Conditions
+  'apply_condition', 'remove_condition',
+  // Spellcasting essentials
+  'cast_spell', 'use_resource',
+  // Rest
+  'short_rest', 'long_rest',
+  // Inventory basics
+  'add_item', 'remove_item', 'add_narrative_item',
+  // Progression
+  'award_xp',
+  // Movement
+  'take_action',
+  // Knowledge query
+  'lookup_codex',
+  // Multiplayer turn handoff
+  'set_current_player',
+]);
+
+/**
+ * Build the tool list for a turn. By default returns the full ALWAYS_ON list
+ * (72 tools). When `localOptimized: true` is passed (typically when the
+ * resolved AI provider is 'local'), returns the curated essential subset so
+ * local models can decide quickly without choking on a giant tool catalog.
  */
-export function buildToolDefinitions(_prefs: Pick<UserPreferences, 'imageGenerationEnabled'>): AnthropicTool[] {
+export function buildToolDefinitions(
+  _prefs: Pick<UserPreferences, 'imageGenerationEnabled'>,
+  opts?: { localOptimized?: boolean },
+): AnthropicTool[] {
+  if (opts?.localOptimized) {
+    return ALWAYS_ON.filter((t) => LOCAL_ESSENTIAL_TOOL_NAMES.has(t.name));
+  }
   return ALWAYS_ON;
 }
 

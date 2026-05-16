@@ -9,7 +9,7 @@
  * Anthropic as the master and Gemini for the voice.
  */
 
-export const TTS_PROVIDERS = ['openai', 'gemini'] as const;
+export const TTS_PROVIDERS = ['openai', 'gemini', 'local'] as const;
 export type TtsProvider = (typeof TTS_PROVIDERS)[number];
 
 export function isValidTtsProvider(value: unknown): value is TtsProvider {
@@ -104,12 +104,37 @@ export const GEMINI_TTS_MODELS = [
 ] as const;
 export type GeminiTtsModel = (typeof GEMINI_TTS_MODELS)[number];
 
+// ── Local (Ollama-host TTS engines) ────────────────────────────────────────
+
+/** Engine identifiers under the 'local' TTS provider. Voice namespace depends on
+ *  the engine: Piper uses voice names (en_US-amy-low), XTTS uses ISO 639-1
+ *  language codes (en, it, ...). */
+export const LOCAL_TTS_MODELS = ['piper', 'xtts'] as const;
+export type LocalTtsModel = (typeof LOCAL_TTS_MODELS)[number];
+
+/** XTTSv2 supported languages (default speaker per language). The codes are
+ *  passed verbatim as the `language` field of the xtts-api-server
+ *  /tts_to_audio/ request body. */
+export const XTTS_LANGUAGES = [
+  { code: 'en',    label: 'English'    },
+  { code: 'it',    label: 'Italian'    },
+  { code: 'es',    label: 'Spanish'    },
+  { code: 'fr',    label: 'French'     },
+  { code: 'de',    label: 'German'     },
+  { code: 'pt',    label: 'Portuguese' },
+  { code: 'pl',    label: 'Polish'     },
+  { code: 'ja',    label: 'Japanese'   },
+  { code: 'zh-cn', label: 'Chinese'    },
+] as const satisfies readonly { code: string; label: string }[];
+
+export const XTTS_LANGUAGE_CODES = XTTS_LANGUAGES.map((l) => l.code) as readonly string[];
+
 // ── Unions (used by the preferences API for shape validation) ──────────────
 
 export const TTS_VOICES = [...OPENAI_TTS_VOICES, ...GEMINI_TTS_VOICES] as const;
 export type TtsVoice = (typeof TTS_VOICES)[number];
 
-export const TTS_MODELS = [...OPENAI_TTS_MODELS, ...GEMINI_TTS_MODELS] as const;
+export const TTS_MODELS = [...OPENAI_TTS_MODELS, ...GEMINI_TTS_MODELS, ...LOCAL_TTS_MODELS] as const;
 export type TtsModel = (typeof TTS_MODELS)[number];
 
 export function isValidTtsVoice(value: unknown): value is TtsVoice {
@@ -123,30 +148,47 @@ export function isValidTtsModel(value: unknown): value is TtsModel {
 // ── Per-provider lookups ───────────────────────────────────────────────────
 
 export function voicesForProvider(provider: TtsProvider): readonly string[] {
-  return provider === 'gemini' ? GEMINI_TTS_VOICES : OPENAI_TTS_VOICES;
+  if (provider === 'gemini') return GEMINI_TTS_VOICES;
+  if (provider === 'local') return [];  // engine-specific; use voicesForModel
+  return OPENAI_TTS_VOICES;
 }
 
 /** Per-model voice list. Use this for UI dropdowns and validation — the
- *  per-provider list is too lenient for OpenAI (ballad doesn't work on tts-1). */
+ *  per-provider list is too lenient for OpenAI (ballad doesn't work on tts-1).
+ *  For local engines, XTTS returns its ISO language codes; Piper returns []
+ *  (voices are runtime-discovered from PIPER_BASE_URL/v1/audio/voices). */
 export function voicesForModel(provider: TtsProvider, model: string): readonly string[] {
   if (provider === 'gemini') return GEMINI_TTS_VOICES;
+  if (provider === 'local') {
+    if (model === 'xtts')  return XTTS_LANGUAGE_CODES;
+    if (model === 'piper') return [];
+    return [];
+  }
   if (model in OPENAI_VOICES_BY_MODEL) return OPENAI_VOICES_BY_MODEL[model as OpenAITtsModel];
   return OPENAI_TTS_VOICES;
 }
 
 export function modelsForProvider(provider: TtsProvider): readonly string[] {
-  return provider === 'gemini' ? GEMINI_TTS_MODELS : OPENAI_TTS_MODELS;
+  if (provider === 'gemini') return GEMINI_TTS_MODELS;
+  if (provider === 'local') return LOCAL_TTS_MODELS;
+  return OPENAI_TTS_MODELS;
 }
 
 /** Default voice slug for a given provider. Picked for narration quality —
  *  'onyx' is supported by every OpenAI model. */
 export function defaultVoiceForProvider(provider: TtsProvider): string {
-  return provider === 'gemini' ? 'Kore' : 'onyx';
+  if (provider === 'gemini') return 'Kore';
+  if (provider === 'local') return '';  // engine-specific; use defaultVoiceForModel
+  return 'onyx';
 }
 
 /** Default voice for a (provider, model) pair. Used when cascading after a
  *  model change leaves the stored voice unsupported by the new model. */
 export function defaultVoiceForModel(provider: TtsProvider, model: string): string {
+  if (provider === 'local') {
+    if (model === 'xtts') return 'en';
+    return '';  // piper: runtime-discovered, UI picks first available
+  }
   const allowed = voicesForModel(provider, model);
   const fallback = defaultVoiceForProvider(provider);
   return allowed.includes(fallback) ? fallback : (allowed[0] ?? fallback);
@@ -154,16 +196,24 @@ export function defaultVoiceForModel(provider: TtsProvider, model: string): stri
 
 /** Default model slug for a given provider. */
 export function defaultModelForProvider(provider: TtsProvider): string {
-  return provider === 'gemini' ? 'gemini-2.5-flash-preview-tts' : 'gpt-4o-mini-tts';
+  if (provider === 'gemini') return 'gemini-2.5-flash-preview-tts';
+  if (provider === 'local') return 'piper';
+  return 'gpt-4o-mini-tts';
 }
 
 export function isValidVoiceForProvider(value: unknown, provider: TtsProvider): boolean {
   if (typeof value !== 'string') return false;
+  if (provider === 'local') return value.length > 0 && value.length <= 200;
   return voicesForProvider(provider).includes(value);
 }
 
 export function isValidVoiceForModel(value: unknown, provider: TtsProvider, model: string): boolean {
   if (typeof value !== 'string') return false;
+  if (provider === 'local') {
+    if (model === 'xtts')  return XTTS_LANGUAGE_CODES.includes(value);
+    if (model === 'piper') return value.length > 0 && value.length <= 200;
+    return false;
+  }
   return voicesForModel(provider, model).includes(value);
 }
 
