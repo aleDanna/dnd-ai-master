@@ -21,9 +21,14 @@ import { recordUsage } from '@/ai/master/usage';
 
 const KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE ?? '5m';
 // Ollama defaults `num_ctx` to 2048 which truncates the master prompt
-// (system + history + 18 tool defs is typically 4-16k tokens). Override to
-// 24k by default; user can raise via env if running a model with bigger ctx.
-const NUM_CTX = Number(process.env.OLLAMA_NUM_CTX ?? '24576');
+// (system + 18 tool defs + history is typically 30-45k tokens). Set high
+// enough to FIT the full prompt without truncation — otherwise the KV
+// prefix cache misses on every turn because Ollama's sliding-window
+// truncation shifts the effective prefix between requests.
+// Both qwen3:30b-a3b and gpt-oss:20b support 128k context natively.
+// Cost: each extra 8k of num_ctx allocates ~2-4GB of KV cache RAM (model
+// dependent). User can lower via OLLAMA_NUM_CTX if RAM-bound.
+const NUM_CTX = Number(process.env.OLLAMA_NUM_CTX ?? '65536');
 
 /**
  * "Thinking models" (qwen3, deepseek-r1, etc.) emit a separate `thinking`
@@ -36,7 +41,9 @@ const NUM_CTX = Number(process.env.OLLAMA_NUM_CTX ?? '24576');
 function isThinkingModel(model: string | undefined): boolean {
   if (!model) return false;
   const m = model.toLowerCase();
-  return m.startsWith('qwen3') || m.includes('/qwen3') || m.startsWith('deepseek-r1');
+  return m.startsWith('qwen3') || m.includes('/qwen3')
+    || m.startsWith('deepseek-r1')
+    || m.startsWith('gpt-oss') || m.includes('/gpt-oss');
 }
 
 const TRIVIAL_TOKENS = new Set(['ok', 'yes', 'no', 'sì', 'si', 'k', 'np']);
