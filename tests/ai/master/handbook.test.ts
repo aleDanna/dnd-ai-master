@@ -61,3 +61,58 @@ describe('getMasterWorldLore', () => {
     expect(a).toBe(b);
   });
 });
+
+describe('getMasterHandbook({ compact: true }) — Plan C', () => {
+  beforeEach(() => {
+    clearMasterHandbookCache();
+  });
+
+  it('loads the compact handbook from data/master_handbook_compact.md', () => {
+    const text = getMasterHandbook({ compact: true });
+    expect(text).toMatch(/compact — local-model variant/);
+    expect(text).toMatch(/## 4\. Resolving Outcomes/);
+    expect(text).toMatch(/Very easy 5/);
+  });
+
+  it('compact variant is materially smaller than the full handbook', () => {
+    const full = getMasterHandbook();
+    const compact = getMasterHandbook({ compact: true });
+    expect(compact.length).toBeLessThan(full.length / 2);
+  });
+
+  it('caches the compact variant independently of the full variant', () => {
+    const a = getMasterHandbook({ compact: true });
+    const b = getMasterHandbook({ compact: true });
+    expect(a).toBe(b);
+    const full = getMasterHandbook();
+    expect(a).not.toBe(full);
+  });
+
+  it('clearMasterHandbookCache also clears the compact caches', () => {
+    const a = getMasterHandbook({ compact: true });
+    clearMasterHandbookCache();
+    const b = getMasterHandbook({ compact: true });
+    expect(a).toEqual(b);
+  });
+});
+
+describe('getMasterWorldLore({ compact: true }) — Plan C', () => {
+  beforeEach(() => {
+    clearMasterHandbookCache();
+  });
+
+  it('loads the compact world lore from data/master_world_lore_compact.md', () => {
+    const text = getMasterWorldLore({ compact: true });
+    expect(text).toMatch(/compact — local-model variant/);
+    // The Rewards mandate is the one thing the compact variant must keep.
+    expect(text).toMatch(/Rewards and Gratification/);
+    expect(text).toMatch(/add_item/);
+    expect(text).toMatch(/award_xp/);
+  });
+
+  it('compact variant is materially smaller than the full world lore', () => {
+    const full = getMasterWorldLore();
+    const compact = getMasterWorldLore({ compact: true });
+    expect(compact.length).toBeLessThan(full.length / 2);
+  });
+});

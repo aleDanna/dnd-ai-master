@@ -88,6 +88,72 @@ describe('getResolvedPreferences — local downgrade', () => {
   });
 });
 
+describe('getResolvedPreferences — compactPrompt resolution (Plan C)', () => {
+  beforeEach(() => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('VERCEL', '');
+    vi.stubEnv('OLLAMA_BASE_URL', '');
+    vi.stubEnv('PIPER_BASE_URL', '');
+    vi.stubEnv('XTTS_BASE_URL', '');
+    vi.stubEnv('COMFYUI_BASE_URL', '');
+    vi.stubEnv('DRAW_THINGS_BASE_URL', '');
+    vi.stubEnv('MASTER_PROVIDER', '');
+    vi.stubEnv('IMAGE_PROVIDER', '');
+    vi.stubEnv('TTS_PROVIDER', '');
+    TEST_PREFS = {};
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('defaults compactPrompt=true when resolved aiProvider is local', async () => {
+    vi.stubEnv('OLLAMA_BASE_URL', 'http://localhost:11434');
+    TEST_PREFS = { aiProvider: 'local', aiMasterModel: 'qwen3:30b-a3b' };
+    const r = await getResolvedPreferences('user-id');
+    expect(r.aiProvider).toBe('local');
+    expect(r.compactPrompt).toBe(true);
+  });
+
+  it('defaults compactPrompt=false when resolved aiProvider is cloud (anthropic)', async () => {
+    TEST_PREFS = { aiProvider: 'anthropic', aiMasterModel: 'claude-sonnet-4-5' };
+    const r = await getResolvedPreferences('user-id');
+    expect(r.aiProvider).toBe('anthropic');
+    expect(r.compactPrompt).toBe(false);
+  });
+
+  it('defaults compactPrompt=false when no provider is set (env fallback to anthropic)', async () => {
+    TEST_PREFS = {};
+    const r = await getResolvedPreferences('user-id');
+    expect(r.aiProvider).toBe('anthropic');
+    expect(r.compactPrompt).toBe(false);
+  });
+
+  it('explicit compactPrompt=false wins over local-provider default', async () => {
+    vi.stubEnv('OLLAMA_BASE_URL', 'http://localhost:11434');
+    TEST_PREFS = { aiProvider: 'local', aiMasterModel: 'qwen3:30b-a3b', compactPrompt: false };
+    const r = await getResolvedPreferences('user-id');
+    expect(r.aiProvider).toBe('local');
+    expect(r.compactPrompt).toBe(false);
+  });
+
+  it('explicit compactPrompt=true wins over cloud-provider default', async () => {
+    TEST_PREFS = { aiProvider: 'anthropic', compactPrompt: true };
+    const r = await getResolvedPreferences('user-id');
+    expect(r.aiProvider).toBe('anthropic');
+    expect(r.compactPrompt).toBe(true);
+  });
+
+  it('downgrade flips default: local→anthropic, undefined compactPrompt → false', async () => {
+    // Stored aiProvider='local' but no OLLAMA env → downgrades to anthropic.
+    // compactPrompt was never explicitly set, so it follows the *resolved*
+    // provider (anthropic) → false. This is the documented behavior.
+    TEST_PREFS = { aiProvider: 'local', aiMasterModel: 'qwen3:30b-a3b' };
+    const r = await getResolvedPreferences('user-id');
+    expect(r.aiProvider).toBe('anthropic');
+    expect(r.compactPrompt).toBe(false);
+  });
+});
+
 // Note: getCampaignSettings shares the same resolveLocal* helpers as
 // getResolvedPreferences (validated by the suite above), so we don't
 // duplicate the test matrix here. The mock-db boundary makes it awkward
