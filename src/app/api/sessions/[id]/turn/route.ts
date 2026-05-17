@@ -12,6 +12,9 @@ import { buildSrdContext } from '@/ai/master/srd-context';
 import { getMasterHandbook, getMasterWorldLore } from '@/ai/master/handbook';
 import { buildMasterSystemPrompt } from '@/ai/master/system-prompt';
 import { deriveMode, needsSpellcastingOverlay } from '@/ai/master/mode';
+import { retrieveRelevant } from '@/ai/master/rag/retriever';
+import { getRagStore } from '@/ai/master/rag/store';
+import { embed } from '@/ai/master/rag/embedder';
 import { isBakedModel, warnIfBakedModelStale } from '@/ai/master/baked-models';
 import { getRuntimePromptHash } from '@/ai/master/runtime-prompt-hash';
 import { detectLanguage } from '@/ai/master/language';
@@ -227,6 +230,64 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const mode = useModeAware ? deriveMode(snap.state) : undefined;
         const needsSpellcasting = useModeAware ? needsSpellcastingOverlay(snap) : undefined;
 
+        // Build history before the system prompt so the RAG block (Plan E.2)
+        // can use recent messages as the retrieval query.
+        let history: Anthropic.Messages.MessageParam[];
+        if (isBegin) {
+          // First-turn opener: bypass DB history (we just verified it's empty
+          // upstream of this branch) and feed a single synthetic user
+          // instruction so the model has something to respond to.
+          history = [{ role: 'user', content: BEGIN_INSTRUCTION }];
+        } else {
+          const recent = await db
+            .select()
+            .from(sessionMessages)
+            .where(and(eq(sessionMessages.sessionId, sessionId), eq(sessionMessages.cacheBreakpoint, false)))
+            .orderBy(desc(sessionMessages.createdAt))
+            .limit(20);
+          // In PARTY MODE the master needs to know which PG authored each
+          // player message — otherwise it can't tell "I tip the guard" from
+          // "Kank tips the guard". Solo mode keeps the bare content (no
+          // bracket noise for a single-character session).
+          const nameById = new Map<string, string>(snap.party.map((c) => [c.id, c.name]));
+          const usePrefix = snap.party.length > 1;
+          history = recent
+            .reverse()
+            .filter((m) => m.role !== 'system')
+            .map((m) => {
+              if (m.role === 'master') return { role: 'assistant', content: m.content };
+              const name = usePrefix && m.authorCharacterId ? nameById.get(m.authorCharacterId) : null;
+              const content = name ? `[${name}] ${m.content}` : m.content;
+              return { role: 'user', content };
+            });
+        }
+
+        // Plan E.2: RAG retrieval. Off by default; opt-in per campaign in Phase 2.
+        // When enabled, we embed the last 2 user messages + last master message
+        // and retrieve top-3 chunks. Failure (embedder down, store empty) returns
+        // [] so the prompt builder skips the block entirely.
+        const useRag = userPrefs.useRagRetrieval;
+        let ragChunks: Awaited<ReturnType<typeof retrieveRelevant>> = [];
+        if (useRag) {
+          const recentForQuery = [
+            ...history.filter((m) => m.role === 'user').slice(-2).map((m) =>
+              typeof m.content === 'string' ? m.content : ''
+            ),
+            ...history.filter((m) => m.role === 'assistant').slice(-1).map((m) =>
+              typeof m.content === 'string' ? m.content : ''
+            ),
+          ].filter(Boolean).join('\n');
+          if (recentForQuery) {
+            const { store } = await getRagStore();
+            ragChunks = await retrieveRelevant({
+              query: recentForQuery,
+              store,
+              embedFn: (t) => embed(t),
+              k: 3,
+            });
+          }
+        }
+
         const sys = buildMasterSystemPrompt({
           srdContext: srd,
           handbook,
@@ -265,37 +326,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // entirely (back-compat path).
           mode,
           needsSpellcasting,
+          // Plan E.2:
+          ragChunks,
         });
-
-        let history: Anthropic.Messages.MessageParam[];
-        if (isBegin) {
-          // First-turn opener: bypass DB history (we just verified it's empty
-          // upstream of this branch) and feed a single synthetic user
-          // instruction so the model has something to respond to.
-          history = [{ role: 'user', content: BEGIN_INSTRUCTION }];
-        } else {
-          const recent = await db
-            .select()
-            .from(sessionMessages)
-            .where(and(eq(sessionMessages.sessionId, sessionId), eq(sessionMessages.cacheBreakpoint, false)))
-            .orderBy(desc(sessionMessages.createdAt))
-            .limit(20);
-          // In PARTY MODE the master needs to know which PG authored each
-          // player message — otherwise it can't tell "I tip the guard" from
-          // "Kank tips the guard". Solo mode keeps the bare content (no
-          // bracket noise for a single-character session).
-          const nameById = new Map<string, string>(snap.party.map((c) => [c.id, c.name]));
-          const usePrefix = snap.party.length > 1;
-          history = recent
-            .reverse()
-            .filter((m) => m.role !== 'system')
-            .map((m) => {
-              if (m.role === 'master') return { role: 'assistant', content: m.content };
-              const name = usePrefix && m.authorCharacterId ? nameById.get(m.authorCharacterId) : null;
-              const content = name ? `[${name}] ${m.content}` : m.content;
-              return { role: 'user', content };
-            });
-        }
 
         // 5. Run the tool loop — events forwarded to SSE subscribers via notifySession.
         // Provider + model are resolved from user prefs (with env fallback) so each
