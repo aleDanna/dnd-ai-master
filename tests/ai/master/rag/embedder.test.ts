@@ -21,7 +21,7 @@ describe('embedder', () => {
     const call = fetchMock.mock.calls[0]!;
     expect(call[0]).toBe('http://localhost:11434/api/embeddings');
     const body = JSON.parse(call[1]!.body as string);
-    expect(body).toEqual({ model: 'nomic-embed-text', prompt: 'hello world' });
+    expect(body).toEqual({ model: 'nomic-embed-text', prompt: 'hello world', keep_alive: '30m' });
   });
 
   it('embedBatch() embeds inputs sequentially and returns vectors in order', async () => {
