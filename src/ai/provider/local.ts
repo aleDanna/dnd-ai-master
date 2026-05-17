@@ -18,7 +18,7 @@ import {
   type OllamaResponseMessage,
 } from './ollama-adapter';
 import { recordUsage } from '@/ai/master/usage';
-import { isBakedModel } from '@/ai/master/baked-models';
+import { isBakedModel, getBakedBaseModel } from '@/ai/master/baked-models';
 
 const KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE ?? '5m';
 // Ollama defaults `num_ctx` to 2048 which truncates the master prompt
@@ -42,14 +42,16 @@ const NUM_CTX = Number(process.env.OLLAMA_NUM_CTX ?? '65536');
 function isThinkingModel(model: string | undefined): boolean {
   if (!model) return false;
   const m = model.toLowerCase();
-  // Match both raw bases (qwen3:30b, gpt-oss:20b) AND Plan D baked
-  // variants (dnd-master-qwen3-30b, dnd-master-gpt-oss-20b). Without
-  // recognising the baked variants we'd skip the `think: false` API
-  // flag and the model would emit a chain-of-thought even when our
-  // adapter is about to strip it — wasted generation tokens.
-  return m.startsWith('qwen3') || m.includes('/qwen3') || m.includes('qwen3')
-    || m.startsWith('deepseek-r1') || m.includes('deepseek-r1')
-    || m.startsWith('gpt-oss') || m.includes('/gpt-oss') || m.includes('gpt-oss');
+  // Resolve baked variants (legacy slug-derived AND new tier names like
+  // dnd-master-max / -plus / -balance / -lite) to their underlying base
+  // slug, then match families. Without this, after the tier rename, the
+  // `think: false` flag was silently dropped for the new names and qwen3
+  // baked variants started running their full chain-of-thought server-side.
+  const resolved = isBakedModel(m) ? (getBakedBaseModel(m) ?? m) : m;
+  const r = resolved.toLowerCase();
+  return r.startsWith('qwen3') || r.includes('/qwen3') || r.includes('qwen3')
+    || r.startsWith('deepseek-r1') || r.includes('deepseek-r1')
+    || r.startsWith('gpt-oss') || r.includes('/gpt-oss') || r.includes('gpt-oss');
 }
 
 /** qwen3 responds to a `/no_think` control token in the user message — BUT
