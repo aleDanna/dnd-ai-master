@@ -69,3 +69,6 @@ next-env.d.ts
 
 # Brainstorming companion sessions
 .superpowers/
+
+# clerk configuration (can include secrets)
+/.clerk/
