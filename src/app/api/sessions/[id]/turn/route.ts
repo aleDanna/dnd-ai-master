@@ -239,12 +239,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // instruction so the model has something to respond to.
           history = [{ role: 'user', content: BEGIN_INSTRUCTION }];
         } else {
+          // History window: how many recent messages to pull. 10 = ~5 turn
+          // back (user+assistant pairs) which keeps prompt size ~10-12K
+          // instead of ~21K with 20 msgs. Saves ~3-5x on prompt_eval time
+          // for slow local models. Tuned for llama3.2:3b / qwen3:4b which
+          // are 30-40 tok/s on M-series unified memory.
+          //
+          // Trade-off: master "forgets" older turns faster. Mitigated by the
+          // scene card + chapter digests + codex index already in the prompt
+          // (all summarise pre-window state). Bump back to 20 if you observe
+          // continuity loss across long sessions.
+          const HISTORY_LIMIT = Number(process.env.MASTER_HISTORY_LIMIT ?? '10');
           const recent = await db
             .select()
             .from(sessionMessages)
             .where(and(eq(sessionMessages.sessionId, sessionId), eq(sessionMessages.cacheBreakpoint, false)))
             .orderBy(desc(sessionMessages.createdAt))
-            .limit(20);
+            .limit(HISTORY_LIMIT);
           // In PARTY MODE the master needs to know which PG authored each
           // player message — otherwise it can't tell "I tip the guard" from
           // "Kank tips the guard". Solo mode keeps the bare content (no
