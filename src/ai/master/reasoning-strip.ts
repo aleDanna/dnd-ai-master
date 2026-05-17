@@ -142,6 +142,14 @@ export function stripReasoningPreamble(text: string): string {
   //    with a reasoning marker, stopping at the first paragraph that doesn't.
   cleaned = stripLeadingReasoningParagraphs(cleaned);
 
+  // 3b. Trailing tool-call JSON dumps. Small local models (llama3.2:3b,
+  //     qwen3:4b) often write the intended tool call as a JSON literal at
+  //     the END of the message — after the narration — instead of using the
+  //     structured tool_calls API. Walk paragraphs from the END and drop
+  //     each one that looks like a tool-call dump, stopping at the first
+  //     genuine narration paragraph.
+  cleaned = stripTrailingToolCallParagraphs(cleaned);
+
   // 4. Safety fallback: if the input had substantial content (>200 chars) but
   //    we stripped it to nothing or near-nothing (<20 chars), the strip is
   //    almost certainly over-aggressive — the model emitted pure reasoning
@@ -189,4 +197,54 @@ function stripLeadingReasoningParagraphs(text: string): string {
   }
   if (i === 0) return text;
   return parts.slice(i).join('').replace(/^\s+/, '');
+}
+
+// Matches a paragraph that looks like a JSON tool-call literal:
+//   {"name": "combat_action", ...}
+//   {"name":"environment_action","parameters":{"subaction":"check_vision"}}
+//   ```json
+//   {"name": "..."}
+//   ```
+// The model writes these as visible text instead of calling the API. They
+// always appear at the end of the message after the narration.
+const TRAILING_TOOL_CALL_PATTERNS: RegExp[] = [
+  /^\s*```(?:json|tool_call)?\s*\n?\s*\{/i,        // fenced code block with JSON
+  /^\s*\{\s*"name"\s*:\s*"[a-z_]+"/i,              // bare JSON with "name" key
+  /^\s*\{\s*"tool"\s*:/i,                          // bare JSON with "tool" key
+  /^\s*tool_call\s*\(/i,                           // function-call syntax
+  /^\s*<tool_call>/i,                              // XML-style wrapper
+];
+
+function looksLikeTrailingToolCall(para: string): boolean {
+  const trimmed = para.trim();
+  if (!trimmed) return true; // empty paragraphs are skippable
+  for (const re of TRAILING_TOOL_CALL_PATTERNS) {
+    if (re.test(trimmed)) return true;
+  }
+  return false;
+}
+
+function stripTrailingToolCallParagraphs(text: string): string {
+  if (!text) return text;
+  const parts = text.split(/(\n[ \t]*\n+)/);
+  // Walk from the END: drop trailing JSON-tool-call paragraphs (and their
+  // preceding separator), stop at the first genuine narration paragraph.
+  let end = parts.length;
+  while (end > 0) {
+    const lastIdx = end - 1;
+    const last = parts[lastIdx] ?? '';
+    // Even indices = paragraphs, odd = separators. Skip separator slots.
+    if (lastIdx % 2 === 1) {
+      // It's a separator; drop it together with the para we're about to drop.
+      end -= 1;
+      continue;
+    }
+    if (looksLikeTrailingToolCall(last)) {
+      end -= 1; // drop the paragraph
+      continue;
+    }
+    break;
+  }
+  if (end === parts.length) return text;
+  return parts.slice(0, end).join('').replace(/\s+$/, '');
 }

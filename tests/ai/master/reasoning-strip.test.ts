@@ -236,6 +236,50 @@ describe('stripReasoningPreamble', () => {
     );
   });
 
+  // ── Trailing tool-call dumps (llama3.2:3b / qwen3:4b leak pattern) ──
+  // Small models often write the intended tool call as JSON text AFTER the
+  // narration, instead of using the structured tool_calls API. Visible to
+  // the player as garbled text.
+
+  it('strips a trailing JSON tool-call paragraph after Italian narration', () => {
+    const text = [
+      "Il tuo dito tocca la pozza d'acqua, e con un leggero fruscio, il fondo si muove.",
+      '',
+      '{"name": "environment_action", "parameters": {"subaction": "check_vision"}}',
+    ].join('\n');
+    expect(stripReasoningPreamble(text)).toBe(
+      "Il tuo dito tocca la pozza d'acqua, e con un leggero fruscio, il fondo si muove.",
+    );
+  });
+
+  it('strips multiple trailing tool-call paragraphs', () => {
+    const text = [
+      'La spada si abbatte con un colpo netto.',
+      '',
+      '{"name": "combat_action", "parameters": {"subaction": "attack"}}',
+      '',
+      '{"name": "combat_action", "parameters": {"subaction": "damage", "amount": 8}}',
+    ].join('\n');
+    expect(stripReasoningPreamble(text)).toBe('La spada si abbatte con un colpo netto.');
+  });
+
+  it('strips a trailing fenced JSON block', () => {
+    const text = [
+      'La porta si apre con un cigolio.',
+      '',
+      '```json',
+      '{"name": "narrative_action", "parameters": {"subaction": "ability_check"}}',
+      '```',
+    ].join('\n');
+    expect(stripReasoningPreamble(text)).toBe('La porta si apre con un cigolio.');
+  });
+
+  it('does NOT strip an inline JSON example inside narration', () => {
+    // A paragraph that MENTIONS JSON but is actually narration must pass.
+    const text = 'Sul pergamena leggi: lo schema misterioso ricorda una formula matematica.';
+    expect(stripReasoningPreamble(text)).toBe(text);
+  });
+
   it('safety fallback: returns last paragraph when everything looks like reasoning', () => {
     // Pathological case: every paragraph matches a pattern. Without the
     // fallback we'd return empty; with the fallback we return the last
