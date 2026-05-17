@@ -1,4 +1,6 @@
 import { XTTS_LANGUAGES } from './tts-voices';
+import { isBakedModel, getBakedBaseModel, TIER_LABELS } from '@/ai/master/baked-models';
+import { pingEmbedder } from '@/ai/master/rag/embedder';
 
 /**
  * True when the current process is a local development environment.
@@ -50,6 +52,19 @@ export interface ModelOption {
   slug: string;
   label: string;
   blurb: string;
+  /**
+   * 'baked' for Plan D variants (dnd-master-*), 'raw' for everything
+   * else. The Settings UI groups by this so users can find optimised
+   * variants quickly. Optional — only meaningful for local LLM lists.
+   */
+  kind?: 'baked' | 'raw';
+  /**
+   * Surface a known limitation of this model (e.g. small 3B llamas
+   * routinely lose the character snapshot in multi-block prompts).
+   * When set, the Settings UI prefixes the option with ⚠ and renders
+   * a helper line beneath the select. Free-form short string.
+   */
+  warning?: string;
 }
 
 /** Aggregate status passed from the settings server loader to the client. */
@@ -64,6 +79,7 @@ export interface LocalServicesStatus {
     enabled: boolean;
     engines: { comfyui: EngineStatus; drawThings: EngineStatus };
   };
+  embedder: { reachable: boolean };
 }
 
 // LLM whitelist — phase 1 supports qwen3 and gpt-oss families, both from the
@@ -100,17 +116,29 @@ export function normalizeOllamaLabel(name: string): string {
 
 /** openedai-speech-min does NOT expose a `/v1/audio/voices` endpoint
  *  (404). It accepts a free-form `voice` string on POST /v1/audio/speech
- *  and maps the 6 OpenAI canonical names to its internal Piper voices.
- *  We surface those 6 as the dropdown options; user can override via
- *  config files in the openedai-speech-min container if they want more. */
-const PIPER_OPENAI_COMPAT_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as const;
+ *  and maps voice names to Piper .onnx models via voice_to_speaker.yaml
+ *  inside the container's config volume. The list below MUST stay in sync
+ *  with that yaml: each slug here must have a matching `tts-1:` entry, and
+ *  the referenced .onnx must exist under the mounted voices dir. Blurbs
+ *  carry the underlying language so the Settings dropdown can distinguish
+ *  English-only voices ('alloy', ...) from Italian voices ('paola', ...). */
+const PIPER_OPENAI_COMPAT_VOICES: ReadonlyArray<{ slug: string; blurb: string }> = [
+  { slug: 'alloy',    blurb: 'piper · english (libritts)' },
+  { slug: 'echo',     blurb: 'piper · english (libritts)' },
+  { slug: 'fable',    blurb: 'piper · english (northern UK)' },
+  { slug: 'onyx',     blurb: 'piper · english (libritts)' },
+  { slug: 'nova',     blurb: 'piper · english (libritts)' },
+  { slug: 'shimmer',  blurb: 'piper · english (libritts)' },
+  { slug: 'paola',    blurb: 'piper · italian (paola, medium)' },
+  { slug: 'riccardo', blurb: 'piper · italian (riccardo, x-low)' },
+];
 
 export async function fetchPiperVoices(): Promise<ModelOption[]> {
   if (!process.env.PIPER_BASE_URL) return [];
   return PIPER_OPENAI_COMPAT_VOICES.map((v) => ({
-    slug: v,
-    label: v,
-    blurb: 'piper · openai-compat',
+    slug: v.slug,
+    label: v.slug,
+    blurb: v.blurb,
   }));
 }
 
@@ -186,13 +214,33 @@ export async function fetchOllamaModels(): Promise<ModelOption[]> {
     // we surface the failure at runtime rather than hide the option here.
     // matchesLlmWhitelist is still exported for callers that want curated
     // suggestions, but Settings shows the full list.
-    return models.map((m) => ({
-      slug: m.name,
-      label: normalizeOllamaLabel(m.name),
-      blurb: [m.details?.parameter_size, m.details?.quantization_level]
-        .filter(Boolean)
-        .join(' · ') || 'local',
-    }));
+    return models.map((m) => {
+      const baked = isBakedModel(m.name);
+      const baseSlug = baked ? getBakedBaseModel(m.name) : null;
+      // Tier-name baked variants get a curated display label so users
+      // see "D&D Master Max — qwen3:30b-a3b" instead of the raw slug.
+      // Legacy slug-derived baked variants fall back to the previous
+      // "qwen3:30b (optimized)" format.
+      const tierLabel = TIER_LABELS[m.name.replace(/:latest$/, '')];
+      const label = tierLabel && baseSlug
+        ? `${tierLabel} — ${baseSlug}`
+        : baked && baseSlug
+          ? `${baseSlug} (optimized)`
+          : normalizeOllamaLabel(m.name);
+      const blurb = baked
+        ? 'baked · D&D master prompt embedded'
+        : [m.details?.parameter_size, m.details?.quantization_level]
+            .filter(Boolean)
+            .join(' · ') || 'local';
+      // Known small-model limitation: llama3.2:3b (and its baked variant)
+      // drops the character snapshot when the prompt has many blocks.
+      // Surface this in the UI so users picking a model see the caveat.
+      const effectiveSlug = baseSlug ?? m.name;
+      const warning = /llama3\.2.*3b/i.test(effectiveSlug)
+        ? 'small model — may lose character context on long prompts; prefer Balance or Max'
+        : undefined;
+      return { slug: m.name, label, blurb, kind: baked ? 'baked' : 'raw', warning };
+    });
   } catch {
     return [];
   }
@@ -253,15 +301,17 @@ export async function fetchLocalServicesStatus(): Promise<LocalServicesStatus> {
       ai: empty,
       tts: { enabled: false, engines: { piper: empty, xtts: empty } },
       image: { enabled: false, engines: { comfyui: empty, drawThings: empty } },
+      embedder: { reachable: false },
     };
   }
 
-  const [ai, piper, xtts, comfyui, drawThings] = await Promise.all([
+  const [ai, piper, xtts, comfyui, drawThings, embedderReachable] = await Promise.all([
     buildAiStatus(),
     buildPiperStatus(),
     buildXttsStatus(),
     buildComfyUIStatus(),
     buildDrawThingsStatus(),
+    pingEmbedder().catch(() => false),
   ]);
 
   return {
@@ -275,5 +325,6 @@ export async function fetchLocalServicesStatus(): Promise<LocalServicesStatus> {
       enabled: comfyui.enabled || drawThings.enabled,
       engines: { comfyui, drawThings },
     },
+    embedder: { reachable: embedderReachable },
   };
 }

@@ -1,5 +1,31 @@
 import type { TonalFrame, EngagementProfile } from '@/engine/types';
 import { TONAL_FRAME_GUIDANCE } from '@/engine/npc-tonal';
+import type { MasterMode } from './mode';
+import { MODE_BLOCKS, SPELLCASTING_OVERLAY_BLOCK } from './mode-blocks';
+import type { RetrievedChunk } from './rag/types';
+import { formatRagBlock } from './rag/format';
+
+/**
+ * Bump this integer whenever the *static* portion of the master system
+ * prompt changes in a way users of baked Ollama models (Plan D) need to
+ * pick up. The build script (`pnpm build-local-models`) stamps this
+ * value into the generated Modelfile; the runtime compares it against
+ * the stamped value and emits a stale-model warning when they differ.
+ *
+ * "Static portion" = MASTER_SYSTEM_PROMPT_BASE_SLIM + MASTER_TOOL_CONTRACT_SLIM
+ * + MASTER_META_TOOLS_INSTRUCTION + MASTER_REWARDS_MANDATE_SLIM
+ * + MASTER_MEMORY_TOOL_RULE_SLIM + MASTER_HANDBOOK_ULTRA_SLIM
+ * + buildSrdContext({ compact: true })
+ * (Plan E.1: dropped world_lore + standalone roll_triggers; slim variants
+ * of base/tool_contract/rewards/memory_tool_rule; ultra-slim handbook.)
+ *
+ * Per-campaign / per-turn blocks (guidance, manual rolls, narration
+ * pace, langHint, party mode, snapshot, ...) are NOT counted — those
+ * always run dynamically and don't need a rebuild.
+ *
+ * Bump policy: integer monotonic. Don't reset across releases.
+ */
+export const MASTER_PROMPT_VERSION = 4; // Plan E.2 + anti-CoT directive in slim BASE
 
 export const MASTER_SYSTEM_PROMPT_BASE = `You are the Dungeon Master for a single player at a Dungeons & Dragons 5e (SRD) table run via this app.
 
@@ -54,6 +80,43 @@ The visible reply is **only** the player-facing prose. The mechanics that drive 
 - ❌ **Switching to English (or any non-session language) for "meta" replies.** The Language mirroring rule above is unconditional. OOC clarifications and rule explanations are still session-language.
 
 If a player's question genuinely requires a meta answer (rules clarification, "how do I roll for X", "what is initiative"), answer briefly and *in character of the Dungeon Master speaking to the player* — never as the model talking about its own internal process. The DM doesn't have a system prompt to quote; the DM just knows the rules.`;
+
+/**
+ * Plan B (local provider only): the master sees 8 "meta-tools" instead of 72
+ * individual tools. Each meta wraps a family of underlying tools and is
+ * dispatched by a `subaction` discriminator field in the input. This block
+ * is injected into the system prompt only when usesMetaTools=true.
+ */
+export const MASTER_META_TOOLS_INSTRUCTION = `## Meta-tools (THIS SESSION ONLY)
+
+This session runs on a local model. To keep responses fast, the engine
+exposes its game actions through **8 meta-tools** instead of the usual
+flat catalogue. EACH meta-tool requires a \`subaction\` field in the input
+that picks the specific operation. Always include the other fields that
+the chosen sub-action needs.
+
+Concrete pattern:
+\`\`\`
+combat_action({ subaction: "attack", attacker: "pc-001", target: "goblin-1", weapon: "longsword" })
+combat_action({ subaction: "damage", target: "goblin-1", amount: 8, type: "slashing" })
+spell_action({ subaction: "cast_spell", caster: "pc-001", spell: "fireball", slotLevel: 3, target: "goblin-1" })
+inventory_action({ subaction: "add_item", actor: "pc-001", slug: "gp", qty: 50 })
+narrative_action({ subaction: "ability_check", actor: "pc-001", skill: "perception", dc: 12 })
+rest_action({ subaction: "short_rest", actors: ["pc-001"] })
+\`\`\`
+
+The 8 meta-tools and their domains:
+- \`combat_action\` — initiative, attack, damage, conditions, death saves, concentration, movement
+- \`spell_action\` — cast spells, use limited resources, manage focus / attunement
+- \`inventory_action\` — add/remove items, equip/unequip, AC recompute
+- \`character_action\` — level up, XP, inspiration, class features (rage, action surge, lay-on-hands, …)
+- \`rest_action\` — short/long rest
+- \`narrative_action\` — dice, checks, codex lookup, turn handoff, free-form actions
+- \`environment_action\` — travel pace, light, marching order, vision, exposure (falling, starvation, …)
+- \`meta_action\` — tonal frame, engagement profile, crafting, downtime, hirelings, bastions, mounts, vehicles
+
+Pick the meta-tool by domain, then set \`subaction\` to the operation. NEVER
+call the meta-tool without a \`subaction\` field — the call will fail.`;
 
 export const MASTER_TOOL_CONTRACT = `## Tools available this turn
 
@@ -1196,10 +1259,24 @@ function buildPartyModeBlock(
 }
 
 export interface MasterPromptInput {
+  /**
+   * SRD reference text injected as a cached system block. Loaded via
+   * `buildSrdContext()`; pass `{ compact: true }` upstream when
+   * `compactPrompt` is on (drops sub-rules + class/race/background
+   * rosters, keeps combat + conditions + core mechanics).
+   */
   srdContext: string;
-  /** Curated DM craft guidance from the 5e DMG 2024 (chapters 1-3). Loaded via getMasterHandbook(). */
+  /**
+   * Curated DM craft guidance (5e DMG 2024 chapters 1-3). Loaded via
+   * `getMasterHandbook()`; pass `{ compact: true }` upstream when
+   * `compactPrompt` is on for the ~3x smaller imperative-only variant.
+   */
   handbook: string;
-  /** Curated world & lore guidance — cosmology, magic, cultures, REWARDS. Loaded via getMasterWorldLore(). */
+  /**
+   * Curated world & lore guidance — cosmology, magic, cultures, REWARDS.
+   * Loaded via `getMasterWorldLore()`; pass `{ compact: true }` upstream
+   * when `compactPrompt` is on.
+   */
   worldLore: string;
   characterMonoSpace: string;
   scene: string;
@@ -1252,6 +1329,45 @@ export interface MasterPromptInput {
    * Passed to buildPartyModeBlock to identify the active player.
    */
   currentPlayerCharacterId?: string | null;
+  /**
+   * Plan B (local provider only): when true, the master sees 8 meta-tools
+   * instead of the 72 flat ALWAYS_ON list. Triggers the
+   * MASTER_META_TOOLS_INSTRUCTION block so the model knows it must pick
+   * a sub-action via the discriminator. Set this to true iff the resolved
+   * aiProvider is 'local'. Cloud providers leave it falsy and see the
+   * normal tool catalogue.
+   */
+  usesMetaTools?: boolean;
+  /**
+   * Plan D (baked Ollama models): when true, the 9 static blocks
+   * (MASTER_SYSTEM_PROMPT_BASE, MASTER_TOOL_CONTRACT,
+   * MASTER_META_TOOLS_INSTRUCTION, MASTER_ROLL_TRIGGERS,
+   * MASTER_REWARDS_MANDATE, input.handbook, input.worldLore,
+   * MASTER_MEMORY_TOOL_RULE, input.srdContext) are NOT emitted in the
+   * runtime system prompt — they have already been baked into the
+   * model's Modelfile SYSTEM directive via `pnpm build-local-models`.
+   *
+   * Everything else (guidance level, manual rolls, hide-difficulty,
+   * brisk pacing, tonal frame, engagement profile, language hint, party
+   * mode, snapshot tail, chapter digests, scene card, codex index) is
+   * emitted normally — these vary per campaign / per turn and CANNOT be
+   * baked.
+   *
+   * Set this to true iff `aiMasterModel` starts with `dnd-master-`. The
+   * caller should also pass empty strings for handbook / worldLore /
+   * srdContext to avoid loading them from disk for nothing.
+   *
+   * Independent of `usesMetaTools` — they're set together for local
+   * baked models but stay separate flags so each is testable in
+   * isolation.
+   */
+  staticBlocksAlreadyBaked?: boolean;
+  /** Plan E.1: which mode block to inject. When undefined, no mode block is added (back-compat). */
+  mode?: MasterMode;
+  /** Plan E.1: whether the active PC has spellcasting (overlay gate). */
+  needsSpellcasting?: boolean;
+  /** Plan E.2: retrieved RAG chunks to inject as a RELEVANT CONTEXT block. */
+  ragChunks?: RetrievedChunk[];
 }
 
 export const MASTER_HIDE_DIFFICULTY_RULE = `## Hide difficulty numbers
@@ -1574,19 +1690,52 @@ const LANGUAGE_NAMES: Record<string, string> = {
   ko: 'Korean',
 };
 
+/** Native-language imperative for each supported language. Small local
+ *  models (3-4B) regress to the system prompt's language when the
+ *  override is itself written in English. Writing the override in the
+ *  TARGET language activates the right token distribution from the
+ *  first attention pass. Empty string for English (no override needed). */
+const NATIVE_LANGUAGE_INSTRUCTIONS: Record<string, string> = {
+  en: '',
+  it: 'IMPORTANTE: TUTTA la tua narrazione DEVE essere scritta in italiano. NON rispondere mai in inglese, anche se il system prompt è in inglese. Usa parole, grammatica e struttura italiana per ogni risposta. Se ti viene da scrivere in inglese, FERMATI e riscrivi in italiano.',
+  es: 'IMPORTANTE: TODA tu narración DEBE estar escrita en español. NUNCA respondas en inglés, incluso si el system prompt está en inglés. Usa palabras, gramática y estructura españolas en cada respuesta.',
+  fr: 'IMPORTANT: TOUTE ta narration DOIT être écrite en français. NE réponds JAMAIS en anglais, même si le system prompt est en anglais. Utilise des mots, une grammaire et une structure françaises dans chaque réponse.',
+  de: 'WICHTIG: DEINE GESAMTE Erzählung MUSS auf Deutsch geschrieben sein. Antworte NIEMALS auf Englisch, auch wenn der System-Prompt auf Englisch ist. Verwende deutsche Wörter, Grammatik und Struktur in jeder Antwort.',
+  pt: 'IMPORTANTE: TODA a sua narração DEVE ser escrita em português. NUNCA responda em inglês, mesmo que o system prompt esteja em inglês. Use palavras, gramática e estrutura portuguesas em cada resposta.',
+  nl: 'BELANGRIJK: AL JE narratie MOET in het Nederlands worden geschreven. Antwoord NOOIT in het Engels, zelfs als de system prompt in het Engels is.',
+  pl: 'WAŻNE: CAŁA Twoja narracja MUSI być napisana po polsku. NIGDY nie odpowiadaj po angielsku, nawet jeśli system prompt jest po angielsku.',
+  ja: '重要: あなたのナレーション全てを日本語で書いてください。たとえシステムプロンプトが英語であっても、絶対に英語で答えないでください。',
+  zh: '重要：你的所有叙述必须用中文写。即使系统提示是英文的，也绝不要用英文回答。',
+  ru: 'ВАЖНО: ВСЁ ваше повествование ДОЛЖНО быть написано на русском. НИКОГДА не отвечайте на английском, даже если системный промпт на английском.',
+  ar: 'مهم: يجب كتابة كل سردك باللغة العربية. لا تجب أبدًا بالإنجليزية، حتى لو كان system prompt بالإنجليزية.',
+  ko: '중요: 모든 나레이션을 한국어로 작성하세요. 시스템 프롬프트가 영어로 되어 있어도 절대 영어로 답하지 마세요.',
+};
+
 export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }[] } {
   const langName = input.language ? (LANGUAGE_NAMES[input.language] ?? input.language) : null;
   // Spelled-out language name + emphatic phrasing — smaller local models (e.g.
   // gpt-oss:20b) confuse bare "it" with the English pronoun and end up replying
   // in English anyway. The repeated emphasis is a tax we pay to keep the
   // instruction unmissable on weaker instruction-followers.
+  //
+  // For 3-4B local models the English override gets drowned by the surrounding
+  // English-only system content (baked slim manifest + mode blocks). We prepend
+  // the same imperative in the TARGET language so the model sees the
+  // instruction in its own output distribution from the first attention pass.
+  const nativeOverride = input.language ? (NATIVE_LANGUAGE_INSTRUCTIONS[input.language] ?? '') : '';
   const langHint = langName
-    ? `## NARRATIVE LANGUAGE (MANDATORY)\nThe entire campaign — every line you write, in-character or out-of-character — MUST be written in **${langName}**. Do NOT respond in English unless the campaign language is English. This rule overrides any default tendency to reply in the same language as the system prompt.`
+    ? `## NARRATIVE LANGUAGE (MANDATORY) — OUTPUT LANGUAGE: ${langName.toUpperCase()}\n\n${nativeOverride ? nativeOverride + '\n\n' : ''}The entire campaign — every line you write, in-character or out-of-character — MUST be written in **${langName}**. Do NOT respond in English unless the campaign language is English. This rule overrides any default tendency to reply in the same language as the system prompt.`
     : '';
   const partyModeBlock = buildPartyModeBlock(input.party ?? [], input.currentPlayerCharacterId ?? null);
   // dynamicTail no longer carries langHint — langHint is hoisted up into the
   // session-stable section so the per-turn dynamic tail can stay short.
-  const dynamicTail = `## Current snapshot\n\n### Character\n\`\`\`json\n${input.characterMonoSpace}\n\`\`\`\n\n### Scene\n${input.scene || '(no scene set yet)'}`;
+  // Character snapshot is the single most important block for the master to
+  // see clearly — small local models (3-4B) regress to "I don't know your
+  // character" when it sits in the middle of a wall of mode-aware/party/scene
+  // blocks. We hoist it to a dedicated, top-billed block (pushed first in
+  // section 3 below) with an unmistakable header.
+  const activeCharacterBlock = `## ACTIVE PLAYER CHARACTER (authoritative sheet — the PG currently acting)\n\nThis is the player character you must reference for HP, AC, abilities, inventory, conditions, slots, features. Treat this as the single source of truth for the PG's stats this turn.\n\n\`\`\`json\n${input.characterMonoSpace}\n\`\`\``;
+  const sceneTailBlock = `## CURRENT SCENE\n${input.scene || '(no scene set yet)'}`;
 
   // Block ordering matters for Ollama KV cache: Ollama matches the longest
   // identical prefix between requests, so EVERY truly-static block must come
@@ -1598,16 +1747,27 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
   const blocks: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }[] = [];
 
   // ── (1) STATIC ACROSS CAMPAIGNS — never varies between sessions/users. ──
-  blocks.push(
-    { type: 'text', text: MASTER_SYSTEM_PROMPT_BASE, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: MASTER_TOOL_CONTRACT, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: MASTER_ROLL_TRIGGERS, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: MASTER_REWARDS_MANDATE, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: input.handbook, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: input.worldLore, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: MASTER_MEMORY_TOOL_RULE, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: input.srdContext, cache_control: { type: 'ephemeral' } },
-  );
+  //
+  // Plan D (baked models): when staticBlocksAlreadyBaked is true, these 9
+  // blocks are part of the model's Modelfile SYSTEM directive and we must
+  // NOT re-emit them in the runtime prompt — that would double-feed the
+  // content and waste tokens. The caller (turn route) sets the flag when
+  // it detects `dnd-master-*` in aiMasterModel.
+  if (!input.staticBlocksAlreadyBaked) {
+    blocks.push(
+      { type: 'text', text: MASTER_SYSTEM_PROMPT_BASE, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: MASTER_TOOL_CONTRACT, cache_control: { type: 'ephemeral' } },
+      ...(input.usesMetaTools
+        ? [{ type: 'text' as const, text: MASTER_META_TOOLS_INSTRUCTION, cache_control: { type: 'ephemeral' as const } }]
+        : []),
+      { type: 'text', text: MASTER_ROLL_TRIGGERS, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: MASTER_REWARDS_MANDATE, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: input.handbook, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: input.worldLore, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: MASTER_MEMORY_TOOL_RULE, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: input.srdContext, cache_control: { type: 'ephemeral' } },
+    );
+  }
 
   // ── (2) STABLE PER SESSION — set at campaign creation, rarely mutated. ──
   if (input.manualRolls) {
@@ -1653,7 +1813,44 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
     blocks.push({ type: 'text', text: langHint, cache_control: { type: 'ephemeral' } });
   }
 
+  // ── (2.5) PLAN E.1 MODE BLOCK + SPELLCASTING OVERLAY ──
+  // Both fields are optional: when undefined (toggle OFF / cloud provider /
+  // pre-E.1 callers) we inject NOTHING here, preserving Plan B+C+D
+  // behaviour byte-for-byte. Only callers that opt in by passing
+  // `mode: <value>` get the new block.
+  if (input.mode) {
+    blocks.push({
+      type: 'text',
+      text: MODE_BLOCKS[input.mode],
+      cache_control: { type: 'ephemeral' },
+    });
+  }
+  if (input.needsSpellcasting) {
+    blocks.push({
+      type: 'text',
+      text: SPELLCASTING_OVERLAY_BLOCK,
+      cache_control: { type: 'ephemeral' },
+    });
+  }
+
+  // ── (2.6) PLAN E.2 RAG RETRIEVED CONTEXT ──
+  // Goes after the mode block (mode-stable) but BEFORE the active character
+  // block (per-turn dynamic). The RAG block changes per turn (new query
+  // embedding) so it sits in the dynamic region — cache invalidates here.
+  if (input.ragChunks && input.ragChunks.length > 0) {
+    blocks.push({
+      type: 'text',
+      text: formatRagBlock(input.ragChunks),
+      cache_control: { type: 'ephemeral' },
+    });
+  }
+
   // ── (3) PER-TURN DYNAMIC — invalidates the cache from this point onward. ──
+  // Order chosen for small-model attention: the ACTIVE PG sheet is pushed FIRST
+  // so 3-4B models (llama3.2:3b, qwen3:4b) anchor on it. Then party + memory +
+  // codex (cross-references). Scene tail goes last as it's the most volatile
+  // and the closest cue to the player's next message.
+  blocks.push({ type: 'text', text: activeCharacterBlock });
   if (partyModeBlock) {
     blocks.push({ type: 'text', text: partyModeBlock });
   }
@@ -1675,7 +1872,7 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
       text: `## Codex index\n\n${input.codexIndex}`,
     });
   }
-  blocks.push({ type: 'text', text: dynamicTail });
+  blocks.push({ type: 'text', text: sceneTailBlock });
 
   return { system: blocks };
 }

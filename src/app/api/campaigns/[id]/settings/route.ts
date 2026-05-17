@@ -27,6 +27,9 @@ const ALLOWED_KEYS: ReadonlySet<keyof CampaignSettings> = new Set<keyof Campaign
   'imageStyleCustom',
   'imageProvider',
   'imageModel',
+  'compactPrompt',
+  'useModeAwarePrompt',
+  'useRagRetrieval',
 ]);
 
 export async function GET(
@@ -100,6 +103,7 @@ export async function PUT(
   const result = validateSettingsPatch(body as Partial<CampaignSettings>, {
     aiProvider: currentSettings.aiProvider,
     ttsProvider: currentSettings.ttsProvider,
+    ttsModel: currentSettings.ttsModel,
     imageProvider: currentSettings.imageProvider,
   });
   // eslint-disable-next-line no-console

@@ -1,9 +1,18 @@
 # Local Postgres for development. Major version matches the project's Neon instance.
 # Use `pnpm db:up` / `pnpm db:down`; data persists in the `pgdata` volume.
 
+# Explicit project name so every worktree shares the same volume + container
+# (without `name:`, Compose defaults to the directory name → each worktree
+# would get its own empty pgdata). With `name`, all worktrees see the same
+# Bruce Kettah, same migrations, same RAG index.
+name: dnd-ai-master
+
 services:
   postgres:
-    image: postgres:17
+    # pgvector/pgvector:pg17 = official Postgres 17 base + pgvector extension
+    # pre-installed and pre-loaded. Drop-in replacement for postgres:17; the
+    # pgdata volume is reused, no data loss. Needed by Plan E.2 (RAG).
+    image: pgvector/pgvector:pg17
     container_name: dnd-ai-postgres
     restart: unless-stopped
     # Host port 5433 to avoid colliding with any other Postgres already on 5432.

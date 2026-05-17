@@ -10,6 +10,12 @@ export interface TurnRequest {
 export type TurnEvent =
   | { type: 'player_message_persisted'; messageId: string }
   | { type: 'narrative_delta'; text: string }
+  // Local-only: emitted when the streaming provider detects the model has
+  // entered a chain-of-thought phase (either explicit <think> tag or
+  // markerless reasoning opener). UI should show a "Master is thinking..."
+  // placeholder until `thinking: end` fires or the first `narrative_delta`
+  // arrives — whichever comes first.
+  | { type: 'thinking'; state: 'start' | 'end' }
   | { type: 'tool_use_start'; toolUseId: string; name: string; input: Record<string, unknown> }
   | { type: 'tool_use_end'; toolUseId: string; ok: boolean; error?: string; rolls: ActionResult['rolls']; mutationCount: number }
   | { type: 'state_changed'; mutations: Mutation[] }

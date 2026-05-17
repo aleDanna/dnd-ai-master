@@ -1,0 +1,1 @@
+ALTER TABLE "ai_usage" ADD COLUMN "rag_chunk_count" integer;

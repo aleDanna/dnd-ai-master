@@ -175,6 +175,45 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
     void save({ imageGenerationEnabled: next });
   };
 
+  const onCompactPromptToggle = (): void => {
+    const next = !settings.compactPrompt;
+    setSettings((s) => ({ ...s, compactPrompt: next }));
+    void save({ compactPrompt: next });
+  };
+
+  const onModeAwarePromptToggle = (): void => {
+    const next = !settings.useModeAwarePrompt;
+    setSettings((s) => ({ ...s, useModeAwarePrompt: next }));
+    void save({ useModeAwarePrompt: next });
+  };
+
+  const onRagToggle = (): void => {
+    const next = !settings.useRagRetrieval;
+    setSettings((s) => ({ ...s, useRagRetrieval: next }));
+    void save({ useRagRetrieval: next });
+  };
+
+  const [rebuildingRag, setRebuildingRag] = React.useState(false);
+  const [rebuildMsg, setRebuildMsg] = React.useState<string | null>(null);
+  const onRebuildRag = async (): Promise<void> => {
+    setRebuildingRag(true);
+    setRebuildMsg(null);
+    try {
+      const res = await fetch('/api/rag/rebuild', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ force: true }),
+      });
+      const data = await res.json() as { chunkCount?: number; backend?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setRebuildMsg(`Indexed ${data.chunkCount} chunks (backend: ${data.backend}).`);
+    } catch (e) {
+      setRebuildMsg(`Error: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setRebuildingRag(false);
+    }
+  };
+
   const onImageStylePresetChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
     const next = e.target.value as NonNullable<CampaignSettings['imageStylePreset']>;
     if (next === settings.imageStylePreset) return;
@@ -356,17 +395,74 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
           <label htmlFor="masterModel" style={{ fontSize: 13, color: 'var(--fg-muted)', minWidth: 60 }}>Model</label>
           <select id="masterModel" value={settings.aiMasterModel} onChange={onModelChange} disabled={disabled}
             style={{ flex: 1, padding: '8px 12px', background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 8, color: 'var(--fg)', fontFamily: 'var(--font-ui)', fontSize: 14 }}>
-            {availableModels.length === 0 && settings.aiProvider === 'local' ? (
-              <option disabled value="">{localServices.ai.reachable ? 'No qwen3/gpt-oss installed in Ollama' : 'Ollama unreachable'}</option>
-            ) : (
-              availableModels.map((m) => (
+            {(() => {
+              if (availableModels.length === 0 && settings.aiProvider === 'local') {
+                return (
+                  <option disabled value="">{localServices.ai.reachable ? 'No qwen3/gpt-oss installed in Ollama' : 'Ollama unreachable'}</option>
+                );
+              }
+              // Plan D: when local, split baked (dnd-master-*) from raw bases
+              // so users immediately see the optimised variants at the top.
+              if (settings.aiProvider === 'local') {
+                const baked = availableModels.filter((m) => 'kind' in m && m.kind === 'baked');
+                const raw = availableModels.filter((m) => !('kind' in m) || m.kind !== 'baked');
+                return (
+                  <>
+                    {baked.length > 0 && (
+                      <optgroup label="Optimized (built locally)">
+                        {baked.map((m) => {
+                          const warn = 'warning' in m && (m as { warning?: string }).warning;
+                          return (
+                            <option key={m.slug} value={m.slug}>{warn ? '⚠ ' : ''}{m.label} — {m.blurb}</option>
+                          );
+                        })}
+                      </optgroup>
+                    )}
+                    <optgroup label={baked.length > 0 ? 'Base models (slower)' : 'Installed models'}>
+                      {raw.map((m) => {
+                        const warn = 'warning' in m && (m as { warning?: string }).warning;
+                        return (
+                          <option key={m.slug} value={m.slug}>
+                            {warn ? '⚠ ' : ''}{m.label}{'recommended' in m && (m as { recommended?: boolean }).recommended ? ' (recommended)' : ''} — {m.blurb}
+                          </option>
+                        );
+                      })}
+                    </optgroup>
+                  </>
+                );
+              }
+              // Cloud providers: flat list as before.
+              return availableModels.map((m) => (
                 <option key={m.slug} value={m.slug}>
-                  {m.label}{'recommended' in m && m.recommended ? ' (recommended)' : ''} — {m.blurb}
+                  {m.label}{'recommended' in m && (m as { recommended?: boolean }).recommended ? ' (recommended)' : ''} — {m.blurb}
                 </option>
-              ))
-            )}
+              ));
+            })()}
           </select>
         </div>
+
+        {/* Per-model warning surfaced when the active selection carries one
+            (e.g. llama3.2:3b drops character context on long prompts). */}
+        {settings.aiProvider === 'local' && (() => {
+          const sel = availableModels.find((m) => m.slug === settings.aiMasterModel);
+          const w = sel && 'warning' in sel ? (sel as { warning?: string }).warning : undefined;
+          if (!w) return null;
+          return (
+            <div style={{ fontSize: 12, color: 'var(--ember)', marginLeft: 70, display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+              <span aria-hidden>⚠</span>
+              <span>{w}</span>
+            </div>
+          );
+        })()}
+
+        {settings.aiProvider === 'local'
+          && localServices.ai.reachable
+          && availableModels.length > 0
+          && availableModels.every((m) => !('kind' in m) || m.kind !== 'baked') && (
+          <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginLeft: 70 }}>
+            💡 Run <code style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-elev)', padding: '0 4px', borderRadius: 3 }}>pnpm build-local-models</code> in your terminal to enable optimized variants (~30s build, much faster turns).
+          </div>
+        )}
       </Card>
 
       <div style={{ height: 16 }} />
@@ -606,6 +702,87 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
           {settings.showDifficultyNumbers ? 'DC/AC visible' : 'DC/AC hidden'}
         </button>
       </Card>
+
+      {settings.aiProvider === 'local' && (
+        <>
+          <div style={{ height: 16 }} />
+          <Card>
+            <div>
+              <Eyebrow>Local optimization</Eyebrow>
+              <h2 style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>Compact prompt</h2>
+              <p style={{ marginTop: 4, fontSize: 13, color: 'var(--fg-muted)' }}>
+                Trims the master&apos;s system prompt (handbook, world lore, SRD reference) to imperative cheat-sheets — about
+                30 KB lighter. Small local models (qwen3:14b, gpt-oss:20b) answer noticeably faster but narration is simpler.
+                Default ON for local, OFF for cloud.
+              </p>
+              {settings.aiMasterModel.startsWith('dnd-master-') && (
+                <p style={{ marginTop: 4, fontSize: 12, color: 'var(--fg-subtle)', fontStyle: 'italic' }}>
+                  Has no effect when using an optimized (<code>dnd-master-*</code>) model — the full handbook is baked into the model weights, so compact vs full is identical at runtime.
+                </p>
+              )}
+            </div>
+            <button onClick={onCompactPromptToggle} disabled={disabled || settings.aiMasterModel.startsWith('dnd-master-')} aria-pressed={settings.compactPrompt}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 10, height: 36, padding: '0 14px',
+                background: settings.compactPrompt ? 'var(--arcane)' : 'transparent',
+                border: '1px solid ' + (settings.compactPrompt ? 'var(--arcane)' : 'var(--border-strong)'),
+                borderRadius: 999, color: settings.compactPrompt ? 'var(--bone)' : 'var(--fg-muted)',
+                fontFamily: 'var(--font-ui)', fontSize: 13, fontWeight: 600,
+                cursor: (disabled || settings.aiMasterModel.startsWith('dnd-master-')) ? 'not-allowed' : 'pointer',
+                opacity: (!canEdit || settings.aiMasterModel.startsWith('dnd-master-')) ? 0.5 : 1 }}>
+              <Icon name="sparkle" size={14} />
+              {settings.compactPrompt ? 'Compact prompt on' : 'Compact prompt off'}
+            </button>
+            <button onClick={onModeAwarePromptToggle} disabled={disabled} aria-pressed={settings.useModeAwarePrompt}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 10, height: 36, padding: '0 14px',
+                background: settings.useModeAwarePrompt ? 'var(--arcane)' : 'transparent',
+                border: '1px solid ' + (settings.useModeAwarePrompt ? 'var(--arcane)' : 'var(--border-strong)'),
+                borderRadius: 999, color: settings.useModeAwarePrompt ? 'var(--bone)' : 'var(--fg-muted)',
+                fontFamily: 'var(--font-ui)', fontSize: 13, fontWeight: 600,
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                opacity: !canEdit ? 0.7 : 1,
+                marginLeft: 8 }}>
+              <Icon name="sparkle" size={14} />
+              {settings.useModeAwarePrompt ? 'Mode-aware prompt on' : 'Mode-aware prompt off'}
+            </button>
+            <button
+              onClick={onRagToggle}
+              disabled={disabled}
+              aria-pressed={settings.useRagRetrieval}
+              style={{
+                background: settings.useRagRetrieval ? 'var(--arcane)' : 'transparent',
+                border: '1px solid ' + (settings.useRagRetrieval ? 'var(--arcane)' : 'var(--border-strong)'),
+                borderRadius: 999,
+                color: settings.useRagRetrieval ? 'var(--bone)' : 'var(--fg-muted)',
+                padding: '6px 12px',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                fontSize: 13,
+                marginLeft: 8,
+              }}
+            >
+              {settings.useRagRetrieval ? 'RAG retrieval on' : 'RAG retrieval off'}
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+              <button
+                type="button"
+                onClick={onRebuildRag}
+                disabled={disabled || rebuildingRag}
+                style={{
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border-strong)',
+                  borderRadius: 8,
+                  color: 'var(--fg)',
+                  padding: '6px 12px',
+                  fontSize: 13,
+                  cursor: rebuildingRag ? 'wait' : 'pointer',
+                }}
+              >
+                {rebuildingRag ? 'Rebuilding...' : 'Rebuild RAG index'}
+              </button>
+              {rebuildMsg && <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{rebuildMsg}</span>}
+            </div>
+          </Card>
+        </>
+      )}
 
       <div style={{ height: 16 }} />
 

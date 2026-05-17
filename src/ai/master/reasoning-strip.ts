@@ -58,6 +58,20 @@ const REASONING_PARAGRAPH_START = new RegExp(
       'Let me\\b',
       // Meta-game references
       'The player\\b',
+      // The user is/has/wants/asked... — qwen3 chain-of-thought leak
+      'The user (?:is|has|wants|just|asked|said|gave|provided|wrote)\\b',
+      // qwen3 thinking-mode openers
+      "Okay,?[ \\t]+(?:let'?s|let me|so|now|the user|I|we|first|the player|the response|this)\\b",
+      'Alright,?[ \\t]+(?:let|so|now|I)\\b',
+      'Hmm,?[ \\t]+',
+      'Wait,?[ \\t]+',
+      "Let'?s (?:break|think|check|analyze|see|figure|recap|consider|start|begin|look)\\b",
+      // Tool-call-as-text dumps
+      '\\{[ \\t\\r\\n]*"name"[ \\t]*:',
+      'tool_call\\b',
+      // "The tool call(s) would be:" / "Tool calls:" — meta about tooling
+      'The tool[ \\t]*calls?\\b',
+      'Tool[ \\t]*calls?[ \\t]*:',
       // Explicit reasoning labels
       '(?:Note|Reasoning|Plan|Thought|Thinking|Pensiero|Ragionamento)\\s*:',
     ].join('|') +
@@ -80,8 +94,19 @@ const STRONG_REASONING_MARKERS: RegExp[] = [
   /\bDC (?:should be|of \d+|seems|stays at|stays|is set)\b/i,
   /\bset (?:it|the DC|that) to \d/i,
   /\bseems (?:appropriate|reasonable|fair|fitting|right|correct|too (?:high|low|easy|hard))\b/i,
-  /\bLet'?s (?:set|say|assume|go with|use|make|treat|call|pick)\b/i,
+  /\bLet'?s (?:set|say|assume|go with|use|make|treat|call|pick|break|think|check|recap|consider)\b/i,
   /\bThis is (?:an?|the)\b[^\n]{0,60}\b(?:check|save|saving throw|attack roll)\b/i,
+  // qwen3-30b-a3b chain-of-thought leak markers (paragraphs that are clearly
+  // meta-reasoning even when they don't open with a standard marker):
+  /\bthe user (?:is|has|wants|asked|just|said|gave|wrote)\b/i,
+  /\baccording to (?:the|my|our) (?:rules|context|spec|lore|handbook)\b/i,
+  /\bI need to (?:check|call|use|verify|decide|figure|narrate|describe)\b/i,
+  /\bso the (?:next step|response|narration|tool call)\b/i,
+  /\bthe (?:tool|tool call|tool_call|next step) (?:would be|is to|should be)\b/i,
+  // Tool-call JSON dump embedded in text content (model wrote the tool call
+  // as visible text instead of using the structured tool_calls API).
+  /^\s*\{\s*"name"\s*:\s*"[a-z_]+_action"/im,
+  /\btool_call\s*\n/i,
 ];
 
 function isReasoningParagraph(para: string): boolean {
@@ -117,6 +142,36 @@ export function stripReasoningPreamble(text: string): string {
   //    with a reasoning marker, stopping at the first paragraph that doesn't.
   cleaned = stripLeadingReasoningParagraphs(cleaned);
 
+  // 3b. Trailing tool-call JSON dumps. Small local models (llama3.2:3b,
+  //     qwen3:4b) often write the intended tool call as a JSON literal at
+  //     the END of the message — after the narration — instead of using the
+  //     structured tool_calls API. Walk paragraphs from the END and drop
+  //     each one that looks like a tool-call dump, stopping at the first
+  //     genuine narration paragraph.
+  cleaned = stripTrailingToolCallParagraphs(cleaned);
+
+  // 4. Safety fallback: if the input had substantial content (>200 chars) but
+  //    we stripped it to nothing or near-nothing (<20 chars), the strip is
+  //    almost certainly over-aggressive — the model emitted pure reasoning
+  //    with no narration paragraph that escaped our patterns. Returning empty
+  //    triggers "Master non ha prodotto risposta" in the UI. Better to return
+  //    a tail slice of the original so the player at least sees something
+  //    (even if it's the noisy reasoning) than to swallow the entire turn.
+  //
+  //    We return the LAST paragraph of the original input — heuristically
+  //    that's where the narration usually lands when the model dumps a long
+  //    chain-of-thought before getting to the actual scene description.
+  if (text.length > 200 && cleaned.trim().length < 20) {
+    const paragraphs = text.split(/\n[ \t]*\n+/).map((p) => p.trim()).filter(Boolean);
+    const lastPara = paragraphs[paragraphs.length - 1];
+    if (lastPara && lastPara.length >= 20) {
+      // eslint-disable-next-line no-console
+      console.warn('[reasoning-strip] aggressive strip — falling back to last paragraph of original',
+        { originalLen: text.length, cleanedLen: cleaned.trim().length, lastParaLen: lastPara.length });
+      return lastPara;
+    }
+  }
+
   return cleaned;
 }
 
@@ -142,4 +197,54 @@ function stripLeadingReasoningParagraphs(text: string): string {
   }
   if (i === 0) return text;
   return parts.slice(i).join('').replace(/^\s+/, '');
+}
+
+// Matches a paragraph that looks like a JSON tool-call literal:
+//   {"name": "combat_action", ...}
+//   {"name":"environment_action","parameters":{"subaction":"check_vision"}}
+//   ```json
+//   {"name": "..."}
+//   ```
+// The model writes these as visible text instead of calling the API. They
+// always appear at the end of the message after the narration.
+const TRAILING_TOOL_CALL_PATTERNS: RegExp[] = [
+  /^\s*```(?:json|tool_call)?\s*\n?\s*\{/i,        // fenced code block with JSON
+  /^\s*\{\s*"name"\s*:\s*"[a-z_]+"/i,              // bare JSON with "name" key
+  /^\s*\{\s*"tool"\s*:/i,                          // bare JSON with "tool" key
+  /^\s*tool_call\s*\(/i,                           // function-call syntax
+  /^\s*<tool_call>/i,                              // XML-style wrapper
+];
+
+function looksLikeTrailingToolCall(para: string): boolean {
+  const trimmed = para.trim();
+  if (!trimmed) return true; // empty paragraphs are skippable
+  for (const re of TRAILING_TOOL_CALL_PATTERNS) {
+    if (re.test(trimmed)) return true;
+  }
+  return false;
+}
+
+function stripTrailingToolCallParagraphs(text: string): string {
+  if (!text) return text;
+  const parts = text.split(/(\n[ \t]*\n+)/);
+  // Walk from the END: drop trailing JSON-tool-call paragraphs (and their
+  // preceding separator), stop at the first genuine narration paragraph.
+  let end = parts.length;
+  while (end > 0) {
+    const lastIdx = end - 1;
+    const last = parts[lastIdx] ?? '';
+    // Even indices = paragraphs, odd = separators. Skip separator slots.
+    if (lastIdx % 2 === 1) {
+      // It's a separator; drop it together with the para we're about to drop.
+      end -= 1;
+      continue;
+    }
+    if (looksLikeTrailingToolCall(last)) {
+      end -= 1; // drop the paragraph
+      continue;
+    }
+    break;
+  }
+  if (end === parts.length) return text;
+  return parts.slice(0, end).join('').replace(/\s+$/, '');
 }

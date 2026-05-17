@@ -21,9 +21,18 @@ export async function loadWorkflowTemplate(name: string): Promise<string> {
 }
 
 /** Escapes a string for safe insertion into a JSON document via string
- *  replace — quotes and backslashes need escaping. */
+ *  replace. Must cover *all* JSON-illegal characters in string literals:
+ *  backslashes, quotes, AND control chars (0x00-0x1F: newlines, tabs, …).
+ *  The previous implementation only escaped \\ and " and exploded with
+ *  "Bad control character in string literal" whenever the visual prompt
+ *  contained a newline.
+ *
+ *  Trick: JSON.stringify produces a fully-quoted, fully-escaped JSON
+ *  string — slice off the surrounding quotes and we're left with the
+ *  body, already escape-safe for any Unicode input. */
 export function escapeJsonString(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const json = JSON.stringify(s);
+  return json.slice(1, -1);
 }
 
 interface ComfyHistory {

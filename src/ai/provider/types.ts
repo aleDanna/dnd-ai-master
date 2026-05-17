@@ -58,6 +58,41 @@ export interface CompleteMessageInput {
    * model supports disable.
    */
   geminiThinkingBudget?: number;
+  /**
+   * Optional streaming callback. When provided, the provider streams output
+   * tokens via NDJSON (where supported — currently only LocalProvider) and
+   * invokes `onDelta(text)` for each incremental chunk of assistant content
+   * — AFTER any thinking-mode preamble has been filtered out. The full
+   * assembled content (still raw, including thinking) is returned in
+   * `CompleteMessageOutput` for downstream reasoning-strip / persistence.
+   * Tool calls are NOT streamed — they arrive in the final response shape.
+   *
+   * Callers that don't want streaming simply omit this and the provider
+   * falls back to its non-streaming path.
+   */
+  onDelta?: (text: string) => void;
+  /**
+   * Optional thinking-state callback for streaming local models. Fires
+   * 'start' when the provider detects the model has entered a chain-of-
+   * thought phase (either via explicit `<think>` tag or markerless
+   * heuristic on the first chunks). Fires 'end' when the thinking phase
+   * closes and `onDelta` is about to start emitting real narration.
+   *
+   * Use this to render a "Master is thinking..." placeholder in the UI
+   * while the thinking phase runs (it can take 5-20s on small models),
+   * then swap it for the streaming narration once 'end' fires.
+   */
+  onThinking?: (state: 'start' | 'end') => void;
+  /**
+   * ISO 639-1 language code of the campaign narration ('it', 'en', 'es',
+   * ...). When set AND streaming AND the model's content begins in a
+   * different language than this, the provider treats the opening as
+   * meta-reasoning (CoT) and discards it until the stream switches to
+   * the expected language. This is the scalable fallback for models
+   * that emit chain-of-thought in English (their pretrain default) even
+   * when the campaign is non-English.
+   */
+  campaignLanguage?: string;
 }
 
 export type ContentBlock =

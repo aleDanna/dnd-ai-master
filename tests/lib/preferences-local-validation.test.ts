@@ -86,3 +86,31 @@ describe('validateSettingsPatch — local provider gating', () => {
     expect(r.ok).toBe(true);
   });
 });
+
+describe('validateSettingsPatch — compactPrompt (Plan C)', () => {
+  it('accepts compactPrompt=true', () => {
+    const r = validateSettingsPatch({ compactPrompt: true });
+    if (!r.ok) throw new Error(`unexpected error: ${r.error}`);
+    expect(r.patch.compactPrompt).toBe(true);
+  });
+
+  it('accepts compactPrompt=false', () => {
+    const r = validateSettingsPatch({ compactPrompt: false });
+    if (!r.ok) throw new Error(`unexpected error: ${r.error}`);
+    expect(r.patch.compactPrompt).toBe(false);
+  });
+
+  it('rejects non-boolean compactPrompt', () => {
+    const r = validateSettingsPatch({ compactPrompt: 'yes' as unknown as boolean });
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error('expected validation failure');
+    expect(r.error).toBe('invalid-compactPrompt');
+  });
+
+  it('rejects numeric compactPrompt', () => {
+    const r = validateSettingsPatch({ compactPrompt: 1 as unknown as boolean });
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error('expected validation failure');
+    expect(r.error).toBe('invalid-compactPrompt');
+  });
+});

@@ -1,6 +1,7 @@
 import type { ActionResult, EngineState, Mutation, DiceRoll } from '@/engine/types';
 import type { AnthropicTool } from '@/engine/types';
 import { TOOL_HANDLERS, TOOL_DEFINITIONS, TOOL_HANDLERS_DB } from '@/engine';
+import { dispatchMetaCall } from '@/engine/tools/meta-dispatcher';
 import { TURN_TOOL_CALL_CAP, TURN_TIMEOUT_MS, type TurnEvent } from '@/sessions/types';
 import type {
   MasterProvider,
@@ -27,6 +28,14 @@ export interface ToolLoopInput {
   sessionId?: string;
   /** Tool definitions for this turn. Defaults to TOOL_DEFINITIONS for back-compat with existing tests. */
   tools?: AnthropicTool[];
+  /**
+   * ISO 639-1 campaign narration language ('it', 'en', ...). Forwarded to the
+   * provider so the local streaming filter can detect chain-of-thought emitted
+   * in the model's pretrain default language (English) on non-English
+   * campaigns. Optional — when omitted the filter falls back to opener-regex
+   * heuristics only.
+   */
+  campaignLanguage?: string;
 }
 
 export interface ToolLoopResult {
@@ -49,6 +58,7 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
     onEvent,
     sessionId,
     tools = TOOL_DEFINITIONS,
+    campaignLanguage,
   } = input;
   const events: TurnEvent[] = [];
   let finalText = '';
@@ -70,12 +80,29 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
       break;
     }
 
+    // Streaming: provider invokes onDelta for each token chunk as it
+    // arrives. We pump those straight to the SSE stream so the UI sees
+    // tokens live (TTFT ~1s instead of wait-for-full-response). Currently
+    // only LocalProvider honours onDelta; cloud providers ignore it and
+    // we fall through to the single-shot emission below.
+    let streamedAny = false;
     const response = await provider.completeMessage({
       model,
       systemBlocks,
       messages,
       tools,
       sessionId,
+      campaignLanguage,
+      onDelta: (text: string) => {
+        streamedAny = true;
+        emit({ type: 'narrative_delta', text });
+      },
+      // Forward thinking-phase signals so the UI can show a placeholder
+      // (e.g. "Il master sta pensando...") instead of either nothing or
+      // raw chain-of-thought tokens.
+      onThinking: (state: 'start' | 'end') => {
+        emit({ type: 'thinking', state });
+      },
     });
 
     if (recordUsage) await recordUsage(response.usage);
@@ -87,7 +114,12 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
         block.text = cleaned;
         if (cleaned) {
           finalText += cleaned;
-          emit({ type: 'narrative_delta', text: cleaned });
+          // Re-emit only if we did NOT stream (cloud providers or local
+          // without streaming). When streaming, the UI already received
+          // these tokens incrementally; re-emitting would duplicate.
+          if (!streamedAny) {
+            emit({ type: 'narrative_delta', text: cleaned });
+          }
         }
       } else if (block.type === 'tool_use') {
         toolUses.push({ id: block.id, name: block.name, input: block.input });
@@ -121,12 +153,29 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
       toolCallCount += 1;
       emit({ type: 'tool_use_start', toolUseId: tu.id, name: tu.name, input: tu.input });
 
-      const syncHandler = TOOL_HANDLERS[tu.name];
-      const dbHandler = TOOL_HANDLERS_DB[tu.name];
+      // Meta-dispatch: rewrites local-provider meta calls (combat_action,
+      // spell_action, …) into the underlying engine tool name + stripped
+      // input. Plain tool names pass through unchanged. Errors here surface
+      // as tool_result errors (e.g. unknown subaction).
+      let resolvedName = tu.name;
+      let resolvedInput = tu.input;
+      let dispatchError: string | null = null;
+      try {
+        const dispatched = dispatchMetaCall(tu.name, tu.input);
+        resolvedName = dispatched.resolvedName;
+        resolvedInput = dispatched.resolvedInput;
+      } catch (e) {
+        dispatchError = e instanceof Error ? e.message : String(e);
+      }
+
+      const syncHandler = !dispatchError ? TOOL_HANDLERS[resolvedName] : undefined;
+      const dbHandler = !dispatchError ? TOOL_HANDLERS_DB[resolvedName] : undefined;
       let result: ActionResult;
-      if (syncHandler) {
+      if (dispatchError) {
+        result = { ok: false, error: dispatchError, rolls: [], mutations: [] };
+      } else if (syncHandler) {
         try {
-          result = syncHandler(state, tu.input);
+          result = syncHandler(state, resolvedInput);
         } catch (e) {
           result = { ok: false, error: e instanceof Error ? e.message : String(e), rolls: [], mutations: [] };
         }
@@ -135,13 +184,13 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
           result = { ok: false, error: 'missing_session_for_db_tool', rolls: [], mutations: [] };
         } else {
           try {
-            result = await dbHandler({ sessionId }, state, tu.input);
+            result = await dbHandler({ sessionId }, state, resolvedInput);
           } catch (e) {
             result = { ok: false, error: e instanceof Error ? e.message : String(e), rolls: [], mutations: [] };
           }
         }
       } else {
-        result = { ok: false, error: `unknown_tool:${tu.name}`, rolls: [], mutations: [] };
+        result = { ok: false, error: `unknown_tool:${resolvedName}`, rolls: [], mutations: [] };
       }
 
       emit({

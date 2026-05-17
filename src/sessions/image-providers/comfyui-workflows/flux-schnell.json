@@ -34,10 +34,9 @@
   },
   "12": {
     "inputs": {
-      "unet_name": "flux1-schnell.safetensors",
-      "weight_dtype": "default"
+      "unet_name": "flux1-schnell-Q5_K_S.gguf"
     },
-    "class_type": "UNETLoader"
+    "class_type": "UnetLoaderGGUF"
   },
   "13": {
     "inputs": {
@@ -75,8 +74,8 @@
   },
   "18": {
     "inputs": {
-      "width": 1024,
-      "height": 1024,
+      "width": 768,
+      "height": 768,
       "batch_size": 1
     },
     "class_type": "EmptyLatentImage"

@@ -60,8 +60,11 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
   const {
     snapshot,
     streamingMessage,
+    isThinking,
     error: streamError,
     turnError,
+    turnStatus,
+    setTurnStatus,
     clearTurnError,
     finalizedSeq,
     clearStreamingMessage,
@@ -89,7 +92,22 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
   // multi-second gap where the spinner used to vanish. `pendingTurn` below
   // closes that gap.
   const [pendingTurn, setPendingTurn] = React.useState(false);
-  const busy = streamingMessage !== null || sending || pendingTurn;
+  const busy = streamingMessage !== null || sending || pendingTurn || turnStatus !== null;
+
+  // Context-aware label for the "responding…" indicator. Only the
+  // campaign-opener case gets a custom copy ("generating the campaign…")
+  // because that ONE turn is genuinely cold for local LLMs and routinely
+  // takes minutes. Subsequent turns — even on local providers — hit a
+  // warm KV cache and finish in seconds, so the generic "responding…"
+  // is accurate and avoids alarming users with "warming up" copy on
+  // turns that are actually warm. The server's turn-status event still
+  // fires every turn (we use it to drive `busy`), but the label only
+  // diverges for opener turns.
+  const respondingLabel = React.useMemo(() => {
+    if (isThinking) return 'Il Master sta ragionando…';
+    if (turnStatus?.isBegin) return 'The Master is generating the campaign…';
+    return 'The Master is responding…';
+  }, [turnStatus, isThinking]);
 
   // Live character mutable fields from the SSE snapshot. Merging
   // onto the local React state on every snapshot tick makes the right-pane
@@ -290,8 +308,12 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     if (busy) return;
     if (messages.length > 0) return;
     beganRef.current = true;
-    // Light up the "Master is responding…" indicator immediately — the
-    // master can take a few seconds to produce the opening scene.
+    // Light up the indicator immediately. We KNOW this is a begin call,
+    // so we can optimistically set turnStatus.isBegin to render the
+    // "generating the campaign…" copy without waiting for the server's
+    // turn-status event (which arrives ~100-300ms later via SSE).
+    // isLocalProvider stays false here; the server event refines it.
+    setTurnStatus({ isBegin: true, isLocalProvider: false });
     setPendingTurn(true);
     void postTurn({ begin: true });
     // Mirror the regular `send()` path: arm the safety poll so a dropped
@@ -304,17 +326,22 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
   // returning 202) and the master starting to stream the response. It powers
   // both the "Master is responding…" indicator (via `busy`) and the composer
   // lock (so the player can't double-submit during that gap). Cleared by the
-  // first streamed chunk, by a turn-error, or by a 120s safety ceiling.
-  // (Local providers like qwen3:30b can take 30-90s for the first run when
-  // weights are being loaded; the safety poll separately catches the case
-  // where SSE drops silently — see startSafetyPoll, 90s window.)
+  // first streamed chunk, by a turn-error, or by a 15-minute safety ceiling.
+  //
+  // The ceiling matches the server-side fetch timeout
+  // (OLLAMA_FETCH_TIMEOUT_MS, default 900000ms = 15 min) so the indicator
+  // stays alive for the entire window a local cold call can legitimately
+  // occupy. Cold qwen3:30b-a3b first-turn = ~5 min of prompt eval +
+  // generation; smaller models like qwen3:14b are usually under 2 min.
+  // After the first cold turn, OLLAMA_KEEP_ALIVE keeps weights resident
+  // and subsequent turns finish in seconds, so the ceiling rarely fires.
   React.useEffect(() => {
     if (!pendingTurn) return;
     if (streamingMessage || turnError) {
       setPendingTurn(false);
       return;
     }
-    const t = setTimeout(() => setPendingTurn(false), 120_000);
+    const t = setTimeout(() => setPendingTurn(false), 900_000);
     return () => clearTimeout(t);
   }, [pendingTurn, streamingMessage, turnError]);
 
@@ -446,6 +473,16 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
           subtitle={`${inCombat ? 'COMBAT' : 'EXPLORATION'} · ${(campaign?.language ?? session.language)?.toUpperCase() ?? '—'} · ${party.length > 1 ? `${party.length}P` : 'SOLO'}`}
           trailing={
             <>
+              {campaign?.aiMasterModel ? (
+                (() => {
+                  const m = campaign.aiMasterModel;
+                  const baked = m.startsWith('dnd-master-');
+                  const label = baked
+                    ? m.replace(/^dnd-master-/, '').replace(/:latest$/, '')
+                    : m.replace(/:latest$/, '');
+                  return <Chip tone={baked ? 'ok' : 'neutral'} title={`Master model: ${m}${baked ? ' (baked)' : ''}`}>{label}</Chip>;
+                })()
+              ) : null}
               <AutoplayToggle value={autoplay} onChange={setAutoplay} />
               {campaign && (
                 <Link href={`/campaigns/${campaign.id}/settings`} aria-label="Campaign settings">
@@ -475,12 +512,19 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
           history={messages}
           liveEvents={liveEvents}
           busy={busy}
+          busyLabel={respondingLabel}
           onSend={send}
           onCastSpell={!composerDisabled && character.spellcasting && slots.length > 0 ? () => setSpellOpen(true) : undefined}
           manualRolls={initialManualRolls}
           imageGenerationEnabled={initialImageGenerationEnabled}
           disabled={composerDisabled}
-          disabledPlaceholder={!memoryReady ? 'Preparazione memoria in corso…' : `Waiting for ${currentPlayerName}…`}
+          disabledPlaceholder={
+            !memoryReady
+              ? 'Preparazione memoria in corso…'
+              : busy
+                ? respondingLabel
+                : `Waiting for ${currentPlayerName}…`
+          }
           party={party}
           compact
           ttsPending={ttsPending}
@@ -564,6 +608,16 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
           </div>
         </div>
         <AutoplayToggle value={autoplay} onChange={setAutoplay} />
+        {campaign?.aiMasterModel ? (
+          (() => {
+            const m = campaign.aiMasterModel;
+            const baked = m.startsWith('dnd-master-');
+            const label = baked
+              ? m.replace(/^dnd-master-/, '').replace(/:latest$/, '') + ' · baked'
+              : m.replace(/:latest$/, '');
+            return <Chip tone={baked ? 'ok' : 'neutral'} title={`Master model: ${m}`}>{label}</Chip>;
+          })()
+        ) : null}
         <Chip tone="accent" dot>SSE live</Chip>
         {campaign && (
           <Link href={`/campaigns/${campaign.id}/settings`} aria-label="Campaign settings">
@@ -609,6 +663,7 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
             history={messages}
             liveEvents={liveEvents}
             busy={busy}
+            busyLabel={respondingLabel}
             onSend={send}
             // Drop the spell-cast affordance when the composer is locked: an
             // open Spell modal would still call `send()` directly (bypassing
@@ -622,7 +677,7 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
               !memoryReady
                 ? 'Preparazione memoria in corso…'
                 : busy
-                  ? 'The Master is responding…'
+                  ? respondingLabel
                   : `Waiting for ${currentPlayerName}…`
             }
             party={party}

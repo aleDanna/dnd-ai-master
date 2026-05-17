@@ -27,6 +27,28 @@ export interface CampaignSettings {
   imageStyleCustom?: string;
   imageProvider?: ImageProviderName;
   imageModel?: string;
+  /**
+   * When true, the master system prompt uses compact variants of the SRD
+   * + handbook + world lore (Plan C). Trades narrative depth for raw
+   * latency on small local models. When undefined, defaults to true for
+   * `aiProvider === 'local'` and false for cloud providers (where the
+   * full prompt fits comfortably under the model's context).
+   */
+  compactPrompt?: boolean;
+  /**
+   * When true, the system prompt is selected based on the active AI mode
+   * (local vs cloud). Enables mode-aware prompt switching so local models
+   * receive a trimmed prompt while cloud models keep the full version.
+   * When undefined, defaults to true for `aiProvider === 'local'` and
+   * false for cloud providers.
+   */
+  useModeAwarePrompt?: boolean;
+  /**
+   * When true, the AI master retrieves relevant lore/world context via RAG
+   * before generating each response (Plan E.2). Default false in Phase 2
+   * (opt-in); Phase 3 flips the default to true for local providers.
+   */
+  useRagRetrieval?: boolean;
 }
 
 export const campaigns = pgTable(
