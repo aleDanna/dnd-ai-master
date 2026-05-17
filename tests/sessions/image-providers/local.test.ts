@@ -17,6 +17,21 @@ describe('comfyui workflow loader', () => {
   it('escapeJsonString escapes quotes and backslashes', () => {
     expect(escapeJsonString('a "quoted" \\ value')).toBe('a \\"quoted\\" \\\\ value');
   });
+
+  it('escapeJsonString escapes control chars (newline/tab/CR) — regression for ComfyUI submit', () => {
+    // Visual prompts containing literal newlines used to crash JSON.parse with
+    // "Bad control character in string literal" after the placeholder swap.
+    expect(escapeJsonString('line1\nline2')).toBe('line1\\nline2');
+    expect(escapeJsonString('col1\tcol2')).toBe('col1\\tcol2');
+    expect(escapeJsonString('cr\rhere')).toBe('cr\\rhere');
+  });
+
+  it('multi-line prompt embedded into the workflow template parses cleanly', async () => {
+    const tmpl = await loadWorkflowTemplate('flux-schnell');
+    const prompt = 'A dragon\nwith glowing eyes\n"shouting" \\ across the valley';
+    const filled = tmpl.replace('{{PROMPT}}', escapeJsonString(prompt));
+    expect(() => JSON.parse(filled)).not.toThrow();
+  });
 });
 
 describe('generateBytesComfyUI', () => {
