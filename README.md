@@ -137,16 +137,35 @@ pre-installed. Existing pgdata is preserved across the image swap.
 **Critical for unified-memory Macs (M-series)**: Ollama defaults to
 `OLLAMA_MAX_LOADED_MODELS=1`, so a 20B+ master model holds the only
 slot and `nomic-embed-text` can't load → every retrieval call times
-out and `rag_chunk_count` is silently 0. Set on the daemon and
-restart Ollama:
+out and `rag_chunk_count` is silently 0. The repo ships an idempotent
+setup script that sets all 4 required env vars and restarts Ollama
+only if needed:
+
 ```bash
-launchctl setenv OLLAMA_MAX_LOADED_MODELS 2
-launchctl setenv OLLAMA_NUM_PARALLEL 2
-killall Ollama && open -a Ollama
+./scripts/setup-ollama-env.sh
 ```
-After restart, the embedder + master coexist (~550 MB + master size).
-The embedder is also pinned with `keep_alive=30m` so it doesn't churn
-between turns.
+
+It writes:
+- `OLLAMA_MAX_LOADED_MODELS=2` — master + embedder coexist
+- `OLLAMA_NUM_PARALLEL=2` — embed + chat in parallel
+- `OLLAMA_NUM_CTX=32768` — sized for the slim baked manifest
+- `OLLAMA_FLASH_ATTENTION=1` — ~20-30% gen-speed boost on M-series
+
+**Make it permanent across Mac reboots**: `launchctl setenv` values do
+NOT survive a reboot. Add this one-liner to your `~/.zshrc` so the
+script runs every time you open a terminal (idempotent, ~30ms when
+Ollama is already correct):
+
+```bash
+# In ~/.zshrc:
+[[ -x ~/projects/dnd-ai-master/scripts/setup-ollama-env.sh ]] && \
+  ~/projects/dnd-ai-master/scripts/setup-ollama-env.sh > /dev/null
+```
+
+(Adapt the path to where you cloned the repo.) Restart your terminal
+after editing `.zshrc` or `source ~/.zshrc`. After restart, embedder +
+master coexist (~550 MB + master size). The embedder is also pinned
+with `keep_alive=30m` so it doesn't churn between turns.
 
 **Enable**: Settings → Local optimization → "RAG retrieval on". Phase 2
 ships with the toggle default OFF (opt-in); a future Phase 3 cutover
