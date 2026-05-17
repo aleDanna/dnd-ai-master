@@ -2,6 +2,8 @@ import type { TonalFrame, EngagementProfile } from '@/engine/types';
 import { TONAL_FRAME_GUIDANCE } from '@/engine/npc-tonal';
 import type { MasterMode } from './mode';
 import { MODE_BLOCKS, SPELLCASTING_OVERLAY_BLOCK } from './mode-blocks';
+import type { RetrievedChunk } from './rag/types';
+import { formatRagBlock } from './rag/format';
 
 /**
  * Bump this integer whenever the *static* portion of the master system
@@ -1364,6 +1366,8 @@ export interface MasterPromptInput {
   mode?: MasterMode;
   /** Plan E.1: whether the active PC has spellcasting (overlay gate). */
   needsSpellcasting?: boolean;
+  /** Plan E.2: retrieved RAG chunks to inject as a RELEVANT CONTEXT block. */
+  ragChunks?: RetrievedChunk[];
 }
 
 export const MASTER_HIDE_DIFFICULTY_RULE = `## Hide difficulty numbers
@@ -1825,6 +1829,18 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
     blocks.push({
       type: 'text',
       text: SPELLCASTING_OVERLAY_BLOCK,
+      cache_control: { type: 'ephemeral' },
+    });
+  }
+
+  // ── (2.6) PLAN E.2 RAG RETRIEVED CONTEXT ──
+  // Goes after the mode block (mode-stable) but BEFORE the active character
+  // block (per-turn dynamic). The RAG block changes per turn (new query
+  // embedding) so it sits in the dynamic region — cache invalidates here.
+  if (input.ragChunks && input.ragChunks.length > 0) {
+    blocks.push({
+      type: 'text',
+      text: formatRagBlock(input.ragChunks),
       cache_control: { type: 'ephemeral' },
     });
   }
