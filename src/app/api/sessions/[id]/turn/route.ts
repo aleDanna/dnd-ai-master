@@ -372,6 +372,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           state: snap.state,
           sessionId,
           tools,
+          campaignLanguage: campaign.language ?? snap.language ?? undefined,
           applyMutations: (muts, rolls) => applyMutations(sessionId, muts, rolls),
           recordUsage: async (usage) => {
             await recordUsage({

@@ -83,6 +83,16 @@ export interface CompleteMessageInput {
    * then swap it for the streaming narration once 'end' fires.
    */
   onThinking?: (state: 'start' | 'end') => void;
+  /**
+   * ISO 639-1 language code of the campaign narration ('it', 'en', 'es',
+   * ...). When set AND streaming AND the model's content begins in a
+   * different language than this, the provider treats the opening as
+   * meta-reasoning (CoT) and discards it until the stream switches to
+   * the expected language. This is the scalable fallback for models
+   * that emit chain-of-thought in English (their pretrain default) even
+   * when the campaign is non-English.
+   */
+  campaignLanguage?: string;
 }
 
 export type ContentBlock =

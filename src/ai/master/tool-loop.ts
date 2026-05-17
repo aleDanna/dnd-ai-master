@@ -28,6 +28,14 @@ export interface ToolLoopInput {
   sessionId?: string;
   /** Tool definitions for this turn. Defaults to TOOL_DEFINITIONS for back-compat with existing tests. */
   tools?: AnthropicTool[];
+  /**
+   * ISO 639-1 campaign narration language ('it', 'en', ...). Forwarded to the
+   * provider so the local streaming filter can detect chain-of-thought emitted
+   * in the model's pretrain default language (English) on non-English
+   * campaigns. Optional — when omitted the filter falls back to opener-regex
+   * heuristics only.
+   */
+  campaignLanguage?: string;
 }
 
 export interface ToolLoopResult {
@@ -50,6 +58,7 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
     onEvent,
     sessionId,
     tools = TOOL_DEFINITIONS,
+    campaignLanguage,
   } = input;
   const events: TurnEvent[] = [];
   let finalText = '';
@@ -83,6 +92,7 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
       messages,
       tools,
       sessionId,
+      campaignLanguage,
       onDelta: (text: string) => {
         streamedAny = true;
         emit({ type: 'narrative_delta', text });

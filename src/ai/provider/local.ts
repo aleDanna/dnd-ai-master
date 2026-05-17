@@ -130,10 +130,55 @@ const MARKERLESS_THINKING_OPENERS = /^[ \t\r\n]*(?:Okay,?|Alright,?|Hmm,?|Wait,?
 // English connectors that show up mid-thought.
 const REASONING_PARAGRAPH_RE = /^[ \t]*(?:Okay,?|Alright,?|Hmm,?|Wait,?|Let'?s|Let me|First,?|Then,?|Now,?|So,?|But,?|However,?|Also,?|Moreover,?|Additionally,?|Furthermore,?|Therefore,?|Thus,?|Looking at|Given|Since|Considering|Based on|According to|To (?:handle|address|resolve|adjudicate|narrate|determine|figure)|The (?:user|player|current|scene|tool|tools|DC|roll|rules|sentry|monster|enemy|character|response|narration|next|previous|action|situation|lore|handbook|SRD|context|state|game|combat|attack|check|saving|spell|output|task|goal|key|main|first|second|last|final)|We (?:are|have|need|should|must|will|'ll|'re|do|start|can|might)|He'?s|She'?s|It'?s|I'(?:ll|ve|m|d|re)|I (?:will|should|need|must|can|might|have|am|do)|My (?:role|job|task|response)|Example[ \t]*:|For example,?|Note|Reasoning|Plan|Thought|Thinking|Pensiero|Ragionamento)/i;
 
+// Scalable language heuristic. The regexes above are a backstop for known
+// opener phrases, but they require us to keep up with every English meta-
+// reasoning template the model invents. The real signal is much simpler:
+// if the campaign is non-English and the streaming content starts in
+// English, it is necessarily chain-of-thought (the narration MUST be in
+// the campaign language per the system prompt). We catch that with a tiny
+// stopword count — language-detection libraries would be overkill for
+// <100 char windows.
+const LANG_STOPWORDS: Record<string, string[]> = {
+  en: ['the', 'is', 'are', 'and', 'of', 'to', 'a', 'in', 'that', 'it', 'with', 'for', 'as', 'was', 'on', 'this', 'you', 'your', 'we', 'our', 'they', 'them', 'have', 'has', 'will', 'would', 'should', 'can', 'must'],
+  it: ['il', 'la', 'lo', 'le', 'i', 'è', 'di', 'un', "un'", 'una', 'del', 'dello', 'della', 'dei', 'degli', 'delle', 'e', 'ma', 'che', 'in', 'con', 'per', 'su', 'gli', 'ti', 'mi', 'ci', 'si', 'al', 'allo', 'alla', 'ai', 'agli', 'alle', 'da', 'dal', 'dalla', 'sei', 'sono', 'hai', 'ha', 'tuo', 'tua'],
+  es: ['el', 'los', 'las', 'es', 'son', 'de', 'y', 'en', 'un', 'una', 'que', 'no', 'te', 'le', 'su', 'sus', 'lo', 'al', 'del', 'por', 'para', 'con', 'tu', 'tus'],
+  fr: ['le', 'les', 'de', 'et', 'est', 'sont', 'un', 'une', 'des', 'à', 'en', 'dans', 'pour', 'avec', 'sur', 'qui', 'que', 'ce', 'cette', 'tu', 'ton', 'ta', 'tes', 'au', 'aux'],
+  de: ['der', 'die', 'das', 'und', 'ist', 'sind', 'ein', 'eine', 'mit', 'von', 'zu', 'auf', 'für', 'ich', 'du', 'sie', 'wir', 'es', 'den', 'dem', 'des', 'dich', 'dir'],
+  pt: ['o', 'os', 'as', 'é', 'são', 'de', 'em', 'um', 'uma', 'do', 'da', 'dos', 'das', 'que', 'com', 'por', 'para', 'no', 'na', 'nos', 'nas', 'teu', 'tua', 'tuas'],
+};
+
+function countStopwords(text: string, lang: string): number {
+  const words = LANG_STOPWORDS[lang];
+  if (!words) return 0;
+  const lower = text.toLowerCase();
+  let count = 0;
+  for (const w of words) {
+    // \b doesn't behave well around apostrophes / accented chars in JS, so
+    // anchor on whitespace/punctuation/string boundaries instead.
+    const re = new RegExp(`(?:^|[\\s.,!?;:"'()\\[\\]])${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=[\\s.,!?;:"'()\\[\\]]|$)`, 'gi');
+    const m = lower.match(re);
+    if (m) count += m.length;
+  }
+  return count;
+}
+
+/** True when `text` looks like English meta-reasoning emitted on a non-English
+ *  campaign. Conservative: requires ≥3 English stopwords AND zero hits for the
+ *  expected language. Returns false for English campaigns (would be ambiguous
+ *  vs legitimate English narration). */
+function looksLikeForeignLanguageCoT(text: string, expectedLang?: string): boolean {
+  if (!expectedLang || expectedLang === 'en') return false;
+  if (!LANG_STOPWORDS[expectedLang]) return false;
+  const englishCount = countStopwords(text, 'en');
+  const expectedCount = countStopwords(text, expectedLang);
+  return englishCount >= 3 && expectedCount === 0;
+}
+
 async function chat(
   body: unknown,
   onDelta?: (text: string) => void,
   onThinking?: (state: 'start' | 'end') => void,
+  campaignLanguage?: string,
 ): Promise<OllamaChatResponse> {
   const t0 = Date.now();
   // eslint-disable-next-line no-console
@@ -165,7 +210,7 @@ async function chat(
 
   let json: OllamaChatResponse;
   if (isStream && res.body) {
-    json = await consumeStream(res.body, onDelta, onThinking);
+    json = await consumeStream(res.body, onDelta, onThinking, campaignLanguage);
   } else {
     json = await res.json() as OllamaChatResponse;
   }
@@ -203,6 +248,7 @@ async function consumeStream(
   body: ReadableStream<Uint8Array>,
   onDelta?: (text: string) => void,
   onThinking?: (state: 'start' | 'end') => void,
+  campaignLanguage?: string,
 ): Promise<OllamaChatResponse> {
   const reader = body.getReader();
   const decoder = new TextDecoder('utf-8');
@@ -258,10 +304,18 @@ async function consumeStream(
 
     if (st.value === 'init') {
       // Need ~80 chars (or a paragraph break, or stream end) before deciding.
-      // The opener regex is anchored at start and matches the first ~25 chars
-      // of any known reasoning preamble.
+      // Two heuristics, in order of confidence:
+      //   1. Opener regex (anchored at start) — fast match on known
+      //      meta-reasoning phrases ("Let me", "The user wants", etc.).
+      //   2. Language mismatch — if the campaign is non-English and the
+      //      first chunk reads as English (≥3 EN stopwords, 0 expected-
+      //      lang stopwords), it's CoT regardless of which opener the
+      //      model picked. This is the scalable backstop that doesn't
+      //      depend on enumerating every English template.
       if (visibleBuffer.length < 80 && !visibleBuffer.includes('\n\n')) return;
-      if (MARKERLESS_THINKING_OPENERS.test(visibleBuffer)) {
+      const isReasoningOpener = MARKERLESS_THINKING_OPENERS.test(visibleBuffer);
+      const isForeignLang = looksLikeForeignLanguageCoT(visibleBuffer, campaignLanguage);
+      if (isReasoningOpener || isForeignLang) {
         setThinking('thinking');
         // fall through to thinking-mode handling below
       } else {
@@ -274,13 +328,18 @@ async function consumeStream(
 
     if (st.value === 'thinking') {
       // Look for paragraph breaks. If we find one, evaluate the paragraph
-      // AFTER the break: if it still looks like reasoning, keep dropping;
-      // if it looks like narration, transition.
+      // AFTER the break with BOTH heuristics (regex + language mismatch).
+      // The language check is what catches the long-tail of openers the
+      // regex doesn't know about — keeps qwen3:4b runaway CoT bounded
+      // without needing to enumerate every "Now I should..." variant.
       const lastBreak = visibleBuffer.lastIndexOf('\n\n');
       if (lastBreak === -1) return; // wait for more
       const after = visibleBuffer.slice(lastBreak + 2);
       if (after.length < 30) return; // wait for enough to evaluate
-      if (REASONING_PARAGRAPH_RE.test(after)) {
+      const stillReasoning =
+        REASONING_PARAGRAPH_RE.test(after) ||
+        looksLikeForeignLanguageCoT(after, campaignLanguage);
+      if (stillReasoning) {
         // Drop everything up to (and including) the break; keep evaluating.
         visibleBuffer = after;
         return;
@@ -339,7 +398,8 @@ async function consumeStream(
         if (st.value !== 'narration' && visibleBuffer.trim().length > 0) {
           const looksReasoning =
             MARKERLESS_THINKING_OPENERS.test(visibleBuffer) ||
-            REASONING_PARAGRAPH_RE.test(visibleBuffer);
+            REASONING_PARAGRAPH_RE.test(visibleBuffer) ||
+            looksLikeForeignLanguageCoT(visibleBuffer, campaignLanguage);
           if (looksReasoning) {
             // Pure thinking, no narration tail. Fire 'end' if we ever
             // started so the UI dismisses the placeholder.
@@ -460,6 +520,7 @@ export class LocalProvider implements MasterProvider {
     // OllamaChatResponse shape so downstream tool dispatch / usage logging
     // is unchanged.
     const useStream = typeof input.onDelta === 'function';
+    const campaignLanguage = input.campaignLanguage;
     // num_predict cap. Small models (3-4B llama/qwen) routinely run away
     // with chain-of-thought when asked to plan + tool-call + narrate. At
     // num_predict=4096 they often hit the limit MID-THOUGHT, leaving a
@@ -483,6 +544,7 @@ export class LocalProvider implements MasterProvider {
       },
       input.onDelta,
       input.onThinking,
+      campaignLanguage,
     );
     const contentBlocks = ollamaResponseToContentBlocks(json.message);
     const hasToolCalls = contentBlocks.some((b) => b.type === 'tool_use');
