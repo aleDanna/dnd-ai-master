@@ -113,12 +113,22 @@ function fingerprintSystem(body: unknown): string {
 // against the first chunk window (~80 chars) — when we see one of these
 // patterns we treat the stream as "in thinking mode" until we hit a
 // paragraph break followed by non-reasoning content.
-const MARKERLESS_THINKING_OPENERS = /^[ \t\r\n]*(?:Okay,?|Alright,?|Hmm,?|Wait,?|Let'?s|Let me|First,?|The user (?:is|has|wants|asked|just)|The tool[ \t]*calls?|I need to (?:check|call|use|verify|decide|figure|narrate|describe)|According to)/i;
+//
+// Pattern philosophy: legitimate narration in the campaign language
+// (Italian/English/...) is in second-person ("You see...", "Vedi...") OR
+// describes a scene/NPC directly ("La luce dell'alba...", "Il guardiano..."),
+// it NEVER opens with "The user / The current state / The player / The DC /
+// The scene card / The tool / The rules / Wait / Okay / Let me / I need to /
+// According to / Since the / First, ...". So anything matching these is
+// meta-reasoning to drop.
+const MARKERLESS_THINKING_OPENERS = /^[ \t\r\n]*(?:Okay,?|Alright,?|Hmm,?|Wait,?|Let'?s|Let me|First,?|Then,?|Now,?|So,?|But,?|However,?|Looking at|Given (?:the|that|what|how)|Since (?:the|that|what)|Considering|Based on|According to|To (?:handle|address|resolve|adjudicate|narrate|determine|figure)|The (?:user|player|current|scene|tool|tools|DC|roll|rules|sentry|monster|enemy|character|response|narration|next|previous|action|situation|lore|handbook|SRD|context|state|game|combat|attack|check|saving|spell)|I (?:need|should|must|will|'ll|have|can|might|am)|My (?:role|job|task))/i;
 
 // A paragraph that opens with one of these is still reasoning even after a
 // paragraph break. Used to keep state in "thinking" mode across multiple
 // reasoning paragraphs before the model finally gets to the narration.
-const REASONING_PARAGRAPH_RE = /^[ \t]*(?:Okay,?|Alright,?|Hmm,?|Wait,?|Let'?s|Let me|First,?|Then,?|Now,?|So,?|The user|The tool[ \t]*calls?|I (?:will|'ll|should|need|must|can|might)|Given|Since|Considering|Looking at|Based on|To (?:handle|address|resolve|adjudicate|narrate|determine)|The player|Note|Reasoning|Plan|Thought|Thinking|Pensiero|Ragionamento)/i;
+// Same anchored-at-paragraph-start heuristic as above, with a few extra
+// English connectors that show up mid-thought.
+const REASONING_PARAGRAPH_RE = /^[ \t]*(?:Okay,?|Alright,?|Hmm,?|Wait,?|Let'?s|Let me|First,?|Then,?|Now,?|So,?|But,?|However,?|Also,?|Moreover,?|Additionally,?|Furthermore,?|Therefore,?|Thus,?|Looking at|Given|Since|Considering|Based on|According to|To (?:handle|address|resolve|adjudicate|narrate|determine|figure)|The (?:user|player|current|scene|tool|tools|DC|roll|rules|sentry|monster|enemy|character|response|narration|next|previous|action|situation|lore|handbook|SRD|context|state|game|combat|attack|check|saving|spell)|I (?:will|'ll|should|need|must|can|might|have|am|'m|'ve|do)|My (?:role|job|task|response)|Note|Reasoning|Plan|Thought|Thinking|Pensiero|Ragionamento)/i;
 
 async function chat(
   body: unknown,
