@@ -395,6 +395,16 @@ export class LocalProvider implements MasterProvider {
     // hits the cache up to the second-to-last message, dropping
     // prompt-eval time from ~45s to ~10s on warm turns.
     const baked = isBakedModel(input.model ?? '');
+    // Anti-thinking nudge for thinking-capable models (qwen3, gpt-oss,
+    // deepseek-r1). The baked SYSTEM already forbids chain-of-thought,
+    // but these models routinely IGNORE that and dump reasoning in
+    // `content` anyway. Wrapping the user message with an explicit "no
+    // reasoning in output" reminder is the strongest signal we can
+    // give without re-baking the model. Skipped for non-thinking models
+    // (no value, just noise + cache invalidation).
+    const noReasoning = isThinkingModel(input.model)
+      ? '[NO REASONING IN OUTPUT — emit ONLY tool calls (structured API) and the in-character narration in the campaign language. Decide silently. Do not write "First,", "Let me", "The user wants", "I need to", "Wait,", "Okay,", "So the tool calls would be...", or any meta-analysis. Skip step-by-step planning. Go straight to the action.]\n\n'
+      : '';
     let messages: OllamaMessage[];
     if (baked) {
       const dynamicContent = input.systemBlocks.map((b) => b.text).join('\n\n');
@@ -409,7 +419,7 @@ export class LocalProvider implements MasterProvider {
         if (idx === history.length - 1 && m.role === 'user') {
           return {
             ...m,
-            content: `[CURRENT STATE — per-turn campaign settings + snapshot. Treat as authoritative for THIS turn alongside your baked role/handbook/SRD.]\n\n${dynamicContent}\n\n[END CURRENT STATE]\n\n${m.content}`,
+            content: `${noReasoning}[CURRENT STATE — per-turn campaign settings + snapshot. Treat as authoritative for THIS turn alongside your baked role/handbook/SRD.]\n\n${dynamicContent}\n\n[END CURRENT STATE]\n\n${m.content}`,
           };
         }
         return m;
@@ -417,9 +427,18 @@ export class LocalProvider implements MasterProvider {
       messages = prependNoThinkIfQwen3(withState, input.model);
     } else {
       const systemMsg = anthropicSystemToOllamaMessage(input.systemBlocks);
+      // Mirror the anti-thinking nudge for non-baked thinking models too.
+      const history = anthropicMessagesToOllama(input.messages);
+      const withState = noReasoning
+        ? history.map((m, idx) =>
+            idx === history.length - 1 && m.role === 'user'
+              ? { ...m, content: `${noReasoning}${m.content}` }
+              : m,
+          )
+        : history;
       messages = prependNoThinkIfQwen3([
         ...(systemMsg ? [systemMsg] : []),
-        ...anthropicMessagesToOllama(input.messages),
+        ...withState,
       ], input.model);
     }
     // Stream tokens via NDJSON when the caller passed an onDelta callback.
