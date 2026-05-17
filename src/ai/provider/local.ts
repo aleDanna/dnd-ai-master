@@ -448,6 +448,17 @@ export class LocalProvider implements MasterProvider {
     // OllamaChatResponse shape so downstream tool dispatch / usage logging
     // is unchanged.
     const useStream = typeof input.onDelta === 'function';
+    // num_predict cap. Small models (3-4B llama/qwen) routinely run away
+    // with chain-of-thought when asked to plan + tool-call + narrate. At
+    // num_predict=4096 they often hit the limit MID-THOUGHT, leaving a
+    // truncated content that the reasoning-strip then drops to empty
+    // → "Master non ha prodotto risposta" UX failure. Cap them at 2048
+    // so a runaway CoT either gets cut short OR (more often) the model
+    // wraps up sooner. Capable models (qwen3-30b-a3b, gpt-oss-20b) keep
+    // the original 4096 — they don't dump CoT and need the headroom for
+    // long combat narrations + multi-tool turns.
+    const isSmallModel = /(?:llama3\.2.*3b|qwen3.*[34]b|gemma2?.*2b|dnd-master-(?:lite|balance))/i.test(input.model ?? '');
+    const defaultMaxTokens = isSmallModel ? 2048 : 4096;
     const json = await chat(
       {
         model: input.model,
@@ -456,7 +467,7 @@ export class LocalProvider implements MasterProvider {
         stream: useStream,
         keep_alive: KEEP_ALIVE,
         think: isThinkingModel(input.model) ? false : undefined,
-        options: { num_predict: input.maxTokens ?? 4096, num_ctx: NUM_CTX },
+        options: { num_predict: input.maxTokens ?? defaultMaxTokens, num_ctx: NUM_CTX },
       },
       input.onDelta,
       input.onThinking,
