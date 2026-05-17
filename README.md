@@ -134,6 +134,20 @@ If your local Postgres is the bundled docker-compose service, the
 `pgvector/pgvector:pg17` image is already wired in and the extension is
 pre-installed. Existing pgdata is preserved across the image swap.
 
+**Critical for unified-memory Macs (M-series)**: Ollama defaults to
+`OLLAMA_MAX_LOADED_MODELS=1`, so a 20B+ master model holds the only
+slot and `nomic-embed-text` can't load → every retrieval call times
+out and `rag_chunk_count` is silently 0. Set on the daemon and
+restart Ollama:
+```bash
+launchctl setenv OLLAMA_MAX_LOADED_MODELS 2
+launchctl setenv OLLAMA_NUM_PARALLEL 2
+killall Ollama && open -a Ollama
+```
+After restart, the embedder + master coexist (~550 MB + master size).
+The embedder is also pinned with `keep_alive=30m` so it doesn't churn
+between turns.
+
 **Enable**: Settings → Local optimization → "RAG retrieval on". Phase 2
 ships with the toggle default OFF (opt-in); a future Phase 3 cutover
 will flip it ON for local provider once recall is validated.
