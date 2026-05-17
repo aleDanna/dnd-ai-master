@@ -187,6 +187,33 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
     void save({ useModeAwarePrompt: next });
   };
 
+  const onRagToggle = (): void => {
+    const next = !settings.useRagRetrieval;
+    setSettings((s) => ({ ...s, useRagRetrieval: next }));
+    void save({ useRagRetrieval: next });
+  };
+
+  const [rebuildingRag, setRebuildingRag] = React.useState(false);
+  const [rebuildMsg, setRebuildMsg] = React.useState<string | null>(null);
+  const onRebuildRag = async (): Promise<void> => {
+    setRebuildingRag(true);
+    setRebuildMsg(null);
+    try {
+      const res = await fetch('/api/rag/rebuild', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ force: true }),
+      });
+      const data = await res.json() as { chunkCount?: number; backend?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setRebuildMsg(`Indexed ${data.chunkCount} chunks (backend: ${data.backend}).`);
+    } catch (e) {
+      setRebuildMsg(`Error: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setRebuildingRag(false);
+    }
+  };
+
   const onImageStylePresetChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
     const next = e.target.value as NonNullable<CampaignSettings['imageStylePreset']>;
     if (next === settings.imageStylePreset) return;
@@ -717,6 +744,42 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
               <Icon name="sparkle" size={14} />
               {settings.useModeAwarePrompt ? 'Mode-aware prompt on' : 'Mode-aware prompt off'}
             </button>
+            <button
+              onClick={onRagToggle}
+              disabled={disabled}
+              aria-pressed={settings.useRagRetrieval}
+              style={{
+                background: settings.useRagRetrieval ? 'var(--arcane)' : 'transparent',
+                border: '1px solid ' + (settings.useRagRetrieval ? 'var(--arcane)' : 'var(--border-strong)'),
+                borderRadius: 999,
+                color: settings.useRagRetrieval ? 'var(--bone)' : 'var(--fg-muted)',
+                padding: '6px 12px',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                fontSize: 13,
+                marginLeft: 8,
+              }}
+            >
+              {settings.useRagRetrieval ? 'RAG retrieval on' : 'RAG retrieval off'}
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+              <button
+                type="button"
+                onClick={onRebuildRag}
+                disabled={disabled || rebuildingRag}
+                style={{
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border-strong)',
+                  borderRadius: 8,
+                  color: 'var(--fg)',
+                  padding: '6px 12px',
+                  fontSize: 13,
+                  cursor: rebuildingRag ? 'wait' : 'pointer',
+                }}
+              >
+                {rebuildingRag ? 'Rebuilding...' : 'Rebuild RAG index'}
+              </button>
+              {rebuildMsg && <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{rebuildMsg}</span>}
+            </div>
           </Card>
         </>
       )}
