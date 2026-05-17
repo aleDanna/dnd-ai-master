@@ -116,17 +116,29 @@ export function normalizeOllamaLabel(name: string): string {
 
 /** openedai-speech-min does NOT expose a `/v1/audio/voices` endpoint
  *  (404). It accepts a free-form `voice` string on POST /v1/audio/speech
- *  and maps the 6 OpenAI canonical names to its internal Piper voices.
- *  We surface those 6 as the dropdown options; user can override via
- *  config files in the openedai-speech-min container if they want more. */
-const PIPER_OPENAI_COMPAT_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as const;
+ *  and maps voice names to Piper .onnx models via voice_to_speaker.yaml
+ *  inside the container's config volume. The list below MUST stay in sync
+ *  with that yaml: each slug here must have a matching `tts-1:` entry, and
+ *  the referenced .onnx must exist under the mounted voices dir. Blurbs
+ *  carry the underlying language so the Settings dropdown can distinguish
+ *  English-only voices ('alloy', ...) from Italian voices ('paola', ...). */
+const PIPER_OPENAI_COMPAT_VOICES: ReadonlyArray<{ slug: string; blurb: string }> = [
+  { slug: 'alloy',    blurb: 'piper · english (libritts)' },
+  { slug: 'echo',     blurb: 'piper · english (libritts)' },
+  { slug: 'fable',    blurb: 'piper · english (northern UK)' },
+  { slug: 'onyx',     blurb: 'piper · english (libritts)' },
+  { slug: 'nova',     blurb: 'piper · english (libritts)' },
+  { slug: 'shimmer',  blurb: 'piper · english (libritts)' },
+  { slug: 'paola',    blurb: 'piper · italian (paola, medium)' },
+  { slug: 'riccardo', blurb: 'piper · italian (riccardo, x-low)' },
+];
 
 export async function fetchPiperVoices(): Promise<ModelOption[]> {
   if (!process.env.PIPER_BASE_URL) return [];
   return PIPER_OPENAI_COMPAT_VOICES.map((v) => ({
-    slug: v,
-    label: v,
-    blurb: 'piper · openai-compat',
+    slug: v.slug,
+    label: v.slug,
+    blurb: v.blurb,
   }));
 }
 

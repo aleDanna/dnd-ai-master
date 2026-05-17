@@ -409,7 +409,7 @@ export type ValidateResult =
  *  belongs to a 'local' campaign and the cloud-catalog check rejects it. */
 export function validateSettingsPatch(
   body: ValidatedSettings,
-  stored?: { aiProvider?: string; ttsProvider?: string; imageProvider?: string },
+  stored?: { aiProvider?: string; ttsProvider?: string; ttsModel?: string; imageProvider?: string },
 ): ValidateResult {
   const out: ValidatedSettings = {};
   if ('ttsProvider' in body) {
@@ -446,7 +446,10 @@ export function validateSettingsPatch(
       return { ok: false, error: 'invalid-ttsVoice' };
     } else {
       const resolvedProvider = out.ttsProvider ?? body.ttsProvider ?? stored?.ttsProvider;
-      const resolvedModel = out.ttsModel ?? body.ttsModel;
+      // Fall back to stored.ttsModel so a voice-only PATCH (the Settings UI
+      // sends just the changed field) validates against the right namespace
+      // instead of dropping into the OpenAI/Gemini-only branch.
+      const resolvedModel = out.ttsModel ?? body.ttsModel ?? stored?.ttsModel;
       if (resolvedProvider === 'local' && typeof resolvedModel === 'string') {
         if (!isValidVoiceForModel(body.ttsVoice, 'local', resolvedModel)) {
           return { ok: false, error: 'invalid-ttsVoice' };

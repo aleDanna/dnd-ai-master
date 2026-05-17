@@ -103,6 +103,7 @@ export async function PUT(
   const result = validateSettingsPatch(body as Partial<CampaignSettings>, {
     aiProvider: currentSettings.aiProvider,
     ttsProvider: currentSettings.ttsProvider,
+    ttsModel: currentSettings.ttsModel,
     imageProvider: currentSettings.imageProvider,
   });
   // eslint-disable-next-line no-console
