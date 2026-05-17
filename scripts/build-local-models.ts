@@ -81,10 +81,10 @@ const DEFAULT_PARAMS: Record<string, string | number | boolean> = {
   temperature: 0.7,
   top_p: 0.9,
   repeat_penalty: 1.1,
-  // Ollama flash-attention kernel. Huge speed-up on Apple Silicon (~20-30%
-  // on generation), zero-cost when the hardware doesn't support it (Ollama
-  // falls back silently). Safe default for every base.
-  flash_attention: true,
+  // NOTE: flash_attention is NOT a Modelfile PARAMETER (Ollama rejects it
+  // with "unknown parameter"). It's a daemon-level option. Set globally
+  // with: launchctl setenv OLLAMA_FLASH_ATTENTION 1 (and restart Ollama).
+  // The runtime path can also pass options.flash_attention per request.
 };
 
 const PER_BASE_PARAMS: Record<string, Record<string, string | number | boolean>> = {
