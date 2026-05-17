@@ -368,6 +368,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               usage,
               mode,
               needsSpellcasting,
+              ragChunkCount: ragChunks.length,
             });
           },
           onEvent: (ev) => {

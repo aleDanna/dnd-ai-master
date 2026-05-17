@@ -19,6 +19,8 @@ export async function recordUsage(args: {
   mode?: MasterMode;
   /** Plan E.1: whether the spellcasting overlay was injected this turn. */
   needsSpellcasting?: boolean;
+  /** Plan E.2: how many RAG chunks were retrieved for this turn (0 if RAG off). */
+  ragChunkCount?: number;
 }): Promise<void> {
   const row: AiUsageInsert = {
     sessionId: args.sessionId ?? null,
@@ -31,6 +33,7 @@ export async function recordUsage(args: {
     cacheCreationTokens: args.usage.cacheCreationTokens ?? 0,
     mode: args.mode ?? null,
     needsSpellcasting: args.needsSpellcasting ?? null,
+    ragChunkCount: args.ragChunkCount ?? null,
   };
   await db.insert(aiUsage).values(row);
 }

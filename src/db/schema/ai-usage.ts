@@ -17,6 +17,8 @@ export const aiUsage = pgTable(
     mode: text('mode'),
     /** Plan E.1: whether the spellcasting overlay was injected this turn. */
     needsSpellcasting: boolean('needs_spellcasting'),
+    /** Plan E.2: how many RAG chunks were retrieved for this turn (0 if RAG off). */
+    ragChunkCount: integer('rag_chunk_count'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
