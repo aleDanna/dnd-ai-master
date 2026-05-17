@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "dev:log": "next dev --turbopack 2>&1 | tee .dev.log",
-    "build": "next build",
+    "build": "tsx src/db/migrate.ts && next build",
+    "build:no-migrate": "next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
