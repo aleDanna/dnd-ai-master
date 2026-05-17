@@ -76,14 +76,18 @@ function isBuildableBase(slug: string): boolean {
  *
  * Override per-base by adding a key; otherwise DEFAULT_PARAMS apply.
  */
-const DEFAULT_PARAMS: Record<string, string | number> = {
+const DEFAULT_PARAMS: Record<string, string | number | boolean> = {
   num_ctx: 65536,
   temperature: 0.7,
   top_p: 0.9,
   repeat_penalty: 1.1,
+  // Ollama flash-attention kernel. Huge speed-up on Apple Silicon (~20-30%
+  // on generation), zero-cost when the hardware doesn't support it (Ollama
+  // falls back silently). Safe default for every base.
+  flash_attention: true,
 };
 
-const PER_BASE_PARAMS: Record<string, Record<string, string | number>> = {
+const PER_BASE_PARAMS: Record<string, Record<string, string | number | boolean>> = {
   // qwen3 thinking mode benefits from a slightly lower temp on tool selection.
   'qwen3:30b': { temperature: 0.6 },
   'qwen3:30b-a3b': { temperature: 0.6 },

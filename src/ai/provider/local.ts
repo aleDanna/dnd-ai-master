@@ -83,6 +83,10 @@ function baseUrl(): string {
 
 interface OllamaChatResponse {
   message: OllamaResponseMessage;
+  /** Streaming: present on every chunk; non-streaming: absent or true on
+   *  the single response. We use it in the NDJSON consumer to detect the
+   *  final frame (which carries the usage stats). */
+  done?: boolean;
   done_reason?: string;
   prompt_eval_count?: number;
   prompt_eval_duration?: number;
@@ -102,12 +106,16 @@ function fingerprintSystem(body: unknown): string {
   }
 }
 
-async function chat(body: unknown): Promise<OllamaChatResponse> {
+async function chat(
+  body: unknown,
+  onDelta?: (text: string) => void,
+): Promise<OllamaChatResponse> {
   const t0 = Date.now();
   // eslint-disable-next-line no-console
   console.log('[ollama-start]', `sys[${fingerprintSystem(body)}]`,
     `tools=${(body as { tools?: unknown[] }).tools?.length ?? 0}`,
-    `msgs=${(body as { messages?: unknown[] }).messages?.length ?? 0}`);
+    `msgs=${(body as { messages?: unknown[] }).messages?.length ?? 0}`,
+    `stream=${(body as { stream?: boolean }).stream === true}`);
   // Explicit timeout on the fetch — without this Node's default is
   // infinite and a hung Ollama would deadlock the tool loop silently
   // (the TURN_TIMEOUT_MS check upstream only runs between iterations).
@@ -118,6 +126,7 @@ async function chat(body: unknown): Promise<OllamaChatResponse> {
   // first-call pays this again. Tune via OLLAMA_FETCH_TIMEOUT_MS env
   // var if you have a slower machine or are baking even bigger models.
   const fetchTimeoutMs = Number(process.env.OLLAMA_FETCH_TIMEOUT_MS ?? '900000');
+  const isStream = (body as { stream?: boolean }).stream === true;
   const res = await fetch(`${baseUrl()}/api/chat`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -128,7 +137,14 @@ async function chat(body: unknown): Promise<OllamaChatResponse> {
     const text = await res.text();
     throw new Error(`ollama chat ${res.status}: ${text}`);
   }
-  const json = await res.json() as OllamaChatResponse;
+
+  let json: OllamaChatResponse;
+  if (isStream && res.body) {
+    json = await consumeStream(res.body, onDelta);
+  } else {
+    json = await res.json() as OllamaChatResponse;
+  }
+
   const promptMs = Math.round((json.prompt_eval_duration ?? 0) / 1_000_000);
   const evalMs = Math.round((json.eval_duration ?? 0) / 1_000_000);
   const loadMs = Math.round((json.load_duration ?? 0) / 1_000_000);
@@ -143,6 +159,91 @@ async function chat(body: unknown): Promise<OllamaChatResponse> {
     `load=${loadMs}ms`,
     `sys[${fingerprintSystem(body)}]`);
   return json;
+}
+
+/**
+ * Consume an Ollama `/api/chat` NDJSON stream. Each line is one JSON
+ * object of the same shape returned by the non-streaming endpoint, but
+ * with `message.content` carrying ONLY the delta since the previous
+ * chunk. The final line has `done: true` and the cumulative usage
+ * stats.
+ *
+ * We accumulate the full message content + tool_calls and return a
+ * single OllamaChatResponse identical to what the non-stream path
+ * produces, so callers don't need to know which mode was used. The
+ * `onDelta` callback (if provided) fires for each non-empty content
+ * delta — that's how the UI gets tokens live.
+ */
+async function consumeStream(
+  body: ReadableStream<Uint8Array>,
+  onDelta?: (text: string) => void,
+): Promise<OllamaChatResponse> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+  let accumContent = '';
+  let accumThinking = '';
+  const toolCalls: OllamaResponseMessage['tool_calls'] = [];
+  let final: OllamaChatResponse | null = null;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    // Process complete lines; keep any trailing partial line in the buffer.
+    let nl: number;
+    while ((nl = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, nl).trim();
+      buffer = buffer.slice(nl + 1);
+      if (!line) continue;
+      let chunk: Partial<OllamaChatResponse> & { message?: OllamaResponseMessage };
+      try {
+        chunk = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      const deltaContent = chunk.message?.content ?? '';
+      const deltaThinking = (chunk.message as { thinking?: string } | undefined)?.thinking ?? '';
+      if (deltaContent) {
+        accumContent += deltaContent;
+        if (onDelta) onDelta(deltaContent);
+      }
+      if (deltaThinking) accumThinking += deltaThinking;
+      if (chunk.message?.tool_calls) {
+        for (const tc of chunk.message.tool_calls) toolCalls.push(tc);
+      }
+      if (chunk.done) {
+        // Last frame: assemble the synthetic non-stream response.
+        final = {
+          message: {
+            role: 'assistant',
+            content: accumContent,
+            ...(accumThinking ? { thinking: accumThinking } : {}),
+            ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+          } as OllamaResponseMessage,
+          done_reason: chunk.done_reason,
+          prompt_eval_count: chunk.prompt_eval_count,
+          prompt_eval_duration: chunk.prompt_eval_duration,
+          eval_count: chunk.eval_count,
+          eval_duration: chunk.eval_duration,
+          load_duration: chunk.load_duration,
+        };
+      }
+    }
+  }
+  if (!final) {
+    // Stream closed without a `done: true` frame (shouldn't happen on
+    // Ollama, but be defensive). Synthesize a minimal response.
+    final = {
+      message: {
+        role: 'assistant',
+        content: accumContent,
+        ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+      } as OllamaResponseMessage,
+      done_reason: 'stop',
+    };
+  }
+  return final;
 }
 
 export class LocalProvider implements MasterProvider {
@@ -195,15 +296,25 @@ export class LocalProvider implements MasterProvider {
         ...anthropicMessagesToOllama(input.messages),
       ], input.model);
     }
-    const json = await chat({
-      model: input.model,
-      messages,
-      tools: input.tools.map(anthropicToolToOllama),
-      stream: false,
-      keep_alive: KEEP_ALIVE,
-      think: isThinkingModel(input.model) ? false : undefined,
-      options: { num_predict: input.maxTokens ?? 4096, num_ctx: NUM_CTX },
-    });
+    // Stream tokens via NDJSON when the caller passed an onDelta callback.
+    // Falls back to the single-shot JSON response otherwise. The streaming
+    // path lets the UI surface narrative tokens live (TTFT ~1s instead of
+    // wait-for-full-response), while still returning the same assembled
+    // OllamaChatResponse shape so downstream tool dispatch / usage logging
+    // is unchanged.
+    const useStream = typeof input.onDelta === 'function';
+    const json = await chat(
+      {
+        model: input.model,
+        messages,
+        tools: input.tools.map(anthropicToolToOllama),
+        stream: useStream,
+        keep_alive: KEEP_ALIVE,
+        think: isThinkingModel(input.model) ? false : undefined,
+        options: { num_predict: input.maxTokens ?? 4096, num_ctx: NUM_CTX },
+      },
+      input.onDelta,
+    );
     const contentBlocks = ollamaResponseToContentBlocks(json.message);
     const hasToolCalls = contentBlocks.some((b) => b.type === 'tool_use');
     return {

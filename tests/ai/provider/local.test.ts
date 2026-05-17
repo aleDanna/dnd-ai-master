@@ -215,4 +215,106 @@ describe('LocalProvider', () => {
       expect(body.messages[0]!.content).toContain('attack');
     });
   });
+
+  describe('streaming (onDelta)', () => {
+    function ndjsonStream(frames: object[]): Response {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const enc = new TextEncoder();
+          for (const f of frames) {
+            controller.enqueue(enc.encode(JSON.stringify(f) + '\n'));
+          }
+          controller.close();
+        },
+      });
+      return new Response(body, { status: 200, headers: { 'content-type': 'application/x-ndjson' } });
+    }
+
+    it('passes stream:true to Ollama when onDelta is provided', async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(ndjsonStream([
+        { message: { role: 'assistant', content: 'hello ' } },
+        { message: { role: 'assistant', content: 'world' }, done: true, done_reason: 'stop', prompt_eval_count: 5, eval_count: 2 },
+      ]));
+
+      const onDelta = vi.fn();
+      const p = new LocalProvider();
+      await p.completeMessage({
+        systemBlocks: [{ type: 'text', text: 'You are a DM.' }],
+        messages: [{ role: 'user', content: 'hi' }],
+        tools: [],
+        model: 'qwen3:30b-a3b',
+        onDelta,
+      });
+
+      const body = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0]![1].body as string);
+      expect(body.stream).toBe(true);
+    });
+
+    it('invokes onDelta for each content chunk and returns the assembled response', async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(ndjsonStream([
+        { message: { role: 'assistant', content: 'Il guardiano ' } },
+        { message: { role: 'assistant', content: 'si avvicina.' } },
+        { message: { role: 'assistant', content: '' }, done: true, done_reason: 'stop', prompt_eval_count: 10, eval_count: 5 },
+      ]));
+
+      const deltas: string[] = [];
+      const p = new LocalProvider();
+      const r = await p.completeMessage({
+        systemBlocks: [{ type: 'text', text: 'You are a DM.' }],
+        messages: [{ role: 'user', content: 'guardo' }],
+        tools: [],
+        model: 'qwen3:30b-a3b',
+        onDelta: (t) => deltas.push(t),
+      });
+
+      expect(deltas).toEqual(['Il guardiano ', 'si avvicina.']);
+      const textBlock = r.contentBlocks.find((b) => b.type === 'text');
+      expect(textBlock).toBeDefined();
+      if (textBlock?.type === 'text') {
+        expect(textBlock.text).toBe('Il guardiano si avvicina.');
+      }
+    });
+
+    it('falls back to non-streaming JSON when onDelta is omitted', async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response(JSON.stringify({
+        message: { role: 'assistant', content: 'ok' },
+        done_reason: 'stop', prompt_eval_count: 10, eval_count: 5,
+      }), { status: 200 }));
+
+      const p = new LocalProvider();
+      await p.completeMessage({
+        systemBlocks: [{ type: 'text', text: 'sys' }],
+        messages: [{ role: 'user', content: 'hi' }],
+        tools: [],
+        model: 'qwen3:30b-a3b',
+      });
+
+      const body = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0]![1].body as string);
+      expect(body.stream).toBe(false);
+    });
+
+    it('accumulates tool_calls arriving across multiple stream frames', async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(ndjsonStream([
+        { message: { role: 'assistant', content: 'attacco. ' } },
+        { message: { role: 'assistant', content: '', tool_calls: [{ function: { name: 'make_attack', arguments: { target: 'goblin' } } }] } },
+        { message: { role: 'assistant', content: '' }, done: true, done_reason: 'stop' },
+      ]));
+
+      const p = new LocalProvider();
+      const r = await p.completeMessage({
+        systemBlocks: [{ type: 'text', text: 'sys' }],
+        messages: [{ role: 'user', content: 'attacco' }],
+        tools: [{ name: 'make_attack', description: 'a', input_schema: { type: 'object', properties: {} } }],
+        model: 'qwen3:30b-a3b',
+        onDelta: () => {},
+      });
+
+      const toolBlock = r.contentBlocks.find((b) => b.type === 'tool_use');
+      expect(toolBlock).toBeDefined();
+      if (toolBlock?.type === 'tool_use') {
+        expect(toolBlock.name).toBe('make_attack');
+      }
+      expect(r.stopReason).toBe('tool_use');
+    });
+  });
 });

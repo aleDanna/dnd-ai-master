@@ -58,6 +58,18 @@ export interface CompleteMessageInput {
    * model supports disable.
    */
   geminiThinkingBudget?: number;
+  /**
+   * Optional streaming callback. When provided, the provider streams output
+   * tokens via NDJSON (where supported — currently only LocalProvider) and
+   * invokes `onDelta(text)` for each incremental chunk of assistant content.
+   * The full assembled content is still returned in `CompleteMessageOutput`
+   * for downstream use (reasoning-strip, history persistence). Tool calls
+   * are NOT streamed — they arrive in the final response shape.
+   *
+   * Callers that don't want streaming simply omit this and the provider
+   * falls back to its non-streaming path.
+   */
+  onDelta?: (text: string) => void;
 }
 
 export type ContentBlock =

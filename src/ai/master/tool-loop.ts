@@ -71,12 +71,22 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
       break;
     }
 
+    // Streaming: provider invokes onDelta for each token chunk as it
+    // arrives. We pump those straight to the SSE stream so the UI sees
+    // tokens live (TTFT ~1s instead of wait-for-full-response). Currently
+    // only LocalProvider honours onDelta; cloud providers ignore it and
+    // we fall through to the single-shot emission below.
+    let streamedAny = false;
     const response = await provider.completeMessage({
       model,
       systemBlocks,
       messages,
       tools,
       sessionId,
+      onDelta: (text: string) => {
+        streamedAny = true;
+        emit({ type: 'narrative_delta', text });
+      },
     });
 
     if (recordUsage) await recordUsage(response.usage);
@@ -88,7 +98,12 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
         block.text = cleaned;
         if (cleaned) {
           finalText += cleaned;
-          emit({ type: 'narrative_delta', text: cleaned });
+          // Re-emit only if we did NOT stream (cloud providers or local
+          // without streaming). When streaming, the UI already received
+          // these tokens incrementally; re-emitting would duplicate.
+          if (!streamedAny) {
+            emit({ type: 'narrative_delta', text: cleaned });
+          }
         }
       } else if (block.type === 'tool_use') {
         toolUses.push({ id: block.id, name: block.name, input: block.input });
