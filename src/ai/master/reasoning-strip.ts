@@ -58,6 +58,20 @@ const REASONING_PARAGRAPH_START = new RegExp(
       'Let me\\b',
       // Meta-game references
       'The player\\b',
+      // The user is/has/wants/asked... — qwen3 chain-of-thought leak
+      'The user (?:is|has|wants|just|asked|said|gave|provided|wrote)\\b',
+      // qwen3 thinking-mode openers
+      "Okay,?[ \\t]+(?:let'?s|let me|so|now|the user|I|we|first|the player|the response|this)\\b",
+      'Alright,?[ \\t]+(?:let|so|now|I)\\b',
+      'Hmm,?[ \\t]+',
+      'Wait,?[ \\t]+',
+      "Let'?s (?:break|think|check|analyze|see|figure|recap|consider|start|begin|look)\\b",
+      // Tool-call-as-text dumps
+      '\\{[ \\t\\r\\n]*"name"[ \\t]*:',
+      'tool_call\\b',
+      // "The tool call(s) would be:" / "Tool calls:" — meta about tooling
+      'The tool[ \\t]*calls?\\b',
+      'Tool[ \\t]*calls?[ \\t]*:',
       // Explicit reasoning labels
       '(?:Note|Reasoning|Plan|Thought|Thinking|Pensiero|Ragionamento)\\s*:',
     ].join('|') +
@@ -80,8 +94,19 @@ const STRONG_REASONING_MARKERS: RegExp[] = [
   /\bDC (?:should be|of \d+|seems|stays at|stays|is set)\b/i,
   /\bset (?:it|the DC|that) to \d/i,
   /\bseems (?:appropriate|reasonable|fair|fitting|right|correct|too (?:high|low|easy|hard))\b/i,
-  /\bLet'?s (?:set|say|assume|go with|use|make|treat|call|pick)\b/i,
+  /\bLet'?s (?:set|say|assume|go with|use|make|treat|call|pick|break|think|check|recap|consider)\b/i,
   /\bThis is (?:an?|the)\b[^\n]{0,60}\b(?:check|save|saving throw|attack roll)\b/i,
+  // qwen3-30b-a3b chain-of-thought leak markers (paragraphs that are clearly
+  // meta-reasoning even when they don't open with a standard marker):
+  /\bthe user (?:is|has|wants|asked|just|said|gave|wrote)\b/i,
+  /\baccording to (?:the|my|our) (?:rules|context|spec|lore|handbook)\b/i,
+  /\bI need to (?:check|call|use|verify|decide|figure|narrate|describe)\b/i,
+  /\bso the (?:next step|response|narration|tool call)\b/i,
+  /\bthe (?:tool|tool call|tool_call|next step) (?:would be|is to|should be)\b/i,
+  // Tool-call JSON dump embedded in text content (model wrote the tool call
+  // as visible text instead of using the structured tool_calls API).
+  /^\s*\{\s*"name"\s*:\s*"[a-z_]+_action"/im,
+  /\btool_call\s*\n/i,
 ];
 
 function isReasoningParagraph(para: string): boolean {

@@ -155,4 +155,44 @@ describe('stripReasoningPreamble', () => {
     const text = 'The merchant straightens his coat. "I will help you, traveler — for a price."';
     expect(stripReasoningPreamble(text)).toBe(text);
   });
+
+  // ── qwen3-30b-a3b chain-of-thought leak (observed in the wild) ──
+  // The model dumps multi-paragraph English reasoning + JSON tool-call text
+  // before the actual Italian narration. None of the openers match the
+  // original Sonnet-flavored regex set, so we extended REASONING_PARAGRAPH_START
+  // and STRONG_REASONING_MARKERS in 2026-05-17.
+
+  it('strips a multi-paragraph qwen3 chain-of-thought before the narration', () => {
+    const text = [
+      "Okay, let's break this down step by step. The user is playing a D&D 5e campaign in Italian.",
+      '',
+      'First, I need to check the current state. The player has a chest in their inventory.',
+      '',
+      'The tool calls would be:',
+      '',
+      '{ "name": "inventory_action", "arguments": { "subaction": "add_item" } }',
+      '',
+      'Il tuo dito tocca il bordo intarsiato della cassa. Con un sussurro di vetro, il legno si apre.',
+    ].join('\n');
+    const out = stripReasoningPreamble(text);
+    expect(out).toBe('Il tuo dito tocca il bordo intarsiato della cassa. Con un sussurro di vetro, il legno si apre.');
+  });
+
+  it('strips "The user is ..." third-person meta paragraphs', () => {
+    const text = [
+      'The user is asking about the chest. According to the lore, it contains gold.',
+      '',
+      'Apri la cassa e trovi 240 monete d\'oro.',
+    ].join('\n');
+    expect(stripReasoningPreamble(text)).toBe("Apri la cassa e trovi 240 monete d'oro.");
+  });
+
+  it('strips a JSON tool_call dump pretending to be narration', () => {
+    const text = [
+      '{ "name": "combat_action", "arguments": { "subaction": "attack" } }',
+      '',
+      'La spada cala con un fendente.',
+    ].join('\n');
+    expect(stripReasoningPreamble(text)).toBe('La spada cala con un fendente.');
+  });
 });
