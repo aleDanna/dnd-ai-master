@@ -87,6 +87,12 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
         streamedAny = true;
         emit({ type: 'narrative_delta', text });
       },
+      // Forward thinking-phase signals so the UI can show a placeholder
+      // (e.g. "Il master sta pensando...") instead of either nothing or
+      // raw chain-of-thought tokens.
+      onThinking: (state: 'start' | 'end') => {
+        emit({ type: 'thinking', state });
+      },
     });
 
     if (recordUsage) await recordUsage(response.usage);

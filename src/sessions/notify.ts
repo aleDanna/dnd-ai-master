@@ -14,6 +14,12 @@ export type NotifyPayload =
   // model…"), or the default. The flag tuple is the absolute minimum the
   // client needs to derive the label.
   | { type: 'turn-status'; isBegin: boolean; isLocalProvider: boolean }
+  // Local-only: streaming provider detected the model entered a chain-of-
+  // thought phase (raw thinking tokens are NOT sent over the wire — they're
+  // filtered server-side). Frontend should render a "Master is thinking…"
+  // placeholder until `state: 'end'` arrives or the first message-chunk
+  // lands, whichever comes first.
+  | { type: 'thinking'; state: 'start' | 'end' }
   // Master loop completed without persisting a master message (empty finalText,
   // typically Gemini-style "tool calls only / end_turn"). The current player
   // stays the current player so they can retry. The client shows an inline

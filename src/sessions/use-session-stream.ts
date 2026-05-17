@@ -31,6 +31,11 @@ export function useSessionStream(sessionId: string | null) {
   const [error, setError] = useState<string | null>(null);
   const [turnError, setTurnError] = useState<TurnError>(null);
   const [turnStatus, setTurnStatus] = useState<TurnStatus>(null);
+  // True while the (local, streaming) master model is in a chain-of-thought
+  // phase. The raw thinking tokens are filtered server-side; this flag lets
+  // the UI show a "Master is thinking…" placeholder until the first real
+  // narrative_delta arrives (or the thinking event explicitly ends).
+  const [isThinking, setIsThinking] = useState(false);
   // Monotonic counter that increments every time a turn finalizes (a master
   // `message` event, or a `turn-error`). The game-client subscribes to this
   // so it can refetch the messages list even when the prior `message-chunk`
@@ -80,18 +85,28 @@ export function useSessionStream(sessionId: string | null) {
           case 'message-chunk':
             // Receiving narration means the master is responding — clear any
             // prior "empty response" error from the previous attempt and the
-            // pending turn-status flag (we're past warm-up).
+            // pending turn-status flag (we're past warm-up). Also implicitly
+            // ends the thinking phase if it was on (the model has finished
+            // chain-of-thought and is now producing real narration).
             setTurnError(null);
             setTurnStatus(null);
+            setIsThinking(false);
             setStreamingMessage((prev) => ({
               text: (prev?.text ?? '') + ev.text,
               messageId: ev.messageId,
             }));
             break;
+          case 'thinking':
+            // Local provider signalled entry/exit of chain-of-thought
+            // phase. Toggle the UI placeholder; raw thinking tokens are
+            // filtered server-side and never sent over the wire.
+            setIsThinking(ev.state === 'start');
+            break;
           case 'message':
             setStreamingMessage(null);
             setTurnError(null);
             setTurnStatus(null);
+            setIsThinking(false);
             setFinalizedSeq((s) => s + 1);
             refetch();
             break;
@@ -108,6 +123,7 @@ export function useSessionStream(sessionId: string | null) {
             // streaming buffer so the composer can unlock.
             setStreamingMessage(null);
             setTurnStatus(null);
+            setIsThinking(false);
             setTurnError({ reason: ev.reason ?? 'failed', message: ev.message });
             // Bump finalizedSeq so the game-client refetches messages — a
             // failed turn can still have persisted mutations (xp, items)
@@ -181,6 +197,7 @@ export function useSessionStream(sessionId: string | null) {
   return {
     snapshot,
     streamingMessage,
+    isThinking,
     error,
     turnError,
     turnStatus,

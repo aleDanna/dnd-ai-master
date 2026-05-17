@@ -250,7 +250,10 @@ describe('LocalProvider', () => {
       expect(body.stream).toBe(true);
     });
 
-    it('invokes onDelta for each content chunk and returns the assembled response', async () => {
+    it('invokes onDelta with assembled narration content and returns the response', async () => {
+      // Short narration that never crosses the init-decision threshold:
+      // each chunk is buffered until done, then flushed in a single
+      // onDelta call. The accumulated text is returned in contentBlocks.
       (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(ndjsonStream([
         { message: { role: 'assistant', content: 'Il guardiano ' } },
         { message: { role: 'assistant', content: 'si avvicina.' } },
@@ -267,12 +270,39 @@ describe('LocalProvider', () => {
         onDelta: (t) => deltas.push(t),
       });
 
-      expect(deltas).toEqual(['Il guardiano ', 'si avvicina.']);
+      expect(deltas.join('')).toBe('Il guardiano si avvicina.');
       const textBlock = r.contentBlocks.find((b) => b.type === 'text');
       expect(textBlock).toBeDefined();
       if (textBlock?.type === 'text') {
         expect(textBlock.text).toBe('Il guardiano si avvicina.');
       }
+    });
+
+    it('streams narration incrementally when content crosses the decision threshold', async () => {
+      // Longer narration (>80 chars in first chunk): provider decides
+      // 'narration' on the first chunk and pumps subsequent chunks
+      // straight through.
+      const long = 'Il guardiano della torre si avvicina lentamente, la lanterna oscilla nel vento gelido della notte.';
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(ndjsonStream([
+        { message: { role: 'assistant', content: long } },
+        { message: { role: 'assistant', content: ' Le ombre danzano.' } },
+        { message: { role: 'assistant', content: '' }, done: true, done_reason: 'stop' },
+      ]));
+
+      const deltas: string[] = [];
+      const p = new LocalProvider();
+      await p.completeMessage({
+        systemBlocks: [{ type: 'text', text: 'sys' }],
+        messages: [{ role: 'user', content: 'guardo' }],
+        tools: [],
+        model: 'qwen3:30b-a3b',
+        onDelta: (t) => deltas.push(t),
+      });
+
+      // Two separate deltas: the first chunk (flushed at threshold) and
+      // the second chunk (passed through directly).
+      expect(deltas.length).toBeGreaterThanOrEqual(2);
+      expect(deltas.join('')).toBe(long + ' Le ombre danzano.');
     });
 
     it('falls back to non-streaming JSON when onDelta is omitted', async () => {
@@ -291,6 +321,90 @@ describe('LocalProvider', () => {
 
       const body = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0]![1].body as string);
       expect(body.stream).toBe(false);
+    });
+
+    it('filters explicit <think>...</think> chain-of-thought from streaming output', async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(ndjsonStream([
+        { message: { role: 'assistant', content: '<think>' } },
+        { message: { role: 'assistant', content: 'Let me figure out the attack...' } },
+        { message: { role: 'assistant', content: '</think>\n\n' } },
+        { message: { role: 'assistant', content: 'Il guardiano si avvicina.' } },
+        { message: { role: 'assistant', content: '' }, done: true, done_reason: 'stop' },
+      ]));
+
+      const deltas: string[] = [];
+      const thinkingEvents: ('start' | 'end')[] = [];
+      const p = new LocalProvider();
+      await p.completeMessage({
+        systemBlocks: [{ type: 'text', text: 'sys' }],
+        messages: [{ role: 'user', content: 'attacco' }],
+        tools: [],
+        model: 'qwen3:30b-a3b',
+        onDelta: (t) => deltas.push(t),
+        onThinking: (s) => thinkingEvents.push(s),
+      });
+
+      // Only the narration after </think> reaches the UI
+      const joined = deltas.join('');
+      expect(joined).not.toMatch(/figure out the attack/);
+      expect(joined).toContain('Il guardiano si avvicina.');
+      // Thinking start+end fired exactly once each
+      expect(thinkingEvents).toEqual(['start', 'end']);
+    });
+
+    it('filters markerless chain-of-thought ("Okay, let\'s break...") before narration', async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(ndjsonStream([
+        { message: { role: 'assistant', content: "Okay, let's break this down step by step. " } },
+        { message: { role: 'assistant', content: 'The user wants to attack the goblin.\n\n' } },
+        { message: { role: 'assistant', content: 'First, I need to check the initiative order.\n\n' } },
+        { message: { role: 'assistant', content: 'La spada si abbatte sul nemico con un fendente potente.' } },
+        { message: { role: 'assistant', content: '' }, done: true, done_reason: 'stop' },
+      ]));
+
+      const deltas: string[] = [];
+      const thinkingEvents: ('start' | 'end')[] = [];
+      const p = new LocalProvider();
+      await p.completeMessage({
+        systemBlocks: [{ type: 'text', text: 'sys' }],
+        messages: [{ role: 'user', content: 'attacco' }],
+        tools: [],
+        model: 'qwen3:30b-a3b',
+        onDelta: (t) => deltas.push(t),
+        onThinking: (s) => thinkingEvents.push(s),
+      });
+
+      const joined = deltas.join('');
+      expect(joined).not.toMatch(/Okay, let's break/);
+      expect(joined).not.toMatch(/The user wants/);
+      expect(joined).not.toMatch(/initiative order/);
+      expect(joined).toContain('La spada si abbatte');
+      expect(thinkingEvents).toEqual(['start', 'end']);
+    });
+
+    it('does NOT trigger thinking filter when first chunk is direct narration', async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(ndjsonStream([
+        { message: { role: 'assistant', content: 'Il guardiano ti guarda con sospetto. ' } },
+        { message: { role: 'assistant', content: 'La sua mano scivola verso la spada.' } },
+        { message: { role: 'assistant', content: '' }, done: true, done_reason: 'stop' },
+      ]));
+
+      const deltas: string[] = [];
+      const thinkingEvents: ('start' | 'end')[] = [];
+      const p = new LocalProvider();
+      await p.completeMessage({
+        systemBlocks: [{ type: 'text', text: 'sys' }],
+        messages: [{ role: 'user', content: 'guardo' }],
+        tools: [],
+        model: 'qwen3:30b-a3b',
+        onDelta: (t) => deltas.push(t),
+        onThinking: (s) => thinkingEvents.push(s),
+      });
+
+      const joined = deltas.join('');
+      expect(joined).toContain('Il guardiano');
+      expect(joined).toContain('verso la spada');
+      // No thinking phase detected → no events fired
+      expect(thinkingEvents).toEqual([]);
     });
 
     it('accumulates tool_calls arriving across multiple stream frames', async () => {

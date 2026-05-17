@@ -60,6 +60,7 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
   const {
     snapshot,
     streamingMessage,
+    isThinking,
     error: streamError,
     turnError,
     turnStatus,
@@ -103,9 +104,10 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
   // fires every turn (we use it to drive `busy`), but the label only
   // diverges for opener turns.
   const respondingLabel = React.useMemo(() => {
+    if (isThinking) return 'Il Master sta ragionando…';
     if (turnStatus?.isBegin) return 'The Master is generating the campaign…';
     return 'The Master is responding…';
-  }, [turnStatus]);
+  }, [turnStatus, isThinking]);
 
   // Live character mutable fields from the SSE snapshot. Merging
   // onto the local React state on every snapshot tick makes the right-pane

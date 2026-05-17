@@ -394,6 +394,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               notifySession(sessionId, { type: 'message-chunk', messageId: '', text: ev.text }).catch(
                 (e) => console.warn('notifySession(message-chunk) failed:', e instanceof Error ? e.message : String(e)),
               );
+            } else if (ev.type === 'thinking') {
+              // Local streaming providers signal entry/exit of the chain-of-
+              // thought phase. Frontend uses this to render a "Master is
+              // thinking…" placeholder while the raw thinking tokens are
+              // filtered server-side.
+              notifySession(sessionId, { type: 'thinking', state: ev.state }).catch(
+                (e) => console.warn('notifySession(thinking) failed:', e instanceof Error ? e.message : String(e)),
+              );
             }
           },
         });

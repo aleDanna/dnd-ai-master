@@ -106,9 +106,22 @@ function fingerprintSystem(body: unknown): string {
   }
 }
 
+// Markerless reasoning openers that small local models (qwen3:4b, llama3.2:3b)
+// emit at the start of `content` when they ignore `think: false`. Matched
+// against the first chunk window (~80 chars) — when we see one of these
+// patterns we treat the stream as "in thinking mode" until we hit a
+// paragraph break followed by non-reasoning content.
+const MARKERLESS_THINKING_OPENERS = /^[ \t\r\n]*(?:Okay,?|Alright,?|Hmm,?|Wait,?|Let'?s|Let me|First,?|The user (?:is|has|wants|asked|just)|The tool[ \t]*calls?|I need to (?:check|call|use|verify|decide|figure|narrate|describe)|According to)/i;
+
+// A paragraph that opens with one of these is still reasoning even after a
+// paragraph break. Used to keep state in "thinking" mode across multiple
+// reasoning paragraphs before the model finally gets to the narration.
+const REASONING_PARAGRAPH_RE = /^[ \t]*(?:Okay,?|Alright,?|Hmm,?|Wait,?|Let'?s|Let me|First,?|Then,?|Now,?|So,?|The user|The tool[ \t]*calls?|I (?:will|'ll|should|need|must|can|might)|Given|Since|Considering|Looking at|Based on|To (?:handle|address|resolve|adjudicate|narrate|determine)|The player|Note|Reasoning|Plan|Thought|Thinking|Pensiero|Ragionamento)/i;
+
 async function chat(
   body: unknown,
   onDelta?: (text: string) => void,
+  onThinking?: (state: 'start' | 'end') => void,
 ): Promise<OllamaChatResponse> {
   const t0 = Date.now();
   // eslint-disable-next-line no-console
@@ -140,7 +153,7 @@ async function chat(
 
   let json: OllamaChatResponse;
   if (isStream && res.body) {
-    json = await consumeStream(res.body, onDelta);
+    json = await consumeStream(res.body, onDelta, onThinking);
   } else {
     json = await res.json() as OllamaChatResponse;
   }
@@ -177,6 +190,7 @@ async function chat(
 async function consumeStream(
   body: ReadableStream<Uint8Array>,
   onDelta?: (text: string) => void,
+  onThinking?: (state: 'start' | 'end') => void,
 ): Promise<OllamaChatResponse> {
   const reader = body.getReader();
   const decoder = new TextDecoder('utf-8');
@@ -186,11 +200,90 @@ async function consumeStream(
   const toolCalls: OllamaResponseMessage['tool_calls'] = [];
   let final: OllamaChatResponse | null = null;
 
+  // Streaming state machine for thinking-mode filtering. The model emits
+  // chain-of-thought directly into `content` (despite think:false) on small
+  // models; we hide those tokens from the UI by holding them back and only
+  // pumping real narration through onDelta.
+  //
+  // States:
+  //   'init'      — buffering the opening chars; will transition to either
+  //                 'thinking' (markerless or <think>) or 'narration'.
+  //   'thinking'  — discarding tokens; watching for </think> or a paragraph
+  //                 break followed by non-reasoning content to exit.
+  //   'narration' — pumping tokens straight to onDelta.
+  // Hold state in an object so closures + TypeScript don't lose narrowing.
+  const st: { value: 'init' | 'thinking' | 'narration' } = { value: 'init' };
+  let visibleBuffer = ''; // pending content not yet decided/emitted
+
+  const setThinking = (next: 'thinking' | 'narration'): void => {
+    if (st.value === 'thinking' && next === 'narration') onThinking?.('end');
+    else if (st.value !== 'thinking' && next === 'thinking') onThinking?.('start');
+    st.value = next;
+  };
+
+  const tryDecide = (): void => {
+    // 1. `</think>` close — handled FIRST and independently of whether
+    //    we saw the open tag in this buffer slice (we may have already
+    //    consumed the open in a previous tryDecide call and trimmed
+    //    visibleBuffer down to the post-open suffix).
+    const closeIdx = visibleBuffer.indexOf('</think>');
+    if (closeIdx >= 0) {
+      const tail = visibleBuffer.slice(closeIdx + '</think>'.length).replace(/^\s+/, '');
+      setThinking('narration');
+      visibleBuffer = '';
+      if (tail && onDelta) onDelta(tail);
+      return;
+    }
+
+    // 2. `<think>` open without close yet — drop everything up to it,
+    //    flag thinking, wait for more content.
+    const openIdx = visibleBuffer.indexOf('<think>');
+    if (openIdx >= 0) {
+      setThinking('thinking');
+      visibleBuffer = visibleBuffer.slice(openIdx + '<think>'.length);
+      return;
+    }
+
+    if (st.value === 'init') {
+      // Need ~80 chars (or a paragraph break, or stream end) before deciding.
+      // The opener regex is anchored at start and matches the first ~25 chars
+      // of any known reasoning preamble.
+      if (visibleBuffer.length < 80 && !visibleBuffer.includes('\n\n')) return;
+      if (MARKERLESS_THINKING_OPENERS.test(visibleBuffer)) {
+        setThinking('thinking');
+        // fall through to thinking-mode handling below
+      } else {
+        setThinking('narration');
+        if (onDelta && visibleBuffer) onDelta(visibleBuffer);
+        visibleBuffer = '';
+        return;
+      }
+    }
+
+    if (st.value === 'thinking') {
+      // Look for paragraph breaks. If we find one, evaluate the paragraph
+      // AFTER the break: if it still looks like reasoning, keep dropping;
+      // if it looks like narration, transition.
+      const lastBreak = visibleBuffer.lastIndexOf('\n\n');
+      if (lastBreak === -1) return; // wait for more
+      const after = visibleBuffer.slice(lastBreak + 2);
+      if (after.length < 30) return; // wait for enough to evaluate
+      if (REASONING_PARAGRAPH_RE.test(after)) {
+        // Drop everything up to (and including) the break; keep evaluating.
+        visibleBuffer = after;
+        return;
+      }
+      // Narration found. Drop the reasoning prefix, emit the tail.
+      setThinking('narration');
+      visibleBuffer = '';
+      if (onDelta) onDelta(after);
+    }
+  };
+
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
-    // Process complete lines; keep any trailing partial line in the buffer.
     let nl: number;
     while ((nl = buffer.indexOf('\n')) >= 0) {
       const line = buffer.slice(0, nl).trim();
@@ -206,14 +299,48 @@ async function consumeStream(
       const deltaThinking = (chunk.message as { thinking?: string } | undefined)?.thinking ?? '';
       if (deltaContent) {
         accumContent += deltaContent;
-        if (onDelta) onDelta(deltaContent);
+        // Streaming filter path: in narration state we forward directly,
+        // otherwise we accumulate in visibleBuffer and let tryDecide()
+        // gate the flush.
+        if (st.value === 'narration') {
+          if (onDelta) onDelta(deltaContent);
+        } else {
+          visibleBuffer += deltaContent;
+          tryDecide();
+        }
       }
-      if (deltaThinking) accumThinking += deltaThinking;
+      if (deltaThinking) {
+        // The model used the dedicated `thinking` field — never emit.
+        if (st.value !== 'thinking') setThinking('thinking');
+        accumThinking += deltaThinking;
+      }
       if (chunk.message?.tool_calls) {
         for (const tc of chunk.message.tool_calls) toolCalls.push(tc);
       }
       if (chunk.done) {
-        // Last frame: assemble the synthetic non-stream response.
+        // Stream ended. If we're still holding a pending buffer in init
+        // or thinking state, take one final decision now: if the buffer
+        // looks like narration (didn't match any reasoning opener),
+        // flush it; otherwise drop it (reasoning-strip will clean the
+        // saved DB record). This is the common path for short responses
+        // where the buffer never reached the 80-char decision threshold.
+        if (st.value !== 'narration' && visibleBuffer.trim().length > 0) {
+          const looksReasoning =
+            MARKERLESS_THINKING_OPENERS.test(visibleBuffer) ||
+            REASONING_PARAGRAPH_RE.test(visibleBuffer);
+          if (looksReasoning) {
+            // Pure thinking, no narration tail. Fire 'end' if we ever
+            // started so the UI dismisses the placeholder.
+            if (st.value === 'thinking') onThinking?.('end');
+          } else {
+            // Treat as narration — last chance to surface it.
+            setThinking('narration');
+            if (onDelta) onDelta(visibleBuffer);
+          }
+          visibleBuffer = '';
+        } else if (st.value === 'thinking') {
+          onThinking?.('end');
+        }
         final = {
           message: {
             role: 'assistant',
@@ -232,8 +359,7 @@ async function consumeStream(
     }
   }
   if (!final) {
-    // Stream closed without a `done: true` frame (shouldn't happen on
-    // Ollama, but be defensive). Synthesize a minimal response.
+    if (st.value === 'thinking') onThinking?.('end');
     final = {
       message: {
         role: 'assistant',
@@ -314,6 +440,7 @@ export class LocalProvider implements MasterProvider {
         options: { num_predict: input.maxTokens ?? 4096, num_ctx: NUM_CTX },
       },
       input.onDelta,
+      input.onThinking,
     );
     const contentBlocks = ollamaResponseToContentBlocks(json.message);
     const hasToolCalls = contentBlocks.some((b) => b.type === 'tool_use');
