@@ -30,7 +30,7 @@ import {
   MASTER_HANDBOOK_ULTRA_SLIM,
 } from '../src/ai/master/slim-prompts';
 import { buildSrdContext } from '../src/ai/master/srd-context';
-import { getBakedModelName, computeMasterPromptHash } from '../src/ai/master/baked-models';
+import { getBakedModelName, computeMasterPromptHash, isLargeModelBase } from '../src/ai/master/baked-models';
 
 /**
  * Models we explicitly EXCLUDE from auto-bake:
@@ -160,7 +160,15 @@ async function listInstalledOllamaModels(): Promise<Set<string>> {
  *
  * Result: ~4.4K tok baked, well within the ~7K tok ceiling.
  */
-export async function buildStaticSystemContent(): Promise<string> {
+export interface BuildContentOptions {
+  /** When true, skip MASTER_HANDBOOK_ULTRA_SLIM. Reserved for large models
+   *  (>=7B) that don't need the always-on DM craft guard-rails — see
+   *  `isLargeModelBase` in baked-models.ts. Default false (keeps the
+   *  block for safety on small models). */
+  isLarge?: boolean;
+}
+
+export async function buildStaticSystemContent(opts: BuildContentOptions = {}): Promise<string> {
   const srdContext = await buildSrdContext({ compact: true });
   const blocks: string[] = [
     MASTER_SYSTEM_PROMPT_BASE_SLIM,
@@ -168,7 +176,9 @@ export async function buildStaticSystemContent(): Promise<string> {
     MASTER_META_TOOLS_INSTRUCTION,   // unchanged - required for local meta-tools
     MASTER_REWARDS_MANDATE_SLIM,
     MASTER_MEMORY_TOOL_RULE_SLIM,
-    MASTER_HANDBOOK_ULTRA_SLIM,
+    // Selective Phase 3 cutover: large models skip the ultra-slim block,
+    // small models keep it. RAG retrieves the full handbook when needed.
+    ...(opts.isLarge ? [] : [MASTER_HANDBOOK_ULTRA_SLIM]),
     srdContext,
   ];
   return blocks.join('\n\n');
@@ -234,17 +244,22 @@ interface BuildResult {
   reason?: string;
 }
 
-function buildOne(
+async function buildOne(
   baseSlug: string,
-  systemContent: string,
-  contentHash: string,
   args: BuildArgs,
   outDir: string,
-): BuildResult {
+): Promise<BuildResult> {
   const bakedName = getBakedModelName(baseSlug);
   if (!bakedName) {
     return { base: baseSlug, baked: '<n/a>', status: 'failed', reason: 'no ":" in base slug' };
   }
+
+  // Per-base content: large models get the lean manifest (no ultra-slim),
+  // small models keep the always-on guard-rail. See LARGE_MODEL_BASES in
+  // baked-models.ts for the cutoff list and rationale.
+  const isLarge = isLargeModelBase(baseSlug);
+  const systemContent = await buildStaticSystemContent({ isLarge });
+  const contentHash = await computeContentHash(systemContent);
 
   if (!args.force) {
     const existing = readExistingBakedHash(bakedName);
@@ -303,10 +318,8 @@ async function main(): Promise<void> {
   }
 
   console.log(`[build-local-models] target bases (${targets.length}): ${targets.join(', ')}`);
-  console.log(`[build-local-models] building static prompt content...`);
-  const systemContent = await buildStaticSystemContent();
-  const contentHash = await computeContentHash(systemContent);
-  console.log(`[build-local-models] static prompt: ${systemContent.length.toLocaleString()} bytes, hash=${contentHash}, version=${MASTER_PROMPT_VERSION}`);
+  console.log(`[build-local-models] prompt version: ${MASTER_PROMPT_VERSION}`);
+  console.log(`[build-local-models] manifest varies per base: large bases (>=7B) get LEAN (no ultra-slim handbook), small bases keep guard-rail.`);
 
   // Persist generated Modelfiles into .ollama/ at repo root — gitignored.
   const outDir = join(process.cwd(), '.ollama');
@@ -318,8 +331,9 @@ async function main(): Promise<void> {
       results.push({ base, baked: '<n/a>', status: 'skipped', reason: 'not installed' });
       continue;
     }
-    console.log(`[build-local-models] ${base} → ${getBakedModelName(base)}...`);
-    results.push(buildOne(base, systemContent, contentHash, args, outDir));
+    const variant = isLargeModelBase(base) ? 'LEAN' : 'guard-rail';
+    console.log(`[build-local-models] ${base} (${variant}) → ${getBakedModelName(base)}...`);
+    results.push(await buildOne(base, args, outDir));
   }
 
   console.log('\n=== Build summary ===');

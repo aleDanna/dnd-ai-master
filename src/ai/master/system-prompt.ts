@@ -25,7 +25,7 @@ import { formatRagBlock } from './rag/format';
  *
  * Bump policy: integer monotonic. Don't reset across releases.
  */
-export const MASTER_PROMPT_VERSION = 2; // Plan E.1: slim baked manifest
+export const MASTER_PROMPT_VERSION = 3; // Plan E.2 selective: large bases drop HANDBOOK_ULTRA_SLIM
 
 export const MASTER_SYSTEM_PROMPT_BASE = `You are the Dungeon Master for a single player at a Dungeons & Dragons 5e (SRD) table run via this app.
 

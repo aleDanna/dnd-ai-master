@@ -88,3 +88,26 @@ describe('Plan E.1 slim baked manifest', () => {
     expect(tokens).toBeLessThanOrEqual(7500);
   });
 });
+
+describe('Plan E.2 selective Phase 3: per-base manifest', () => {
+  it('isLarge=true OMITS MASTER_HANDBOOK_ULTRA_SLIM', async () => {
+    const content = await buildStaticSystemContent({ isLarge: true });
+    expect(content).not.toMatch(/# DM CRAFT - CORE PRINCIPLES/);
+    // Other blocks still present
+    expect(content).toMatch(/# ROLE\b/);
+    expect(content).toMatch(/# TOOL USAGE RULES\b/);
+  });
+
+  it('isLarge=false KEEPS MASTER_HANDBOOK_ULTRA_SLIM (backward compat default)', async () => {
+    const content = await buildStaticSystemContent({ isLarge: false });
+    expect(content).toMatch(/# DM CRAFT - CORE PRINCIPLES/);
+  });
+
+  it('isLarge=true content is strictly shorter than isLarge=false', async () => {
+    const lean = await buildStaticSystemContent({ isLarge: true });
+    const guard = await buildStaticSystemContent({ isLarge: false });
+    expect(lean.length).toBeLessThan(guard.length);
+    // ultra-slim ~1KB chars; lean should be ~400-1200 chars shorter
+    expect(guard.length - lean.length).toBeGreaterThan(400);
+  });
+});

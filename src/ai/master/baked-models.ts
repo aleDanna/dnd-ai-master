@@ -21,6 +21,33 @@ export function isBakedModel(slug: string): boolean {
 }
 
 /**
+ * Bases that get the LEAN baked manifest (no MASTER_HANDBOOK_ULTRA_SLIM).
+ *
+ * Rationale: >=7B models internalised D&D craft fundamentals (pacing,
+ * NPC voice, don't-railroad pitfalls) from pretraining + they reliably
+ * retrieve specifics via the RAG handbook chunks when needed. Saving the
+ * 400-tok always-on summary is pure win for them.
+ *
+ * Smaller bases (3-4B llama/qwen/gemma) keep the ultra-slim block as a
+ * guard-rail — they lean harder on the prompt to stay disciplined and
+ * the 400-tok cost is worth the predictability.
+ *
+ * Match is on the BASE slug (e.g. `qwen3:30b`), NOT the baked variant
+ * (`dnd-master-qwen3-30b`). Callers should go through `getBakedBaseModel()`
+ * first when checking a baked-variant name.
+ */
+export const LARGE_MODEL_BASES = new Set<string>([
+  'qwen3:30b',
+  'qwen3:30b-a3b',
+  'gpt-oss:20b',
+]);
+
+/** True iff this base model is in the "large enough to skip ultra-slim" set. */
+export function isLargeModelBase(baseSlug: string): boolean {
+  return LARGE_MODEL_BASES.has(baseSlug);
+}
+
+/**
  * Recover the original Ollama base model slug from a baked-variant name.
  *
  * Convention: when building, `ollama create` requires `[a-z0-9_.-]` for

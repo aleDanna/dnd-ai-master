@@ -211,7 +211,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           const ollamaBase = process.env.OLLAMA_BASE_URL;
           void (async () => {
             try {
-              const runtimeHash = await getRuntimePromptHash();
+              // Pass the model name so the runtime hash matches the
+              // per-base manifest the build script stamped (large bases
+              // skip MASTER_HANDBOOK_ULTRA_SLIM, small bases keep it).
+              const runtimeHash = await getRuntimePromptHash(userPrefs.aiMasterModel);
               await warnIfBakedModelStale({
                 modelName: userPrefs.aiMasterModel,
                 ollamaBase,

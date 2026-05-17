@@ -1,13 +1,11 @@
 /**
- * Plan D + E.1 — compute the runtime's master-prompt content hash for
- * comparison against the baked variant's stamped hash. Memoised because
- * the input is effectively static per-process (the slim prompt constants
- * are bundled, the SRD context comes from DB but rarely changes
- * mid-process).
+ * Plan D + E.1 + E.2 selective — compute the runtime's master-prompt content
+ * hash for comparison against the baked variant's stamped hash. The hash
+ * varies by model class:
+ *   - large bases (>=7B): LEAN manifest (no MASTER_HANDBOOK_ULTRA_SLIM)
+ *   - small bases (3-4B): full slim manifest with the always-on handbook block
  *
- * If the user updates the prompt constants and restarts the server, the
- * next call recomputes from scratch. The staleness warning then fires on
- * the next baked-model turn.
+ * Memoised per (isLarge), so 2 entries max per process.
  */
 
 import {
@@ -22,39 +20,43 @@ import {
   MASTER_HANDBOOK_ULTRA_SLIM,
 } from './slim-prompts';
 import { buildSrdContext } from './srd-context';
-import { computeMasterPromptHash } from './baked-models';
+import { computeMasterPromptHash, getBakedBaseModel, isLargeModelBase } from './baked-models';
 
-let _cached: Promise<string> | null = null;
+const _cached: Map<boolean, Promise<string>> = new Map();
 
 /**
- * Returns the current runtime's master-prompt hash. First call awaits
- * the SRD context build (DB hit); subsequent calls return the cached
- * promise.
+ * Returns the current runtime's master-prompt hash for the given baked
+ * variant. Derives the base slug → large/small classification → manifest
+ * variant. Must match the build script's per-base content exactly; both
+ * sides go through `isLargeModelBase()` on the same base slug.
  *
- * NOTE: this must match the build script's `computeContentHash` exactly.
- * Both call `computeMasterPromptHash(systemContent, MASTER_PROMPT_VERSION)`
- * with the same concatenation order (7-block slim manifest, Plan E.1),
- * so a drift can only happen if one side reorders blocks. Keep them in sync.
+ * If `bakedName` is omitted (legacy callers / non-baked turns) defaults
+ * to the small/guard-rail manifest — that's the safer assumption.
  */
-export function getRuntimePromptHash(): Promise<string> {
-  if (_cached) return _cached;
-  _cached = (async () => {
+export function getRuntimePromptHash(bakedName?: string): Promise<string> {
+  const baseSlug = bakedName ? getBakedBaseModel(bakedName) : null;
+  const isLarge = baseSlug ? isLargeModelBase(baseSlug) : false;
+  const existing = _cached.get(isLarge);
+  if (existing) return existing;
+
+  const promise = (async () => {
     const srdContext = await buildSrdContext({ compact: true });
-    const systemContent = [
+    const blocks: string[] = [
       MASTER_SYSTEM_PROMPT_BASE_SLIM,
       MASTER_TOOL_CONTRACT_SLIM,
       MASTER_META_TOOLS_INSTRUCTION,
       MASTER_REWARDS_MANDATE_SLIM,
       MASTER_MEMORY_TOOL_RULE_SLIM,
-      MASTER_HANDBOOK_ULTRA_SLIM,
+      ...(isLarge ? [] : [MASTER_HANDBOOK_ULTRA_SLIM]),
       srdContext,
-    ].join('\n\n');
-    return computeMasterPromptHash(systemContent, MASTER_PROMPT_VERSION);
+    ];
+    return computeMasterPromptHash(blocks.join('\n\n'), MASTER_PROMPT_VERSION);
   })();
-  return _cached;
+  _cached.set(isLarge, promise);
+  return promise;
 }
 
-/** Test seam — clear the cached hash between tests. */
+/** Test seam — clear the cached hashes between tests. */
 export function _clearRuntimePromptHashCache(): void {
-  _cached = null;
+  _cached.clear();
 }
