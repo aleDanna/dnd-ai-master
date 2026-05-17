@@ -109,3 +109,46 @@ baked models will surface a stale warning until rebuilt.
 To validate the optimization, check the telemetry for `prompt_eval_count`
 per `(mode, model)` tuple in the `ai_usage` table (new `mode` and
 `needs_spellcasting` columns landed in migration `0033_*.sql`).
+
+### Plan E.2 — RAG retrieval (local provider)
+
+In addition to the slim baked manifest and mode-aware prompt (Plan E.1),
+the local provider can retrieve relevant chunks from the full handbook +
+world lore on demand:
+
+- Embedder: `nomic-embed-text` via Ollama (~80 MB, 768-dim).
+- Store: Postgres + pgvector (with in-memory fallback if pgvector is
+  unavailable on your host).
+- Per-turn: embed the last 2 user messages + last master message, fetch
+  top-3 chunks deduped by section_path, inject as a `RELEVANT CONTEXT`
+  block between the mode block and the active character.
+
+**One-time setup**:
+```bash
+ollama pull nomic-embed-text
+pnpm db:migrate            # adds the rag_chunks table + pgvector extension
+pnpm build-rag-index       # ~10-30s on a warm Ollama
+```
+
+If your local Postgres is the bundled docker-compose service, the
+`pgvector/pgvector:pg17` image is already wired in and the extension is
+pre-installed. Existing pgdata is preserved across the image swap.
+
+**Enable**: Settings → Local optimization → "RAG retrieval on". Phase 2
+ships with the toggle default OFF (opt-in); a future Phase 3 cutover
+will flip it ON for local provider once recall is validated.
+
+**Manual rebuild**: Settings → Local optimization → "Rebuild RAG index"
+button, or via CLI:
+```bash
+pnpm build-rag-index --force
+```
+
+**Validation query** (to confirm RAG is actually returning chunks once
+enabled):
+```sql
+SELECT count(*) FILTER (WHERE rag_chunk_count > 0) * 1.0 / count(*) AS hit_rate
+FROM ai_usage WHERE rag_chunk_count IS NOT NULL;
+```
+Target: ≥0.8 (80% of turns retrieved ≥1 chunk). Below this threshold,
+Phase 3 cutover (drop handbook from baked) should not be triggered.
