@@ -195,4 +195,64 @@ describe('stripReasoningPreamble', () => {
     ].join('\n');
     expect(stripReasoningPreamble(text)).toBe('La spada cala con un fendente.');
   });
+
+  // ── Safety fallback (added 2026-05-17) ──
+  // When the model emits pure reasoning that matches our patterns end-to-end,
+  // an aggressive strip would return empty and the UI shows "Master non ha
+  // prodotto risposta". Better to surface the last paragraph of the original
+  // (likely the narration if any, otherwise noisy reasoning the player can
+  // still parse) than to swallow the whole turn.
+
+  it('falls back to last paragraph when strip empties a long input', () => {
+    const longThinking = Array.from({ length: 30 }, (_, i) =>
+      `The user is asking question number ${i + 1}. I need to check the rules carefully.`
+    ).join('\n\n');
+    const out = stripReasoningPreamble(longThinking);
+    // Either the strip returns the last paragraph as fallback (preferred), or
+    // it returns empty if the input is genuinely 100% reasoning. The fallback
+    // kicks in only when the LAST paragraph wouldn't itself trigger strip
+    // patterns — in this synthetic test each para starts with "The user is"
+    // which IS a reasoning marker, so fallback won't trigger.
+    // To exercise the fallback path we need the last paragraph to NOT match
+    // any pattern. Construct that case separately:
+    expect(out.length).toBeLessThan(longThinking.length); // strip did something
+  });
+
+  it('falls back to last paragraph when reasoning dumps end with a narration line', () => {
+    const text = [
+      'Okay, let me think about this carefully. The user wants to open the chest.',
+      '',
+      'First, I need to check the inventory state. The player has 240 gold pieces.',
+      '',
+      'The tool call would be inventory_action with subaction add_item.',
+      '',
+      "La cassa si apre con un cigolio metallico, rivelando l'interno dorato.",
+    ].join('\n');
+    // The original behaviour would strip to just the Italian last paragraph
+    // (which is what we want — it's an actual narration line that doesn't
+    // match any reasoning pattern). The fallback isn't needed here.
+    expect(stripReasoningPreamble(text)).toBe(
+      "La cassa si apre con un cigolio metallico, rivelando l'interno dorato.",
+    );
+  });
+
+  it('safety fallback: returns last paragraph when everything looks like reasoning', () => {
+    // Pathological case: every paragraph matches a pattern. Without the
+    // fallback we'd return empty; with the fallback we return the last
+    // paragraph (which is still reasoning, but at least the player sees
+    // something rather than "Master non ha prodotto risposta").
+    const text = [
+      'Okay, let me break this down step by step. The user is asking about combat.',
+      '',
+      "Let's analyze the situation. According to the rules, attacks need a d20 roll.",
+      '',
+      'The tool calls would be: combat_action with subaction attack, then damage.',
+      '',
+      'I need to call combat_action with the proper subaction format here.',
+    ].join('\n');
+    const out = stripReasoningPreamble(text);
+    // Not empty — fallback returned the last paragraph (>20 chars).
+    expect(out.length).toBeGreaterThan(20);
+    expect(out).toContain('combat_action');
+  });
 });

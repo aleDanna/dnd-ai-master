@@ -142,6 +142,28 @@ export function stripReasoningPreamble(text: string): string {
   //    with a reasoning marker, stopping at the first paragraph that doesn't.
   cleaned = stripLeadingReasoningParagraphs(cleaned);
 
+  // 4. Safety fallback: if the input had substantial content (>200 chars) but
+  //    we stripped it to nothing or near-nothing (<20 chars), the strip is
+  //    almost certainly over-aggressive — the model emitted pure reasoning
+  //    with no narration paragraph that escaped our patterns. Returning empty
+  //    triggers "Master non ha prodotto risposta" in the UI. Better to return
+  //    a tail slice of the original so the player at least sees something
+  //    (even if it's the noisy reasoning) than to swallow the entire turn.
+  //
+  //    We return the LAST paragraph of the original input — heuristically
+  //    that's where the narration usually lands when the model dumps a long
+  //    chain-of-thought before getting to the actual scene description.
+  if (text.length > 200 && cleaned.trim().length < 20) {
+    const paragraphs = text.split(/\n[ \t]*\n+/).map((p) => p.trim()).filter(Boolean);
+    const lastPara = paragraphs[paragraphs.length - 1];
+    if (lastPara && lastPara.length >= 20) {
+      // eslint-disable-next-line no-console
+      console.warn('[reasoning-strip] aggressive strip — falling back to last paragraph of original',
+        { originalLen: text.length, cleanedLen: cleaned.trim().length, lastParaLen: lastPara.length });
+      return lastPara;
+    }
+  }
+
   return cleaned;
 }
 
