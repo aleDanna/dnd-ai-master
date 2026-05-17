@@ -48,6 +48,47 @@ export function isLargeModelBase(baseSlug: string): boolean {
 }
 
 /**
+ * Curated tier names for the baked variants the user actually picks from
+ * in Settings. Maps base slug → short, speaking name. Models not in this
+ * map fall back to the legacy `dnd-master-<slug>` naming so nothing
+ * breaks for in-progress development variants.
+ *
+ * Tier philosophy (Italian context, M-series Mac):
+ *  - Max:     qwen3:30b-a3b   — MoE 30B (3B active), best capability+speed combo
+ *  - Plus:    gpt-oss:20b      — strong tool-calling, solid English/Italian
+ *  - Balance: qwen3:4b         — 4B fast, decent reasoning, less verbose than Lite
+ *  - Lite:    llama3.2:3b      — 3B fastest, character-context warning attached
+ */
+export const TIER_NAMES: Record<string, string> = {
+  'qwen3:30b-a3b': 'dnd-master-max',
+  'gpt-oss:20b':   'dnd-master-plus',
+  'qwen3:4b':      'dnd-master-balance',
+  'llama3.2:3b':   'dnd-master-lite',
+};
+
+/** Reverse map of TIER_NAMES, populated lazily for O(1) lookup. */
+const TIER_BASES: Map<string, string> = new Map(
+  Object.entries(TIER_NAMES).map(([base, tier]) => [tier, base]),
+);
+
+/**
+ * Display labels for tier baked variants. Maps the Ollama model name
+ * (without :latest suffix) to a human-readable form for the Settings UI.
+ *
+ *   'dnd-master-max'     → 'D&D Master Max'
+ *   'dnd-master-plus'    → 'D&D Master Plus'
+ *   'dnd-master-balance' → 'D&D Master Balance'
+ *   'dnd-master-lite'    → 'D&D Master Lite'
+ */
+export const TIER_LABELS: Record<string, string> = Object.fromEntries(
+  Object.values(TIER_NAMES).map((tier) => {
+    const suffix = tier.replace(/^dnd-master-/, '');
+    const capitalised = suffix.charAt(0).toUpperCase() + suffix.slice(1);
+    return [tier, `D&D Master ${capitalised}`];
+  }),
+);
+
+/**
  * Recover the original Ollama base model slug from a baked-variant name.
  *
  * Convention: when building, `ollama create` requires `[a-z0-9_.-]` for
@@ -73,6 +114,11 @@ export function isLargeModelBase(baseSlug: string): boolean {
  */
 export function getBakedBaseModel(slug: string): string | null {
   if (!isBakedModel(slug)) return null;
+  // Tier names (dnd-master-max, dnd-master-plus, ...) win over the
+  // legacy slug-derived naming.
+  const bareSlug = slug.replace(/:latest$/, '');
+  const tierBase = TIER_BASES.get(bareSlug);
+  if (tierBase) return tierBase;
   const rest = slug.slice(BAKED_PREFIX.length);
   const dashIdx = rest.indexOf('-');
   if (dashIdx < 0) return null;
@@ -92,6 +138,9 @@ export function getBakedBaseModel(slug: string): string | null {
  * always have a tag like `:30b` or `:latest`).
  */
 export function getBakedModelName(baseSlug: string): string | null {
+  // Curated tier name wins for the bases listed in TIER_NAMES.
+  const tier = TIER_NAMES[baseSlug];
+  if (tier) return tier;
   const colonIdx = baseSlug.indexOf(':');
   if (colonIdx < 0) return null;
   return BAKED_PREFIX + baseSlug.slice(0, colonIdx) + '-' + baseSlug.slice(colonIdx + 1);

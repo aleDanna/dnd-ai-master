@@ -1,5 +1,5 @@
 import { XTTS_LANGUAGES } from './tts-voices';
-import { isBakedModel, getBakedBaseModel } from '@/ai/master/baked-models';
+import { isBakedModel, getBakedBaseModel, TIER_LABELS } from '@/ai/master/baked-models';
 import { pingEmbedder } from '@/ai/master/rag/embedder';
 
 /**
@@ -204,12 +204,17 @@ export async function fetchOllamaModels(): Promise<ModelOption[]> {
     // suggestions, but Settings shows the full list.
     return models.map((m) => {
       const baked = isBakedModel(m.name);
-      // For baked variants, show the underlying base in the label so users
-      // recognise "what model is this really?" — e.g. `qwen3:30b (optimized)`.
       const baseSlug = baked ? getBakedBaseModel(m.name) : null;
-      const label = baked && baseSlug
-        ? `${baseSlug} (optimized)`
-        : normalizeOllamaLabel(m.name);
+      // Tier-name baked variants get a curated display label so users
+      // see "D&D Master Max — qwen3:30b-a3b" instead of the raw slug.
+      // Legacy slug-derived baked variants fall back to the previous
+      // "qwen3:30b (optimized)" format.
+      const tierLabel = TIER_LABELS[m.name.replace(/:latest$/, '')];
+      const label = tierLabel && baseSlug
+        ? `${tierLabel} — ${baseSlug}`
+        : baked && baseSlug
+          ? `${baseSlug} (optimized)`
+          : normalizeOllamaLabel(m.name);
       const blurb = baked
         ? 'baked · D&D master prompt embedded'
         : [m.details?.parameter_size, m.details?.quantization_level]
@@ -220,7 +225,7 @@ export async function fetchOllamaModels(): Promise<ModelOption[]> {
       // Surface this in the UI so users picking a model see the caveat.
       const effectiveSlug = baseSlug ?? m.name;
       const warning = /llama3\.2.*3b/i.test(effectiveSlug)
-        ? 'small model — may lose character context on long prompts; prefer qwen3:4b'
+        ? 'small model — may lose character context on long prompts; prefer Balance or Max'
         : undefined;
       return { slug: m.name, label, blurb, kind: baked ? 'baked' : 'raw', warning };
     });

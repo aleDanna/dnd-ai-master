@@ -57,31 +57,40 @@ describe('getBakedBaseModel', () => {
 });
 
 describe('getBakedModelName', () => {
-  it('prefixes and turns first colon into dash', () => {
+  it('returns the tier name for curated bases', () => {
+    expect(getBakedModelName('qwen3:30b-a3b')).toBe('dnd-master-max');
+    expect(getBakedModelName('gpt-oss:20b')).toBe('dnd-master-plus');
+    expect(getBakedModelName('qwen3:4b')).toBe('dnd-master-balance');
+    expect(getBakedModelName('llama3.2:3b')).toBe('dnd-master-lite');
+  });
+
+  it('falls back to slug-derived naming for non-tier bases', () => {
+    // qwen3:30b (non-MoE) is NOT in the tier map → legacy format kicks in.
     expect(getBakedModelName('qwen3:30b')).toBe('dnd-master-qwen3-30b');
     expect(getBakedModelName('qwen3:14b')).toBe('dnd-master-qwen3-14b');
+    expect(getBakedModelName('gemma2:2b')).toBe('dnd-master-gemma2-2b');
   });
 
-  it('preserves dashes in the tag', () => {
-    expect(getBakedModelName('qwen3:30b-a3b')).toBe('dnd-master-qwen3-30b-a3b');
-  });
-
-  it('handles base names that contain a dash', () => {
-    expect(getBakedModelName('gpt-oss:20b')).toBe('dnd-master-gpt-oss-20b');
-  });
-
-  it('returns null for slugs without a colon', () => {
+  it('returns null for slugs without a colon and not in tier map', () => {
     expect(getBakedModelName('qwen3-30b')).toBeNull();
   });
+});
 
-  it('is the right inverse for dash-containing bases (only when first-: rule is the convention)', () => {
-    // getBakedBaseModel('dnd-master-gpt-oss-20b') returns 'gpt:oss-20b' per the
-    // first-dash-is-colon rule. That is INTENTIONAL: the build script encodes
-    // the inverse. Real Ollama base slugs always have a `:` between name and
-    // tag, so `gpt-oss:20b` round-trips through getBakedModelName correctly.
-    // What this test guards: don't accidentally swap the rule and break
-    // gpt-oss:20b in the build pipeline.
-    expect(getBakedModelName('gpt-oss:20b')).toBe('dnd-master-gpt-oss-20b');
+describe('getBakedBaseModel — tier name reverse map', () => {
+  it('recovers the base from a tier name (with :latest)', () => {
+    expect(getBakedBaseModel('dnd-master-max:latest')).toBe('qwen3:30b-a3b');
+    expect(getBakedBaseModel('dnd-master-plus:latest')).toBe('gpt-oss:20b');
+    expect(getBakedBaseModel('dnd-master-balance:latest')).toBe('qwen3:4b');
+    expect(getBakedBaseModel('dnd-master-lite:latest')).toBe('llama3.2:3b');
+  });
+
+  it('recovers the base from a tier name (without :latest)', () => {
+    expect(getBakedBaseModel('dnd-master-max')).toBe('qwen3:30b-a3b');
+  });
+
+  it('falls back to legacy parse for non-tier baked variants', () => {
+    expect(getBakedBaseModel('dnd-master-qwen3-30b')).toBe('qwen3:30b');
+    expect(getBakedBaseModel('dnd-master-gpt-oss-20b')).toBe('gpt:oss-20b'); // legacy quirk
   });
 });
 
