@@ -89,7 +89,7 @@ export interface LocalServicesStatus {
   };
   image: {
     enabled: boolean;
-    engines: { comfyui: EngineStatus; drawThings: EngineStatus };
+    engines: { drawThings: EngineStatus };
   };
   embedder: { reachable: boolean };
 }
@@ -200,17 +200,6 @@ export async function fetchDrawThingsModels(): Promise<ModelOption[]> {
   }];
 }
 
-/** Curated ComfyUI workflow list. Phase 1 ships only Flux Schnell; the slugs
- *  are stable, so future workflows just drop a new JSON in
- *  `src/sessions/image-providers/comfyui-workflows/` and add an entry here. */
-const COMFYUI_WORKFLOWS: ModelOption[] = [
-  { slug: 'comfyui:flux-schnell', label: 'Flux.1 Schnell', blurb: 'fast · 4 steps' },
-];
-
-export function listComfyUIWorkflows(): ModelOption[] {
-  return [...COMFYUI_WORKFLOWS];
-}
-
 export async function fetchOllamaModels(): Promise<ModelOption[]> {
   const base = process.env.OLLAMA_BASE_URL;
   if (!base) return [];
@@ -298,14 +287,6 @@ async function buildPiperStatus(): Promise<EngineStatus> {
   return { enabled, reachable, models, ...(reachable ? {} : { error: 'unreachable' }) };
 }
 
-async function buildComfyUIStatus(): Promise<EngineStatus> {
-  const enabled = !!process.env.COMFYUI_BASE_URL;
-  if (!enabled) return { enabled: false, reachable: false, models: [] };
-  const reachable = await pingService(process.env.COMFYUI_BASE_URL!, '/system_stats', ollamaHeaders());
-  const models = listComfyUIWorkflows();
-  return { enabled, reachable, models, ...(reachable ? {} : { error: 'unreachable' }) };
-}
-
 async function buildDrawThingsStatus(): Promise<EngineStatus> {
   const enabled = !!process.env.DRAW_THINGS_BASE_URL;
   if (!enabled) return { enabled: false, reachable: false, models: [] };
@@ -324,15 +305,14 @@ export async function fetchLocalServicesStatus(): Promise<LocalServicesStatus> {
       isLocal: false,
       ai: empty,
       tts: { enabled: false, engines: { piper: empty } },
-      image: { enabled: false, engines: { comfyui: empty, drawThings: empty } },
+      image: { enabled: false, engines: { drawThings: empty } },
       embedder: { reachable: false },
     };
   }
 
-  const [ai, piper, comfyui, drawThings, embedderReachable] = await Promise.all([
+  const [ai, piper, drawThings, embedderReachable] = await Promise.all([
     buildAiStatus(),
     buildPiperStatus(),
-    buildComfyUIStatus(),
     buildDrawThingsStatus(),
     pingEmbedder().catch(() => false),
   ]);
@@ -345,8 +325,8 @@ export async function fetchLocalServicesStatus(): Promise<LocalServicesStatus> {
       engines: { piper },
     },
     image: {
-      enabled: comfyui.enabled || drawThings.enabled,
-      engines: { comfyui, drawThings },
+      enabled: drawThings.enabled,
+      engines: { drawThings },
     },
     embedder: { reachable: embedderReachable },
   };

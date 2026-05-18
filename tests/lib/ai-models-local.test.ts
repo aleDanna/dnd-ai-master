@@ -28,9 +28,9 @@ describe('local provider acceptance', () => {
     expect(isKnownMasterModel('x'.repeat(201))).toBe(false);
   });
 
-  it('isKnownImageModel accepts comfyui: and draw-things: prefixed slugs', () => {
-    expect(isKnownImageModel('comfyui:flux-schnell')).toBe(true);
+  it('isKnownImageModel accepts draw-things: prefixed slugs', () => {
     expect(isKnownImageModel('draw-things:realisticVisionV60')).toBe(true);
+    expect(isKnownImageModel('comfyui:flux-schnell')).toBe(false);
     expect(isKnownImageModel('local:something-else')).toBe(false);
   });
 

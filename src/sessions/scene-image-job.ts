@@ -4,7 +4,6 @@ import { sessionState } from '@/db/schema';
 import { buildImagePrompt } from '@/ai/master/image-style';
 import { generateBytesOpenAI, __setOpenAIClientForTest } from './image-providers/openai';
 import { generateBytesGemini, __setGeminiClientForTest } from './image-providers/gemini';
-import { generateBytesComfyUI } from './image-providers/comfyui';
 import { generateBytesDrawThings } from './image-providers/draw-things';
 import type { ImageProviderName } from '@/lib/ai-models';
 
@@ -38,9 +37,7 @@ export async function generateAndPersist(
   let result;
   if (provider === 'local') {
     const m = model ?? '';
-    if (m.startsWith('comfyui:')) {
-      result = await generateBytesComfyUI(fullPrompt, m.slice('comfyui:'.length));
-    } else if (m.startsWith('draw-things:')) {
+    if (m.startsWith('draw-things:')) {
       result = await generateBytesDrawThings(fullPrompt, m.slice('draw-things:'.length));
     } else {
       result = { ok: false as const, reason: 'api_error' as const, detail: `unknown local engine in model "${m}"` };

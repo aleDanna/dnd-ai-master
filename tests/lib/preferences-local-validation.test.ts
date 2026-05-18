@@ -7,7 +7,6 @@ describe('validateSettingsPatch — local provider gating', () => {
     vi.stubEnv('VERCEL', '');
     vi.stubEnv('OLLAMA_BASE_URL', '');
     vi.stubEnv('PIPER_BASE_URL', '');
-    vi.stubEnv('COMFYUI_BASE_URL', '');
     vi.stubEnv('DRAW_THINGS_BASE_URL', '');
   });
   afterEach(() => {
@@ -53,17 +52,6 @@ describe('validateSettingsPatch — local provider gating', () => {
 
   it('rejects ttsModel=piper when PIPER_BASE_URL unset', () => {
     const r = validateSettingsPatch({ ttsProvider: 'local', ttsModel: 'piper', ttsVoice: 'en_US-amy-low' });
-    expect(r.ok).toBe(false);
-  });
-
-  it('accepts imageProvider=local + imageModel=comfyui:flux-schnell when COMFYUI set', () => {
-    vi.stubEnv('COMFYUI_BASE_URL', 'http://localhost:8188');
-    const r = validateSettingsPatch({ imageProvider: 'local', imageModel: 'comfyui:flux-schnell' });
-    expect(r.ok).toBe(true);
-  });
-
-  it('rejects imageModel=comfyui:* when COMFYUI_BASE_URL unset', () => {
-    const r = validateSettingsPatch({ imageProvider: 'local', imageModel: 'comfyui:flux-schnell' });
     expect(r.ok).toBe(false);
   });
 

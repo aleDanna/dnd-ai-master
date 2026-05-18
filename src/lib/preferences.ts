@@ -41,9 +41,8 @@ function isLocalSurfaceAvailable(surface: 'ai' | 'tts' | 'image', subModel?: str
     if (subModel === 'piper') return !!process.env.PIPER_BASE_URL;
     return !!process.env.PIPER_BASE_URL;
   }
-  if (subModel?.startsWith('comfyui:'))     return !!process.env.COMFYUI_BASE_URL;
   if (subModel?.startsWith('draw-things:')) return !!process.env.DRAW_THINGS_BASE_URL;
-  return !!process.env.COMFYUI_BASE_URL || !!process.env.DRAW_THINGS_BASE_URL;
+  return !!process.env.DRAW_THINGS_BASE_URL;
 }
 
 /** Read-side downgrade: if the stored provider is 'local' but the local

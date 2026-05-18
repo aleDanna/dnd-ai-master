@@ -7,7 +7,6 @@ describe('fetchLocalServicesStatus', () => {
     vi.stubEnv('VERCEL', '');
     vi.stubEnv('OLLAMA_BASE_URL', '');
     vi.stubEnv('PIPER_BASE_URL', '');
-    vi.stubEnv('COMFYUI_BASE_URL', '');
     vi.stubEnv('DRAW_THINGS_BASE_URL', '');
     vi.stubGlobal('fetch', vi.fn());
   });
@@ -38,12 +37,13 @@ describe('fetchLocalServicesStatus', () => {
     expect(r.tts.engines.piper.reachable).toBe(false);
   });
 
-  it('ComfyUI workflows are static even when service unreachable', async () => {
-    vi.stubEnv('COMFYUI_BASE_URL', 'http://localhost:8188');
-    (fetch as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('refused'));
+  it('Draw Things engine exposes a placeholder model when reachable but no checkpoint loaded', async () => {
+    vi.stubEnv('DRAW_THINGS_BASE_URL', 'http://localhost:7860');
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(new Response(JSON.stringify({ model: null }), { status: 200 }));
     const r = await fetchLocalServicesStatus();
-    expect(r.image.engines.comfyui.enabled).toBe(true);
-    expect(r.image.engines.comfyui.reachable).toBe(false);
-    expect(r.image.engines.comfyui.models.length).toBeGreaterThan(0);
+    expect(r.image.engines.drawThings.enabled).toBe(true);
+    expect(r.image.engines.drawThings.reachable).toBe(true);
+    expect(r.image.engines.drawThings.models.length).toBe(1);
+    expect(r.image.engines.drawThings.models[0]?.slug).toBe('draw-things:active');
   });
 });

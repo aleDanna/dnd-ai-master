@@ -1,13 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fetchDrawThingsModels, listComfyUIWorkflows } from '@/lib/local-services';
-
-describe('listComfyUIWorkflows', () => {
-  it('returns the hardcoded workflow list with flux-schnell first', () => {
-    const r = listComfyUIWorkflows();
-    expect(r[0]?.slug).toBe('comfyui:flux-schnell');
-    expect(r[0]?.label).toBe('Flux.1 Schnell');
-  });
-});
+import { fetchDrawThingsModels } from '@/lib/local-services';
 
 describe('fetchDrawThingsModels', () => {
   beforeEach(() => {
@@ -19,7 +11,7 @@ describe('fetchDrawThingsModels', () => {
     vi.unstubAllEnvs();
   });
 
-  it('maps /sdapi/v1/options.model into a single ModelOption', async () => {
+  it('maps /sdapi/v1/options.model into a single ModelOption when checkpoint is loaded', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response(JSON.stringify({
       model: 'flux_1_schnell_q8p.ckpt',
       sd_model_checkpoint: 'flux_1_schnell_q8p',
@@ -27,24 +19,26 @@ describe('fetchDrawThingsModels', () => {
 
     const r = await fetchDrawThingsModels();
     expect(r).toHaveLength(1);
-    expect(r[0]).toEqual({
-      slug: 'draw-things:flux_1_schnell_q8p.ckpt',
-      label: 'flux_1_schnell_q8p',
-      blurb: 'draw-things · active model',
-    });
+    expect(r[0]?.slug).toBe('draw-things:flux_1_schnell_q8p.ckpt');
+    expect(r[0]?.label).toBe('flux_1_schnell_q8p');
   });
 
-  it('returns [] when options has no model field', async () => {
+  it('returns a placeholder when options has no model field (so the Settings UI is non-empty)', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 200 }));
-    expect(await fetchDrawThingsModels()).toEqual([]);
+    const r = await fetchDrawThingsModels();
+    expect(r).toHaveLength(1);
+    expect(r[0]?.slug).toBe('draw-things:active');
+    expect(r[0]?.label).toMatch(/Active checkpoint/);
   });
 
-  it('returns [] when fetch throws', async () => {
+  it('returns a placeholder when fetch throws (proxy down etc.)', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('boom'));
-    expect(await fetchDrawThingsModels()).toEqual([]);
+    const r = await fetchDrawThingsModels();
+    expect(r).toHaveLength(1);
+    expect(r[0]?.slug).toBe('draw-things:active');
   });
 
-  it('returns [] when DRAW_THINGS_BASE_URL unset', async () => {
+  it('returns [] when DRAW_THINGS_BASE_URL unset (engine disabled at env level)', async () => {
     vi.stubEnv('DRAW_THINGS_BASE_URL', '');
     expect(await fetchDrawThingsModels()).toEqual([]);
   });

@@ -219,11 +219,9 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
   const onImageProviderChange = (next: ImageProviderName): void => {
     if (next === settings.imageProvider) return;
     if (next === 'local') {
-      const engine = localServices.image.engines.comfyui.enabled ? 'comfyui' : 'drawThings';
-      const list = engine === 'comfyui'
-        ? localServices.image.engines.comfyui.models
-        : localServices.image.engines.drawThings.models;
-      const nextModel = list[0]?.slug ?? (engine === 'comfyui' ? 'comfyui:flux-schnell' : '');
+      // Draw Things is the only local image engine; fall back to its
+      // placeholder slug when no checkpoint is loaded in the app.
+      const nextModel = localServices.image.engines.drawThings.models[0]?.slug ?? 'draw-things:active';
       setSettings((s) => ({ ...s, imageProvider: 'local', imageModel: nextModel }));
       void save({ imageProvider: 'local', imageModel: nextModel });
       return;
@@ -231,17 +229,6 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
     const nextModel = defaultImageModelForProvider(next);
     setSettings((s) => ({ ...s, imageProvider: next, imageModel: nextModel }));
     void save({ imageProvider: next, imageModel: nextModel });
-  };
-
-  /** Local-mode engine selector for image (ComfyUI / Draw Things). Resets the
-   *  model slug to the first available checkpoint/workflow for the new engine. */
-  const onImageLocalEngineChange = (engine: 'comfyui' | 'drawThings'): void => {
-    const list = engine === 'comfyui'
-      ? localServices.image.engines.comfyui.models
-      : localServices.image.engines.drawThings.models;
-    const nextModel = list[0]?.slug ?? (engine === 'comfyui' ? 'comfyui:flux-schnell' : '');
-    setSettings((s) => ({ ...s, imageModel: nextModel }));
-    void save({ imageModel: nextModel });
   };
 
   const onImageModelChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
@@ -782,49 +769,13 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
             </div>
 
             {settings.imageProvider === 'local' && (
-              <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <label style={{ fontSize: 13, color: 'var(--fg-muted)', minWidth: 80 }}>Engine</label>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {(['comfyui', 'drawThings'] as const).map((eng) => {
-                      const engStatus = eng === 'comfyui' ? localServices.image.engines.comfyui : localServices.image.engines.drawThings;
-                      const isActive = eng === 'comfyui'
-                        ? settings.imageModel?.startsWith('comfyui:')
-                        : settings.imageModel?.startsWith('draw-things:');
-                      const envName = eng === 'comfyui' ? 'COMFYUI_BASE_URL' : 'DRAW_THINGS_BASE_URL';
-                      return (
-                        <button
-                          key={eng}
-                          onClick={() => onImageLocalEngineChange(eng)}
-                          disabled={disabled || !engStatus.enabled}
-                          aria-pressed={isActive}
-                          title={!engStatus.enabled ? `${envName} not set` : undefined}
-                          style={{ padding: '8px 16px', borderRadius: 999,
-                            background: isActive ? 'var(--arcane)' : 'var(--bg-card)',
-                            color: isActive ? 'var(--bone)' : 'var(--fg)',
-                            border: '1px solid ' + (isActive ? 'var(--arcane)' : 'var(--border)'),
-                            cursor: (disabled || !engStatus.enabled) ? 'not-allowed' : 'pointer',
-                            fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
-                            opacity: !engStatus.enabled ? 0.4 : (!canEdit ? 0.7 : 1) }}>
-                          {eng === 'comfyui' ? 'ComfyUI' : 'Draw Things'}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginLeft: 90 }}>
-                  {localServices.image.engines.comfyui.enabled && (
-                    <span style={{ marginRight: 8 }}>
-                      {localServices.image.engines.comfyui.reachable ? '✓ ComfyUI' : `✗ ComfyUI (${localServices.image.engines.comfyui.error ?? 'down'})`}
-                    </span>
-                  )}
-                  {localServices.image.engines.drawThings.enabled && (
-                    <span>
-                      {localServices.image.engines.drawThings.reachable ? '✓ Draw Things' : `✗ Draw Things (${localServices.image.engines.drawThings.error ?? 'down'})`}
-                    </span>
-                  )}
-                </div>
-              </>
+              <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginLeft: 90 }}>
+                <span>
+                  {localServices.image.engines.drawThings.reachable
+                    ? '✓ Draw Things'
+                    : `✗ Draw Things (${localServices.image.engines.drawThings.error ?? 'down'})`}
+                </span>
+              </div>
             )}
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -832,11 +783,9 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
               <select id="imageModel" value={settings.imageModel} onChange={onImageModelChange} disabled={disabled}
                 style={{ flex: 1, padding: '8px 12px', background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 8, color: 'var(--fg)', fontFamily: 'var(--font-ui)', fontSize: 14 }}>
                 {settings.imageProvider === 'local' ? (() => {
-                  const engine = settings.imageModel?.startsWith('comfyui:') ? 'comfyui' :
-                                 settings.imageModel?.startsWith('draw-things:') ? 'drawThings' : 'comfyui';
-                  const list = engine === 'comfyui' ? localServices.image.engines.comfyui.models : localServices.image.engines.drawThings.models;
+                  const list = localServices.image.engines.drawThings.models;
                   if (list.length === 0) {
-                    return <option disabled value="">{engine === 'comfyui' ? 'No ComfyUI workflows' : 'Draw Things unreachable — no checkpoints'}</option>;
+                    return <option disabled value="">Draw Things unreachable — no checkpoints</option>;
                   }
                   return list.map((m) => <option key={m.slug} value={m.slug}>{m.label} — {m.blurb}</option>);
                 })() : (

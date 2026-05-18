@@ -24,7 +24,6 @@ describe('getResolvedPreferences — local downgrade', () => {
     vi.stubEnv('VERCEL', '');
     vi.stubEnv('OLLAMA_BASE_URL', '');
     vi.stubEnv('PIPER_BASE_URL', '');
-    vi.stubEnv('COMFYUI_BASE_URL', '');
     vi.stubEnv('DRAW_THINGS_BASE_URL', '');
     vi.stubEnv('MASTER_PROVIDER', '');
     vi.stubEnv('IMAGE_PROVIDER', '');
@@ -72,16 +71,16 @@ describe('getResolvedPreferences — local downgrade', () => {
     expect(r.ttsProvider).toBe('openai');
   });
 
-  it('keeps imageProvider=local when isLocal + COMFYUI set', async () => {
-    vi.stubEnv('COMFYUI_BASE_URL', 'http://localhost:8188');
-    TEST_PREFS = { imageProvider: 'local', imageModel: 'comfyui:flux-schnell' };
+  it('keeps imageProvider=local when isLocal + DRAW_THINGS set', async () => {
+    vi.stubEnv('DRAW_THINGS_BASE_URL', 'http://localhost:7860');
+    TEST_PREFS = { imageProvider: 'local', imageModel: 'draw-things:active' };
     const r = await getResolvedPreferences('user-id');
     expect(r.imageProvider).toBe('local');
-    expect(r.imageModel).toBe('comfyui:flux-schnell');
+    expect(r.imageModel).toBe('draw-things:active');
   });
 
   it('downgrades imageProvider=local when no image engine env set', async () => {
-    TEST_PREFS = { imageProvider: 'local', imageModel: 'comfyui:flux-schnell' };
+    TEST_PREFS = { imageProvider: 'local', imageModel: 'draw-things:active' };
     const r = await getResolvedPreferences('user-id');
     expect(r.imageProvider).toBe('openai');
   });
@@ -93,7 +92,6 @@ describe('getResolvedPreferences — compactPrompt resolution (Plan C)', () => {
     vi.stubEnv('VERCEL', '');
     vi.stubEnv('OLLAMA_BASE_URL', '');
     vi.stubEnv('PIPER_BASE_URL', '');
-    vi.stubEnv('COMFYUI_BASE_URL', '');
     vi.stubEnv('DRAW_THINGS_BASE_URL', '');
     vi.stubEnv('MASTER_PROVIDER', '');
     vi.stubEnv('IMAGE_PROVIDER', '');

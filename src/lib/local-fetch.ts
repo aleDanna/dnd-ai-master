@@ -1,6 +1,6 @@
 /**
- * Shared HTTP helpers for calling local services (Ollama, ComfyUI, Piper,
- * XTTS, Draw Things) that may be either:
+ * Shared HTTP helpers for calling local services (Ollama, Piper, Draw
+ * Things) that may be either:
  *
  *  - true-local (dev machine, `OLLAMA_BASE_URL=http://localhost:11434` etc.),
  *    in which case no auth is needed — the daemons sit on loopback;

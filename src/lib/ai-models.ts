@@ -125,5 +125,5 @@ export function isKnownImageModel(value: unknown): boolean {
   if (typeof value !== 'string' || value.length === 0 || value.length > 200) return false;
   const inCloudCatalog = [...OPENAI_IMAGE_MODELS, ...GEMINI_IMAGE_MODELS].some((m) => m.slug === value);
   if (inCloudCatalog) return true;
-  return value.startsWith('comfyui:') || value.startsWith('draw-things:');
+  return value.startsWith('draw-things:');
 }
