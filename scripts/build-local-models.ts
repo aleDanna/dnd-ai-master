@@ -99,6 +99,8 @@ const PER_BASE_PARAMS: Record<string, Record<string, string | number | boolean>>
   // qwen3 thinking mode benefits from a slightly lower temp on tool selection.
   'qwen3:30b': { temperature: 0.6 },
   'qwen3:30b-a3b': { temperature: 0.6 },
+  // deepseek-r1 official guidance: temperature 0.6 for reasoning tasks.
+  'deepseek-r1:14b': { temperature: 0.6 },
 };
 
 interface BuildArgs {

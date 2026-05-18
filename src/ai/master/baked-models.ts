@@ -40,6 +40,8 @@ export const LARGE_MODEL_BASES = new Set<string>([
   'qwen3:30b',
   'qwen3:30b-a3b',
   'gpt-oss:20b',
+  'mistral-small3.2:24b',
+  'deepseek-r1:14b',
 ]);
 
 /** True iff this base model is in the "large enough to skip ultra-slim" set. */
@@ -54,16 +56,18 @@ export function isLargeModelBase(baseSlug: string): boolean {
  * breaks for in-progress development variants.
  *
  * Tier philosophy (Italian context, M-series Mac):
- *  - Max:     qwen3:30b-a3b   — MoE 30B (3B active), best capability+speed combo
- *  - Plus:    gpt-oss:20b      — strong tool-calling, solid English/Italian
- *  - Balance: qwen3:4b         — 4B fast, decent reasoning, less verbose than Lite
- *  - Lite:    llama3.2:3b      — 3B fastest, character-context warning attached
+ *  - Max:     mistral-small3.2:24b — strong Italian narration + tool-calling, dense 24B
+ *  - Max 2:   deepseek-r1:14b      — reasoning-heavy alt for adjudication-heavy turns
+ *  - Plus:    gpt-oss:20b          — strong tool-calling, solid English/Italian
+ *  - Balance: qwen3:4b             — 4B fast, decent reasoning, less verbose than Lite
+ *  - Lite:    llama3.2:3b          — 3B fastest, character-context warning attached
  */
 export const TIER_NAMES: Record<string, string> = {
-  'qwen3:30b-a3b': 'dnd-master-max',
-  'gpt-oss:20b':   'dnd-master-plus',
-  'qwen3:4b':      'dnd-master-balance',
-  'llama3.2:3b':   'dnd-master-lite',
+  'mistral-small3.2:24b': 'dnd-master-max',
+  'deepseek-r1:14b':      'dnd-master-max2',
+  'gpt-oss:20b':          'dnd-master-plus',
+  'qwen3:4b':             'dnd-master-balance',
+  'llama3.2:3b':          'dnd-master-lite',
 };
 
 /** Reverse map of TIER_NAMES, populated lazily for O(1) lookup. */
@@ -74,15 +78,18 @@ const TIER_BASES: Map<string, string> = new Map(
 /**
  * Display labels for tier baked variants. Maps the Ollama model name
  * (without :latest suffix) to a human-readable form for the Settings UI.
+ * A digit-run in the suffix is split off with a space so `max2` reads as
+ * "Max 2" (variant tiers like `max2`, `plus2`, ...).
  *
  *   'dnd-master-max'     → 'D&D Master Max'
+ *   'dnd-master-max2'    → 'D&D Master Max 2'
  *   'dnd-master-plus'    → 'D&D Master Plus'
  *   'dnd-master-balance' → 'D&D Master Balance'
  *   'dnd-master-lite'    → 'D&D Master Lite'
  */
 export const TIER_LABELS: Record<string, string> = Object.fromEntries(
   Object.values(TIER_NAMES).map((tier) => {
-    const suffix = tier.replace(/^dnd-master-/, '');
+    const suffix = tier.replace(/^dnd-master-/, '').replace(/(\d+)/, ' $1');
     const capitalised = suffix.charAt(0).toUpperCase() + suffix.slice(1);
     return [tier, `D&D Master ${capitalised}`];
   }),

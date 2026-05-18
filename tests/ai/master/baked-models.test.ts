@@ -58,14 +58,16 @@ describe('getBakedBaseModel', () => {
 
 describe('getBakedModelName', () => {
   it('returns the tier name for curated bases', () => {
-    expect(getBakedModelName('qwen3:30b-a3b')).toBe('dnd-master-max');
+    expect(getBakedModelName('mistral-small3.2:24b')).toBe('dnd-master-max');
+    expect(getBakedModelName('deepseek-r1:14b')).toBe('dnd-master-max2');
     expect(getBakedModelName('gpt-oss:20b')).toBe('dnd-master-plus');
     expect(getBakedModelName('qwen3:4b')).toBe('dnd-master-balance');
     expect(getBakedModelName('llama3.2:3b')).toBe('dnd-master-lite');
   });
 
   it('falls back to slug-derived naming for non-tier bases', () => {
-    // qwen3:30b (non-MoE) is NOT in the tier map → legacy format kicks in.
+    // qwen3:30b-a3b (legacy Max) is NO LONGER in the tier map → legacy format kicks in.
+    expect(getBakedModelName('qwen3:30b-a3b')).toBe('dnd-master-qwen3-30b-a3b');
     expect(getBakedModelName('qwen3:30b')).toBe('dnd-master-qwen3-30b');
     expect(getBakedModelName('qwen3:14b')).toBe('dnd-master-qwen3-14b');
     expect(getBakedModelName('gemma2:2b')).toBe('dnd-master-gemma2-2b');
@@ -78,14 +80,15 @@ describe('getBakedModelName', () => {
 
 describe('getBakedBaseModel — tier name reverse map', () => {
   it('recovers the base from a tier name (with :latest)', () => {
-    expect(getBakedBaseModel('dnd-master-max:latest')).toBe('qwen3:30b-a3b');
+    expect(getBakedBaseModel('dnd-master-max:latest')).toBe('mistral-small3.2:24b');
+    expect(getBakedBaseModel('dnd-master-max2:latest')).toBe('deepseek-r1:14b');
     expect(getBakedBaseModel('dnd-master-plus:latest')).toBe('gpt-oss:20b');
     expect(getBakedBaseModel('dnd-master-balance:latest')).toBe('qwen3:4b');
     expect(getBakedBaseModel('dnd-master-lite:latest')).toBe('llama3.2:3b');
   });
 
   it('recovers the base from a tier name (without :latest)', () => {
-    expect(getBakedBaseModel('dnd-master-max')).toBe('qwen3:30b-a3b');
+    expect(getBakedBaseModel('dnd-master-max')).toBe('mistral-small3.2:24b');
   });
 
   it('falls back to legacy parse for non-tier baked variants', () => {

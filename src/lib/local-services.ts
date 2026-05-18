@@ -220,7 +220,7 @@ export async function fetchOllamaModels(): Promise<ModelOption[]> {
       const baked = isBakedModel(m.name);
       const baseSlug = baked ? getBakedBaseModel(m.name) : null;
       // Tier-name baked variants get a curated display label so users
-      // see "D&D Master Max — qwen3:30b-a3b" instead of the raw slug.
+      // see "D&D Master Max — mistral-small3.2:24b" instead of the raw slug.
       // Legacy slug-derived baked variants fall back to the previous
       // "qwen3:30b (optimized)" format.
       const tierLabel = TIER_LABELS[m.name.replace(/:latest$/, '')];
