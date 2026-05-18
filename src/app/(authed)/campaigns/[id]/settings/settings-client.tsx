@@ -778,23 +778,17 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
               </div>
             )}
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <label htmlFor="imageModel" style={{ fontSize: 13, color: 'var(--fg-muted)', minWidth: 80 }}>Model</label>
-              <select id="imageModel" value={settings.imageModel} onChange={onImageModelChange} disabled={disabled}
-                style={{ flex: 1, padding: '8px 12px', background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 8, color: 'var(--fg)', fontFamily: 'var(--font-ui)', fontSize: 14 }}>
-                {settings.imageProvider === 'local' ? (() => {
-                  const list = localServices.image.engines.drawThings.models;
-                  if (list.length === 0) {
-                    return <option disabled value="">Draw Things unreachable — no checkpoints</option>;
-                  }
-                  return list.map((m) => <option key={m.slug} value={m.slug}>{m.label} — {m.blurb}</option>);
-                })() : (
-                  imageModelsForProvider(settings.imageProvider as Exclude<ImageProviderName, 'local'>).map((m) => (
+            {settings.imageProvider !== 'local' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <label htmlFor="imageModel" style={{ fontSize: 13, color: 'var(--fg-muted)', minWidth: 80 }}>Model</label>
+                <select id="imageModel" value={settings.imageModel} onChange={onImageModelChange} disabled={disabled}
+                  style={{ flex: 1, padding: '8px 12px', background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 8, color: 'var(--fg)', fontFamily: 'var(--font-ui)', fontSize: 14 }}>
+                  {imageModelsForProvider(settings.imageProvider as Exclude<ImageProviderName, 'local'>).map((m) => (
                     <option key={m.slug} value={m.slug}>{m.label}{m.recommended ? ' (recommended)' : ''} — {m.blurb}</option>
-                  ))
-                )}
-              </select>
-            </div>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <label style={{ fontSize: 13, color: 'var(--fg-muted)' }}>Image style</label>
             <select value={settings.imageStylePreset} onChange={onImageStylePresetChange} disabled={disabled}
