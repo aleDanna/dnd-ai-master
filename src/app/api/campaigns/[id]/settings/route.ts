@@ -107,7 +107,7 @@ export async function PUT(
     imageProvider: currentSettings.imageProvider,
   });
   // eslint-disable-next-line no-console
-  console.log('[settings-PUT] body=', JSON.stringify(body), 'validated=', JSON.stringify(result), 'env.PIPER=', !!process.env.PIPER_BASE_URL, 'env.XTTS=', !!process.env.XTTS_BASE_URL, 'env.OLLAMA=', !!process.env.OLLAMA_BASE_URL, 'NODE_ENV=', process.env.NODE_ENV, 'VERCEL=', !!process.env.VERCEL);
+  console.log('[settings-PUT] body=', JSON.stringify(body), 'validated=', JSON.stringify(result), 'env.PIPER=', !!process.env.PIPER_BASE_URL, 'env.OLLAMA=', !!process.env.OLLAMA_BASE_URL, 'NODE_ENV=', process.env.NODE_ENV, 'VERCEL=', !!process.env.VERCEL);
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }

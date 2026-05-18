@@ -71,13 +71,12 @@ export async function synthesizeSpeech(input: SynthesizeInput): Promise<Synthesi
   return synthesizeOpenAI(input);
 }
 
-// ── Local (Piper + XTTSv2 via self-hosted HTTP servers) ────────────────────
+// ── Local (Piper via self-hosted HTTP server) ──────────────────────────────
 
 async function synthesizeLocal(input: SynthesizeInput): Promise<SynthesizeOutput> {
   const engine = input.model;
   if (engine === 'piper') return synthesizePiper(input);
-  if (engine === 'xtts')  return synthesizeXtts(input);
-  throw new Error(`tts: local engine must be 'piper' or 'xtts', got "${engine ?? ''}"`);
+  throw new Error(`tts: local engine must be 'piper', got "${engine ?? ''}"`);
 }
 
 async function synthesizePiper(input: SynthesizeInput): Promise<SynthesizeOutput> {
@@ -100,27 +99,6 @@ async function synthesizePiper(input: SynthesizeInput): Promise<SynthesizeOutput
     throw new Error(`piper ${res.status}: ${text}`);
   }
   return { bytes: await res.arrayBuffer(), mimeType: 'audio/mpeg' };
-}
-
-async function synthesizeXtts(input: SynthesizeInput): Promise<SynthesizeOutput> {
-  const base = process.env.XTTS_BASE_URL;
-  if (!base) throw new Error('XTTS_BASE_URL is not set');
-  // input.voice is the bare language code ('en', 'it', ...); engine identity lives in input.model.
-  const language = input.voice ?? 'en';
-  const res = await fetch(`${base}/tts_to_audio/`, {  // trailing slash matters
-    method: 'POST',
-    headers: localServiceHeaders({ 'content-type': 'application/json' }),
-    body: JSON.stringify({
-      text: input.text,
-      speaker_wav: 'Claribel Dervla',  // default built-in speaker
-      language,
-    }),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`xtts ${res.status}: ${text}`);
-  }
-  return { bytes: await res.arrayBuffer(), mimeType: 'audio/wav' };
 }
 
 // ── OpenAI ─────────────────────────────────────────────────────────────────

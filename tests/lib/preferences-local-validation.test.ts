@@ -7,7 +7,6 @@ describe('validateSettingsPatch — local provider gating', () => {
     vi.stubEnv('VERCEL', '');
     vi.stubEnv('OLLAMA_BASE_URL', '');
     vi.stubEnv('PIPER_BASE_URL', '');
-    vi.stubEnv('XTTS_BASE_URL', '');
     vi.stubEnv('COMFYUI_BASE_URL', '');
     vi.stubEnv('DRAW_THINGS_BASE_URL', '');
   });
@@ -50,18 +49,6 @@ describe('validateSettingsPatch — local provider gating', () => {
     vi.stubEnv('PIPER_BASE_URL', 'http://localhost:8050');
     const r = validateSettingsPatch({ ttsProvider: 'local', ttsModel: 'piper', ttsVoice: 'en_US-amy-low' });
     expect(r.ok).toBe(true);
-  });
-
-  it('accepts ttsProvider=local + ttsModel=xtts when XTTS set', () => {
-    vi.stubEnv('XTTS_BASE_URL', 'http://localhost:8055');
-    const r = validateSettingsPatch({ ttsProvider: 'local', ttsModel: 'xtts', ttsVoice: 'en' });
-    expect(r.ok).toBe(true);
-  });
-
-  it('rejects ttsVoice="xx" for xtts (not in XTTS_LANGUAGES)', () => {
-    vi.stubEnv('XTTS_BASE_URL', 'http://localhost:8055');
-    const r = validateSettingsPatch({ ttsProvider: 'local', ttsModel: 'xtts', ttsVoice: 'xx' });
-    expect(r.ok).toBe(false);
   });
 
   it('rejects ttsModel=piper when PIPER_BASE_URL unset', () => {

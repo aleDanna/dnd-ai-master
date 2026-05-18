@@ -3,7 +3,7 @@ import { pgTable, text, timestamp, jsonb } from 'drizzle-orm/pg-core';
 import type { ProviderName, ImageProviderName } from '@/lib/ai-models';
 
 export interface UserPreferences {
-  /** TTS provider. 'openai', 'gemini', or 'local' (Piper/XTTS via env-gated
+  /** TTS provider. 'openai', 'gemini', or 'local' (Piper via env-gated
    *  self-hosted services). Anthropic has no TTS endpoint, so this list is
    *  independent of `aiProvider`. Defaults to env TTS_PROVIDER / 'openai'
    *  if unset. 'local' is downgraded silently if env / isLocalEnvironment is off. */

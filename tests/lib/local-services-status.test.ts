@@ -7,7 +7,6 @@ describe('fetchLocalServicesStatus', () => {
     vi.stubEnv('VERCEL', '');
     vi.stubEnv('OLLAMA_BASE_URL', '');
     vi.stubEnv('PIPER_BASE_URL', '');
-    vi.stubEnv('XTTS_BASE_URL', '');
     vi.stubEnv('COMFYUI_BASE_URL', '');
     vi.stubEnv('DRAW_THINGS_BASE_URL', '');
     vi.stubGlobal('fetch', vi.fn());
@@ -37,16 +36,6 @@ describe('fetchLocalServicesStatus', () => {
     expect(r.tts.enabled).toBe(true);
     expect(r.tts.engines.piper.enabled).toBe(true);
     expect(r.tts.engines.piper.reachable).toBe(false);
-    expect(r.tts.engines.xtts.enabled).toBe(false);
-  });
-
-  it('XTTS models are static even when service unreachable', async () => {
-    vi.stubEnv('XTTS_BASE_URL', 'http://localhost:8055');
-    (fetch as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('refused'));
-    const r = await fetchLocalServicesStatus();
-    expect(r.tts.engines.xtts.enabled).toBe(true);
-    expect(r.tts.engines.xtts.reachable).toBe(false);
-    expect(r.tts.engines.xtts.models.length).toBeGreaterThan(0);  // static catalog
   });
 
   it('ComfyUI workflows are static even when service unreachable', async () => {

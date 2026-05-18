@@ -120,29 +120,16 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
   const onTtsProviderChange = (next: TtsProvider): void => {
     if (!isValidTtsProvider(next) || next === settings.ttsProvider) return;
     if (next === 'local') {
-      // Pick first enabled engine, then its first available voice.
-      const engine = localServices.tts.engines.piper.enabled ? 'piper' : 'xtts';
-      const engineModels = engine === 'piper'
-        ? localServices.tts.engines.piper.models
-        : localServices.tts.engines.xtts.models;
-      const nextVoice = engineModels[0]?.slug ?? (engine === 'xtts' ? 'en' : '');
-      setSettings((s) => ({ ...s, ttsProvider: 'local', ttsModel: engine, ttsVoice: nextVoice }));
-      void save({ ttsProvider: 'local', ttsModel: engine, ttsVoice: nextVoice });
+      // Piper is the only local TTS engine; pick its first available voice.
+      const nextVoice = localServices.tts.engines.piper.models[0]?.slug ?? '';
+      setSettings((s) => ({ ...s, ttsProvider: 'local', ttsModel: 'piper', ttsVoice: nextVoice }));
+      void save({ ttsProvider: 'local', ttsModel: 'piper', ttsVoice: nextVoice });
       return;
     }
     const nextModel = ttsDefaultModelFor(next);
     const nextVoice = ttsDefaultVoiceForModel(next, nextModel);
     setSettings((s) => ({ ...s, ttsProvider: next, ttsVoice: nextVoice, ttsModel: nextModel }));
     void save({ ttsProvider: next, ttsVoice: nextVoice, ttsModel: nextModel });
-  };
-
-  /** Local-mode engine selector for TTS (Piper / XTTSv2). Resets voice to the
-   *  first available slug for the new engine. */
-  const onTtsLocalEngineChange = (engine: 'piper' | 'xtts'): void => {
-    const engineStatus = engine === 'piper' ? localServices.tts.engines.piper : localServices.tts.engines.xtts;
-    const nextVoice = engineStatus.models[0]?.slug ?? (engine === 'xtts' ? 'en' : '');
-    setSettings((s) => ({ ...s, ttsModel: engine, ttsVoice: nextVoice }));
-    void save({ ttsModel: engine, ttsVoice: nextVoice });
   };
 
   const onManualRollsToggle = (): void => {
@@ -516,53 +503,21 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
 
         {settings.ttsProvider === 'local' ? (
           <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <label style={{ fontSize: 13, color: 'var(--fg-muted)', minWidth: 60 }}>Engine</label>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {(['piper', 'xtts'] as const).map((eng) => {
-                  const engStatus = eng === 'piper' ? localServices.tts.engines.piper : localServices.tts.engines.xtts;
-                  return (
-                    <button
-                      key={eng}
-                      onClick={() => onTtsLocalEngineChange(eng)}
-                      disabled={disabled || !engStatus.enabled}
-                      aria-pressed={settings.ttsModel === eng}
-                      title={!engStatus.enabled ? `${eng.toUpperCase()}_BASE_URL not set` : undefined}
-                      style={{ padding: '8px 16px', borderRadius: 999,
-                        background: settings.ttsModel === eng ? 'var(--arcane)' : 'var(--bg-card)',
-                        color: settings.ttsModel === eng ? 'var(--bone)' : 'var(--fg)',
-                        border: '1px solid ' + (settings.ttsModel === eng ? 'var(--arcane)' : 'var(--border)'),
-                        cursor: (disabled || !engStatus.enabled) ? 'not-allowed' : 'pointer',
-                        fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
-                        opacity: !engStatus.enabled ? 0.4 : (!canEdit ? 0.7 : 1) }}>
-                      {eng === 'piper' ? 'Piper' : 'XTTSv2'}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
             <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginLeft: 70 }}>
-              {localServices.tts.engines.piper.enabled && (
-                <span style={{ marginRight: 8 }}>
-                  {localServices.tts.engines.piper.reachable ? '✓ Piper' : `✗ Piper (${localServices.tts.engines.piper.error ?? 'down'})`}
-                </span>
-              )}
-              {localServices.tts.engines.xtts.enabled && (
-                <span>
-                  {localServices.tts.engines.xtts.reachable ? '✓ XTTSv2' : `✗ XTTSv2 (${localServices.tts.engines.xtts.error ?? 'down'})`}
-                </span>
-              )}
+              <span>
+                {localServices.tts.engines.piper.reachable
+                  ? '✓ Piper'
+                  : `✗ Piper (${localServices.tts.engines.piper.error ?? 'down'})`}
+              </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <label htmlFor="ttsVoice" style={{ fontSize: 13, color: 'var(--fg-muted)', minWidth: 60 }}>Voice</label>
               <select id="ttsVoice" value={settings.ttsVoice} onChange={onVoiceChange} disabled={disabled}
                 style={{ flex: 1, padding: '8px 12px', background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 8, color: 'var(--fg)', fontFamily: 'var(--font-ui)', fontSize: 14 }}>
                 {(() => {
-                  const list = settings.ttsModel === 'piper'
-                    ? localServices.tts.engines.piper.models
-                    : localServices.tts.engines.xtts.models;
+                  const list = localServices.tts.engines.piper.models;
                   if (list.length === 0) {
-                    return <option disabled value="">{settings.ttsModel === 'piper' ? 'Piper unreachable — no voices listed' : 'No XTTS languages'}</option>;
+                    return <option disabled value="">Piper unreachable — no voices listed</option>;
                   }
                   return list.map((v) => <option key={v.slug} value={v.slug}>{v.label}</option>);
                 })()}

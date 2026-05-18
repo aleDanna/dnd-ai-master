@@ -30,7 +30,7 @@ import { isLocalEnvironment } from './local-services';
  * validateSettingsPatch to gate 'local' acceptance, and by getResolvedPreferences
  * / getCampaignSettings to downgrade silently when the backing env disappears.
  *
- * For 'tts'/'image' surfaces, pass the engine slug (e.g. 'piper', 'xtts',
+ * For 'tts'/'image' surfaces, pass the engine slug (e.g. 'piper',
  * 'comfyui:flux-schnell', 'draw-things:...') to gate on the specific service.
  * Omit `subModel` to accept if ANY engine in the surface is enabled.
  */
@@ -39,8 +39,7 @@ function isLocalSurfaceAvailable(surface: 'ai' | 'tts' | 'image', subModel?: str
   if (surface === 'ai') return !!process.env.OLLAMA_BASE_URL;
   if (surface === 'tts') {
     if (subModel === 'piper') return !!process.env.PIPER_BASE_URL;
-    if (subModel === 'xtts')  return !!process.env.XTTS_BASE_URL;
-    return !!process.env.PIPER_BASE_URL || !!process.env.XTTS_BASE_URL;
+    return !!process.env.PIPER_BASE_URL;
   }
   if (subModel?.startsWith('comfyui:'))     return !!process.env.COMFYUI_BASE_URL;
   if (subModel?.startsWith('draw-things:')) return !!process.env.DRAW_THINGS_BASE_URL;
@@ -196,7 +195,7 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
   const storedModel = prefs.ttsModel;
   const ttsModel = (() => {
     if (ttsProvider === 'local') {
-      return storedModel === 'piper' || storedModel === 'xtts' ? storedModel : 'piper';
+      return storedModel === 'piper' ? storedModel : 'piper';
     }
     return storedModel && ttsModelsFor(ttsProvider).includes(storedModel)
       ? storedModel
@@ -205,13 +204,7 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
   const storedVoice = prefs.ttsVoice;
   const ttsVoice = (() => {
     if (ttsProvider === 'local') {
-      // For piper, voices are runtime-discovered; pass through any stored value.
-      // For xtts, validate against the language catalog and fall back to 'en'.
-      if (ttsModel === 'xtts') {
-        return storedVoice && (ttsVoicesForModel('local', 'xtts') as readonly string[]).includes(storedVoice)
-          ? storedVoice
-          : 'en';
-      }
+      // Piper voices are runtime-discovered; pass through any stored value.
       return storedVoice ?? '';
     }
     return storedVoice && ttsVoicesForModel(ttsProvider, ttsModel).includes(storedVoice)
@@ -326,7 +319,7 @@ export async function getCampaignSettings(
   const storedModel = prefs.ttsModel;
   const ttsModel = (() => {
     if (ttsProvider === 'local') {
-      return storedModel === 'piper' || storedModel === 'xtts' ? storedModel : 'piper';
+      return storedModel === 'piper' ? storedModel : 'piper';
     }
     return storedModel && ttsModelsFor(ttsProvider).includes(storedModel)
       ? storedModel
@@ -335,11 +328,6 @@ export async function getCampaignSettings(
   const storedVoice = prefs.ttsVoice;
   const ttsVoice = (() => {
     if (ttsProvider === 'local') {
-      if (ttsModel === 'xtts') {
-        return storedVoice && (ttsVoicesForModel('local', 'xtts') as readonly string[]).includes(storedVoice)
-          ? storedVoice
-          : 'en';
-      }
       return storedVoice ?? '';
     }
     return storedVoice && ttsVoicesForModel(ttsProvider, ttsModel).includes(storedVoice)
@@ -427,7 +415,7 @@ export function validateSettingsPatch(
     } else {
       const resolvedProvider = out.ttsProvider ?? body.ttsProvider ?? stored?.ttsProvider;
       if (resolvedProvider === 'local') {
-        if (body.ttsModel !== 'piper' && body.ttsModel !== 'xtts') {
+        if (body.ttsModel !== 'piper') {
           return { ok: false, error: 'invalid-ttsModel' };
         }
         if (!isLocalSurfaceAvailable('tts', body.ttsModel)) {

@@ -1,4 +1,3 @@
-import { XTTS_LANGUAGES } from './tts-voices';
 import { isBakedModel, getBakedBaseModel, TIER_LABELS } from '@/ai/master/baked-models';
 import { pingEmbedder } from '@/ai/master/rag/embedder';
 import { ollamaHeaders } from './local-fetch';
@@ -86,7 +85,7 @@ export interface LocalServicesStatus {
   ai: EngineStatus;
   tts: {
     enabled: boolean;
-    engines: { piper: EngineStatus; xtts: EngineStatus };
+    engines: { piper: EngineStatus };
   };
   image: {
     enabled: boolean;
@@ -152,16 +151,6 @@ export async function fetchPiperVoices(): Promise<ModelOption[]> {
     slug: v.slug,
     label: v.slug,
     blurb: v.blurb,
-  }));
-}
-
-/** Returns the static XTTSv2 language catalog. Voice cloning is phase 2 — for
- *  now we expose one default speaker per supported language. */
-export function listXttsVoices(): ModelOption[] {
-  return XTTS_LANGUAGES.map((l) => ({
-    slug: l.code,
-    label: `${l.label} (default)`,
-    blurb: 'xtts · neural',
   }));
 }
 
@@ -299,15 +288,6 @@ async function buildPiperStatus(): Promise<EngineStatus> {
   return { enabled, reachable, models, ...(reachable ? {} : { error: 'unreachable' }) };
 }
 
-async function buildXttsStatus(): Promise<EngineStatus> {
-  const enabled = !!process.env.XTTS_BASE_URL;
-  if (!enabled) return { enabled: false, reachable: false, models: [] };
-  const reachable = await pingService(process.env.XTTS_BASE_URL!, '/speakers_list', ollamaHeaders());
-  // XTTS voices are static (hardcoded language list); shown regardless of reachability.
-  const models = listXttsVoices();
-  return { enabled, reachable, models, ...(reachable ? {} : { error: 'unreachable' }) };
-}
-
 async function buildComfyUIStatus(): Promise<EngineStatus> {
   const enabled = !!process.env.COMFYUI_BASE_URL;
   if (!enabled) return { enabled: false, reachable: false, models: [] };
@@ -333,16 +313,15 @@ export async function fetchLocalServicesStatus(): Promise<LocalServicesStatus> {
     return {
       isLocal: false,
       ai: empty,
-      tts: { enabled: false, engines: { piper: empty, xtts: empty } },
+      tts: { enabled: false, engines: { piper: empty } },
       image: { enabled: false, engines: { comfyui: empty, drawThings: empty } },
       embedder: { reachable: false },
     };
   }
 
-  const [ai, piper, xtts, comfyui, drawThings, embedderReachable] = await Promise.all([
+  const [ai, piper, comfyui, drawThings, embedderReachable] = await Promise.all([
     buildAiStatus(),
     buildPiperStatus(),
-    buildXttsStatus(),
     buildComfyUIStatus(),
     buildDrawThingsStatus(),
     pingEmbedder().catch(() => false),
@@ -352,8 +331,8 @@ export async function fetchLocalServicesStatus(): Promise<LocalServicesStatus> {
     isLocal: true,
     ai,
     tts: {
-      enabled: piper.enabled || xtts.enabled,
-      engines: { piper, xtts },
+      enabled: piper.enabled,
+      engines: { piper },
     },
     image: {
       enabled: comfyui.enabled || drawThings.enabled,

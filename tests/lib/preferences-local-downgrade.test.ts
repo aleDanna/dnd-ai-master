@@ -24,7 +24,6 @@ describe('getResolvedPreferences — local downgrade', () => {
     vi.stubEnv('VERCEL', '');
     vi.stubEnv('OLLAMA_BASE_URL', '');
     vi.stubEnv('PIPER_BASE_URL', '');
-    vi.stubEnv('XTTS_BASE_URL', '');
     vi.stubEnv('COMFYUI_BASE_URL', '');
     vi.stubEnv('DRAW_THINGS_BASE_URL', '');
     vi.stubEnv('MASTER_PROVIDER', '');
@@ -67,7 +66,7 @@ describe('getResolvedPreferences — local downgrade', () => {
     expect(r.ttsVoice).toBe('en_US-amy-low');
   });
 
-  it('downgrades ttsProvider=local when neither PIPER nor XTTS set', async () => {
+  it('downgrades ttsProvider=local when PIPER not set', async () => {
     TEST_PREFS = { ttsProvider: 'local', ttsModel: 'piper', ttsVoice: 'en_US-amy-low' };
     const r = await getResolvedPreferences('user-id');
     expect(r.ttsProvider).toBe('openai');
@@ -94,7 +93,6 @@ describe('getResolvedPreferences — compactPrompt resolution (Plan C)', () => {
     vi.stubEnv('VERCEL', '');
     vi.stubEnv('OLLAMA_BASE_URL', '');
     vi.stubEnv('PIPER_BASE_URL', '');
-    vi.stubEnv('XTTS_BASE_URL', '');
     vi.stubEnv('COMFYUI_BASE_URL', '');
     vi.stubEnv('DRAW_THINGS_BASE_URL', '');
     vi.stubEnv('MASTER_PROVIDER', '');

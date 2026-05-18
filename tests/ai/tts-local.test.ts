@@ -53,62 +53,11 @@ describe('synthesizeSpeech — provider=local engine=piper', () => {
   });
 });
 
-describe('synthesizeSpeech — provider=local engine=xtts', () => {
-  beforeEach(() => {
-    vi.stubEnv('XTTS_BASE_URL', 'http://localhost:8055');
-    vi.stubGlobal('fetch', vi.fn());
-  });
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.unstubAllEnvs();
-  });
-
-  it('POSTs to /tts_to_audio/ with text+speaker+language and returns WAV', async () => {
-    const fakeWav = new Uint8Array([0x52, 0x49, 0x46, 0x46]).buffer;  // 'RIFF'
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response(fakeWav, { status: 200 }));
-
-    const r = await synthesizeSpeech({
-      text: 'ciao',
-      provider: 'local',
-      model: 'xtts',
-      voice: 'it',
-    });
-
-    expect(fetch).toHaveBeenCalledWith(
-      'http://localhost:8055/tts_to_audio/',
-      expect.objectContaining({ method: 'POST' }),
-    );
-    const callBody = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]?.[1]?.body;
-    expect(JSON.parse(callBody as string)).toEqual({
-      text: 'ciao',
-      speaker_wav: 'Claribel Dervla',
-      language: 'it',
-    });
-    expect(r.mimeType).toBe('audio/wav');
-  });
-
-  it('throws when XTTS returns non-2xx', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response('bad lang', { status: 400 }));
-    await expect(synthesizeSpeech({
-      text: 'x', provider: 'local', model: 'xtts', voice: 'xx',
-    })).rejects.toThrow(/xtts 400/);
-  });
-
-  it('defaults voice to "en" when not provided', async () => {
-    const fakeWav = new Uint8Array([0x52, 0x49, 0x46, 0x46]).buffer;
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response(fakeWav, { status: 200 }));
-
-    await synthesizeSpeech({ text: 'x', provider: 'local', model: 'xtts' });
-    const callBody = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]?.[1]?.body;
-    expect(JSON.parse(callBody as string).language).toBe('en');
-  });
-});
-
 describe('synthesizeSpeech — provider=local invalid engine', () => {
   it('throws when model is missing or unknown', async () => {
     await expect(synthesizeSpeech({ text: 'x', provider: 'local' }))
-      .rejects.toThrow(/local engine must be 'piper' or 'xtts'/);
+      .rejects.toThrow(/local engine must be 'piper'/);
     await expect(synthesizeSpeech({ text: 'x', provider: 'local', model: 'unknown' }))
-      .rejects.toThrow(/local engine must be 'piper' or 'xtts'/);
+      .rejects.toThrow(/local engine must be 'piper'/);
   });
 });
