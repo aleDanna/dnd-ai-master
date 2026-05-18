@@ -28,10 +28,17 @@ export function isLocalEnvironment(): boolean {
  * Never throws — network errors, timeouts, and non-2xx all return false.
  * Used at Settings render to display ✓/✗ badges without breaking the page.
  */
+/** Probe timeout. 2s was fine for true-localhost daemons but is too tight
+ *  for a Vercel function reaching a Tailscale Funnel: DNS + TLS handshake
+ *  + funnel routing alone can burn 200-800ms, and cold starts add more.
+ *  5s is the right balance — fail fast on real outages, tolerate the
+ *  tunnel round-trip. Override via LOCAL_PROBE_TIMEOUT_MS. */
+const PROBE_TIMEOUT_MS = Number(process.env.LOCAL_PROBE_TIMEOUT_MS ?? '5000');
+
 export async function pingService(baseUrl: string, path: string, headers?: Record<string, string>): Promise<boolean> {
   try {
     const res = await fetch(`${baseUrl}${path}`, {
-      signal: AbortSignal.timeout(2000),
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
       cache: 'no-store',
       ...(headers ? { headers } : {}),
     });
@@ -258,7 +265,26 @@ export async function fetchOllamaModels(): Promise<ModelOption[]> {
 async function buildAiStatus(): Promise<EngineStatus> {
   const enabled = !!process.env.OLLAMA_BASE_URL;
   if (!enabled) return { enabled: false, reachable: false, models: [] };
-  const reachable = await pingService(process.env.OLLAMA_BASE_URL!, '/api/tags', ollamaHeaders());
+  const base = process.env.OLLAMA_BASE_URL!;
+  const reachable = await pingService(base, '/api/tags', ollamaHeaders());
+  if (!reachable) {
+    // Diagnostic: re-issue the probe (without ok-gating) so the actual
+    // failure mode shows up in Vercel function logs. Helps distinguish
+    // "wrong URL" (404), "wrong token" (401), "Mac offline" (fetch error),
+    // "timeout" (AbortError) without having to add a debug endpoint.
+    try {
+      const r = await fetch(`${base}/api/tags`, {
+        headers: ollamaHeaders(),
+        signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        cache: 'no-store',
+      });
+      const body = await r.text().catch(() => '');
+      console.error('[ai-probe-fail] base=', base, 'hasToken=', !!process.env.LOCAL_LLM_TOKEN, 'status=', r.status, 'body[0:160]=', body.slice(0, 160));
+    } catch (e) {
+      const err = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+      console.error('[ai-probe-fail] base=', base, 'hasToken=', !!process.env.LOCAL_LLM_TOKEN, 'err=', err);
+    }
+  }
   const models = reachable ? await fetchOllamaModels() : [];
   return { enabled, reachable, models, ...(reachable ? {} : { error: 'unreachable' }) };
 }
