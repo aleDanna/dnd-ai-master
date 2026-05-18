@@ -102,51 +102,33 @@ describe('getResolvedPreferences — compactPrompt resolution (Plan C)', () => {
     vi.unstubAllEnvs();
   });
 
-  it('defaults compactPrompt=true when resolved aiProvider is local', async () => {
+  it('defaults compactPrompt=true regardless of provider (UI toggle removed; always-on policy)', async () => {
     vi.stubEnv('OLLAMA_BASE_URL', 'http://localhost:11434');
     TEST_PREFS = { aiProvider: 'local', aiMasterModel: 'qwen3:30b-a3b' };
-    const r = await getResolvedPreferences('user-id');
-    expect(r.aiProvider).toBe('local');
-    expect(r.compactPrompt).toBe(true);
-  });
+    const r1 = await getResolvedPreferences('user-id');
+    expect(r1.compactPrompt).toBe(true);
 
-  it('defaults compactPrompt=false when resolved aiProvider is cloud (anthropic)', async () => {
     TEST_PREFS = { aiProvider: 'anthropic', aiMasterModel: 'claude-sonnet-4-5' };
-    const r = await getResolvedPreferences('user-id');
-    expect(r.aiProvider).toBe('anthropic');
-    expect(r.compactPrompt).toBe(false);
-  });
+    const r2 = await getResolvedPreferences('user-id');
+    expect(r2.aiProvider).toBe('anthropic');
+    expect(r2.compactPrompt).toBe(true);
 
-  it('defaults compactPrompt=false when no provider is set (env fallback to anthropic)', async () => {
     TEST_PREFS = {};
-    const r = await getResolvedPreferences('user-id');
-    expect(r.aiProvider).toBe('anthropic');
-    expect(r.compactPrompt).toBe(false);
+    const r3 = await getResolvedPreferences('user-id');
+    expect(r3.compactPrompt).toBe(true);
   });
 
-  it('explicit compactPrompt=false wins over local-provider default', async () => {
+  it('explicit compactPrompt=false still wins over the always-on default', async () => {
     vi.stubEnv('OLLAMA_BASE_URL', 'http://localhost:11434');
     TEST_PREFS = { aiProvider: 'local', aiMasterModel: 'qwen3:30b-a3b', compactPrompt: false };
     const r = await getResolvedPreferences('user-id');
-    expect(r.aiProvider).toBe('local');
     expect(r.compactPrompt).toBe(false);
   });
 
-  it('explicit compactPrompt=true wins over cloud-provider default', async () => {
+  it('explicit compactPrompt=true wins over default (and stays on)', async () => {
     TEST_PREFS = { aiProvider: 'anthropic', compactPrompt: true };
     const r = await getResolvedPreferences('user-id');
-    expect(r.aiProvider).toBe('anthropic');
     expect(r.compactPrompt).toBe(true);
-  });
-
-  it('downgrade flips default: local→anthropic, undefined compactPrompt → false', async () => {
-    // Stored aiProvider='local' but no OLLAMA env → downgrades to anthropic.
-    // compactPrompt was never explicitly set, so it follows the *resolved*
-    // provider (anthropic) → false. This is the documented behavior.
-    TEST_PREFS = { aiProvider: 'local', aiMasterModel: 'qwen3:30b-a3b' };
-    const r = await getResolvedPreferences('user-id');
-    expect(r.aiProvider).toBe('anthropic');
-    expect(r.compactPrompt).toBe(false);
   });
 });
 

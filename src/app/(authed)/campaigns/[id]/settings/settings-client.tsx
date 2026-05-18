@@ -162,45 +162,6 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
     void save({ imageGenerationEnabled: next });
   };
 
-  const onCompactPromptToggle = (): void => {
-    const next = !settings.compactPrompt;
-    setSettings((s) => ({ ...s, compactPrompt: next }));
-    void save({ compactPrompt: next });
-  };
-
-  const onModeAwarePromptToggle = (): void => {
-    const next = !settings.useModeAwarePrompt;
-    setSettings((s) => ({ ...s, useModeAwarePrompt: next }));
-    void save({ useModeAwarePrompt: next });
-  };
-
-  const onRagToggle = (): void => {
-    const next = !settings.useRagRetrieval;
-    setSettings((s) => ({ ...s, useRagRetrieval: next }));
-    void save({ useRagRetrieval: next });
-  };
-
-  const [rebuildingRag, setRebuildingRag] = React.useState(false);
-  const [rebuildMsg, setRebuildMsg] = React.useState<string | null>(null);
-  const onRebuildRag = async (): Promise<void> => {
-    setRebuildingRag(true);
-    setRebuildMsg(null);
-    try {
-      const res = await fetch('/api/rag/rebuild', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ force: true }),
-      });
-      const data = await res.json() as { chunkCount?: number; backend?: string; error?: string };
-      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      setRebuildMsg(`Indexed ${data.chunkCount} chunks (backend: ${data.backend}).`);
-    } catch (e) {
-      setRebuildMsg(`Error: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setRebuildingRag(false);
-    }
-  };
-
   const onImageStylePresetChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
     const next = e.target.value as NonNullable<CampaignSettings['imageStylePreset']>;
     if (next === settings.imageStylePreset) return;
@@ -644,87 +605,6 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
           {settings.showDifficultyNumbers ? 'DC/AC visible' : 'DC/AC hidden'}
         </button>
       </Card>
-
-      {settings.aiProvider === 'local' && (
-        <>
-          <div style={{ height: 16 }} />
-          <Card>
-            <div>
-              <Eyebrow>Local optimization</Eyebrow>
-              <h2 style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>Compact prompt</h2>
-              <p style={{ marginTop: 4, fontSize: 13, color: 'var(--fg-muted)' }}>
-                Trims the master&apos;s system prompt (handbook, world lore, SRD reference) to imperative cheat-sheets — about
-                30 KB lighter. Small local models (qwen3:14b, gpt-oss:20b) answer noticeably faster but narration is simpler.
-                Default ON for local, OFF for cloud.
-              </p>
-              {settings.aiMasterModel.startsWith('dnd-master-') && (
-                <p style={{ marginTop: 4, fontSize: 12, color: 'var(--fg-subtle)', fontStyle: 'italic' }}>
-                  Has no effect when using an optimized (<code>dnd-master-*</code>) model — the full handbook is baked into the model weights, so compact vs full is identical at runtime.
-                </p>
-              )}
-            </div>
-            <button onClick={onCompactPromptToggle} disabled={disabled || settings.aiMasterModel.startsWith('dnd-master-')} aria-pressed={settings.compactPrompt}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 10, height: 36, padding: '0 14px',
-                background: settings.compactPrompt ? 'var(--arcane)' : 'transparent',
-                border: '1px solid ' + (settings.compactPrompt ? 'var(--arcane)' : 'var(--border-strong)'),
-                borderRadius: 999, color: settings.compactPrompt ? 'var(--bone)' : 'var(--fg-muted)',
-                fontFamily: 'var(--font-ui)', fontSize: 13, fontWeight: 600,
-                cursor: (disabled || settings.aiMasterModel.startsWith('dnd-master-')) ? 'not-allowed' : 'pointer',
-                opacity: (!canEdit || settings.aiMasterModel.startsWith('dnd-master-')) ? 0.5 : 1 }}>
-              <Icon name="sparkle" size={14} />
-              {settings.compactPrompt ? 'Compact prompt on' : 'Compact prompt off'}
-            </button>
-            <button onClick={onModeAwarePromptToggle} disabled={disabled} aria-pressed={settings.useModeAwarePrompt}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 10, height: 36, padding: '0 14px',
-                background: settings.useModeAwarePrompt ? 'var(--arcane)' : 'transparent',
-                border: '1px solid ' + (settings.useModeAwarePrompt ? 'var(--arcane)' : 'var(--border-strong)'),
-                borderRadius: 999, color: settings.useModeAwarePrompt ? 'var(--bone)' : 'var(--fg-muted)',
-                fontFamily: 'var(--font-ui)', fontSize: 13, fontWeight: 600,
-                cursor: disabled ? 'not-allowed' : 'pointer',
-                opacity: !canEdit ? 0.7 : 1,
-                marginLeft: 8 }}>
-              <Icon name="sparkle" size={14} />
-              {settings.useModeAwarePrompt ? 'Mode-aware prompt on' : 'Mode-aware prompt off'}
-            </button>
-            <button
-              onClick={onRagToggle}
-              disabled={disabled}
-              aria-pressed={settings.useRagRetrieval}
-              style={{
-                background: settings.useRagRetrieval ? 'var(--arcane)' : 'transparent',
-                border: '1px solid ' + (settings.useRagRetrieval ? 'var(--arcane)' : 'var(--border-strong)'),
-                borderRadius: 999,
-                color: settings.useRagRetrieval ? 'var(--bone)' : 'var(--fg-muted)',
-                padding: '6px 12px',
-                cursor: disabled ? 'not-allowed' : 'pointer',
-                fontSize: 13,
-                marginLeft: 8,
-              }}
-            >
-              {settings.useRagRetrieval ? 'RAG retrieval on' : 'RAG retrieval off'}
-            </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
-              <button
-                type="button"
-                onClick={onRebuildRag}
-                disabled={disabled || rebuildingRag}
-                style={{
-                  background: 'var(--bg-card)',
-                  border: '1px solid var(--border-strong)',
-                  borderRadius: 8,
-                  color: 'var(--fg)',
-                  padding: '6px 12px',
-                  fontSize: 13,
-                  cursor: rebuildingRag ? 'wait' : 'pointer',
-                }}
-              >
-                {rebuildingRag ? 'Rebuilding...' : 'Rebuild RAG index'}
-              </button>
-              {rebuildMsg && <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{rebuildMsg}</span>}
-            </div>
-          </Card>
-        </>
-      )}
 
       <div style={{ height: 16 }} />
 

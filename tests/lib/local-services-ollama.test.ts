@@ -11,26 +11,25 @@ describe('fetchOllamaModels', () => {
     vi.unstubAllEnvs();
   });
 
-  it('returns every installed model verbatim (no whitelist)', async () => {
+  it('returns ONLY baked dnd-master-* variants (raw base models are hidden from Settings)', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response(JSON.stringify({
       models: [
-        { name: 'qwen3:30b-a3b',                        details: { parameter_size: '30B', quantization_level: 'Q4_K_M' } },
-        { name: 'llama3.1:8b',                          details: { parameter_size: '8B'  } },
-        { name: 'hf.co/unsloth/gpt-oss-20b-GGUF:F16',   details: { parameter_size: '20B', quantization_level: 'F16' } },
-        { name: 'mistral:7b',                           details: { parameter_size: '7B'  } },
+        { name: 'qwen3:30b-a3b',     details: { parameter_size: '30B', quantization_level: 'Q4_K_M' } },
+        { name: 'dnd-master-max',    details: { parameter_size: '30B', quantization_level: 'Q4_K_M' } },
+        { name: 'llama3.2:3b',       details: { parameter_size: '3B'  } },
+        { name: 'dnd-master-lite',   details: { parameter_size: '3B'  } },
+        { name: 'gpt-oss:20b',       details: { parameter_size: '20B' } },
+        { name: 'dnd-master-plus',   details: { parameter_size: '20B' } },
       ],
     }), { status: 200 }));
 
     const r = await fetchOllamaModels();
-    expect(r).toHaveLength(4);
-    expect(r.map((m) => m.slug)).toEqual([
-      'qwen3:30b-a3b',
-      'llama3.1:8b',
-      'hf.co/unsloth/gpt-oss-20b-GGUF:F16',
-      'mistral:7b',
+    expect(r.map((m) => m.slug).sort()).toEqual([
+      'dnd-master-lite',
+      'dnd-master-max',
+      'dnd-master-plus',
     ]);
-    // Label normalization still rewrites hf.co paths for readability.
-    expect(r[2]?.label).toBe('unsloth/gpt-oss-20b (F16)');
+    expect(r.every((m) => m.kind === 'baked')).toBe(true);
   });
 
   it('returns [] when fetch throws', async () => {

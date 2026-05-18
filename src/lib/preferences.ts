@@ -154,19 +154,12 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   imageStyleCustom: '',
   imageProvider: 'openai',
   imageModel: 'gpt-image-1',
-  // Compact-prompt is provider-conditional: getResolvedPreferences /
-  // getCampaignSettings flip it to `true` when aiProvider is 'local'.
-  // The static default is only used when both prefs.compactPrompt and
-  // the provider check fall through (cloud provider, undefined value).
-  compactPrompt: false,
-  // Mode-aware-prompt is also provider-conditional (on for local, off for
-  // cloud). Explicit user pick always wins; the static default below is
-  // only used as a final fallback.
-  useModeAwarePrompt: false,
-  // RAG retrieval is opt-in in Phase 2 (default OFF). Phase 3 will flip
-  // the default to ON for local providers once telemetry confirms recall
-  // quality is acceptable.
-  useRagRetrieval: false,
+  // The three optimisation toggles below are now always-on by default —
+  // the dedicated "Local optimization" panel was removed from Settings to
+  // declutter the UI. Existing stored values (true OR false) still win.
+  compactPrompt: true,
+  useModeAwarePrompt: true,
+  useRagRetrieval: true,
 };
 
 export async function getUserPreferences(userId: string): Promise<UserPreferences> {
@@ -210,10 +203,9 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
       ? storedVoice
       : envDefaultTtsVoice(ttsProvider, ttsModel);
   })();
-  // Compact-prompt default depends on the resolved provider: on for local
-  // (where prompt budget matters), off for cloud (full prompt fits easily).
-  // Explicit user pick wins over the provider-conditional default.
-  const compactPrompt = prefs.compactPrompt ?? (provider === 'local');
+  // Always default to compact prompt unless the stored value says otherwise.
+  // The UI toggle was removed; this is the new policy across providers.
+  const compactPrompt = prefs.compactPrompt ?? true;
   const useModeAwarePrompt = resolveUseModeAwarePrompt({ aiProvider: provider, useModeAwarePrompt: prefs.useModeAwarePrompt });
   const useRagRetrieval = resolveUseRagRetrieval({ aiProvider: provider, useRagRetrieval: prefs.useRagRetrieval });
   return {
@@ -333,9 +325,8 @@ export async function getCampaignSettings(
       ? storedVoice
       : envDefaultTtsVoice(ttsProvider, ttsModel);
   })();
-  // Same provider-conditional default as getResolvedPreferences: on for
-  // local, off for cloud, explicit pick always wins.
-  const compactPrompt = prefs.compactPrompt ?? (provider === 'local');
+  // Always default to compact prompt unless the stored value says otherwise.
+  const compactPrompt = prefs.compactPrompt ?? true;
   const useModeAwarePrompt = resolveUseModeAwarePrompt({ aiProvider: provider, useModeAwarePrompt: prefs.useModeAwarePrompt });
   const useRagRetrieval = resolveUseRagRetrieval({ aiProvider: provider, useRagRetrieval: prefs.useRagRetrieval });
   return {
@@ -537,29 +528,27 @@ export function validateSettingsPatch(
 }
 
 /**
- * Resolves the effective `useModeAwarePrompt` value.
- *
- * An explicit stored boolean always wins. When undefined, defaults to
- * `true` for local providers (where mode-aware prompt switching matters)
- * and `false` for cloud providers (which use the full prompt by default).
+ * Resolves the effective `useModeAwarePrompt` value. An explicit stored
+ * boolean always wins. The UI toggle was removed; the new default is ON
+ * across providers.
  */
 export function resolveUseModeAwarePrompt(prefs: {
   aiProvider: string;
   useModeAwarePrompt?: boolean;
 }): boolean {
   if (typeof prefs.useModeAwarePrompt === 'boolean') return prefs.useModeAwarePrompt;
-  return prefs.aiProvider === 'local';
+  return true;
 }
 
 /**
- * Plan E.2 - opt-in RAG retrieval. Default OFF in Phase 2 until telemetry
- * confirms recall is acceptable; Phase 3 flips the default to ON for local.
+ * Resolves the effective `useRagRetrieval` value. Same shape: stored
+ * boolean wins, otherwise default ON now that the toggle is gone.
  */
 export function resolveUseRagRetrieval(prefs: {
   aiProvider: string;
   useRagRetrieval?: boolean;
 }): boolean {
   if (typeof prefs.useRagRetrieval === 'boolean') return prefs.useRagRetrieval;
-  return false;
+  return true;
 }
 

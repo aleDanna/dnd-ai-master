@@ -212,12 +212,11 @@ export async function fetchOllamaModels(): Promise<ModelOption[]> {
     if (!res.ok) return [];
     const json = (await res.json()) as OllamaTagsResponse;
     const models = json.models ?? [];
-    // Return EVERY installed model — no whitelist. The user picks freely; if
-    // a model lacks tool-calling capability or fails on the master prompt,
-    // we surface the failure at runtime rather than hide the option here.
-    // matchesLlmWhitelist is still exported for callers that want curated
-    // suggestions, but Settings shows the full list.
-    return models.map((m) => {
+    // Expose ONLY baked variants (dnd-master-*) in the Settings UI. Raw
+    // base models still work at runtime if the user manually pins one via
+    // env / DB, but they're hidden from the dropdown to keep the choice
+    // simple and steer toward the optimised prompt-baked builds.
+    return models.filter((m) => isBakedModel(m.name)).map((m) => {
       const baked = isBakedModel(m.name);
       const baseSlug = baked ? getBakedBaseModel(m.name) : null;
       // Tier-name baked variants get a curated display label so users

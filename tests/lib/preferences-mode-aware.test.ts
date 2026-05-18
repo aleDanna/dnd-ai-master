@@ -19,11 +19,8 @@ describe('resolveUseModeAwarePrompt', () => {
     expect(resolveUseModeAwarePrompt({ aiProvider: 'local', useModeAwarePrompt: false })).toBe(false);
   });
 
-  it('defaults to true when undefined and provider=local', () => {
+  it('defaults to true when undefined, regardless of provider (UI toggle removed)', () => {
     expect(resolveUseModeAwarePrompt({ aiProvider: 'local', useModeAwarePrompt: undefined })).toBe(true);
-  });
-
-  it('defaults to false when undefined and provider=cloud', () => {
-    expect(resolveUseModeAwarePrompt({ aiProvider: 'cloud', useModeAwarePrompt: undefined })).toBe(false);
+    expect(resolveUseModeAwarePrompt({ aiProvider: 'cloud', useModeAwarePrompt: undefined })).toBe(true);
   });
 });

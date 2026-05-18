@@ -10,8 +10,8 @@ describe('resolveUseRagRetrieval', () => {
     expect(resolveUseRagRetrieval({ aiProvider: 'local', useRagRetrieval: false })).toBe(false);
   });
 
-  it('defaults to false when undefined (Phase 2 - opt-in until Phase 3 flips it)', () => {
-    expect(resolveUseRagRetrieval({ aiProvider: 'local', useRagRetrieval: undefined })).toBe(false);
-    expect(resolveUseRagRetrieval({ aiProvider: 'cloud', useRagRetrieval: undefined })).toBe(false);
+  it('defaults to true when undefined (UI toggle removed; always-on policy)', () => {
+    expect(resolveUseRagRetrieval({ aiProvider: 'local', useRagRetrieval: undefined })).toBe(true);
+    expect(resolveUseRagRetrieval({ aiProvider: 'cloud', useRagRetrieval: undefined })).toBe(true);
   });
 });
