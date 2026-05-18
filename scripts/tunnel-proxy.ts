@@ -10,6 +10,7 @@
  *            http://127.0.0.1:8188   (ComfyUI)       for /comfy/*
  *            http://127.0.0.1:8050   (Piper)         for /piper/*
  *            http://127.0.0.1:8055   (XTTS)          for /xtts/*
+ *            http://127.0.0.1:7860   (Draw Things)   for /draw/*
  *
  * The first path segment selects the upstream; the rest is forwarded as-is
  * (query string preserved). Examples:
@@ -17,6 +18,7 @@
  *   /comfy/view?filename=X  → 127.0.0.1:8188/view?filename=X
  *   /piper/v1/audio/speech  → 127.0.0.1:8050/v1/audio/speech
  *   /xtts/tts_to_audio/     → 127.0.0.1:8055/tts_to_audio/
+ *   /draw/sdapi/v1/txt2img  → 127.0.0.1:7860/sdapi/v1/txt2img
  *
  * Auth: every request needs `Authorization: Bearer $LOCAL_LLM_TOKEN`, except
  * `GET /healthz` which always returns 204 (probe endpoint for the tunnel).
@@ -31,6 +33,7 @@
  *   TUNNEL_COMFY_UPSTREAM    default 127.0.0.1:8188
  *   TUNNEL_PIPER_UPSTREAM    default 127.0.0.1:8050
  *   TUNNEL_XTTS_UPSTREAM     default 127.0.0.1:8055
+ *   TUNNEL_DRAW_UPSTREAM     default 127.0.0.1:7860
  *
  *   Set any *_UPSTREAM to '' to disable that route (returns 404).
  */
@@ -68,6 +71,7 @@ const ROUTES: Record<string, Upstream | null> = {
   comfy:  parseUpstream(process.env.TUNNEL_COMFY_UPSTREAM,  '127.0.0.1:8188'),
   piper:  parseUpstream(process.env.TUNNEL_PIPER_UPSTREAM,  '127.0.0.1:8050'),
   xtts:   parseUpstream(process.env.TUNNEL_XTTS_UPSTREAM,   '127.0.0.1:8055'),
+  draw:   parseUpstream(process.env.TUNNEL_DRAW_UPSTREAM,   '127.0.0.1:7860'),
 };
 
 function authOk(headerVal: string | undefined): boolean {
@@ -112,7 +116,7 @@ const server = http.createServer((req, res) => {
   const route = splitRoute(req.url ?? '/');
   if (!route) {
     res.statusCode = 404;
-    res.end(JSON.stringify({ error: 'no-route', hint: 'use /ollama|/comfy|/piper|/xtts prefix' }));
+    res.end(JSON.stringify({ error: 'no-route', hint: 'use /ollama|/comfy|/piper|/xtts|/draw prefix' }));
     return;
   }
   const upstream = ROUTES[route.prefix];
