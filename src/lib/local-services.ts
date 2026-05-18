@@ -166,28 +166,38 @@ interface OllamaTagsResponse {
  *  Returns [] on any failure (env unset, network error, non-2xx). */
 /** Fetches the *active* Draw Things checkpoint via /sdapi/v1/options.
  *  Draw Things does NOT expose `/sdapi/v1/sd-models` (returns 404) — only
- *  the single currently-loaded model name lives in `options.model`. Users
- *  switch model from inside the app. */
+ *  the single currently-loaded model name lives in `options.model`, and on
+ *  many builds that field is `null` until the user explicitly switches
+ *  checkpoint inside the app. To keep the Settings dropdown non-empty (so
+ *  it can be saved without `invalid-imageModel`), we always return at
+ *  least one placeholder option — the runtime client ignores the slug
+ *  value anyway (model selection happens inside the Draw Things app). */
 export async function fetchDrawThingsModels(): Promise<ModelOption[]> {
   const base = process.env.DRAW_THINGS_BASE_URL;
   if (!base) return [];
+  let modelName = 'active';
   try {
     const res = await fetch(`${base}/sdapi/v1/options`, {
       signal: AbortSignal.timeout(2000),
       cache: 'no-store',
       headers: ollamaHeaders(),
     });
-    if (!res.ok) return [];
-    const opts = (await res.json()) as { model?: string };
-    if (!opts.model) return [];
-    return [{
-      slug: `draw-things:${opts.model}`,
-      label: opts.model.replace(/\.ckpt$|\.safetensors$/i, ''),
-      blurb: 'draw-things · active model',
-    }];
+    if (res.ok) {
+      const opts = (await res.json()) as { model?: string | null };
+      if (opts.model) modelName = opts.model;
+    }
   } catch {
-    return [];
+    // Fall through to placeholder — reachability is signalled separately
+    // via the EngineStatus.reachable badge.
   }
+  const isPlaceholder = modelName === 'active';
+  return [{
+    slug: `draw-things:${modelName}`,
+    label: isPlaceholder
+      ? 'Active checkpoint (set inside Draw Things)'
+      : modelName.replace(/\.ckpt$|\.safetensors$/i, ''),
+    blurb: 'draw-things · uses whichever model is currently loaded',
+  }];
 }
 
 /** Curated ComfyUI workflow list. Phase 1 ships only Flux Schnell; the slugs
