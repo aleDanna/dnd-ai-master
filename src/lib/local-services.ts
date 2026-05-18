@@ -186,6 +186,7 @@ export async function fetchDrawThingsModels(): Promise<ModelOption[]> {
     const res = await fetch(`${base}/sdapi/v1/options`, {
       signal: AbortSignal.timeout(2000),
       cache: 'no-store',
+      headers: ollamaHeaders(),
     });
     if (!res.ok) return [];
     const opts = (await res.json()) as { model?: string };
@@ -293,7 +294,7 @@ async function buildPiperStatus(): Promise<EngineStatus> {
   const enabled = !!process.env.PIPER_BASE_URL;
   if (!enabled) return { enabled: false, reachable: false, models: [] };
   // openedai-speech-min exposes /health (200) for liveness; /v1/audio/voices is 404.
-  const reachable = await pingService(process.env.PIPER_BASE_URL!, '/health');
+  const reachable = await pingService(process.env.PIPER_BASE_URL!, '/health', ollamaHeaders());
   const models = reachable ? await fetchPiperVoices() : [];
   return { enabled, reachable, models, ...(reachable ? {} : { error: 'unreachable' }) };
 }
@@ -301,7 +302,7 @@ async function buildPiperStatus(): Promise<EngineStatus> {
 async function buildXttsStatus(): Promise<EngineStatus> {
   const enabled = !!process.env.XTTS_BASE_URL;
   if (!enabled) return { enabled: false, reachable: false, models: [] };
-  const reachable = await pingService(process.env.XTTS_BASE_URL!, '/speakers_list');
+  const reachable = await pingService(process.env.XTTS_BASE_URL!, '/speakers_list', ollamaHeaders());
   // XTTS voices are static (hardcoded language list); shown regardless of reachability.
   const models = listXttsVoices();
   return { enabled, reachable, models, ...(reachable ? {} : { error: 'unreachable' }) };
@@ -310,7 +311,7 @@ async function buildXttsStatus(): Promise<EngineStatus> {
 async function buildComfyUIStatus(): Promise<EngineStatus> {
   const enabled = !!process.env.COMFYUI_BASE_URL;
   if (!enabled) return { enabled: false, reachable: false, models: [] };
-  const reachable = await pingService(process.env.COMFYUI_BASE_URL!, '/system_stats');
+  const reachable = await pingService(process.env.COMFYUI_BASE_URL!, '/system_stats', ollamaHeaders());
   const models = listComfyUIWorkflows();
   return { enabled, reachable, models, ...(reachable ? {} : { error: 'unreachable' }) };
 }
@@ -318,7 +319,7 @@ async function buildComfyUIStatus(): Promise<EngineStatus> {
 async function buildDrawThingsStatus(): Promise<EngineStatus> {
   const enabled = !!process.env.DRAW_THINGS_BASE_URL;
   if (!enabled) return { enabled: false, reachable: false, models: [] };
-  const reachable = await pingService(process.env.DRAW_THINGS_BASE_URL!, '/sdapi/v1/options');
+  const reachable = await pingService(process.env.DRAW_THINGS_BASE_URL!, '/sdapi/v1/options', ollamaHeaders());
   const models = reachable ? await fetchDrawThingsModels() : [];
   return { enabled, reachable, models, ...(reachable ? {} : { error: 'unreachable' }) };
 }
