@@ -1,4 +1,5 @@
 import type { ImageGenResult } from './openai';
+import { localServiceHeaders } from '@/lib/local-fetch';
 
 /** Generates an image via the Draw Things macOS app HTTP server. Uses the
  *  AUTOMATIC1111 SD-compatible /sdapi/v1/txt2img endpoint. */
@@ -14,7 +15,7 @@ export async function generateBytesDrawThings(prompt: string, modelName: string)
     void modelName;
     const res = await fetch(`${base}/sdapi/v1/txt2img`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: localServiceHeaders({ 'content-type': 'application/json' }),
       body: JSON.stringify({
         prompt,
         negative_prompt: '',

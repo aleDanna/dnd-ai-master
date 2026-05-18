@@ -12,6 +12,14 @@
  */
 
 import { loadDbEnv } from '../src/db/connection-url';
+
+// One-shot DATABASE_URL override for bake-time only. Lets the Mac point at
+// the Supabase prod DB while keeping the dev .env.local / .env.development.local
+// pointed at the local docker Postgres. Set BEFORE loadDbEnv so dotenv's
+// first-write-wins precedence keeps this value.
+if (process.env.BAKE_DATABASE_URL) {
+  process.env.DATABASE_URL = process.env.BAKE_DATABASE_URL;
+}
 loadDbEnv();
 
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
@@ -142,7 +150,10 @@ async function listInstalledOllamaModels(): Promise<Set<string>> {
   const base = process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434';
   let res: Response;
   try {
-    res = await fetch(`${base}/api/tags`);
+    const token = process.env.LOCAL_LLM_TOKEN;
+    res = await fetch(`${base}/api/tags`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
   } catch (e) {
     throw new Error(`Ollama unreachable at ${base} — is it running? (${e instanceof Error ? e.message : String(e)})`);
   }

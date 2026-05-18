@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { GoogleGenAI } from '@google/genai';
 import type { TtsProvider } from '@/lib/tts-voices';
+import { localServiceHeaders } from '@/lib/local-fetch';
 
 /**
  * Multi-provider TTS (text-to-speech). Anthropic is intentionally absent —
@@ -86,7 +87,7 @@ async function synthesizePiper(input: SynthesizeInput): Promise<SynthesizeOutput
   if (!voice) throw new Error('tts: piper requires a voice');
   const res = await fetch(`${base}/v1/audio/speech`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: localServiceHeaders({ 'content-type': 'application/json' }),
     body: JSON.stringify({
       model: 'piper',
       voice,
@@ -108,7 +109,7 @@ async function synthesizeXtts(input: SynthesizeInput): Promise<SynthesizeOutput>
   const language = input.voice ?? 'en';
   const res = await fetch(`${base}/tts_to_audio/`, {  // trailing slash matters
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: localServiceHeaders({ 'content-type': 'application/json' }),
     body: JSON.stringify({
       text: input.text,
       speaker_wav: 'Claribel Dervla',  // default built-in speaker

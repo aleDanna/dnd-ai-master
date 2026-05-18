@@ -1,19 +1,24 @@
 import { XTTS_LANGUAGES } from './tts-voices';
 import { isBakedModel, getBakedBaseModel, TIER_LABELS } from '@/ai/master/baked-models';
 import { pingEmbedder } from '@/ai/master/rag/embedder';
+import { ollamaHeaders } from './local-fetch';
 
 /**
- * True when the current process is a local development environment.
+ * True when the process can talk to a "local" provider stack. Two regimes:
  *
- * Returns true iff:
- *   - process.env.VERCEL is not set (Vercel sets this on every deployment,
- *     production AND preview), AND
- *   - process.env.NODE_ENV is not 'production' (production build / `next start`).
+ *  1. Dev machine: VERCEL unset AND NODE_ENV != 'production' → always true.
+ *     The user is on `pnpm dev`; we expose every local-engine surface so
+ *     they can pick Ollama / Piper / ComfyUI etc. in Settings.
  *
- * `pnpm dev` → true. `pnpm start` → false. Any Vercel deployment → false.
+ *  2. Cloud deploy (Vercel / `pnpm start`): true ONLY when the remote
+ *     LLM tunnel is wired up — both `OLLAMA_BASE_URL` and `LOCAL_LLM_TOKEN`
+ *     must be set. The token gates the public tunnel endpoint, so without
+ *     it we refuse to call the remote Ollama (would leak access if the
+ *     proxy ever ran without auth).
  */
 export function isLocalEnvironment(): boolean {
-  return !process.env.VERCEL && process.env.NODE_ENV !== 'production';
+  if (!process.env.VERCEL && process.env.NODE_ENV !== 'production') return true;
+  return !!process.env.OLLAMA_BASE_URL && !!process.env.LOCAL_LLM_TOKEN;
 }
 
 /**
@@ -23,11 +28,12 @@ export function isLocalEnvironment(): boolean {
  * Never throws — network errors, timeouts, and non-2xx all return false.
  * Used at Settings render to display ✓/✗ badges without breaking the page.
  */
-export async function pingService(baseUrl: string, path: string): Promise<boolean> {
+export async function pingService(baseUrl: string, path: string, headers?: Record<string, string>): Promise<boolean> {
   try {
     const res = await fetch(`${baseUrl}${path}`, {
       signal: AbortSignal.timeout(2000),
       cache: 'no-store',
+      ...(headers ? { headers } : {}),
     });
     return res.ok;
   } catch {
@@ -205,6 +211,7 @@ export async function fetchOllamaModels(): Promise<ModelOption[]> {
     const res = await fetch(`${base}/api/tags`, {
       signal: AbortSignal.timeout(2000),
       cache: 'no-store',
+      headers: ollamaHeaders(),
     });
     if (!res.ok) return [];
     const json = (await res.json()) as OllamaTagsResponse;
@@ -251,7 +258,7 @@ export async function fetchOllamaModels(): Promise<ModelOption[]> {
 async function buildAiStatus(): Promise<EngineStatus> {
   const enabled = !!process.env.OLLAMA_BASE_URL;
   if (!enabled) return { enabled: false, reachable: false, models: [] };
-  const reachable = await pingService(process.env.OLLAMA_BASE_URL!, '/api/tags');
+  const reachable = await pingService(process.env.OLLAMA_BASE_URL!, '/api/tags', ollamaHeaders());
   const models = reachable ? await fetchOllamaModels() : [];
   return { enabled, reachable, models, ...(reachable ? {} : { error: 'unreachable' }) };
 }

@@ -19,6 +19,7 @@ import {
 } from './ollama-adapter';
 import { recordUsage } from '@/ai/master/usage';
 import { isBakedModel, getBakedBaseModel } from '@/ai/master/baked-models';
+import { ollamaHeaders } from '@/lib/local-fetch';
 
 const KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE ?? '5m';
 // Ollama defaults `num_ctx` to 2048 which truncates the master prompt
@@ -199,7 +200,7 @@ async function chat(
   const isStream = (body as { stream?: boolean }).stream === true;
   const res = await fetch(`${baseUrl()}/api/chat`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: ollamaHeaders({ 'content-type': 'application/json' }),
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(fetchTimeoutMs),
   });

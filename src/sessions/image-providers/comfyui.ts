@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ImageGenResult } from './openai';
+import { localServiceHeaders } from '@/lib/local-fetch';
 
 const WORKFLOWS_DIR = join(process.cwd(), 'src/sessions/image-providers/comfyui-workflows');
 const POLL_INTERVAL_MS = 1_000;
@@ -58,7 +59,7 @@ export async function generateBytesComfyUI(prompt: string, workflowSlug: string)
 
     const submitRes = await fetch(`${base}/prompt`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: localServiceHeaders({ 'content-type': 'application/json' }),
       body: JSON.stringify({ prompt: workflow, client_id: crypto.randomUUID() }),
     });
     if (!submitRes.ok) {
@@ -79,7 +80,7 @@ export async function generateBytesComfyUI(prompt: string, workflowSlug: string)
 
     const startTime = Date.now();
     while (Date.now() - startTime < MAX_WAIT_MS) {
-      const histRes = await fetch(`${base}/history/${promptId}`);
+      const histRes = await fetch(`${base}/history/${promptId}`, { headers: localServiceHeaders() });
       if (histRes.ok) {
         const hist = (await histRes.json()) as ComfyHistory;
         const entry = hist[promptId];
@@ -94,7 +95,7 @@ export async function generateBytesComfyUI(prompt: string, workflowSlug: string)
             `&subfolder=${encodeURIComponent(image.subfolder ?? '')}&type=${encodeURIComponent(image.type ?? 'output')}`;
           // eslint-disable-next-line no-console
           console.log('[comfyui]', `${Date.now() - startTime}ms`, 'completed, fetching', viewUrl);
-          const viewRes = await fetch(viewUrl);
+          const viewRes = await fetch(viewUrl, { headers: localServiceHeaders() });
           if (!viewRes.ok) {
             return { ok: false, reason: 'api_error', detail: `view ${viewRes.status}` };
           }

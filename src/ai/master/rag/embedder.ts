@@ -1,4 +1,5 @@
 import type { EmbedderConfig } from './types';
+import { ollamaHeaders } from '@/lib/local-fetch';
 
 export const DEFAULT_EMBEDDER_CONFIG: EmbedderConfig = {
   baseUrl: process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434',
@@ -35,7 +36,7 @@ interface OllamaEmbeddingResponse {
 export async function embed(text: string, config: EmbedderConfig = DEFAULT_EMBEDDER_CONFIG): Promise<number[]> {
   const res = await fetch(`${config.baseUrl}/api/embeddings`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: ollamaHeaders({ 'content-type': 'application/json' }),
     body: JSON.stringify({ model: config.model, prompt: text, keep_alive: EMBEDDER_KEEP_ALIVE }),
     signal: AbortSignal.timeout(config.timeoutMs),
   });
