@@ -12,7 +12,7 @@ describe('fetchPiperVoices', () => {
   it('returns the configured voices (6 OpenAI-compat + 2 italian)', async () => {
     const r = await fetchPiperVoices();
     expect(r.map((m) => m.slug)).toEqual(['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer', 'paola', 'riccardo']);
-    expect(r[0].slug).toBe('alloy');
+    expect(r[0]?.slug).toBe('alloy');
   });
 
   it('returns [] when PIPER_BASE_URL unset', async () => {
