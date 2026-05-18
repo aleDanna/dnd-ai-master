@@ -1266,17 +1266,34 @@ const ALWAYS_ON: AnthropicTool[] = [
   },
 ];
 
+import { META_TOOL_DEFINITIONS } from './meta-tools';
+
 /**
- * Build the tool list for a turn. Currently a thin wrapper over `ALWAYS_ON` —
- * the prefs argument is retained for forward-compatibility (e.g. future
- * opt-in tools).
+ * Build the tool list for a turn.
  *
- * Note: scene-image generation USED to live here as a master-callable tool
- * gated on `prefs.imageGenerationEnabled`. It was removed because gpt-5
- * called it too aggressively when given the chance. Image generation is now
- * a manual user action (button in the chat next to Listen).
+ * - Default (cloud providers): returns the full ALWAYS_ON list (72 tools).
+ *   Each tool is a direct, individual schema — Claude/GPT/Gemini reason
+ *   over them fine.
+ *
+ * - `opts.localOptimized: true` (local provider): returns the 8 meta-tools
+ *   that collectively cover all 72 ALWAYS_ON tools via discriminated
+ *   sub-actions. The runtime dispatcher in meta-dispatcher.ts rewrites the
+ *   meta call back to the underlying tool name before the engine
+ *   applicator runs, so the handlers themselves are untouched.
+ *
+ *   Why meta-tools for local: a 14-20B local model can't reason over a
+ *   72-option tool catalogue inside a 40k-token prompt in under a minute.
+ *   8 meta-tools cuts the LLM-facing tool definitions to ~1.5k tokens and
+ *   simplifies the decision space, while still exposing every game-engine
+ *   feature via sub-actions.
  */
-export function buildToolDefinitions(_prefs: Pick<UserPreferences, 'imageGenerationEnabled'>): AnthropicTool[] {
+export function buildToolDefinitions(
+  _prefs: Pick<UserPreferences, 'imageGenerationEnabled'>,
+  opts?: { localOptimized?: boolean },
+): AnthropicTool[] {
+  if (opts?.localOptimized) {
+    return META_TOOL_DEFINITIONS;
+  }
   return ALWAYS_ON;
 }
 

@@ -55,7 +55,7 @@ describe('tts_cache persistence', () => {
       .where(and(eq(ttsCache.messageId, MESSAGE_ID), eq(ttsCache.voice, 'onyx')))
       .limit(1);
     expect(hit).toBeDefined();
-    expect(Buffer.compare(hit!.audioMp3, fakeMp3)).toBe(0);
+    expect(Buffer.compare(hit!.audioMp3!, fakeMp3)).toBe(0);
 
     // Second insert with the same PK: no-op via onConflictDoNothing (would otherwise throw).
     await db
@@ -69,7 +69,7 @@ describe('tts_cache persistence', () => {
       .from(ttsCache)
       .where(and(eq(ttsCache.messageId, MESSAGE_ID), eq(ttsCache.voice, 'onyx')))
       .limit(1);
-    expect(Buffer.compare(stillThere!.audioMp3, fakeMp3)).toBe(0);
+    expect(Buffer.compare(stillThere!.audioMp3!, fakeMp3)).toBe(0);
 
     // A different voice for the same message gets its own row.
     await db.insert(ttsCache).values({ messageId: MESSAGE_ID, voice: 'nova', audioMp3: Buffer.from([0x77, 0x88]), provider: 'openai' });

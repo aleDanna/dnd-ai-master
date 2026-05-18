@@ -61,5 +61,14 @@ next-env.d.ts
 # Local DB snapshots (pg_dump custom format)
 /.snapshots/
 
+# Generated Ollama Modelfiles (Plan D — pnpm build-local-models)
+/.ollama/
+
+# Dev server log (Plan D smoke testing — `pnpm dev:log` writes here)
+/.dev.log
+
 # Brainstorming companion sessions
 .superpowers/
+
+# clerk configuration (can include secrets)
+/.clerk/

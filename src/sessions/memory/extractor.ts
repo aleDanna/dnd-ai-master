@@ -259,17 +259,25 @@ export async function* rebuildMemoryStream(
  * extractor falls back to the env-level MASTER_PROVIDER, which on this
  * deployment defaults to Anthropic and surfaces as "ANTHROPIC_API_KEY not set"
  * for users on OpenAI/Gemini. The turn route passes it through. */
-export async function extractMemory(sessionId: string, providerName?: ProviderName): Promise<void> {
+export async function extractMemory(
+  sessionId: string,
+  providerName?: ProviderName,
+  fallbackModel?: string,
+): Promise<void> {
   const holder = await tryAcquireMemoryLock(sessionId);
   if (!holder) return;
   try {
-    await runExtraction(sessionId, providerName);
+    await runExtraction(sessionId, providerName, fallbackModel);
   } finally {
     await releaseMemoryLock(sessionId, holder);
   }
 }
 
-async function runExtraction(sessionId: string, providerName?: ProviderName): Promise<void> {
+async function runExtraction(
+  sessionId: string,
+  providerName?: ProviderName,
+  fallbackModel?: string,
+): Promise<void> {
   const ctx = await buildContext(sessionId);
   if (!ctx) return;
 
@@ -293,7 +301,12 @@ async function runExtraction(sessionId: string, providerName?: ProviderName): Pr
   let response;
   try {
     response = await provider(providerName).completeMessage({
-      model: process.env.MEMORY_EXTRACTOR_MODEL,
+      // Cloud deployments typically set MEMORY_EXTRACTOR_MODEL to a cheap
+      // model (e.g. claude-haiku, gpt-5-mini). Local users (Ollama) won't
+      // have it set — fall back to the campaign's master model so the
+      // extractor reuses whatever the user already has loaded. The
+      // baked dnd-master-* variants work fine here too.
+      model: process.env.MEMORY_EXTRACTOR_MODEL ?? fallbackModel,
       systemBlocks: [{ type: 'text', text: sys }],
       messages: [{ role: 'user', content: userText }],
       tools: [],

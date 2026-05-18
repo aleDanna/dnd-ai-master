@@ -84,6 +84,9 @@ export interface CampaignRow {
   tonalFrame: string | null;
   engagementProfile: string[];
   status: 'active' | 'ended';
+  /** Ollama model slug currently selected for the master in this campaign.
+   *  Null when the campaign has not picked one (uses env / global default). */
+  aiMasterModel: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -11,6 +11,12 @@ import { acquireTurnLock, releaseTurnLock } from '@/sessions/lock';
 import { buildSrdContext } from '@/ai/master/srd-context';
 import { getMasterHandbook, getMasterWorldLore } from '@/ai/master/handbook';
 import { buildMasterSystemPrompt } from '@/ai/master/system-prompt';
+import { deriveMode, needsSpellcastingOverlay } from '@/ai/master/mode';
+import { retrieveRelevant } from '@/ai/master/rag/retriever';
+import { getRagStore } from '@/ai/master/rag/store';
+import { embed } from '@/ai/master/rag/embedder';
+import { isBakedModel, warnIfBakedModelStale } from '@/ai/master/baked-models';
+import { getRuntimePromptHash } from '@/ai/master/runtime-prompt-hash';
 import { detectLanguage } from '@/ai/master/language';
 import { runToolLoop } from '@/ai/master/tool-loop';
 import { buildToolDefinitions } from '@/engine';
@@ -120,12 +126,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   waitUntil(
     (async () => {
       try {
+        // eslint-disable-next-line no-console
+        console.log('[turn]', sessionId, 'start, isBegin=', isBegin);
         // 0. Resolve session-scoped (host's) prefs once — the AI provider/model
         // and master-behavior flags MUST be uniform across the party regardless
         // of who's posting this turn. Personal-device prefs (TTS voice etc.)
         // are not consumed here; they only matter for /messages/<id>/tts which
         // resolves per-viewer.
         const userPrefs = await getSessionMasterPreferences(sessionId);
+        // eslint-disable-next-line no-console
+        console.log('[turn]', sessionId, 'userPrefs aiProvider=', userPrefs.aiProvider, 'model=', userPrefs.aiMasterModel);
+
+        // Emit a turn-status notification ASAP so the client can derive the
+        // right "responding" label and lock the composer. Without this the
+        // client only knows a turn is in flight (via the POST 202 itself,
+        // optimistic) but has no idea whether it's an opener, a cold local
+        // call, or a regular warm cloud turn.
+        notifySession(sessionId, {
+          type: 'turn-status',
+          isBegin,
+          isLocalProvider: userPrefs.aiProvider === 'local',
+        }).catch((e) =>
+          console.warn('notifySession(turn-status) failed:', e instanceof Error ? e.message : String(e)),
+        );
 
         // 1. Persist player message — skipped on the synthetic "begin" turn
         // (no real player text exists yet; the master is opening the scene
@@ -163,10 +186,122 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const snap = await buildSnapshot(sessionId, userId);
 
         // 4. Build system prompt + history
-        const srd = await buildSrdContext();
-        const handbook = getMasterHandbook();
-        const worldLore = getMasterWorldLore();
+        //
+        // Plan D (baked models): when aiMasterModel starts with `dnd-master-`,
+        // the static prompt blocks (BASE, TOOL_CONTRACT, META_TOOLS,
+        // ROLL_TRIGGERS, REWARDS_MANDATE, handbook, worldLore, MEMORY_TOOL_RULE,
+        // SRD context) are already baked into the model via Modelfile SYSTEM.
+        // We skip re-emitting them entirely and pass empty strings so the
+        // handbook/SRD readers don't fire from disk for nothing.
+        //
+        // Plan C (compact prompt): for non-baked local models, when
+        // `compactPrompt` is on (defaults true for local, false for cloud),
+        // load the trimmed variants — fits qwen3:14b's context window without
+        // losing the rules + rewards mandate.
+        const baked = isBakedModel(userPrefs.aiMasterModel);
+        const useCompact = !baked && userPrefs.compactPrompt;
+        const srd = baked ? '' : await buildSrdContext({ compact: useCompact });
+        const handbook = baked ? '' : getMasterHandbook({ compact: useCompact });
+        const worldLore = baked ? '' : getMasterWorldLore({ compact: useCompact });
+
+        // Plan D: fire-and-forget staleness check. Memoised inside —
+        // logs at most one warning per (model, hash, hash) per process.
+        // Never throws (the helper swallows fetch errors).
+        if (baked && process.env.OLLAMA_BASE_URL) {
+          const ollamaBase = process.env.OLLAMA_BASE_URL;
+          void (async () => {
+            try {
+              // Pass the model name so the runtime hash matches the
+              // per-base manifest the build script stamped (large bases
+              // skip MASTER_HANDBOOK_ULTRA_SLIM, small bases keep it).
+              const runtimeHash = await getRuntimePromptHash(userPrefs.aiMasterModel);
+              await warnIfBakedModelStale({
+                modelName: userPrefs.aiMasterModel,
+                ollamaBase,
+                runtimeHash,
+              });
+            } catch {
+              /* never block a turn on this */
+            }
+          })();
+        }
         const memory = await loadMemoryContext(sessionId, snap.scene);
+
+        // Plan E.1: mode-aware prompt. When enabled, derive the active mode from
+        // engine state + check whether the active PC is a spellcaster.
+        const useModeAware = userPrefs.useModeAwarePrompt;  // already resolved by getResolvedPreferences (Task 8)
+        const mode = useModeAware ? deriveMode(snap.state) : undefined;
+        const needsSpellcasting = useModeAware ? needsSpellcastingOverlay(snap) : undefined;
+
+        // Build history before the system prompt so the RAG block (Plan E.2)
+        // can use recent messages as the retrieval query.
+        let history: Anthropic.Messages.MessageParam[];
+        if (isBegin) {
+          // First-turn opener: bypass DB history (we just verified it's empty
+          // upstream of this branch) and feed a single synthetic user
+          // instruction so the model has something to respond to.
+          history = [{ role: 'user', content: BEGIN_INSTRUCTION }];
+        } else {
+          // History window: how many recent messages to pull. 10 = ~5 turn
+          // back (user+assistant pairs) which keeps prompt size ~10-12K
+          // instead of ~21K with 20 msgs. Saves ~3-5x on prompt_eval time
+          // for slow local models. Tuned for llama3.2:3b / qwen3:4b which
+          // are 30-40 tok/s on M-series unified memory.
+          //
+          // Trade-off: master "forgets" older turns faster. Mitigated by the
+          // scene card + chapter digests + codex index already in the prompt
+          // (all summarise pre-window state). Bump back to 20 if you observe
+          // continuity loss across long sessions.
+          const HISTORY_LIMIT = Number(process.env.MASTER_HISTORY_LIMIT ?? '10');
+          const recent = await db
+            .select()
+            .from(sessionMessages)
+            .where(and(eq(sessionMessages.sessionId, sessionId), eq(sessionMessages.cacheBreakpoint, false)))
+            .orderBy(desc(sessionMessages.createdAt))
+            .limit(HISTORY_LIMIT);
+          // In PARTY MODE the master needs to know which PG authored each
+          // player message — otherwise it can't tell "I tip the guard" from
+          // "Kank tips the guard". Solo mode keeps the bare content (no
+          // bracket noise for a single-character session).
+          const nameById = new Map<string, string>(snap.party.map((c) => [c.id, c.name]));
+          const usePrefix = snap.party.length > 1;
+          history = recent
+            .reverse()
+            .filter((m) => m.role !== 'system')
+            .map((m) => {
+              if (m.role === 'master') return { role: 'assistant', content: m.content };
+              const name = usePrefix && m.authorCharacterId ? nameById.get(m.authorCharacterId) : null;
+              const content = name ? `[${name}] ${m.content}` : m.content;
+              return { role: 'user', content };
+            });
+        }
+
+        // Plan E.2: RAG retrieval. Off by default; opt-in per campaign in Phase 2.
+        // When enabled, we embed the last 2 user messages + last master message
+        // and retrieve top-3 chunks. Failure (embedder down, store empty) returns
+        // [] so the prompt builder skips the block entirely.
+        const useRag = userPrefs.useRagRetrieval;
+        let ragChunks: Awaited<ReturnType<typeof retrieveRelevant>> = [];
+        if (useRag) {
+          const recentForQuery = [
+            ...history.filter((m) => m.role === 'user').slice(-2).map((m) =>
+              typeof m.content === 'string' ? m.content : ''
+            ),
+            ...history.filter((m) => m.role === 'assistant').slice(-1).map((m) =>
+              typeof m.content === 'string' ? m.content : ''
+            ),
+          ].filter(Boolean).join('\n');
+          if (recentForQuery) {
+            const { store } = await getRagStore();
+            ragChunks = await retrieveRelevant({
+              query: recentForQuery,
+              store,
+              embedFn: (t) => embed(t),
+              k: 3,
+            });
+          }
+        }
+
         const sys = buildMasterSystemPrompt({
           srdContext: srd,
           handbook,
@@ -190,44 +325,45 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // Multiplayer — party roster + active player for PARTY MODE block.
           party: snap.party,
           currentPlayerCharacterId: snap.currentPlayerCharacterId,
+          // Plan B (local provider): inject meta-tools instructions block so
+          // the master knows it sees 8 meta-tools (with subaction discriminator)
+          // instead of the flat 72-tool list. Cloud providers keep the
+          // current flat tool catalogue and skip this block.
+          usesMetaTools: userPrefs.aiProvider === 'local',
+          // Plan D: when the chosen local model is a baked variant
+          // (dnd-master-*), skip emitting the 9 static blocks in the runtime
+          // prompt — they are already inside the model's weights via
+          // Modelfile SYSTEM.
+          staticBlocksAlreadyBaked: baked,
+          // Plan E.1: mode-aware prompt fields. When useModeAware=false they're
+          // undefined and buildMasterSystemPrompt skips the mode/overlay injection
+          // entirely (back-compat path).
+          mode,
+          needsSpellcasting,
+          // Plan E.2:
+          ragChunks,
         });
-
-        let history: Anthropic.Messages.MessageParam[];
-        if (isBegin) {
-          // First-turn opener: bypass DB history (we just verified it's empty
-          // upstream of this branch) and feed a single synthetic user
-          // instruction so the model has something to respond to.
-          history = [{ role: 'user', content: BEGIN_INSTRUCTION }];
-        } else {
-          const recent = await db
-            .select()
-            .from(sessionMessages)
-            .where(and(eq(sessionMessages.sessionId, sessionId), eq(sessionMessages.cacheBreakpoint, false)))
-            .orderBy(desc(sessionMessages.createdAt))
-            .limit(20);
-          // In PARTY MODE the master needs to know which PG authored each
-          // player message — otherwise it can't tell "I tip the guard" from
-          // "Kank tips the guard". Solo mode keeps the bare content (no
-          // bracket noise for a single-character session).
-          const nameById = new Map<string, string>(snap.party.map((c) => [c.id, c.name]));
-          const usePrefix = snap.party.length > 1;
-          history = recent
-            .reverse()
-            .filter((m) => m.role !== 'system')
-            .map((m) => {
-              if (m.role === 'master') return { role: 'assistant', content: m.content };
-              const name = usePrefix && m.authorCharacterId ? nameById.get(m.authorCharacterId) : null;
-              const content = name ? `[${name}] ${m.content}` : m.content;
-              return { role: 'user', content };
-            });
-        }
 
         // 5. Run the tool loop — events forwarded to SSE subscribers via notifySession.
         // Provider + model are resolved from user prefs (with env fallback) so each
         // user can pick their own AI without redeploying.
+        // eslint-disable-next-line no-console
+        console.log('[turn]', sessionId, 'about to dispatch provider=', userPrefs.aiProvider);
         const provider = getProviderByName(userPrefs.aiProvider);
+        // Local models can't reason effectively over the full 72-tool
+        // ALWAYS_ON set inside a 40k system prompt. For local providers we
+        // expose 8 meta-tools that route to the underlying handlers via
+        // src/engine/tools/meta-dispatcher.ts. Cloud providers keep the
+        // full 72-tool catalogue (and the system prompt skips the meta
+        // instructions block via usesMetaTools=false above).
+        const localOptimized = userPrefs.aiProvider === 'local';
+        const tools = buildToolDefinitions(
+          { imageGenerationEnabled: userPrefs.imageGenerationEnabled },
+          { localOptimized },
+        );
+        // eslint-disable-next-line no-console
+        console.log('[turn]', sessionId, 'provider resolved:', provider.name, 'calling runToolLoop with model=', userPrefs.aiMasterModel, 'tools=', tools.length, 'localOptimized=', localOptimized);
         const masterModel = userPrefs.aiMasterModel;
-        const tools = buildToolDefinitions({ imageGenerationEnabled: userPrefs.imageGenerationEnabled });
         const result = await runToolLoop({
           provider,
           model: masterModel,
@@ -236,6 +372,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           state: snap.state,
           sessionId,
           tools,
+          campaignLanguage: campaign.language ?? snap.language ?? undefined,
           applyMutations: (muts, rolls) => applyMutations(sessionId, muts, rolls),
           recordUsage: async (usage) => {
             await recordUsage({
@@ -244,6 +381,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               endpoint: 'master',
               model: masterModel,
               usage,
+              mode,
+              needsSpellcasting,
+              ragChunkCount: ragChunks.length,
             });
           },
           onEvent: (ev) => {
@@ -254,6 +394,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             if (ev.type === 'narrative_delta') {
               notifySession(sessionId, { type: 'message-chunk', messageId: '', text: ev.text }).catch(
                 (e) => console.warn('notifySession(message-chunk) failed:', e instanceof Error ? e.message : String(e)),
+              );
+            } else if (ev.type === 'thinking') {
+              // Local streaming providers signal entry/exit of the chain-of-
+              // thought phase. Frontend uses this to render a "Master is
+              // thinking…" placeholder while the raw thinking tokens are
+              // filtered server-side.
+              notifySession(sessionId, { type: 'thinking', state: ev.state }).catch(
+                (e) => console.warn('notifySession(thinking) failed:', e instanceof Error ? e.message : String(e)),
               );
             }
           },
@@ -332,7 +480,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             (e) => console.warn('notifySession(message) failed:', e instanceof Error ? e.message : String(e)),
           );
           waitUntil(
-            extractMemory(sessionId, userPrefs.aiProvider).catch((e) => {
+            // Pass the master model as fallback — local users (Ollama) don't
+            // have MEMORY_EXTRACTOR_MODEL set, so without this we'd hit
+            // `400: model is required` on every turn.
+            extractMemory(sessionId, userPrefs.aiProvider, userPrefs.aiMasterModel).catch((e) => {
               console.error('memory.extract.fire_and_forget', e instanceof Error ? e.message : String(e));
             }),
           );

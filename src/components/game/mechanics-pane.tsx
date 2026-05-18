@@ -3,7 +3,6 @@ import { Eyebrow } from '@/components/ui/eyebrow';
 import { Chip } from '@/components/ui/chip';
 import { CombatTracker } from './combat-tracker';
 import { XpBar } from './xp-bar';
-import { RebuildMemoryButton } from '@/components/rebuild-memory-button';
 import type { CombatActorRow, SessionStateRow } from '@/sessions/client-types';
 
 export interface MechanicsPaneProps {
@@ -55,13 +54,6 @@ export function MechanicsPane({ sessionId, state, actors, pcCharacterId, pcName,
         ...(compact ? {} : { position: 'sticky', top: 56, height: 'calc(100vh - 56px)', overflowY: 'auto' }),
       }}
     >
-      {/* Memoria sits at the top so the player can trigger a codex rebuild
-          without scrolling past HP / scene / inventory. Useful after a crash
-          mid-turn left the extractor behind. */}
-      <section>
-        <Eyebrow style={{ marginBottom: 6 }}>Memoria</Eyebrow>
-        <RebuildMemoryButton sessionId={sessionId} />
-      </section>
       <XpBar level={pcLevel} xp={pcXp} />
       {showTravel && (
         <section>

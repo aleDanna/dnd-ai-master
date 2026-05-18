@@ -6,6 +6,12 @@ import {
   MASTER_GUIDANCE_STRUCTURED,
   MASTER_HIDE_DIFFICULTY_RULE,
   MASTER_BRISK_PACING_RULE,
+  MASTER_SYSTEM_PROMPT_BASE,
+  MASTER_TOOL_CONTRACT,
+  MASTER_META_TOOLS_INSTRUCTION,
+  MASTER_ROLL_TRIGGERS,
+  MASTER_REWARDS_MANDATE,
+  MASTER_MEMORY_TOOL_RULE,
 } from '@/ai/master/system-prompt';
 
 const baseInput = {
@@ -75,8 +81,10 @@ describe('buildMasterSystemPrompt — master guidance level', () => {
     for (let i = 0; i < 3; i++) {
       expect(system[i]!.cache_control).toEqual({ type: 'ephemeral' });
     }
-    // The guidance block itself is per-user, NOT cached.
-    expect(system[guidanceIdx]!.cache_control).toBeUndefined();
+    // The guidance block is session-stable (set at campaign creation, rarely
+    // changed), so it ALSO carries cache_control: ephemeral. It sits AFTER
+    // the cross-campaign static prefix but BEFORE any per-turn dynamic block.
+    expect(system[guidanceIdx]!.cache_control).toEqual({ type: 'ephemeral' });
   });
 
   it('appends the brisk-pacing rule when narrationPace=brisk', () => {
@@ -258,14 +266,17 @@ describe('buildMasterSystemPrompt — dynamic Campaign Tonal Frame block', () =>
     expect(heroicBlock).toMatch(/heroes|kingdom|magic|LotR|triumph|noble/i);
   });
 
-  it('places the dynamic block AFTER the cached static prefix', () => {
+  it('places the tonal-frame block AFTER the cross-campaign static prefix but still cached for session reuse', () => {
     const out = buildMasterSystemPrompt({ ...baseInput, tonalFrame: 'mythic' });
     const blockIdx = out.system.findIndex((b) =>
       b.text.startsWith('## Campaign Tonal Frame'),
     );
     expect(blockIdx).toBeGreaterThanOrEqual(3);
-    // The block itself is per-session, NOT cached.
-    expect(out.system[blockIdx]!.cache_control).toBeUndefined();
+    // The tonal frame is session-stable (set at campaign creation and rarely
+    // mutated), so it carries cache_control: ephemeral. It sits in the
+    // "session-stable" group AFTER the cross-campaign static prefix but
+    // BEFORE any per-turn dynamic block (party / scene / character).
+    expect(out.system[blockIdx]!.cache_control).toEqual({ type: 'ephemeral' });
   });
 });
 
@@ -304,5 +315,98 @@ describe('buildMasterSystemPrompt — dynamic Player Engagement Hint block', () 
     const texts = out.system.map((b) => b.text);
     expect(texts.some((t) => t.startsWith('## Campaign Tonal Frame'))).toBe(true);
     expect(texts.some((t) => t.startsWith('## Player Engagement Hint'))).toBe(true);
+  });
+});
+
+describe('buildMasterSystemPrompt — Plan D staticBlocksAlreadyBaked', () => {
+  const HANDBOOK_FIXTURE = '# DM Handbook FIXTURE 9f4c\n## 1.1 marker';
+  const WORLDLORE_FIXTURE = '# World Lore FIXTURE 22ab\n## 1.';
+  const SRD_FIXTURE = '# Rules reference FIXTURE 7d10';
+
+  const input = {
+    ...baseInput,
+    handbook: HANDBOOK_FIXTURE,
+    worldLore: WORLDLORE_FIXTURE,
+    srdContext: SRD_FIXTURE,
+  };
+
+  it('omits all 9 static blocks when staticBlocksAlreadyBaked=true', () => {
+    const { system } = buildMasterSystemPrompt({
+      ...input,
+      staticBlocksAlreadyBaked: true,
+      usesMetaTools: true,
+    });
+    const texts = system.map((b) => b.text);
+    // None of the 9 baked blocks should appear in the runtime output.
+    expect(texts).not.toContain(MASTER_SYSTEM_PROMPT_BASE);
+    expect(texts).not.toContain(MASTER_TOOL_CONTRACT);
+    expect(texts).not.toContain(MASTER_META_TOOLS_INSTRUCTION);
+    expect(texts).not.toContain(MASTER_ROLL_TRIGGERS);
+    expect(texts).not.toContain(MASTER_REWARDS_MANDATE);
+    expect(texts).not.toContain(MASTER_MEMORY_TOOL_RULE);
+    expect(texts.every((t) => !t.includes('FIXTURE 9f4c'))).toBe(true);
+    expect(texts.every((t) => !t.includes('FIXTURE 22ab'))).toBe(true);
+    expect(texts.every((t) => !t.includes('FIXTURE 7d10'))).toBe(true);
+  });
+
+  it('still emits dynamic blocks (guidance, langHint, snapshot tail) when baked', () => {
+    const { system } = buildMasterSystemPrompt({
+      ...input,
+      staticBlocksAlreadyBaked: true,
+      masterGuidanceLevel: 'free',
+      language: 'it',
+      scene: 'scene-fixture-3ae2',
+    });
+    const texts = system.map((b) => b.text);
+    // Guidance still emitted
+    expect(texts).toContain(MASTER_GUIDANCE_FREE);
+    // Language hint still emitted
+    expect(texts.some((t) => t.includes('Italian'))).toBe(true);
+    // Snapshot tail still emitted (scene fixture appears somewhere)
+    expect(texts.some((t) => t.includes('scene-fixture-3ae2'))).toBe(true);
+  });
+
+  it('keeps non-baked behaviour byte-for-byte unchanged (default false)', () => {
+    const withFlag = buildMasterSystemPrompt({
+      ...input,
+      staticBlocksAlreadyBaked: false,
+      usesMetaTools: true,
+      masterGuidanceLevel: 'balanced',
+    });
+    const withoutFlag = buildMasterSystemPrompt({
+      ...input,
+      usesMetaTools: true,
+      masterGuidanceLevel: 'balanced',
+    });
+    // Both should produce the same number of blocks and identical text.
+    expect(withFlag.system.length).toBe(withoutFlag.system.length);
+    for (let i = 0; i < withFlag.system.length; i++) {
+      expect(withFlag.system[i]!.text).toBe(withoutFlag.system[i]!.text);
+    }
+  });
+
+  it('emits MASTER_META_TOOLS_INSTRUCTION only when NOT baked (it is part of the baked content)', () => {
+    const baked = buildMasterSystemPrompt({
+      ...input,
+      staticBlocksAlreadyBaked: true,
+      usesMetaTools: true,
+    });
+    const notBaked = buildMasterSystemPrompt({
+      ...input,
+      staticBlocksAlreadyBaked: false,
+      usesMetaTools: true,
+    });
+    expect(baked.system.map((b) => b.text)).not.toContain(MASTER_META_TOOLS_INSTRUCTION);
+    expect(notBaked.system.map((b) => b.text)).toContain(MASTER_META_TOOLS_INSTRUCTION);
+  });
+
+  it('produces a much smaller total system size when baked', () => {
+    const baked = buildMasterSystemPrompt({ ...input, staticBlocksAlreadyBaked: true });
+    const notBaked = buildMasterSystemPrompt({ ...input, staticBlocksAlreadyBaked: false });
+    const bakedSize = baked.system.reduce((s, b) => s + b.text.length, 0);
+    const notBakedSize = notBaked.system.reduce((s, b) => s + b.text.length, 0);
+    // The 5 baked constants alone are ~30 KB; non-baked must be much bigger
+    // than baked. We assert a >5x ratio defensively.
+    expect(notBakedSize).toBeGreaterThan(bakedSize * 5);
   });
 });

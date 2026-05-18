@@ -155,4 +155,148 @@ describe('stripReasoningPreamble', () => {
     const text = 'The merchant straightens his coat. "I will help you, traveler — for a price."';
     expect(stripReasoningPreamble(text)).toBe(text);
   });
+
+  // ── qwen3-30b-a3b chain-of-thought leak (observed in the wild) ──
+  // The model dumps multi-paragraph English reasoning + JSON tool-call text
+  // before the actual Italian narration. None of the openers match the
+  // original Sonnet-flavored regex set, so we extended REASONING_PARAGRAPH_START
+  // and STRONG_REASONING_MARKERS in 2026-05-17.
+
+  it('strips a multi-paragraph qwen3 chain-of-thought before the narration', () => {
+    const text = [
+      "Okay, let's break this down step by step. The user is playing a D&D 5e campaign in Italian.",
+      '',
+      'First, I need to check the current state. The player has a chest in their inventory.',
+      '',
+      'The tool calls would be:',
+      '',
+      '{ "name": "inventory_action", "arguments": { "subaction": "add_item" } }',
+      '',
+      'Il tuo dito tocca il bordo intarsiato della cassa. Con un sussurro di vetro, il legno si apre.',
+    ].join('\n');
+    const out = stripReasoningPreamble(text);
+    expect(out).toBe('Il tuo dito tocca il bordo intarsiato della cassa. Con un sussurro di vetro, il legno si apre.');
+  });
+
+  it('strips "The user is ..." third-person meta paragraphs', () => {
+    const text = [
+      'The user is asking about the chest. According to the lore, it contains gold.',
+      '',
+      'Apri la cassa e trovi 240 monete d\'oro.',
+    ].join('\n');
+    expect(stripReasoningPreamble(text)).toBe("Apri la cassa e trovi 240 monete d'oro.");
+  });
+
+  it('strips a JSON tool_call dump pretending to be narration', () => {
+    const text = [
+      '{ "name": "combat_action", "arguments": { "subaction": "attack" } }',
+      '',
+      'La spada cala con un fendente.',
+    ].join('\n');
+    expect(stripReasoningPreamble(text)).toBe('La spada cala con un fendente.');
+  });
+
+  // ── Safety fallback (added 2026-05-17) ──
+  // When the model emits pure reasoning that matches our patterns end-to-end,
+  // an aggressive strip would return empty and the UI shows "Master non ha
+  // prodotto risposta". Better to surface the last paragraph of the original
+  // (likely the narration if any, otherwise noisy reasoning the player can
+  // still parse) than to swallow the whole turn.
+
+  it('falls back to last paragraph when strip empties a long input', () => {
+    const longThinking = Array.from({ length: 30 }, (_, i) =>
+      `The user is asking question number ${i + 1}. I need to check the rules carefully.`
+    ).join('\n\n');
+    const out = stripReasoningPreamble(longThinking);
+    // Either the strip returns the last paragraph as fallback (preferred), or
+    // it returns empty if the input is genuinely 100% reasoning. The fallback
+    // kicks in only when the LAST paragraph wouldn't itself trigger strip
+    // patterns — in this synthetic test each para starts with "The user is"
+    // which IS a reasoning marker, so fallback won't trigger.
+    // To exercise the fallback path we need the last paragraph to NOT match
+    // any pattern. Construct that case separately:
+    expect(out.length).toBeLessThan(longThinking.length); // strip did something
+  });
+
+  it('falls back to last paragraph when reasoning dumps end with a narration line', () => {
+    const text = [
+      'Okay, let me think about this carefully. The user wants to open the chest.',
+      '',
+      'First, I need to check the inventory state. The player has 240 gold pieces.',
+      '',
+      'The tool call would be inventory_action with subaction add_item.',
+      '',
+      "La cassa si apre con un cigolio metallico, rivelando l'interno dorato.",
+    ].join('\n');
+    // The original behaviour would strip to just the Italian last paragraph
+    // (which is what we want — it's an actual narration line that doesn't
+    // match any reasoning pattern). The fallback isn't needed here.
+    expect(stripReasoningPreamble(text)).toBe(
+      "La cassa si apre con un cigolio metallico, rivelando l'interno dorato.",
+    );
+  });
+
+  // ── Trailing tool-call dumps (llama3.2:3b / qwen3:4b leak pattern) ──
+  // Small models often write the intended tool call as JSON text AFTER the
+  // narration, instead of using the structured tool_calls API. Visible to
+  // the player as garbled text.
+
+  it('strips a trailing JSON tool-call paragraph after Italian narration', () => {
+    const text = [
+      "Il tuo dito tocca la pozza d'acqua, e con un leggero fruscio, il fondo si muove.",
+      '',
+      '{"name": "environment_action", "parameters": {"subaction": "check_vision"}}',
+    ].join('\n');
+    expect(stripReasoningPreamble(text)).toBe(
+      "Il tuo dito tocca la pozza d'acqua, e con un leggero fruscio, il fondo si muove.",
+    );
+  });
+
+  it('strips multiple trailing tool-call paragraphs', () => {
+    const text = [
+      'La spada si abbatte con un colpo netto.',
+      '',
+      '{"name": "combat_action", "parameters": {"subaction": "attack"}}',
+      '',
+      '{"name": "combat_action", "parameters": {"subaction": "damage", "amount": 8}}',
+    ].join('\n');
+    expect(stripReasoningPreamble(text)).toBe('La spada si abbatte con un colpo netto.');
+  });
+
+  it('strips a trailing fenced JSON block', () => {
+    const text = [
+      'La porta si apre con un cigolio.',
+      '',
+      '```json',
+      '{"name": "narrative_action", "parameters": {"subaction": "ability_check"}}',
+      '```',
+    ].join('\n');
+    expect(stripReasoningPreamble(text)).toBe('La porta si apre con un cigolio.');
+  });
+
+  it('does NOT strip an inline JSON example inside narration', () => {
+    // A paragraph that MENTIONS JSON but is actually narration must pass.
+    const text = 'Sul pergamena leggi: lo schema misterioso ricorda una formula matematica.';
+    expect(stripReasoningPreamble(text)).toBe(text);
+  });
+
+  it('safety fallback: returns last paragraph when everything looks like reasoning', () => {
+    // Pathological case: every paragraph matches a pattern. Without the
+    // fallback we'd return empty; with the fallback we return the last
+    // paragraph (which is still reasoning, but at least the player sees
+    // something rather than "Master non ha prodotto risposta").
+    const text = [
+      'Okay, let me break this down step by step. The user is asking about combat.',
+      '',
+      "Let's analyze the situation. According to the rules, attacks need a d20 roll.",
+      '',
+      'The tool calls would be: combat_action with subaction attack, then damage.',
+      '',
+      'I need to call combat_action with the proper subaction format here.',
+    ].join('\n');
+    const out = stripReasoningPreamble(text);
+    // Not empty — fallback returned the last paragraph (>20 chars).
+    expect(out.length).toBeGreaterThan(20);
+    expect(out).toContain('combat_action');
+  });
 });

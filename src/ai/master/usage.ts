@@ -1,5 +1,6 @@
 import { db } from '@/db/client';
 import { aiUsage, type AiUsageInsert } from '@/db/schema';
+import type { MasterMode } from '@/ai/master/mode';
 
 export interface UsageNumbers {
   inputTokens?: number;
@@ -14,6 +15,12 @@ export async function recordUsage(args: {
   endpoint: 'master' | 'language' | 'wizard';
   model: string;
   usage: UsageNumbers;
+  /** Plan E.1: master mode at turn execution time. */
+  mode?: MasterMode;
+  /** Plan E.1: whether the spellcasting overlay was injected this turn. */
+  needsSpellcasting?: boolean;
+  /** Plan E.2: how many RAG chunks were retrieved for this turn (0 if RAG off). */
+  ragChunkCount?: number;
 }): Promise<void> {
   const row: AiUsageInsert = {
     sessionId: args.sessionId ?? null,
@@ -24,6 +31,9 @@ export async function recordUsage(args: {
     outputTokens: args.usage.outputTokens ?? 0,
     cacheReadTokens: args.usage.cacheReadTokens ?? 0,
     cacheCreationTokens: args.usage.cacheCreationTokens ?? 0,
+    mode: args.mode ?? null,
+    needsSpellcasting: args.needsSpellcasting ?? null,
+    ragChunkCount: args.ragChunkCount ?? null,
   };
   await db.insert(aiUsage).values(row);
 }

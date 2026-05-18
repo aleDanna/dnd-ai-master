@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build",
+    "dev:log": "next dev --turbopack 2>&1 | tee .dev.log",
+    "build": "tsx src/db/migrate.ts && next build",
+    "build:no-migrate": "next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -23,7 +25,9 @@
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
     "db:snapshot": "tsx scripts/db-snapshot.ts",
-    "db:restore": "tsx scripts/db-restore.ts"
+    "db:restore": "tsx scripts/db-restore.ts",
+    "build-local-models": "tsx scripts/build-local-models.ts",
+    "build-rag-index": "tsx scripts/build-rag-index.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",

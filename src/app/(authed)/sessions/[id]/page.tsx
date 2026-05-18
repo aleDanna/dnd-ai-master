@@ -148,6 +148,7 @@ export default async function GameSessionPage({ params }: { params: Promise<{ id
         tonalFrame: campaign.tonalFrame,
         engagementProfile: campaign.engagementProfile,
         status: campaign.status,
+        aiMasterModel: campaign.settings?.aiMasterModel ?? null,
         createdAt: campaign.createdAt.toISOString(),
         updatedAt: campaign.updatedAt.toISOString(),
       } : null}

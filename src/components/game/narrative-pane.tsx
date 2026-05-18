@@ -28,6 +28,11 @@ export interface NarrativePaneProps {
   history: MessageRow[];
   liveEvents: TurnEvent[];
   busy: boolean;
+  /** Context-aware label shown next to the spinner while busy. Defaults to
+   *  "The Master is responding…" for backward compatibility. Pass a more
+   *  specific string (e.g. "The Master is generating the campaign…") when
+   *  the caller knows what the master is actually doing. */
+  busyLabel?: string;
   onSend: (text: string) => void;
   onCastSpell?: () => void;
   /** When true, master messages get inline roll buttons parsed from their text. */
@@ -42,13 +47,17 @@ export interface NarrativePaneProps {
   party?: Array<{ id: string; name: string }>;
   /** When true, padding tightens and the quick-action bar is hidden (mobile drawer host). */
   compact?: boolean;
+  ttsPending?: Set<string>;
+  ttsErrors?: Map<string, string>;
+  imagePending?: boolean;
+  imageError?: string | null;
 }
 
 /** Number of newest messages visible on first load. The "Show previous"
  *  link reveals an additional batch of this size with each click. */
 const PAGE_SIZE = 10;
 
-export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, onCastSpell, manualRolls, imageGenerationEnabled = false, disabled = false, disabledPlaceholder, party = [], compact = false }: NarrativePaneProps) {
+export function NarrativePane({ sessionId, history, liveEvents, busy, busyLabel = 'The Master is responding…', onSend, onCastSpell, manualRolls, imageGenerationEnabled = false, disabled = false, disabledPlaceholder, party = [], compact = false, ttsPending, ttsErrors, imagePending = false, imageError = null }: NarrativePaneProps) {
   const [draft, setDraft] = React.useState('');
   // Tamper-resistant pending roll. The text is set ONLY by handleRollResult
   // (called from the dice-button after the spinner settles) and rendered as
@@ -214,11 +223,15 @@ export function NarrativePane({ sessionId, history, liveEvents, busy, onSend, on
               // ready), gate any roll buttons too — rolling a die you can
               // never send is pure dead weight in the UI and confusing.
               disabled={disabled}
+              ttsPending={ttsPending}
+              ttsErrors={ttsErrors}
+              imagePending={imagePending}
+              imageError={imageError}
             />
           ))}
           {busy && (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', color: 'var(--fg-muted)', fontFamily: 'var(--font-display)', fontSize: 16, fontStyle: 'italic' }}>
-              <SpinningDie /> The Master is responding…
+              <SpinningDie /> {busyLabel}
             </div>
           )}
         </div>
@@ -383,6 +396,10 @@ function MessageView({
   onAnyRollEnd,
   party,
   disabled = false,
+  ttsPending,
+  ttsErrors,
+  imagePending = false,
+  imageError = null,
 }: {
   m: NarrativeMessage;
   sessionId: string;
@@ -396,6 +413,10 @@ function MessageView({
    *  greyed out — used to gate non-current-turn viewers from clicking dice
    *  they can never send. */
   disabled?: boolean;
+  ttsPending?: Set<string>;
+  ttsErrors?: Map<string, string>;
+  imagePending?: boolean;
+  imageError?: string | null;
 }) {
   if (m.role === 'master') {
     // When the composer is locked, suppress roll requests entirely: a roll
@@ -412,9 +433,21 @@ function MessageView({
         />
         {hasFooter && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10, alignItems: 'center' }}>
-            {m.id && <TtsButton sessionId={sessionId} messageId={m.id} />}
+            {m.id && (
+              <TtsButton
+                sessionId={sessionId}
+                messageId={m.id}
+                sharedPending={ttsPending?.has(m.id) ?? false}
+                sharedError={ttsErrors?.get(m.id) ?? null}
+              />
+            )}
             {m.id && imageGenerationEnabled && (
-              <SceneImageButton sessionId={sessionId} messageId={m.id} />
+              <SceneImageButton
+                sessionId={sessionId}
+                messageId={m.id}
+                sharedPending={imagePending}
+                sharedError={imageError}
+              />
             )}
             {rollRequests.length > 0 && (
               <RollRequestGroup

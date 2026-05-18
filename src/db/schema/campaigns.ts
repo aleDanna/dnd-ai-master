@@ -1,6 +1,7 @@
 import { pgTable, text, uuid, timestamp, pgEnum, varchar, jsonb, index } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { users } from './users';
+import type { ProviderName, ImageProviderName } from '@/lib/ai-models';
 
 export const campaignStatusEnum = pgEnum('campaign_status', ['active', 'ended']);
 
@@ -12,9 +13,9 @@ export const campaignStatusEnum = pgEnum('campaign_status', ['active', 'ended'])
  * were backfilled by migration 0031.
  */
 export interface CampaignSettings {
-  aiProvider?: 'anthropic' | 'openai' | 'gemini' | 'ollama';
+  aiProvider?: ProviderName;
   aiMasterModel?: string;
-  ttsProvider?: 'openai' | 'gemini';
+  ttsProvider?: 'openai' | 'gemini' | 'local';
   ttsVoice?: string;
   ttsModel?: string;
   manualRolls?: boolean;
@@ -24,8 +25,30 @@ export interface CampaignSettings {
   imageGenerationEnabled?: boolean;
   imageStylePreset?: 'pastel' | 'watercolor' | 'oil' | 'ink' | 'photo' | 'custom';
   imageStyleCustom?: string;
-  imageProvider?: 'openai' | 'gemini';
+  imageProvider?: ImageProviderName;
   imageModel?: string;
+  /**
+   * When true, the master system prompt uses compact variants of the SRD
+   * + handbook + world lore (Plan C). Trades narrative depth for raw
+   * latency on small local models. When undefined, defaults to true for
+   * `aiProvider === 'local'` and false for cloud providers (where the
+   * full prompt fits comfortably under the model's context).
+   */
+  compactPrompt?: boolean;
+  /**
+   * When true, the system prompt is selected based on the active AI mode
+   * (local vs cloud). Enables mode-aware prompt switching so local models
+   * receive a trimmed prompt while cloud models keep the full version.
+   * When undefined, defaults to true for `aiProvider === 'local'` and
+   * false for cloud providers.
+   */
+  useModeAwarePrompt?: boolean;
+  /**
+   * When true, the AI master retrieves relevant lore/world context via RAG
+   * before generating each response (Plan E.2). Default false in Phase 2
+   * (opt-in); Phase 3 flips the default to true for local providers.
+   */
+  useRagRetrieval?: boolean;
 }
 
 export const campaigns = pgTable(

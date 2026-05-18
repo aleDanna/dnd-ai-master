@@ -1,11 +1,13 @@
 import { sql } from 'drizzle-orm';
 import { pgTable, text, timestamp, jsonb } from 'drizzle-orm/pg-core';
+import type { ProviderName, ImageProviderName } from '@/lib/ai-models';
 
 export interface UserPreferences {
-  /** TTS provider. 'openai' or 'gemini'. Anthropic has no TTS endpoint, so
-   *  this list is independent of `aiProvider`. Defaults to env TTS_PROVIDER
-   *  / 'openai' if unset. */
-  ttsProvider?: 'openai' | 'gemini';
+  /** TTS provider. 'openai', 'gemini', or 'local' (Piper/XTTS via env-gated
+   *  self-hosted services). Anthropic has no TTS endpoint, so this list is
+   *  independent of `aiProvider`. Defaults to env TTS_PROVIDER / 'openai'
+   *  if unset. 'local' is downgraded silently if env / isLocalEnvironment is off. */
+  ttsProvider?: 'openai' | 'gemini' | 'local';
   /** TTS voice slug. Namespace depends on `ttsProvider` — OpenAI uses
    *  alloy/onyx/…, Gemini uses Aoede/Kore/…. Defaults per-provider. */
   ttsVoice?: string;
@@ -23,7 +25,7 @@ export interface UserPreferences {
    */
   manualRolls?: boolean;
   /** Provider for the AI master. When unset, falls back to MASTER_PROVIDER env. */
-  aiProvider?: 'anthropic' | 'openai' | 'gemini' | 'ollama';
+  aiProvider?: ProviderName;
   /** Specific model used for master narration + wizard proposals. When unset, falls back to env defaults. */
   aiMasterModel?: string;
   /**
@@ -67,9 +69,30 @@ export interface UserPreferences {
   /** Free-text style description, used only when imageStylePreset === 'custom'. */
   imageStyleCustom?: string;
   /** Provider for scene illustration. When unset, falls back to IMAGE_PROVIDER env (default 'openai'). */
-  imageProvider?: 'openai' | 'gemini';
+  imageProvider?: ImageProviderName;
   /** Specific image model slug. When unset, falls back to provider env default. */
   imageModel?: string;
+  /**
+   * When true, the master system prompt uses compact variants of the SRD
+   * + handbook + world lore (Plan C). Trades narrative depth for raw
+   * latency on small local models. When undefined, defaults to true for
+   * `aiProvider === 'local'` and false for cloud providers.
+   */
+  compactPrompt?: boolean;
+  /**
+   * When true, the system prompt is selected based on the active AI mode
+   * (local vs cloud). Enables mode-aware prompt switching so local models
+   * receive a trimmed prompt while cloud models keep the full version.
+   * When undefined, defaults to true for `aiProvider === 'local'` and
+   * false for cloud providers.
+   */
+  useModeAwarePrompt?: boolean;
+  /**
+   * When true, the AI master retrieves relevant lore/world context via RAG
+   * before generating each response (Plan E.2). Default false in Phase 2
+   * (opt-in); Phase 3 flips the default to true for local providers.
+   */
+  useRagRetrieval?: boolean;
 }
 
 export type MasterGuidanceLevel = NonNullable<UserPreferences['masterGuidanceLevel']>;

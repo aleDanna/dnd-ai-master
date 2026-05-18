@@ -3,9 +3,18 @@ import { bytea } from '../types';
 import { sessionMessages } from './session-messages';
 
 /**
- * Server-side cache of synthesized TTS audio. Keyed by (messageId, voice, model)
- * — a single message can have multiple cached audios if the user switches voice
- * or model over time. On message delete, cascade drops the cached entries.
+ * Server-side cache of synthesized TTS audio. Also acts as the single-flight
+ * lock: when a synthesis is in-flight, the row exists with `status='pending'`
+ * and `audio_mp3 IS NULL`. When complete, status flips to 'ready' and the
+ * bytes are written. Followers (concurrent callers) see the pending row and
+ * wait on `pg_notify('session_<id>')` for a `tts-ready` event.
+ *
+ * Keyed by (messageId, voice, model) — a single message can have multiple
+ * cached audios if the user switches voice or model over time. On message
+ * delete, cascade drops the cached entries.
+ *
+ * `started_at` is the lock acquisition timestamp; rows in `pending` older
+ * than 60s are considered orphans and can be re-claimed by the next caller.
  */
 export const ttsCache = pgTable(
   'tts_cache',
@@ -15,20 +24,17 @@ export const ttsCache = pgTable(
       .references(() => sessionMessages.id, { onDelete: 'cascade' }),
     voice: text('voice').notNull(),
     model: text('model').notNull().default('gpt-4o-mini-tts'),
-    audioMp3: bytea('audio_mp3').notNull(),
-    /**
-     * Provider that synthesized this audio. Implicit constraint: voice + model
-     * are namespaced per provider (OpenAI's "onyx" / "gpt-4o-mini-tts" can never
-     * collide with Gemini's "Kore" / "gemini-2.5-flash-preview-tts"), so this
-     * column is metadata for debugging; PK uniqueness comes from voice + model.
-     */
+    /** NULL while status='pending' or 'failed'. */
+    audioMp3: bytea('audio_mp3'),
     provider: text('provider').notNull().default('openai'),
-    /**
-     * MIME type of the bytes in `audio_mp3`. OpenAI returns audio/mpeg (MP3);
-     * Gemini returns 24kHz PCM that we wrap in a WAV container before storing,
-     * so those rows have audio/wav. The TTS route forwards this as Content-Type.
-     */
-    mimeType: text('mime_type').notNull().default('audio/mpeg'),
+    /** NULL while status='pending' or 'failed'. */
+    mimeType: text('mime_type'),
+    /** 'pending' | 'ready' | 'failed'. CHECK constraint enforces the domain. */
+    status: text('status').notNull().default('ready'),
+    /** Lock acquisition timestamp; used for TTL-based orphan re-claim. */
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    /** Provider error message when status='failed'. */
+    failedReason: text('failed_reason'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

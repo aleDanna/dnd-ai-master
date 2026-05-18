@@ -1,7 +1,7 @@
 import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions, users, campaigns, type UserPreferences, isMasterGuidanceLevel, isImageStylePreset, isNarrationPace, type CampaignSettings } from '@/db/schema';
-import { isKnownProvider, isKnownMasterModel, isKnownImageProvider, isKnownImageModel, type ProviderName } from '@/lib/ai-models';
+import { isKnownProvider, isKnownMasterModel, isKnownImageProvider, isKnownImageModel, type ProviderName, type ImageProviderName } from '@/lib/ai-models';
 
 export type { UserPreferences };
 export {
@@ -20,8 +20,54 @@ import {
   isValidTtsProvider,
   isValidTtsVoice,
   isValidTtsModel,
+  isValidVoiceForModel,
   type TtsProvider,
 } from './tts-voices';
+import { isLocalEnvironment } from './local-services';
+
+/**
+ * True when the named local sub-engine is currently usable. Used by
+ * validateSettingsPatch to gate 'local' acceptance, and by getResolvedPreferences
+ * / getCampaignSettings to downgrade silently when the backing env disappears.
+ *
+ * For 'tts'/'image' surfaces, pass the engine slug (e.g. 'piper', 'xtts',
+ * 'comfyui:flux-schnell', 'draw-things:...') to gate on the specific service.
+ * Omit `subModel` to accept if ANY engine in the surface is enabled.
+ */
+function isLocalSurfaceAvailable(surface: 'ai' | 'tts' | 'image', subModel?: string): boolean {
+  if (!isLocalEnvironment()) return false;
+  if (surface === 'ai') return !!process.env.OLLAMA_BASE_URL;
+  if (surface === 'tts') {
+    if (subModel === 'piper') return !!process.env.PIPER_BASE_URL;
+    if (subModel === 'xtts')  return !!process.env.XTTS_BASE_URL;
+    return !!process.env.PIPER_BASE_URL || !!process.env.XTTS_BASE_URL;
+  }
+  if (subModel?.startsWith('comfyui:'))     return !!process.env.COMFYUI_BASE_URL;
+  if (subModel?.startsWith('draw-things:')) return !!process.env.DRAW_THINGS_BASE_URL;
+  return !!process.env.COMFYUI_BASE_URL || !!process.env.DRAW_THINGS_BASE_URL;
+}
+
+/** Read-side downgrade: if the stored provider is 'local' but the local
+ *  environment is gone (re-deploy without env, or running in production),
+ *  fall back to the env default. The user sees the radio move on next
+ *  Settings render but no broken requests fire. */
+function resolveLocalAiProvider(stored: UserPreferences['aiProvider']): ProviderName {
+  if (stored !== 'local') return stored ?? envDefaultProvider();
+  if (!isLocalSurfaceAvailable('ai')) return envDefaultProvider();
+  return 'local';
+}
+
+function resolveLocalTtsProvider(stored: UserPreferences['ttsProvider']): TtsProvider {
+  if (stored !== 'local') return stored ?? envDefaultTtsProvider();
+  if (!isLocalSurfaceAvailable('tts')) return envDefaultTtsProvider();
+  return 'local';
+}
+
+function resolveLocalImageProvider(stored: UserPreferences['imageProvider']): ImageProviderName {
+  if (stored !== 'local') return stored ?? envDefaultImageProvider();
+  if (!isLocalSurfaceAvailable('image')) return envDefaultImageProvider();
+  return 'local';
+}
 
 /**
  * Defaults are merged on top of stored prefs at read time. Provider/model defaults
@@ -32,23 +78,26 @@ function envDefaultProvider(): ProviderName {
   const raw = (process.env.MASTER_PROVIDER ?? '').trim().toLowerCase();
   if (raw === 'openai') return 'openai';
   if (raw === 'gemini') return 'gemini';
-  if (raw === 'ollama') return 'ollama';
+  if (raw === 'local') return 'local';
   return 'anthropic';
 }
 
 function envDefaultMasterModel(provider: ProviderName): string {
+  if (provider === 'local') return '';
   if (provider === 'openai') return process.env.OPENAI_MASTER_MODEL ?? 'gpt-5';
   if (provider === 'gemini') return process.env.GEMINI_MASTER_MODEL ?? 'gemini-2.5-pro';
-  if (provider === 'ollama') return process.env.OLLAMA_MASTER_MODEL ?? '';
   return process.env.ANTHROPIC_MASTER_MODEL ?? 'claude-sonnet-4-5';
 }
 
-function envDefaultImageProvider(): 'openai' | 'gemini' {
+function envDefaultImageProvider(): ImageProviderName {
   const raw = (process.env.IMAGE_PROVIDER ?? '').trim().toLowerCase();
-  return raw === 'gemini' ? 'gemini' : 'openai';
+  if (raw === 'gemini') return 'gemini';
+  if (raw === 'local') return 'local';
+  return 'openai';
 }
 
-function envDefaultImageModel(provider: 'openai' | 'gemini'): string {
+function envDefaultImageModel(provider: ImageProviderName): string {
+  if (provider === 'local') return '';
   if (provider === 'gemini') return process.env.GEMINI_IMAGE_MODEL ?? 'gemini-2.5-flash-image';
   return process.env.OPENAI_IMAGE_MODEL ?? 'gpt-image-1';
 }
@@ -107,6 +156,19 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   imageStyleCustom: '',
   imageProvider: 'openai',
   imageModel: 'gpt-image-1',
+  // Compact-prompt is provider-conditional: getResolvedPreferences /
+  // getCampaignSettings flip it to `true` when aiProvider is 'local'.
+  // The static default is only used when both prefs.compactPrompt and
+  // the provider check fall through (cloud provider, undefined value).
+  compactPrompt: false,
+  // Mode-aware-prompt is also provider-conditional (on for local, off for
+  // cloud). Explicit user pick always wins; the static default below is
+  // only used as a final fallback.
+  useModeAwarePrompt: false,
+  // RAG retrieval is opt-in in Phase 2 (default OFF). Phase 3 will flip
+  // the default to ON for local providers once telemetry confirms recall
+  // quality is acceptable.
+  useRagRetrieval: false,
 };
 
 export async function getUserPreferences(userId: string): Promise<UserPreferences> {
@@ -119,29 +181,49 @@ export async function getUserPreferences(userId: string): Promise<UserPreference
  * affects existing users who haven't explicitly set a value. */
 export async function getResolvedPreferences(userId: string): Promise<Required<UserPreferences>> {
   const prefs = await getUserPreferences(userId);
-  const envProvider = envDefaultProvider();
-  const provider = prefs.aiProvider ?? envProvider;
+  const provider = resolveLocalAiProvider(prefs.aiProvider);
   const masterModel = prefs.aiMasterModel ?? envDefaultMasterModel(provider);
   const imageGenerationEnabled = prefs.imageGenerationEnabled ?? DEFAULT_PREFERENCES.imageGenerationEnabled;
   const imageStylePreset = prefs.imageStylePreset ?? DEFAULT_PREFERENCES.imageStylePreset;
   const imageStyleCustom = prefs.imageStyleCustom ?? DEFAULT_PREFERENCES.imageStyleCustom;
-  const imageProvider = prefs.imageProvider ?? envDefaultImageProvider();
+  const imageProvider = resolveLocalImageProvider(prefs.imageProvider);
   const imageModel = prefs.imageModel ?? envDefaultImageModel(imageProvider);
   // TTS triplet — provider drives the namespace; (provider, model) drives the
   // namespace for voice. Voice support is model-specific on OpenAI: 'ballad'
   // only works on gpt-4o-mini-tts and the legacy tts-1 / tts-1-hd reject it
   // with 400. Resolve model first, then voice against that model.
-  const ttsProvider = prefs.ttsProvider ?? envDefaultTtsProvider();
+  const ttsProvider = resolveLocalTtsProvider(prefs.ttsProvider);
   const storedModel = prefs.ttsModel;
-  const ttsModel =
-    storedModel && ttsModelsFor(ttsProvider).includes(storedModel)
+  const ttsModel = (() => {
+    if (ttsProvider === 'local') {
+      return storedModel === 'piper' || storedModel === 'xtts' ? storedModel : 'piper';
+    }
+    return storedModel && ttsModelsFor(ttsProvider).includes(storedModel)
       ? storedModel
       : envDefaultTtsModel(ttsProvider);
+  })();
   const storedVoice = prefs.ttsVoice;
-  const ttsVoice =
-    storedVoice && ttsVoicesForModel(ttsProvider, ttsModel).includes(storedVoice)
+  const ttsVoice = (() => {
+    if (ttsProvider === 'local') {
+      // For piper, voices are runtime-discovered; pass through any stored value.
+      // For xtts, validate against the language catalog and fall back to 'en'.
+      if (ttsModel === 'xtts') {
+        return storedVoice && (ttsVoicesForModel('local', 'xtts') as readonly string[]).includes(storedVoice)
+          ? storedVoice
+          : 'en';
+      }
+      return storedVoice ?? '';
+    }
+    return storedVoice && ttsVoicesForModel(ttsProvider, ttsModel).includes(storedVoice)
       ? storedVoice
       : envDefaultTtsVoice(ttsProvider, ttsModel);
+  })();
+  // Compact-prompt default depends on the resolved provider: on for local
+  // (where prompt budget matters), off for cloud (full prompt fits easily).
+  // Explicit user pick wins over the provider-conditional default.
+  const compactPrompt = prefs.compactPrompt ?? (provider === 'local');
+  const useModeAwarePrompt = resolveUseModeAwarePrompt({ aiProvider: provider, useModeAwarePrompt: prefs.useModeAwarePrompt });
+  const useRagRetrieval = resolveUseRagRetrieval({ aiProvider: provider, useRagRetrieval: prefs.useRagRetrieval });
   return {
     ttsProvider,
     ttsVoice,
@@ -158,6 +240,9 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
     imageStyleCustom,
     imageProvider,
     imageModel,
+    compactPrompt,
+    useModeAwarePrompt,
+    useRagRetrieval,
   };
 }
 
@@ -230,25 +315,42 @@ export async function getCampaignSettings(
   campaignId: string,
 ): Promise<Required<CampaignSettings>> {
   const prefs = await getCampaignSettingsRaw(campaignId);
-  const envProvider = envDefaultProvider();
-  const provider = prefs.aiProvider ?? envProvider;
+  const provider = resolveLocalAiProvider(prefs.aiProvider);
   const masterModel = prefs.aiMasterModel ?? envDefaultMasterModel(provider);
   const imageGenerationEnabled = prefs.imageGenerationEnabled ?? DEFAULT_PREFERENCES.imageGenerationEnabled;
   const imageStylePreset = prefs.imageStylePreset ?? DEFAULT_PREFERENCES.imageStylePreset;
   const imageStyleCustom = prefs.imageStyleCustom ?? DEFAULT_PREFERENCES.imageStyleCustom;
-  const imageProvider = prefs.imageProvider ?? envDefaultImageProvider();
+  const imageProvider = resolveLocalImageProvider(prefs.imageProvider);
   const imageModel = prefs.imageModel ?? envDefaultImageModel(imageProvider);
-  const ttsProvider = prefs.ttsProvider ?? envDefaultTtsProvider();
+  const ttsProvider = resolveLocalTtsProvider(prefs.ttsProvider);
   const storedModel = prefs.ttsModel;
-  const ttsModel =
-    storedModel && ttsModelsFor(ttsProvider).includes(storedModel)
+  const ttsModel = (() => {
+    if (ttsProvider === 'local') {
+      return storedModel === 'piper' || storedModel === 'xtts' ? storedModel : 'piper';
+    }
+    return storedModel && ttsModelsFor(ttsProvider).includes(storedModel)
       ? storedModel
       : envDefaultTtsModel(ttsProvider);
+  })();
   const storedVoice = prefs.ttsVoice;
-  const ttsVoice =
-    storedVoice && ttsVoicesForModel(ttsProvider, ttsModel).includes(storedVoice)
+  const ttsVoice = (() => {
+    if (ttsProvider === 'local') {
+      if (ttsModel === 'xtts') {
+        return storedVoice && (ttsVoicesForModel('local', 'xtts') as readonly string[]).includes(storedVoice)
+          ? storedVoice
+          : 'en';
+      }
+      return storedVoice ?? '';
+    }
+    return storedVoice && ttsVoicesForModel(ttsProvider, ttsModel).includes(storedVoice)
       ? storedVoice
       : envDefaultTtsVoice(ttsProvider, ttsModel);
+  })();
+  // Same provider-conditional default as getResolvedPreferences: on for
+  // local, off for cloud, explicit pick always wins.
+  const compactPrompt = prefs.compactPrompt ?? (provider === 'local');
+  const useModeAwarePrompt = resolveUseModeAwarePrompt({ aiProvider: provider, useModeAwarePrompt: prefs.useModeAwarePrompt });
+  const useRagRetrieval = resolveUseRagRetrieval({ aiProvider: provider, useRagRetrieval: prefs.useRagRetrieval });
   return {
     ttsProvider,
     ttsVoice,
@@ -264,6 +366,9 @@ export async function getCampaignSettings(
     imageStyleCustom,
     imageProvider,
     imageModel,
+    compactPrompt,
+    useModeAwarePrompt,
+    useRagRetrieval,
   };
 }
 
@@ -294,22 +399,66 @@ export type ValidateResult =
  * Returns the same shape as the input on success — useful so the caller
  * can persist exactly what the validator OK'd.
  */
-export function validateSettingsPatch(body: ValidatedSettings): ValidateResult {
+/** Validates a settings patch.
+ *
+ *  `stored` is the optional current state (typically what
+ *  getCampaignSettings returned). When provided, branches that depend on
+ *  the resolved provider fall back to the stored provider if the patch
+ *  itself doesn't carry one. Without `stored`, a patch like
+ *  `{ aiMasterModel: 'qwen3:30b-a3b' }` (no aiProvider) cannot know it
+ *  belongs to a 'local' campaign and the cloud-catalog check rejects it. */
+export function validateSettingsPatch(
+  body: ValidatedSettings,
+  stored?: { aiProvider?: string; ttsProvider?: string; ttsModel?: string; imageProvider?: string },
+): ValidateResult {
   const out: ValidatedSettings = {};
   if ('ttsProvider' in body) {
     if (body.ttsProvider === undefined || body.ttsProvider === null) out.ttsProvider = undefined;
     else if (!isValidTtsProvider(body.ttsProvider)) return { ok: false, error: 'invalid-ttsProvider' };
-    else out.ttsProvider = body.ttsProvider;
-  }
-  if ('ttsVoice' in body) {
-    if (body.ttsVoice === undefined || body.ttsVoice === null) out.ttsVoice = undefined;
-    else if (!isValidTtsVoice(body.ttsVoice)) return { ok: false, error: 'invalid-ttsVoice' };
-    else out.ttsVoice = body.ttsVoice;
+    else if (body.ttsProvider === 'local' && !isLocalSurfaceAvailable('tts')) {
+      return { ok: false, error: 'invalid-ttsProvider' };
+    } else out.ttsProvider = body.ttsProvider;
   }
   if ('ttsModel' in body) {
-    if (body.ttsModel === undefined || body.ttsModel === null) out.ttsModel = undefined;
-    else if (!isValidTtsModel(body.ttsModel)) return { ok: false, error: 'invalid-ttsModel' };
-    else out.ttsModel = body.ttsModel;
+    if (body.ttsModel === undefined || body.ttsModel === null) {
+      out.ttsModel = undefined;
+    } else if (typeof body.ttsModel !== 'string') {
+      return { ok: false, error: 'invalid-ttsModel' };
+    } else {
+      const resolvedProvider = out.ttsProvider ?? body.ttsProvider ?? stored?.ttsProvider;
+      if (resolvedProvider === 'local') {
+        if (body.ttsModel !== 'piper' && body.ttsModel !== 'xtts') {
+          return { ok: false, error: 'invalid-ttsModel' };
+        }
+        if (!isLocalSurfaceAvailable('tts', body.ttsModel)) {
+          return { ok: false, error: 'invalid-ttsModel' };
+        }
+      } else if (!isValidTtsModel(body.ttsModel)) {
+        return { ok: false, error: 'invalid-ttsModel' };
+      }
+      out.ttsModel = body.ttsModel;
+    }
+  }
+  if ('ttsVoice' in body) {
+    if (body.ttsVoice === undefined || body.ttsVoice === null) {
+      out.ttsVoice = undefined;
+    } else if (typeof body.ttsVoice !== 'string') {
+      return { ok: false, error: 'invalid-ttsVoice' };
+    } else {
+      const resolvedProvider = out.ttsProvider ?? body.ttsProvider ?? stored?.ttsProvider;
+      // Fall back to stored.ttsModel so a voice-only PATCH (the Settings UI
+      // sends just the changed field) validates against the right namespace
+      // instead of dropping into the OpenAI/Gemini-only branch.
+      const resolvedModel = out.ttsModel ?? body.ttsModel ?? stored?.ttsModel;
+      if (resolvedProvider === 'local' && typeof resolvedModel === 'string') {
+        if (!isValidVoiceForModel(body.ttsVoice, 'local', resolvedModel)) {
+          return { ok: false, error: 'invalid-ttsVoice' };
+        }
+      } else if (!isValidTtsVoice(body.ttsVoice)) {
+        return { ok: false, error: 'invalid-ttsVoice' };
+      }
+      out.ttsVoice = body.ttsVoice;
+    }
   }
   if ('ttsAutoplay' in body) {
     if (typeof body.ttsAutoplay !== 'boolean') return { ok: false, error: 'invalid-ttsAutoplay' };
@@ -321,11 +470,21 @@ export function validateSettingsPatch(body: ValidatedSettings): ValidateResult {
   }
   if ('aiProvider' in body) {
     if (!isKnownProvider(body.aiProvider)) return { ok: false, error: 'invalid-aiProvider' };
+    if (body.aiProvider === 'local' && !isLocalSurfaceAvailable('ai')) {
+      return { ok: false, error: 'invalid-aiProvider' };
+    }
     out.aiProvider = body.aiProvider;
   }
   if ('aiMasterModel' in body) {
-    if (body.aiMasterModel !== undefined && !isKnownMasterModel(body.aiMasterModel)) {
-      return { ok: false, error: 'invalid-aiMasterModel' };
+    if (body.aiMasterModel !== undefined) {
+      const m = body.aiMasterModel;
+      if (typeof m !== 'string' || m.length === 0 || m.length > 200) {
+        return { ok: false, error: 'invalid-aiMasterModel' };
+      }
+      const resolvedProvider = out.aiProvider ?? body.aiProvider ?? stored?.aiProvider;
+      if (resolvedProvider !== 'local' && !isKnownMasterModel(m)) {
+        return { ok: false, error: 'invalid-aiMasterModel' };
+      }
     }
     out.aiMasterModel = body.aiMasterModel as string | undefined;
   }
@@ -356,14 +515,64 @@ export function validateSettingsPatch(body: ValidatedSettings): ValidateResult {
   }
   if ('imageProvider' in body) {
     if (!isKnownImageProvider(body.imageProvider)) return { ok: false, error: 'invalid-imageProvider' };
+    if (body.imageProvider === 'local' && !isLocalSurfaceAvailable('image')) {
+      return { ok: false, error: 'invalid-imageProvider' };
+    }
     out.imageProvider = body.imageProvider;
   }
   if ('imageModel' in body) {
-    if (body.imageModel !== undefined && !isKnownImageModel(body.imageModel)) {
-      return { ok: false, error: 'invalid-imageModel' };
+    if (body.imageModel !== undefined) {
+      if (!isKnownImageModel(body.imageModel)) {
+        return { ok: false, error: 'invalid-imageModel' };
+      }
+      const resolvedProvider = out.imageProvider ?? body.imageProvider ?? stored?.imageProvider;
+      if (resolvedProvider === 'local') {
+        if (!isLocalSurfaceAvailable('image', body.imageModel)) {
+          return { ok: false, error: 'invalid-imageModel' };
+        }
+      }
     }
     out.imageModel = body.imageModel as string | undefined;
   }
+  if ('compactPrompt' in body) {
+    if (typeof body.compactPrompt !== 'boolean') return { ok: false, error: 'invalid-compactPrompt' };
+    out.compactPrompt = body.compactPrompt;
+  }
+  if ('useModeAwarePrompt' in body) {
+    if (typeof body.useModeAwarePrompt !== 'boolean') return { ok: false, error: 'invalid-useModeAwarePrompt' };
+    out.useModeAwarePrompt = body.useModeAwarePrompt;
+  }
+  if ('useRagRetrieval' in body) {
+    if (typeof body.useRagRetrieval !== 'boolean') return { ok: false, error: 'invalid-useRagRetrieval' };
+    out.useRagRetrieval = body.useRagRetrieval;
+  }
   return { ok: true, patch: out };
+}
+
+/**
+ * Resolves the effective `useModeAwarePrompt` value.
+ *
+ * An explicit stored boolean always wins. When undefined, defaults to
+ * `true` for local providers (where mode-aware prompt switching matters)
+ * and `false` for cloud providers (which use the full prompt by default).
+ */
+export function resolveUseModeAwarePrompt(prefs: {
+  aiProvider: string;
+  useModeAwarePrompt?: boolean;
+}): boolean {
+  if (typeof prefs.useModeAwarePrompt === 'boolean') return prefs.useModeAwarePrompt;
+  return prefs.aiProvider === 'local';
+}
+
+/**
+ * Plan E.2 - opt-in RAG retrieval. Default OFF in Phase 2 until telemetry
+ * confirms recall is acceptable; Phase 3 flips the default to ON for local.
+ */
+export function resolveUseRagRetrieval(prefs: {
+  aiProvider: string;
+  useRagRetrieval?: boolean;
+}): boolean {
+  if (typeof prefs.useRagRetrieval === 'boolean') return prefs.useRagRetrieval;
+  return false;
 }
 
