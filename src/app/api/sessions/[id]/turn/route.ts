@@ -15,6 +15,7 @@ import { deriveMode, needsSpellcastingOverlay } from '@/ai/master/mode';
 import { retrieveRelevant } from '@/ai/master/rag/retriever';
 import { getRagStore } from '@/ai/master/rag/store';
 import { embed } from '@/ai/master/rag/embedder';
+import { isMechanicalIntent } from '@/ai/master/rag/intent';
 import { isBakedModel, isLargeModelBase, getBakedBaseModel, warnIfBakedModelStale } from '@/ai/master/baked-models';
 import { getRuntimePromptHash } from '@/ai/master/runtime-prompt-hash';
 import { detectLanguage } from '@/ai/master/language';
@@ -289,7 +290,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // When enabled, we embed the last 2 user messages + last master message
         // and retrieve top-3 chunks. Failure (embedder down, store empty) returns
         // [] so the prompt builder skips the block entirely.
-        const useRag = userPrefs.useRagRetrieval;
+        //
+        // Mechanical-action gating: on turns where the latest user message is a
+        // clear mechanical action ("tiro percezione", "I attack the goblin",
+        // ...), skip retrieval entirely. The model resolves these via the baked
+        // SRD + tool definitions; handbook chunks add ~80ms latency + hundreds
+        // of tokens of prompt for no narrative benefit. Questions and narrative
+        // declarations still trigger retrieval. See `isMechanicalIntent`.
+        const lastUserText = (() => {
+          const last = [...history].reverse().find((m) => m.role === 'user');
+          return last && typeof last.content === 'string' ? last.content : '';
+        })();
+        const mechanical = isMechanicalIntent(lastUserText);
+        const useRag = userPrefs.useRagRetrieval && !mechanical;
         let ragChunks: Awaited<ReturnType<typeof retrieveRelevant>> = [];
         if (useRag) {
           const recentForQuery = [
@@ -309,6 +322,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               k: 3,
             });
           }
+        } else if (userPrefs.useRagRetrieval && mechanical) {
+          // eslint-disable-next-line no-console
+          console.log('[rag] skipped (mechanical action detected):', lastUserText.slice(0, 80));
         }
 
         const sys = buildMasterSystemPrompt({
