@@ -59,10 +59,15 @@ describe('getBakedBaseModel', () => {
 describe('getBakedModelName', () => {
   it('returns the tier name for curated bases', () => {
     expect(getBakedModelName('mistral-small3.2:24b')).toBe('dnd-master-max');
-    expect(getBakedModelName('deepseek-r1:14b')).toBe('dnd-master-max2');
+    expect(getBakedModelName('qwen3:30b-a3b-instruct-2507')).toBe('dnd-master-max2');
     expect(getBakedModelName('gpt-oss:20b')).toBe('dnd-master-plus');
-    expect(getBakedModelName('qwen3:4b')).toBe('dnd-master-balance');
-    expect(getBakedModelName('llama3.2:3b')).toBe('dnd-master-lite');
+  });
+
+  it('falls back to legacy slug-derived naming for non-curated small bases', () => {
+    // qwen3:4b and llama3.2:3b are no longer curated tiers — they bake under
+    // the legacy slug-derived name if installed anyway.
+    expect(getBakedModelName('qwen3:4b')).toBe('dnd-master-qwen3-4b');
+    expect(getBakedModelName('llama3.2:3b')).toBe('dnd-master-llama3.2-3b');
   });
 
   it('falls back to slug-derived naming for non-tier bases', () => {
@@ -81,10 +86,8 @@ describe('getBakedModelName', () => {
 describe('getBakedBaseModel — tier name reverse map', () => {
   it('recovers the base from a tier name (with :latest)', () => {
     expect(getBakedBaseModel('dnd-master-max:latest')).toBe('mistral-small3.2:24b');
-    expect(getBakedBaseModel('dnd-master-max2:latest')).toBe('deepseek-r1:14b');
+    expect(getBakedBaseModel('dnd-master-max2:latest')).toBe('qwen3:30b-a3b-instruct-2507');
     expect(getBakedBaseModel('dnd-master-plus:latest')).toBe('gpt-oss:20b');
-    expect(getBakedBaseModel('dnd-master-balance:latest')).toBe('qwen3:4b');
-    expect(getBakedBaseModel('dnd-master-lite:latest')).toBe('llama3.2:3b');
   });
 
   it('recovers the base from a tier name (without :latest)', () => {

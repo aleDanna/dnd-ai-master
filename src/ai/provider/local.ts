@@ -50,6 +50,12 @@ function isThinkingModel(model: string | undefined): boolean {
   // baked variants started running their full chain-of-thought server-side.
   const resolved = isBakedModel(m) ? (getBakedBaseModel(m) ?? m) : m;
   const r = resolved.toLowerCase();
+  // Qwen3 ships both thinking (default) and non-thinking instruct variants
+  // (e.g. qwen3:30b-a3b-instruct-2507). The instruct line has no internal
+  // monologue — applying the no-reasoning wrap adds tokens with no value
+  // and invalidates the KV cache. Short-circuit on the `-instruct-` infix
+  // before the generic qwen3 match below.
+  if (/qwen3.*-instruct-/i.test(r)) return false;
   return r.startsWith('qwen3') || r.includes('/qwen3') || r.includes('qwen3')
     || r.startsWith('deepseek-r1') || r.includes('deepseek-r1')
     || r.startsWith('gpt-oss') || r.includes('/gpt-oss') || r.includes('gpt-oss');

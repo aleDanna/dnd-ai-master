@@ -99,8 +99,15 @@ const PER_BASE_PARAMS: Record<string, Record<string, string | number | boolean>>
   // qwen3 thinking mode benefits from a slightly lower temp on tool selection.
   'qwen3:30b': { temperature: 0.6 },
   'qwen3:30b-a3b': { temperature: 0.6 },
-  // deepseek-r1 official guidance: temperature 0.6 for reasoning tasks.
-  'deepseek-r1:14b': { temperature: 0.6 },
+  // qwen3 non-thinking instruct: defaults to slightly higher temp than thinking
+  // siblings because there's no internal monologue to converge selection — but
+  // we keep top_p tight and pin min_p to prune the long tail without killing
+  // narrative diversity.
+  'qwen3:30b-a3b-instruct-2507': { temperature: 0.7, top_p: 0.9, min_p: 0.05, repeat_penalty: 1.07 },
+  // mistral-small 3.2: tuned per modern-narrative best practice — temp 0.8 for
+  // evocative prose, min_p 0.05 (modern alternative to top_p alone),
+  // repeat_penalty 1.07 (1.1 default is slightly too aggressive on names/places).
+  'mistral-small3.2:24b': { temperature: 0.8, top_p: 0.9, min_p: 0.05, repeat_penalty: 1.07 },
 };
 
 interface BuildArgs {
