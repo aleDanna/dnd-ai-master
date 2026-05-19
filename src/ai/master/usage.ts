@@ -19,8 +19,19 @@ export async function recordUsage(args: {
   mode?: MasterMode;
   /** Plan E.1: whether the spellcasting overlay was injected this turn. */
   needsSpellcasting?: boolean;
-  /** Plan E.2: how many RAG chunks were retrieved for this turn (0 if RAG off). */
-  ragChunkCount?: number;
+  /**
+   * Plan E.2: how many RAG chunks were retrieved for this turn.
+   *
+   * Semantic (the hit-rate metric depends on it):
+   *  - undefined / null  → retrieval not attempted (RAG disabled by user pref
+   *                        OR mechanical-action gate skipped it)
+   *  - 0                 → retrieval ran but returned no chunks (real miss)
+   *  - >0                → retrieval returned chunks (hit)
+   *
+   * Callers that disable RAG for whatever reason MUST pass null (or omit)
+   * rather than 0 — otherwise the hit-rate query overcounts misses.
+   */
+  ragChunkCount?: number | null;
 }): Promise<void> {
   const row: AiUsageInsert = {
     sessionId: args.sessionId ?? null,

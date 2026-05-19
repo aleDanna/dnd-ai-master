@@ -17,7 +17,17 @@ export const aiUsage = pgTable(
     mode: text('mode'),
     /** Plan E.1: whether the spellcasting overlay was injected this turn. */
     needsSpellcasting: boolean('needs_spellcasting'),
-    /** Plan E.2: how many RAG chunks were retrieved for this turn (0 if RAG off). */
+    /**
+     * Plan E.2: how many RAG chunks were retrieved for this turn.
+     *
+     * Three-state semantic (the hit-rate metric depends on it):
+     *  - NULL → retrieval not attempted (RAG disabled by user pref OR
+     *           mechanical-action gate skipped it). Excluded from hit-rate.
+     *  - 0    → retrieval ran but returned no chunks (real miss).
+     *  - >0   → retrieval returned chunks (hit).
+     *
+     * Validation query: `SELECT … WHERE rag_chunk_count IS NOT NULL`.
+     */
     ragChunkCount: integer('rag_chunk_count'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

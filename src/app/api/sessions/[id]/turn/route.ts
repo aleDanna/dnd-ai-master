@@ -412,7 +412,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               usage,
               mode,
               needsSpellcasting,
-              ragChunkCount: ragChunks.length,
+              // Distinguish RAG-skipped (null) from attempted-but-empty (0):
+              //   null  → retrieval not attempted (user pref off OR mechanical gate)
+              //   0     → retrieval ran, returned no chunks (real miss)
+              //   >0    → retrieval returned chunks (hit)
+              // The hit-rate metric (`count(chunks > 0) / count(*)`) becomes
+              // meaningful only when filtered on `rag_chunk_count IS NOT NULL`.
+              ragChunkCount: useRag ? ragChunks.length : null,
             });
           },
           onEvent: (ev) => {
