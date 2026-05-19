@@ -1368,6 +1368,21 @@ export interface MasterPromptInput {
   needsSpellcasting?: boolean;
   /** Plan E.2: retrieved RAG chunks to inject as a RELEVANT CONTEXT block. */
   ragChunks?: RetrievedChunk[];
+  /**
+   * When true, the langHint block omits the native-language override block
+   * (`NATIVE_LANGUAGE_INSTRUCTIONS`). Rationale: the override is a 200-tok
+   * imperative written in the TARGET language to drag 3-4B models off the
+   * English-prompt distribution. Mistral-small3.2 / Qwen3-instruct / gpt-oss
+   * follow the canonical English instruction reliably without that crutch,
+   * so we skip it on large bases to keep the per-turn prompt lean.
+   *
+   * Caller (turn route) computes via `isLargeModelBase(base)` after
+   * resolving baked variants back to their base slug.
+   *
+   * Default false (== treat as small, keep override) preserves the existing
+   * safety contract for callers that don't pass the flag.
+   */
+  isLargeModel?: boolean;
 }
 
 export const MASTER_HIDE_DIFFICULTY_RULE = `## Hide difficulty numbers
@@ -1722,7 +1737,13 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
   // English-only system content (baked slim manifest + mode blocks). We prepend
   // the same imperative in the TARGET language so the model sees the
   // instruction in its own output distribution from the first attention pass.
-  const nativeOverride = input.language ? (NATIVE_LANGUAGE_INSTRUCTIONS[input.language] ?? '') : '';
+  // Gated by isLargeModel: skipped on Mistral-small3.2 / Qwen3-instruct /
+  // gpt-oss because they follow the English canonical instruction reliably and
+  // the extra ~200 tok per turn is pure waste on those bases.
+  const nativeOverride =
+    input.language && !input.isLargeModel
+      ? (NATIVE_LANGUAGE_INSTRUCTIONS[input.language] ?? '')
+      : '';
   const langHint = langName
     ? `## NARRATIVE LANGUAGE (MANDATORY) — OUTPUT LANGUAGE: ${langName.toUpperCase()}\n\n${nativeOverride ? nativeOverride + '\n\n' : ''}The entire campaign — every line you write, in-character or out-of-character — MUST be written in **${langName}**. Do NOT respond in English unless the campaign language is English. This rule overrides any default tendency to reply in the same language as the system prompt.`
     : '';

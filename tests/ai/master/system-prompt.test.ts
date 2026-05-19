@@ -409,4 +409,31 @@ describe('buildMasterSystemPrompt — Plan D staticBlocksAlreadyBaked', () => {
     // than baked. We assert a >5x ratio defensively.
     expect(notBakedSize).toBeGreaterThan(bakedSize * 5);
   });
+
+  it('includes the native-language override when isLargeModel is false (default)', () => {
+    const { system } = buildMasterSystemPrompt({
+      ...input,
+      staticBlocksAlreadyBaked: true,
+      language: 'it',
+    });
+    const texts = system.map((b) => b.text);
+    // The Italian native override starts with this distinctive phrase.
+    expect(texts.some((t) => t.includes('IMPORTANTE: TUTTA la tua narrazione'))).toBe(true);
+    // Header still present.
+    expect(texts.some((t) => t.includes('OUTPUT LANGUAGE: ITALIAN'))).toBe(true);
+  });
+
+  it('omits the native-language override when isLargeModel is true', () => {
+    const { system } = buildMasterSystemPrompt({
+      ...input,
+      staticBlocksAlreadyBaked: true,
+      language: 'it',
+      isLargeModel: true,
+    });
+    const texts = system.map((b) => b.text);
+    // Native override gone — large models follow the English canonical instruction.
+    expect(texts.every((t) => !t.includes('IMPORTANTE: TUTTA la tua narrazione'))).toBe(true);
+    // Canonical English header still present (the language directive itself stays).
+    expect(texts.some((t) => t.includes('OUTPUT LANGUAGE: ITALIAN'))).toBe(true);
+  });
 });
