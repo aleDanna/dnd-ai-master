@@ -300,6 +300,48 @@ describe('runToolLoop', () => {
       expect(deltaTexts.join('')).toBe('Second attempt, still no tool.');
     });
 
+    it('satisfies a requiredTool via meta_action subaction (local provider path)', async () => {
+      // Regression: local provider exposes only 8 meta-tools, so set_tonal_frame
+      // arrives as meta_action({ subaction: 'set_tonal_frame', frame: '…' }).
+      // The end-of-turn gate must mark set_tonal_frame as called once dispatch
+      // resolves it, otherwise the retry budget burns on every begin turn even
+      // when the model obeyed correctly.
+      const complete = vi.fn()
+        .mockResolvedValueOnce(fakeOutput(
+          [{
+            type: 'tool_use',
+            id: 'tu1',
+            name: 'meta_action',
+            input: { subaction: 'set_tonal_frame', frame: 'sword_sorcery' },
+          }],
+          'tool_use',
+        ))
+        .mockResolvedValueOnce(fakeOutput([{ type: 'text', text: 'The torches gutter…' }]));
+
+      const onEvent = vi.fn();
+      const result = await runToolLoop({
+        provider: fakeProvider(complete),
+        systemBlocks: [{ type: 'text', text: 'sys' }],
+        history: [{ role: 'user', content: 'begin' }],
+        state: baseState,
+        onEvent,
+        requiredToolsBeforeEnd: ['set_tonal_frame'],
+      });
+
+      // Exactly two calls — NO corrective retry should fire because the loop
+      // recognises set_tonal_frame was reached through the meta-tool path.
+      expect(complete).toHaveBeenCalledTimes(2);
+      expect(result.finalText).toBe('The torches gutter…');
+      // No corrective user message should have been appended.
+      const allUserMessages = complete.mock.calls.flatMap(
+        (c) => (c[0] as { messages: { role: string; content: unknown }[] }).messages.filter((m) => m.role === 'user'),
+      );
+      const correctiveMsgs = allUserMessages.filter(
+        (m) => typeof m.content === 'string' && m.content.includes('Server enforcement'),
+      );
+      expect(correctiveMsgs).toHaveLength(0);
+    });
+
     it('does not buffer when requiredToolsBeforeEnd is undefined (non-begin turn)', async () => {
       const complete = vi.fn().mockResolvedValueOnce(fakeOutput([{ type: 'text', text: 'Just a regular turn.' }]));
       const onEvent = vi.fn();

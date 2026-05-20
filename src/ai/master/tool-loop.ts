@@ -250,6 +250,14 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
         dispatchError = e instanceof Error ? e.message : String(e);
       }
 
+      // Track the resolved name too — local provider exposes meta-tools, so
+      // a requiredToolsBeforeEnd entry like 'set_tonal_frame' is satisfied by
+      // a meta_action({ subaction: 'set_tonal_frame' }) call. Without this
+      // the end-of-turn gate would always see the underlying name as missing,
+      // burn the retry budget on a model that already obeyed, and double the
+      // begin-turn latency.
+      if (resolvedName !== tu.name) calledTools.add(resolvedName);
+
       const syncHandler = !dispatchError ? TOOL_HANDLERS[resolvedName] : undefined;
       const dbHandler = !dispatchError ? TOOL_HANDLERS_DB[resolvedName] : undefined;
       let result: ActionResult;
