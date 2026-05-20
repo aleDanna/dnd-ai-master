@@ -410,6 +410,29 @@ describe('buildMasterSystemPrompt — Plan D staticBlocksAlreadyBaked', () => {
     expect(notBakedSize).toBeGreaterThan(bakedSize * 5);
   });
 
+  it('injects MASTER_ROLL_TRIGGERS_SLIM only when injectRollTriggersSlim is true', () => {
+    // Default path — baked but no mechanical intent → no SLIM block.
+    const offSystem = buildMasterSystemPrompt({
+      ...input,
+      staticBlocksAlreadyBaked: true,
+    }).system;
+    expect(offSystem.every((b) => !b.text.includes('When to call for a roll — MANDATORY'))).toBe(true);
+
+    // Mechanical-intent path on a baked model → SLIM is injected.
+    const onSystem = buildMasterSystemPrompt({
+      ...input,
+      staticBlocksAlreadyBaked: true,
+      injectRollTriggersSlim: true,
+    }).system;
+    expect(onSystem.some((b) => b.text.includes('When to call for a roll — MANDATORY'))).toBe(true);
+    // Confirm it lives in the turn-dynamic region (after staticBlocksAlreadyBaked
+    // skip → there are no static blocks at all; SLIM should appear before the
+    // active-character / scene tail).
+    const slimIdx = onSystem.findIndex((b) => b.text.includes('When to call for a roll — MANDATORY'));
+    const activeIdx = onSystem.findIndex((b) => b.text.includes('ACTIVE PLAYER CHARACTER'));
+    expect(slimIdx).toBeLessThan(activeIdx);
+  });
+
   it('includes the native-language override whenever a language is set', () => {
     // The override (~200 tok in the target language) is now always emitted
     // when `language` is set, regardless of model size. Rationale: Qwen3-30B

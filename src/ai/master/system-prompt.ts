@@ -1368,6 +1368,17 @@ export interface MasterPromptInput {
   needsSpellcasting?: boolean;
   /** Plan E.2: retrieved RAG chunks to inject as a RELEVANT CONTEXT block. */
   ragChunks?: RetrievedChunk[];
+  /**
+   * When true, inject `MASTER_ROLL_TRIGGERS_SLIM` into the runtime prompt.
+   * Use case: baked models do NOT carry the full MASTER_ROLL_TRIGGERS in
+   * their Modelfile (Plan E.1 slim manifest), and the mechanical-intent
+   * heuristic (commit 65d7bf5) also skips RAG retrieval on those turns —
+   * so a baked master on "tiro percezione" has no explicit roll-trigger
+   * guidance left. The caller (turn route) sets this true iff
+   * `isMechanicalIntent(lastUser) && staticBlocksAlreadyBaked`. ~500 tok,
+   * paid only on the turns that need it.
+   */
+  injectRollTriggersSlim?: boolean;
 }
 
 export const MASTER_HIDE_DIFFICULTY_RULE = `## Hide difficulty numbers
@@ -1440,6 +1451,39 @@ For each player declared action, ask:
 If 1+2+3 are yes, call the rolling tool. The narrative comes AFTER the roll resolves, with the roll's result shaping the outcome — not before, with the result invented post-hoc.
 
 If you find yourself writing "you manage to..." / "you barely succeed..." / "you fail to..." without a preceding tool call, STOP and call the tool first.`;
+
+/**
+ * Compact version of MASTER_ROLL_TRIGGERS for baked models on mechanical-action
+ * turns. The full MASTER_ROLL_TRIGGERS (~2K tok) is too expensive to bake for
+ * every turn AND we currently don't bake it at all (Plan E.1 slim manifest),
+ * so on a turn where the player clearly stated a roll-triggering action
+ * ("tiro percezione", "I attack the orc") the baked master is left without
+ * any explicit roll-trigger guidance — the SLIM TOOL_CONTRACT only mentions
+ * the tools generically.
+ *
+ * Aggravated by the mechanical-intent RAG skip (commit 65d7bf5): the handbook
+ * chunks that would have carried the trigger rules don't get retrieved either.
+ *
+ * This SLIM is injected runtime only when (a) the turn is detected as
+ * mechanical AND (b) the model is baked (otherwise the full block is already
+ * in the prompt). ~500 tok, paid only on the turns that need it. Phrased for
+ * the local meta-tools path (narrative_action / combat_action) because the
+ * baked variants always run through that path.
+ */
+export const MASTER_ROLL_TRIGGERS_SLIM = `## When to call for a roll — MANDATORY (this turn looks mechanical)
+
+The player's latest message reads as a declared action with an uncertain outcome (perception, attack, athletics, stealth, persuasion, save, …). On this turn you MUST emit a tool call for the resolution BEFORE writing any narration about the result. Narrating "you succeed" / "you fail" / "you manage to…" / "riesci a…" without a preceding tool call is a HARD violation.
+
+Mandatory trigger map (call exactly one of these and END THE TURN, then narrate after the player's roll):
+- Perception / Investigation / Athletics / Acrobatics / Stealth / Sleight of Hand / Deception / Persuasion / Intimidation / Insight / Arcana / History / Nature / Religion / Medicine / Survival / Animal Handling / Performance → \`narrative_action({ subaction: "ability_check", actor, skill, dc })\`
+- Saving throws (DEX vs AoE, CON vs poison, STR vs shove, WIS vs charm, INT vs psychic, CHA vs banishment) → \`narrative_action({ subaction: "saving_throw", actor, ability, dc })\`
+- Weapon / ranged / unarmed attack → \`combat_action({ subaction: "attack", attacker, target, weapon })\`
+- Initiative on a fresh fight → \`combat_action({ subaction: "initiative", actor })\`
+- Death save when a fallen PC starts their turn → \`combat_action({ subaction: "death_save", actor })\`
+
+When manual rolls are enabled (see MANUAL ROLLS RULE if present), instead of calling the rolling tool you must write the formula explicitly (e.g. "Tira 1d20+3 per Percezione."). Either path is acceptable; what is NOT acceptable is narrating the outcome with no tool AND no formula.
+
+If you find yourself writing "riesci a…" / "non riesci a…" / "you manage to…" / "you fail to…" without a preceding tool call or roll formula, STOP — emit the tool call (or formula) first and END THE TURN there.`;
 
 export const MASTER_REWARDS_MANDATE = `## Rewards at the end of every dungeon (CRITICAL — do not skip)
 
@@ -1720,10 +1764,12 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
   //
   // Local models — including "large" Qwen3-30B-A3B-Instruct (3B active per
   // token, non-thinking MoE) — regress to English when only the canonical
-  // English directive is present. We prepend the same imperative in the
-  // TARGET language so the model sees the instruction in its own output
-  // distribution from the first attention pass. The ~200 tok cost is small
-  // vs the cost of an English-narrated campaign on a user who picked IT/ES/…
+  // English directive is present, because they pattern-match the dominant
+  // language of the surrounding English-only baked SYSTEM. We prepend the
+  // same imperative in the TARGET language so the model sees the instruction
+  // in its own output distribution from the first attention pass. ~200 tok
+  // is small vs the cost of an English-narrated campaign on a user who
+  // picked IT/ES/…
   // (See session ab48d443 for the regression that motivated this; commit
   //  e5e4805 had gated this on `isLargeModel`, but Max 2 demonstrably needs
   //  the override despite being "large" in total params.)
@@ -1836,6 +1882,19 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
       text: SPELLCASTING_OVERLAY_BLOCK,
       cache_control: { type: 'ephemeral' },
     });
+  }
+
+  // ── (2.55) ROLL TRIGGERS SLIM — turn-dynamic, on mechanical-intent only ──
+  // Baked models don't carry the full MASTER_ROLL_TRIGGERS (Plan E.1 slim
+  // manifest), and on mechanical-intent turns the RAG retrieval is also
+  // skipped (commit 65d7bf5), leaving the baked master with no explicit
+  // roll-trigger rules right when it needs them most ("tiro percezione").
+  // The runtime injects MASTER_ROLL_TRIGGERS_SLIM (~500 tok) only on those
+  // turns — zero cost on narrative turns, hard guard-rail on mechanical ones.
+  // Placed right before the RAG block because both are turn-dynamic and we
+  // want the trigger rules attended together with the resolved chunks.
+  if (input.injectRollTriggersSlim) {
+    blocks.push({ type: 'text', text: MASTER_ROLL_TRIGGERS_SLIM, cache_control: { type: 'ephemeral' } });
   }
 
   // ── (2.6) PLAN E.2 RAG RETRIEVED CONTEXT ──
