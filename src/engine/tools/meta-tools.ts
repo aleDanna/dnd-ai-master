@@ -174,7 +174,12 @@ export function isMetaName(name: string): name is MetaName {
 
 // ── tool definitions exposed to the LLM ────────────────────────────────────
 
-function metaTool(name: MetaName, description: string, subactions: readonly string[]): AnthropicTool {
+function metaTool(
+  name: MetaName,
+  description: string,
+  subactions: readonly string[],
+  extraProperties: Record<string, unknown> = {},
+): AnthropicTool {
   return {
     name,
     description,
@@ -186,10 +191,20 @@ function metaTool(name: MetaName, description: string, subactions: readonly stri
           type: 'string',
           enum: [...subactions],
         },
+        // Family-level common parameters. Declared here (not just in
+        // `description`) so Ollama's chat template — which reads the JSON
+        // Schema, not the prose description — knows the meta-tool has a
+        // rich shape and activates structured tool-calling. Without this,
+        // qwen3-instruct (and other tool-capable bases) fall back to
+        // emitting the call as text inside `content`, which the adapter
+        // doesn't see → tool-loop retries → bug.
+        ...extraProperties,
       },
       // The dispatcher validates the rest of `input` against the underlying
       // tool's schema; we accept any additional keys at this layer so the
-      // model isn't constrained to a single rigid shape per meta.
+      // model isn't constrained to a single rigid shape per meta. Subactions
+      // that need fields not listed in `extraProperties` still work — the
+      // model passes them through and the dispatcher routes them.
       additionalProperties: true,
     } as never,
   };
@@ -213,6 +228,22 @@ export const META_TOOL_DEFINITIONS: AnthropicTool[] = [
       '- concentration_check: roll concentration. inputs: { actor, dc }\n' +
       '- move: tactical movement (close, near, far bands). inputs: { actor, band }',
     COMBAT_SUBACTIONS,
+    {
+      actor: { type: 'string', description: 'Actor ID (e.g. pc-001)' },
+      attacker: { type: 'string', description: 'Attacker ID (attack subaction)' },
+      target: { type: 'string', description: 'Target ID' },
+      weapon: { type: 'string', description: 'Weapon slug' },
+      advantage: { type: 'boolean' },
+      disadvantage: { type: 'boolean' },
+      amount: { type: 'integer', description: 'HP amount for damage subaction' },
+      type: { type: 'string', description: 'Damage type (slashing, fire, ...)' },
+      newTarget: { type: 'string', description: 'New target ID (swap_target)' },
+      condition: { type: 'string', description: 'Condition slug' },
+      source: { type: 'string', description: 'Source of condition/effect' },
+      feet: { type: 'integer', description: 'Falling distance in feet' },
+      dc: { type: 'integer', description: 'Difficulty Class' },
+      band: { type: 'string', description: 'Movement band (close, near, far)' },
+    },
   ),
   metaTool(
     'spell_action',
@@ -222,6 +253,16 @@ export const META_TOOL_DEFINITIONS: AnthropicTool[] = [
       '- equip_focus / unequip_focus: equip or unequip a spellcasting focus. inputs: { actor, item? }\n' +
       '- attune / unattune: attune or detach from a magic item. inputs: { actor, item }',
     SPELL_SUBACTIONS,
+    {
+      caster: { type: 'string', description: 'Caster actor ID' },
+      spell: { type: 'string', description: 'Spell slug' },
+      slotLevel: { type: 'integer', description: 'Spell slot level to consume' },
+      target: { type: 'string', description: 'Target actor ID' },
+      actor: { type: 'string', description: 'Actor ID' },
+      resource: { type: 'string', description: 'Feature/resource slug' },
+      amount: { type: 'integer' },
+      item: { type: 'string', description: 'Item slug (focus / magic item)' },
+    },
   ),
   metaTool(
     'inventory_action',
@@ -232,6 +273,14 @@ export const META_TOOL_DEFINITIONS: AnthropicTool[] = [
       '- equip / unequip: equip or unequip a weapon/armor/shield. inputs: { actor, slug, slot? }\n' +
       '- recompute_ac: re-derive AC from current equipped gear. inputs: { actor }',
     INVENTORY_SUBACTIONS,
+    {
+      actor: { type: 'string', description: 'Actor ID' },
+      slug: { type: 'string', description: 'SRD item slug' },
+      qty: { type: 'integer', description: 'Quantity' },
+      name: { type: 'string', description: 'Item name (narrative items only)' },
+      description: { type: 'string', description: 'Narrative item description' },
+      slot: { type: 'string', description: 'Equipment slot' },
+    },
   ),
   metaTool(
     'character_action',
@@ -247,6 +296,17 @@ export const META_TOOL_DEFINITIONS: AnthropicTool[] = [
       '- grant_bardic_inspiration: Bardic Inspiration die. inputs: { source, target }\n' +
       '- use_lay_on_hands: Paladin Lay on Hands healing pool. inputs: { actor, target, hp }',
     CHARACTER_SUBACTIONS,
+    {
+      actor: { type: 'string', description: 'Actor ID' },
+      className: { type: 'string', description: 'Class slug (for multiclass)' },
+      actors: { type: 'array', items: { type: 'string' }, description: 'Actor IDs (for award_xp)' },
+      amount: { type: 'integer', description: 'XP amount' },
+      feature: { type: 'string', description: 'Class feature slug' },
+      option: { type: 'string', description: 'Subfeature option' },
+      source: { type: 'string', description: 'Source actor (bardic inspiration)' },
+      target: { type: 'string', description: 'Target actor ID' },
+      hp: { type: 'integer', description: 'HP to spend (lay on hands)' },
+    },
   ),
   metaTool(
     'rest_action',
@@ -254,6 +314,9 @@ export const META_TOOL_DEFINITIONS: AnthropicTool[] = [
       '- short_rest: PHB short rest (1h, hit dice). inputs: { actors[] }\n' +
       '- long_rest: PHB long rest (8h, full HP/slot reset). inputs: { actors[] }',
     REST_SUBACTIONS,
+    {
+      actors: { type: 'array', items: { type: 'string' }, description: 'Actor IDs taking the rest' },
+    },
   ),
   metaTool(
     'narrative_action',
@@ -267,6 +330,22 @@ export const META_TOOL_DEFINITIONS: AnthropicTool[] = [
       '- roll_d20: single d20 with optional modifier. inputs: { modifier?, advantage?, disadvantage? }\n' +
       '- update_npc_beats: track NPC three-beat narrative arc. inputs: { npcId, beat }',
     NARRATIVE_SUBACTIONS,
+    {
+      query: { type: 'string', description: 'Codex query string' },
+      characterId: { type: 'string', description: 'Character ID (set_current_player)' },
+      actor: { type: 'string', description: 'Actor ID' },
+      description: { type: 'string', description: 'Action description (take_action)' },
+      ability: { type: 'string', description: 'Ability (STR/DEX/CON/INT/WIS/CHA)' },
+      skill: { type: 'string', description: 'Skill name (perception, athletics, ...)' },
+      dc: { type: 'integer', description: 'Difficulty Class' },
+      useInspiration: { type: 'boolean' },
+      formula: { type: 'string', description: 'Dice formula (e.g. 3d6+2)' },
+      modifier: { type: 'integer', description: 'd20 modifier' },
+      advantage: { type: 'boolean' },
+      disadvantage: { type: 'boolean' },
+      npcId: { type: 'string', description: 'NPC ID for beat tracking' },
+      beat: { type: 'string', description: 'NPC narrative beat' },
+    },
   ),
   metaTool(
     'environment_action',
@@ -276,6 +355,17 @@ export const META_TOOL_DEFINITIONS: AnthropicTool[] = [
       '- forced_march: forced-march exhaustion. inputs: { actors[], hours }\n' +
       '- apply_starvation / apply_dehydration / apply_suffocation: environment damage. inputs: { actor, ... }',
     ENVIRONMENT_SUBACTIONS,
+    {
+      actor: { type: 'string', description: 'Actor ID' },
+      actors: { type: 'array', items: { type: 'string' }, description: 'Actor IDs (forced_march)' },
+      dc: { type: 'integer', description: 'Difficulty Class' },
+      hours: { type: 'integer', description: 'Hours of forced march' },
+      pace: { type: 'string', description: 'Travel pace (slow/normal/fast)' },
+      light: { type: 'string', description: 'Light level (bright/dim/dark)' },
+      order: { type: 'array', items: { type: 'string' }, description: 'Marching order actor IDs' },
+      senses: { type: 'array', items: { type: 'string' }, description: 'Active senses' },
+      amount: { type: 'integer' },
+    },
   ),
   metaTool(
     'meta_action',
@@ -288,5 +378,28 @@ export const META_TOOL_DEFINITIONS: AnthropicTool[] = [
       '- mount / dismount / set_mount_mode: mount control\n' +
       '- embark_vehicle / disembark_vehicle: vehicle control',
     META_SUBACTIONS,
+    {
+      frame: {
+        type: 'string',
+        description: 'Tonal frame (high_heroic, sword_sorcery, dark, mythic, cosmic_horror, swashbuckling, wuxia, steampunk)',
+      },
+      profile: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Engagement profile tags',
+      },
+      actor: { type: 'string', description: 'Actor ID' },
+      characterId: { type: 'string' },
+      recipe: { type: 'string', description: 'Crafting recipe slug' },
+      craftId: { type: 'string', description: 'In-progress crafting ID' },
+      activity: { type: 'string', description: 'Downtime activity slug' },
+      npc: { type: 'string', description: 'NPC ID (hireling/bastion)' },
+      hireling: { type: 'string' },
+      bastion: { type: 'string', description: 'Bastion slug' },
+      room: { type: 'string', description: 'Bastion room slug' },
+      mount: { type: 'string', description: 'Mount entity ID' },
+      vehicle: { type: 'string', description: 'Vehicle entity ID' },
+      mode: { type: 'string', description: 'Mount/vehicle mode' },
+    },
   ),
 ];
