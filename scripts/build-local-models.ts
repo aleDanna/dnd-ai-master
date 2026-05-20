@@ -73,8 +73,12 @@ function isBuildableBase(slug: string): boolean {
 
 /**
  * Per-base Ollama PARAMETER overrides. Tuned for D&D narration:
- *  - num_ctx 65536: matches the runtime turn-route override; baking it
- *    here means we don't depend on the request specifying it.
+ *  - num_ctx 16384: baked SYSTEM (~7K) + dynamic preamble (~3K) + history
+ *    (~5K) + cushion fits comfortably. On 32GB unified-memory Macs, this
+ *    keeps the KV cache around ~3GB on a 24B dense model (vs ~13GB at
+ *    65536), preventing memory pressure and swap. Coordinate with
+ *    OLLAMA_NUM_CTX in setup-ollama-env.sh — Ollama uses the max of
+ *    Modelfile and env, so the env must be <= this value.
  *  - temperature / top_p / repeat_penalty: starting points; profile if
  *    a specific base wants different defaults.
  *
@@ -85,7 +89,7 @@ function isBuildableBase(slug: string): boolean {
  * Override per-base by adding a key; otherwise DEFAULT_PARAMS apply.
  */
 const DEFAULT_PARAMS: Record<string, string | number | boolean> = {
-  num_ctx: 65536,
+  num_ctx: 16384,
   temperature: 0.7,
   top_p: 0.9,
   repeat_penalty: 1.1,
@@ -103,7 +107,13 @@ const PER_BASE_PARAMS: Record<string, Record<string, string | number | boolean>>
   // siblings because there's no internal monologue to converge selection — but
   // we keep top_p tight and pin min_p to prune the long tail without killing
   // narrative diversity.
-  'qwen3:30b-a3b-instruct-2507': { temperature: 0.7, top_p: 0.9, min_p: 0.05, repeat_penalty: 1.07 },
+  // repeat_penalty 1.13 (vs 1.07 default) — A3B MoE routing tends to lock onto
+  // a stylistic anchor on long creative generations, re-activating the same
+  // experts and reproducing identical phrases across turns. Higher token-level
+  // penalty doesn't fully break the routing lock but raises the bar enough to
+  // surface alternative phrasings. Pushed to 1.13 after observing verbatim
+  // re-narration loops in session 7406a0a5 (5 master turns, same imagery).
+  'qwen3:30b-a3b-instruct-2507': { temperature: 0.7, top_p: 0.9, min_p: 0.05, repeat_penalty: 1.13 },
   // mistral-small 3.2: tuned per modern-narrative best practice — temp 0.8 for
   // evocative prose, min_p 0.05 (modern alternative to top_p alone),
   // repeat_penalty 1.07 (1.1 default is slightly too aggressive on names/places).

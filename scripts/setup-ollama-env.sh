@@ -18,8 +18,9 @@ typeset -A WANTED
 WANTED=(
   OLLAMA_MAX_LOADED_MODELS 2
   OLLAMA_NUM_PARALLEL      1
-  OLLAMA_NUM_CTX           32768
+  OLLAMA_NUM_CTX           16384
   OLLAMA_FLASH_ATTENTION   1
+  OLLAMA_KEEP_ALIVE        30m
 )
 
 # 1. Set launchctl env (affects future processes launched by launchd,

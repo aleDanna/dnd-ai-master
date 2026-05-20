@@ -193,4 +193,128 @@ describe('runToolLoop', () => {
     expect(toolResult.is_error).toBe(true);
     expect(toolResult.content).toMatch(/persistence_failed/);
   });
+
+  describe('requiredToolsBeforeEnd enforcement', () => {
+    // We use set_tonal_frame as the canonical required tool because it's the
+    // production case (master opener), but the loop treats any name uniformly.
+
+    it('commits buffered events when the required tool was called', async () => {
+      const complete = vi.fn()
+        .mockResolvedValueOnce(fakeOutput(
+          [{ type: 'tool_use', id: 'tu1', name: 'set_tonal_frame', input: { frame: 'sword_sorcery' } }],
+          'tool_use',
+        ))
+        .mockResolvedValueOnce(fakeOutput([{ type: 'text', text: 'The torches gutter…' }]));
+
+      const onEvent = vi.fn();
+      const result = await runToolLoop({
+        provider: fakeProvider(complete),
+        systemBlocks: [{ type: 'text', text: 'sys' }],
+        history: [{ role: 'user', content: 'begin' }],
+        state: baseState,
+        onEvent,
+        requiredToolsBeforeEnd: ['set_tonal_frame'],
+      });
+
+      expect(complete).toHaveBeenCalledTimes(2);
+      expect(result.finalText).toBe('The torches gutter…');
+      // All events that were buffered while inTentative must have been flushed
+      // through onEvent. tool_use_start + tool_use_end + narrative_delta all
+      // expected once.
+      const eventTypes = onEvent.mock.calls.map((c) => (c[0] as { type: string }).type);
+      expect(eventTypes).toContain('tool_use_start');
+      expect(eventTypes).toContain('tool_use_end');
+      expect(eventTypes).toContain('narrative_delta');
+    });
+
+    it('retries once with corrective user message when required tool missing', async () => {
+      const complete = vi.fn()
+        // iter 0: model just narrates without calling set_tonal_frame
+        .mockResolvedValueOnce(fakeOutput([{ type: 'text', text: 'Bad opening, no tool call.' }]))
+        // iter 1 (retry): model now calls the tool
+        .mockResolvedValueOnce(fakeOutput(
+          [{ type: 'tool_use', id: 'tu1', name: 'set_tonal_frame', input: { frame: 'dark' } }],
+          'tool_use',
+        ))
+        // iter 2: model narrates properly
+        .mockResolvedValueOnce(fakeOutput([{ type: 'text', text: 'Good opening, dark frame.' }]));
+
+      const onEvent = vi.fn();
+      const result = await runToolLoop({
+        provider: fakeProvider(complete),
+        systemBlocks: [{ type: 'text', text: 'sys' }],
+        history: [{ role: 'user', content: 'begin' }],
+        state: baseState,
+        onEvent,
+        requiredToolsBeforeEnd: ['set_tonal_frame'],
+      });
+
+      expect(complete).toHaveBeenCalledTimes(3);
+      // finalText reflects ONLY the retry's narration; the failed iter 0
+      // narration was discarded.
+      expect(result.finalText).toBe('Good opening, dark frame.');
+      expect(result.finalText).not.toContain('Bad opening');
+
+      // The discarded iter 0 narrative_delta must never have reached onEvent.
+      const deltaTexts = onEvent.mock.calls
+        .filter((c) => (c[0] as { type: string }).type === 'narrative_delta')
+        .map((c) => (c[0] as { type: string; text: string }).text);
+      expect(deltaTexts.join('')).toBe('Good opening, dark frame.');
+
+      // The second provider call must have received the corrective user
+      // message. We assert on index [1] (right after the original user msg)
+      // rather than .at(-1) because the messages array is captured by
+      // reference — iter 1's tool_use + iter 2's tool_result append to it
+      // before this assertion runs.
+      const iter1Messages = (complete.mock.calls[1]?.[0] as { messages: { role: string; content: unknown }[] }).messages;
+      const correctiveMsg = iter1Messages[1];
+      expect(correctiveMsg?.role).toBe('user');
+      expect(correctiveMsg?.content).toMatch(/Server enforcement.*set_tonal_frame/);
+    });
+
+    it('gives up after one retry and commits whatever the model produced', async () => {
+      const complete = vi.fn()
+        // iter 0: bad
+        .mockResolvedValueOnce(fakeOutput([{ type: 'text', text: 'First attempt, no tool.' }]))
+        // iter 1: still bad (model is stubborn)
+        .mockResolvedValueOnce(fakeOutput([{ type: 'text', text: 'Second attempt, still no tool.' }]));
+
+      const onEvent = vi.fn();
+      const result = await runToolLoop({
+        provider: fakeProvider(complete),
+        systemBlocks: [{ type: 'text', text: 'sys' }],
+        history: [{ role: 'user', content: 'begin' }],
+        state: baseState,
+        onEvent,
+        requiredToolsBeforeEnd: ['set_tonal_frame'],
+      });
+
+      // Exactly one retry (so 2 total calls), then commit and exit.
+      expect(complete).toHaveBeenCalledTimes(2);
+      // The retry's narration is committed (we don't deadlock the user with no opener).
+      expect(result.finalText).toBe('Second attempt, still no tool.');
+      // The discarded iter 0 narration is gone.
+      const deltaTexts = onEvent.mock.calls
+        .filter((c) => (c[0] as { type: string }).type === 'narrative_delta')
+        .map((c) => (c[0] as { type: string; text: string }).text);
+      expect(deltaTexts.join('')).toBe('Second attempt, still no tool.');
+    });
+
+    it('does not buffer when requiredToolsBeforeEnd is undefined (non-begin turn)', async () => {
+      const complete = vi.fn().mockResolvedValueOnce(fakeOutput([{ type: 'text', text: 'Just a regular turn.' }]));
+      const onEvent = vi.fn();
+      await runToolLoop({
+        provider: fakeProvider(complete),
+        systemBlocks: [{ type: 'text', text: 'sys' }],
+        history: [{ role: 'user', content: 'do something' }],
+        state: baseState,
+        onEvent,
+        // requiredToolsBeforeEnd omitted — should flow without any gate.
+      });
+      // narrative_delta fires immediately via onEvent (no buffering).
+      const delta = onEvent.mock.calls.find((c) => (c[0] as { type: string }).type === 'narrative_delta');
+      expect(delta).toBeDefined();
+      expect(complete).toHaveBeenCalledOnce();
+    });
+  });
 });

@@ -36,6 +36,22 @@ export interface ToolLoopInput {
    * heuristics only.
    */
   campaignLanguage?: string;
+  /**
+   * Tool names the model MUST call before ending the turn. When set, the
+   * loop buffers narrative_delta / tool_use / thinking events until either
+   * (a) the model calls all required tools (commit + resume normal flow),
+   * or (b) the model tries to end_turn without calling them — in which
+   * case the buffered events are dropped, a corrective user message is
+   * injected, and the loop retries once. After the single retry the loop
+   * commits whatever the model produced (no further retry to bound latency).
+   *
+   * Use case: forcing set_tonal_frame on the campaign-opening turn so the
+   * master commits to a tonal register before narrating. Weaker non-thinking
+   * MoE bases (qwen3:30b-a3b-instruct-2507) skip the tool entirely when only
+   * primed by the SLIM system prompt + tool descriptions, defaulting to
+   * whatever stylistic register the premise pattern-matches to.
+   */
+  requiredToolsBeforeEnd?: string[];
 }
 
 export interface ToolLoopResult {
@@ -59,6 +75,7 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
     sessionId,
     tools = TOOL_DEFINITIONS,
     campaignLanguage,
+    requiredToolsBeforeEnd,
   } = input;
   const events: TurnEvent[] = [];
   let finalText = '';
@@ -68,9 +85,43 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
   const start = Date.now();
   const messages: Message[] = [...history];
 
-  const emit = (ev: TurnEvent): void => {
+  // Required-tool enforcement: when requiredToolsBeforeEnd is non-empty, emit
+  // events into a tentative buffer instead of forwarding to onEvent. The
+  // buffer is committed (flushed) the moment the model calls any tool (it's
+  // engaged with the tool layer; from here on we trust the loop), OR when
+  // we hit the break condition with all required tools called. If the model
+  // tries to break without calling them, the buffer is dropped and the loop
+  // retries once with a corrective user message.
+  const requiredTools = new Set<string>(requiredToolsBeforeEnd ?? []);
+  const calledTools = new Set<string>();
+  let inTentative = requiredTools.size > 0;
+  const tentativeBuffer: TurnEvent[] = [];
+  let requiredRetriesUsed = 0;
+  const MAX_REQUIRED_TOOL_RETRIES = 1;
+
+  const directEmit = (ev: TurnEvent): void => {
     events.push(ev);
     onEvent?.(ev);
+  };
+
+  const emit = (ev: TurnEvent): void => {
+    if (inTentative) {
+      tentativeBuffer.push(ev);
+      return;
+    }
+    directEmit(ev);
+  };
+
+  const flushTentative = (): void => {
+    if (!inTentative) return;
+    for (const ev of tentativeBuffer) directEmit(ev);
+    tentativeBuffer.length = 0;
+    inTentative = false;
+  };
+
+  const dropTentative = (): void => {
+    tentativeBuffer.length = 0;
+    // Keep inTentative=true so the retry iter is also buffered.
   };
 
   for (let iter = 0; iter < TURN_TOOL_CALL_CAP + 1; iter++) {
@@ -126,7 +177,37 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
       }
     }
 
-    if (toolUses.length === 0 || response.stopReason === 'end_turn') break;
+    if (toolUses.length === 0 || response.stopReason === 'end_turn') {
+      // Required-tool gate: before allowing end-of-turn, verify all
+      // requiredToolsBeforeEnd were called. If not, drop buffered output
+      // and re-prompt with a corrective user message. One retry max.
+      if (inTentative) {
+        const missing = [...requiredTools].filter((t) => !calledTools.has(t));
+        if (missing.length > 0 && requiredRetriesUsed < MAX_REQUIRED_TOOL_RETRIES) {
+          dropTentative();
+          finalText = '';
+          requiredRetriesUsed += 1;
+          const list = missing.join(' and ');
+          const pronoun = missing.length === 1 ? 'it' : 'them';
+          messages.push({
+            role: 'user',
+            content: `[Server enforcement] You did not call ${list}. Call ${pronoun} now, BEFORE writing any narration, then continue the opening exactly as instructed.`,
+          });
+          continue;
+        }
+        // Either compliant, or retry budget exhausted — commit whatever
+        // was buffered and exit normally.
+        flushTentative();
+      }
+      break;
+    }
+
+    // Model is calling at least one tool this iteration → it's engaged with
+    // the tool layer. Commit any buffered events now so the SSE consumer
+    // sees deltas in the order they were produced, then drop tentative mode
+    // for the rest of the loop (calledTools still tracks required for the
+    // end-of-turn gate above).
+    if (inTentative) flushTentative();
 
     if (toolCallCount + toolUses.length > TURN_TOOL_CALL_CAP) {
       truncated = true;
@@ -151,6 +232,7 @@ export async function runToolLoop(input: ToolLoopInput): Promise<ToolLoopResult>
     const toolResults: { type: 'tool_result'; tool_use_id: string; content: string; is_error: boolean }[] = [];
     for (const tu of toolUses) {
       toolCallCount += 1;
+      calledTools.add(tu.name);
       emit({ type: 'tool_use_start', toolUseId: tu.id, name: tu.name, input: tu.input });
 
       // Meta-dispatch: rewrites local-provider meta calls (combat_action,
