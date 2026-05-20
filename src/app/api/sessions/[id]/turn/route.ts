@@ -16,7 +16,7 @@ import { retrieveRelevant } from '@/ai/master/rag/retriever';
 import { getRagStore } from '@/ai/master/rag/store';
 import { embed } from '@/ai/master/rag/embedder';
 import { isMechanicalIntent } from '@/ai/master/rag/intent';
-import { isBakedModel, isLargeModelBase, getBakedBaseModel, warnIfBakedModelStale } from '@/ai/master/baked-models';
+import { isBakedModel, warnIfBakedModelStale } from '@/ai/master/baked-models';
 import { getRuntimePromptHash } from '@/ai/master/runtime-prompt-hash';
 import { detectLanguage } from '@/ai/master/language';
 import { runToolLoop } from '@/ai/master/tool-loop';
@@ -226,15 +226,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // load the trimmed variants — fits qwen3:14b's context window without
         // losing the rules + rewards mandate.
         const baked = isBakedModel(userPrefs.aiMasterModel);
-        // Resolve to base slug for isLargeModel — for baked variants the
-        // tier name (dnd-master-max, …) reverses to the underlying base
-        // (mistral-small3.2:24b). Used to gate the verbose
-        // NATIVE_LANGUAGE_INSTRUCTIONS override away from large bases that
-        // don't need it.
-        const baseSlug = baked
-          ? (getBakedBaseModel(userPrefs.aiMasterModel) ?? userPrefs.aiMasterModel)
-          : userPrefs.aiMasterModel;
-        const isLargeModel = isLargeModelBase(baseSlug);
         const useCompact = !baked && userPrefs.compactPrompt;
         const srd = baked ? '' : await buildSrdContext({ compact: useCompact });
         const handbook = baked ? '' : getMasterHandbook({ compact: useCompact });
@@ -399,10 +390,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           needsSpellcasting,
           // Plan E.2:
           ragChunks,
-          // Skip the verbose NATIVE_LANGUAGE_INSTRUCTIONS override on large
-          // bases (Mistral-small3.2 / Qwen3-instruct / gpt-oss) — they follow
-          // the English canonical instruction reliably without the crutch.
-          isLargeModel,
         });
 
         // 5. Run the tool loop — events forwarded to SSE subscribers via notifySession.

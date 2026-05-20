@@ -410,30 +410,21 @@ describe('buildMasterSystemPrompt — Plan D staticBlocksAlreadyBaked', () => {
     expect(notBakedSize).toBeGreaterThan(bakedSize * 5);
   });
 
-  it('includes the native-language override when isLargeModel is false (default)', () => {
+  it('includes the native-language override whenever a language is set', () => {
+    // The override (~200 tok in the target language) is now always emitted
+    // when `language` is set, regardless of model size. Rationale: Qwen3-30B
+    // A3B-Instruct (Max 2) was classified as "large" by total params but
+    // demonstrably ignores the English-only directive — see session
+    // ab48d443. The token cost on truly-reliable bases (mistral-small3.2)
+    // is small vs the cost of an English-narrated session on a user who
+    // picked IT/ES/… Tracks the revert of commit e5e4805.
     const { system } = buildMasterSystemPrompt({
       ...input,
       staticBlocksAlreadyBaked: true,
       language: 'it',
     });
     const texts = system.map((b) => b.text);
-    // The Italian native override starts with this distinctive phrase.
     expect(texts.some((t) => t.includes('IMPORTANTE: TUTTA la tua narrazione'))).toBe(true);
-    // Header still present.
-    expect(texts.some((t) => t.includes('OUTPUT LANGUAGE: ITALIAN'))).toBe(true);
-  });
-
-  it('omits the native-language override when isLargeModel is true', () => {
-    const { system } = buildMasterSystemPrompt({
-      ...input,
-      staticBlocksAlreadyBaked: true,
-      language: 'it',
-      isLargeModel: true,
-    });
-    const texts = system.map((b) => b.text);
-    // Native override gone — large models follow the English canonical instruction.
-    expect(texts.every((t) => !t.includes('IMPORTANTE: TUTTA la tua narrazione'))).toBe(true);
-    // Canonical English header still present (the language directive itself stays).
     expect(texts.some((t) => t.includes('OUTPUT LANGUAGE: ITALIAN'))).toBe(true);
   });
 });
