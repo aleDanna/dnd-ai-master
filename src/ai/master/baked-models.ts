@@ -66,9 +66,23 @@ export function isLargeModelBase(baseSlug: string): boolean {
  * Settings without a polished label.
  */
 export const TIER_NAMES: Record<string, string> = {
-  'mistral-small3.2:24b':         'dnd-master-max',
-  'qwen3:30b-a3b-instruct-2507':  'dnd-master-max2',
-  'gpt-oss:20b':                  'dnd-master-plus',
+  // Mistral Small 3.2 24B — Max tier (multilingual narration + native tool-calling)
+  'mistral-small3.2:24b':                  'dnd-master-max',
+  // Qwen3 30B-A3B Instruct — Max 2 tier (MoE, fastest at this quality)
+  // Map both the canonical tag and the explicit-quantization variants users
+  // commonly pull (q4_K_M / q8_0 / fp16). Without these the bake script
+  // creates a slug-derived name like `dnd-master-qwen3-30b-a3b-instruct-2507-q4_K_M`
+  // that surfaces in Settings as a confusing duplicate next to "D&D Master Max 2".
+  'qwen3:30b-a3b-instruct-2507':           'dnd-master-max2',
+  'qwen3:30b-a3b-instruct-2507-q4_K_M':    'dnd-master-max2',
+  'qwen3:30b-a3b-instruct-2507-q8_0':      'dnd-master-max2',
+  'qwen3:30b-a3b-instruct-2507-fp16':      'dnd-master-max2',
+  // GPT-OSS 20B — Plus tier (solid tool-calling fallback)
+  'gpt-oss:20b':                           'dnd-master-plus',
+  'gpt-oss:20b-q4_K_M':                    'dnd-master-plus',
+  'gpt-oss:20b-q8_0':                      'dnd-master-plus',
+  // Llama 3.2 3B — Lite tier (fast iteration, less reliable on long prompts)
+  'llama3.2:3b':                           'dnd-master-lite',
 };
 
 /** Reverse map of TIER_NAMES, populated lazily for O(1) lookup. */

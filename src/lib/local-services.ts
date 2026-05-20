@@ -212,11 +212,24 @@ export async function fetchOllamaModels(): Promise<ModelOption[]> {
     if (!res.ok) return [];
     const json = (await res.json()) as OllamaTagsResponse;
     const models = json.models ?? [];
-    // Expose ONLY baked variants (dnd-master-*) in the Settings UI. Raw
-    // base models still work at runtime if the user manually pins one via
-    // env / DB, but they're hidden from the dropdown to keep the choice
-    // simple and steer toward the optimised prompt-baked builds.
-    return models.filter((m) => isBakedModel(m.name)).map((m) => {
+    // Expose ONLY curated tier baked variants (dnd-master-max / max2 / plus
+    // and any future tier added to TIER_NAMES) in the Settings UI. Raw base
+    // models AND legacy slug-derived baked variants (e.g. when the user
+    // installs `qwen3:30b-a3b-instruct-2507-q4_K_M` and the bake script
+    // creates `dnd-master-qwen3-30b-a3b-instruct-2507-q4_K_M`) are both
+    // hidden:
+    //  - raw bases: keep the choice simple and steer toward optimised builds
+    //  - slug-derived bakes: avoid confusing duplicates next to the polished
+    //    tier label for the same base. Picking one accidentally has bitten
+    //    us (sessions where the model emits tool calls as text because that
+    //    bake wasn't tuned). To install a base outside the curated tiers,
+    //    add an entry to TIER_NAMES in baked-models.ts so the bake script
+    //    targets the tier name and the dropdown surfaces a proper label.
+    return models.filter((m) => {
+      if (!isBakedModel(m.name)) return false;
+      const bareSlug = m.name.replace(/:latest$/, '');
+      return Boolean(TIER_LABELS[bareSlug]);
+    }).map((m) => {
       const baked = isBakedModel(m.name);
       const baseSlug = baked ? getBakedBaseModel(m.name) : null;
       // Tier-name baked variants get a curated display label so users
