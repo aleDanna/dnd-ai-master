@@ -1,0 +1,20 @@
+# Source PDFs (251 MB) — only the .md/.csv derivatives are used at runtime
+*.pdf
+
+# Git worktrees with their own .next + node_modules
+.worktrees/
+
+# Test artifacts
+coverage/
+test-results/
+playwright-report/
+
+# Dev session captures (not runtime)
+transcripts/
+
+# Dev planning docs (not runtime)
+docs/
+.planning/
+
+# Local AI artifacts (built on the Mac Mini, not on Vercel)
+.ollama/
