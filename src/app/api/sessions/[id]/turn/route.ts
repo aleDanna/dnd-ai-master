@@ -43,6 +43,32 @@ import { checkPartyAccess } from '@/multiplayer/access';
 const BEGIN_INSTRUCTION =
   '[Begin the campaign now. Open the scene by narrating, in second person, the player character\'s immediate surroundings and the situation that draws them in — strictly grounded in the Campaign premise above. Voice any NPCs in earshot. Do NOT call any state-mutating tool (no add_item, award_xp, apply_damage, roll_initiative, etc.) on this opening turn — just establish the scene. End with an open-ended cue inviting the player\'s first action.]';
 
+/**
+ * Mandatory tool-call instruction prefixed to the begin user message. Anchors
+ * the tonal register on opening so weaker non-thinking MoE models (notably
+ * qwen3:30b-a3b-instruct-2507, baked as Max 2) commit to a frame instead of
+ * drifting into whatever stylistic pattern the premise pattern-matches to.
+ * Paired with server-side enforcement in tool-loop.ts (requiredToolsBeforeEnd).
+ */
+const BEGIN_TONAL_MANDATE =
+  '[MANDATORY OPENING STEP] Before writing any narration, you MUST call set_tonal_frame({ frame }) exactly once. Choose the frame that best fits the campaign premise from: high_heroic, sword_sorcery, dark, mythic, cosmic_horror, swashbuckling, wuxia, steampunk. The server will reject the opening turn and re-prompt you if this tool is not called first.';
+
+/**
+ * Build the synthetic first-turn user message. Prepends the campaign premise
+ * verbatim (so the model attends to it directly — non-thinking MoE models
+ * weight recent user content far more than system blocks) and stacks the
+ * tonal-frame mandate ahead of the legacy BEGIN_INSTRUCTION.
+ */
+function buildBeginUserMessage(premise: string | null | undefined): string {
+  const blocks: string[] = [];
+  if (premise && premise.trim()) {
+    blocks.push(`Campaign premise:\n\n${premise.trim()}`);
+  }
+  blocks.push(BEGIN_TONAL_MANDATE);
+  blocks.push(BEGIN_INSTRUCTION);
+  return blocks.join('\n\n');
+}
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
   if (!userId) return jsonResponse({ error: 'unauthenticated' }, 401);
@@ -250,7 +276,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // First-turn opener: bypass DB history (we just verified it's empty
           // upstream of this branch) and feed a single synthetic user
           // instruction so the model has something to respond to.
-          history = [{ role: 'user', content: BEGIN_INSTRUCTION }];
+          // First-turn opener: bypass DB history (we just verified it's empty
+          // upstream of this branch) and feed a single synthetic user message
+          // stacked as: premise verbatim → tonal-frame mandate → begin instr.
+          // Premise duplication into the user turn (also present in SYSTEM via
+          // buildMasterSystemPrompt) is intentional: A3B-Instruct attends to
+          // recent user content much more than to baked SYSTEM blocks.
+          history = [{ role: 'user', content: buildBeginUserMessage(campaign.premise) }];
         } else {
           // History window: how many recent messages to pull. 10 = ~5 turn
           // back (user+assistant pairs) which keeps prompt size ~10-12K
@@ -402,6 +434,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           sessionId,
           tools,
           campaignLanguage: campaign.language ?? snap.language ?? undefined,
+          // First-turn enforcement: master must commit to a tonal frame
+          // before narrating. The loop buffers events until the model calls
+          // set_tonal_frame; if it tries to end the turn without it, the
+          // buffered output is dropped and a corrective re-prompt fires.
+          // One retry max. See BEGIN_TONAL_MANDATE for the priming side.
+          requiredToolsBeforeEnd: isBegin ? ['set_tonal_frame'] : undefined,
           applyMutations: (muts, rolls) => applyMutations(sessionId, muts, rolls),
           recordUsage: async (usage) => {
             await recordUsage({
