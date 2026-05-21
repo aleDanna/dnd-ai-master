@@ -78,19 +78,27 @@ describe('buildMasterSystemPrompt — master guidance level', () => {
   });
 
   // Manual rolls rule — examples adapt to language and hide-DC pref.
-  it('buildManualRollsRule: default = English examples WITH DC visible', () => {
+  // Examples now use abstract placeholders (<bonus>, <REAL TARGET NAME>,
+  // <dc>, etc.) rather than concrete numbers/names, so the model can't
+  // verbatim-copy them into prose when the real scene has different
+  // values (session 5ee23903: "Tira 1d20+4 per attaccare il fuggitivo
+  // (CA 13)" was copied straight out of an example into combat prose
+  // where there was no fuggitivo).
+  it('buildManualRollsRule: default = English examples WITH DC placeholder visible', () => {
     const rule = buildManualRollsRule();
-    expect(rule).toMatch(/Roll a DC 14 Dexterity save/);
-    expect(rule).toMatch(/Roll a DC 15 Perception check/);
+    expect(rule).toMatch(/Roll a DC <dc> Dexterity save/);
+    expect(rule).toMatch(/Roll a DC <dc> Perception check/);
     expect(rule).not.toMatch(/Tira una prova di Percezione/);
+    // No concrete enemy names in default English examples either.
+    expect(rule).not.toMatch(/\bgoblin\b/i);
   });
 
-  it('buildManualRollsRule: hideDC=true strips numeric DC from English examples', () => {
+  it('buildManualRollsRule: hideDC=true strips numeric DC/placeholder from English examples', () => {
     const rule = buildManualRollsRule({ hideDC: true });
     expect(rule).toMatch(/Roll a Dexterity save\."/);
     expect(rule).toMatch(/Roll a Perception check\."/);
-    expect(rule).not.toMatch(/DC 14/);
-    expect(rule).not.toMatch(/DC 15/);
+    expect(rule).not.toMatch(/DC \d+/);
+    expect(rule).not.toMatch(/DC <dc>/);
   });
 
   it('buildManualRollsRule: language=it swaps to Italian-only parser-friendly examples', () => {

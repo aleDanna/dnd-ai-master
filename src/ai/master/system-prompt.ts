@@ -1647,9 +1647,12 @@ Every response you write MUST move the story forward. Each of your turns deliver
 - a consequence of the player's last action that wasn't visible before;
 - a new fact, clue, or decision-point the player can act on.
 
-**Forbidden — never do this:** copy or near-copy your own prior narration. If you find yourself about to write a sentence that already appeared in an earlier master turn, REPHRASE and ADD new content. Looping the same paragraph across turns breaks the game.
+**Forbidden — never do this:**
+- Copy or near-copy your own prior narration. If a sentence already appeared in an earlier master turn, REPHRASE and ADD new content. Looping the same paragraph across turns breaks the game.
+- Copy example text from these instructions VERBATIM into your prose. Strings like "il fuggitivo", "il goblin", "il bersaglio", "CA 13", "DC 14", "1d20+5" appear here as placeholders teaching you the SHAPE of a formula — you must substitute the REAL entity name, the REAL attack bonus, the REAL DC from the current scene + snapshot. If you can't see a real value, ask for it or describe the situation; never paste a placeholder.
+- Ask for a roll the player did not request, in the middle of a non-mechanical exchange (e.g. when the player is asking a question or making a comment). If the player's last message is a question or remark, RESPOND to it — don't pivot to "Tira 1d20+X" out of nowhere.
 
-If the player's input is brief or ambiguous and you genuinely have nothing new to add, acknowledge the action in ONE short sentence and pose a specific follow-up question that opens a new beat — do not pad with rewrites of earlier descriptions.`;
+If the player's input is brief or ambiguous and you genuinely have nothing new to add, acknowledge the action in ONE short sentence and pose a specific follow-up question that opens a new beat — do not pad with rewrites of earlier descriptions, and do not invent a roll request to fill the space.`;
 
 /**
  * Builds the Manual Rolls rule with examples calibrated for the active
@@ -1673,30 +1676,37 @@ export function buildManualRollsRule(opts: {
   const hideDC = opts.hideDC === true;
   const it = opts.language === 'it';
 
+  // Examples use ABSTRACT placeholders (<bonus>, <bersaglio>, <CD>, <XdY>)
+  // rather than concrete numbers/names. Local bases (qwen3:30b-A3B in
+  // particular) tend to verbatim-copy concrete examples into prose when
+  // they don't know how to fill in real values — yielding nonsensical
+  // output like "Tira 1d20+4 per attaccare il fuggitivo (CA 13)" when
+  // there's no fuggitivo in the scene (session 5ee23903). Placeholders
+  // force the model to substitute real values from the snapshot.
   const examples = (() => {
     if (hideDC && it) return [
-      '- "Tira 1d20+5 per attaccare il fuggitivo."  (omit CA — the player won\'t see the difficulty)',
+      '- "Tira 1d20+<bonus> per attaccare <NOME REALE DEL BERSAGLIO>."  (no CD — il giocatore non vede la difficoltà)',
       '- "Tira un TS Destrezza."',
       '- "Tira una prova di Percezione."',
-      '- "Tira 1d8+3 danni."',
+      '- "Tira <XdY+bonus> danni <tipo>."',
     ];
     if (hideDC) return [
-      '- "Roll 1d20+5 for your attack against the goblin."  (omit AC)',
+      '- "Roll 1d20+<bonus> to attack <REAL TARGET NAME>."  (no DC/AC)',
       '- "Roll a Dexterity save."',
       '- "Roll a Perception check."',
-      '- "Roll 1d8+3 for damage."',
+      '- "Roll <XdY+bonus> <type> damage."',
     ];
     if (it) return [
-      '- "Tira 1d20+5 per attaccare il fuggitivo (CA 13)."',
-      '- "Tira un TS Destrezza CD 14."',
-      '- "Tira una prova di Percezione CD 15."',
-      '- "Tira 1d8+3 danni."',
+      '- "Tira 1d20+<bonus> per attaccare <NOME REALE DEL BERSAGLIO> (CA <ac>)."',
+      '- "Tira un TS Destrezza CD <cd>."',
+      '- "Tira una prova di Percezione CD <cd>."',
+      '- "Tira <XdY+bonus> danni <tipo>."',
     ];
     return [
-      '- "Roll 1d20+5 for your attack against the goblin (AC 13)."',
-      '- "Roll a DC 14 Dexterity save."',
-      '- "Roll a DC 15 Perception check."',
-      '- "Roll 1d8+3 for damage."',
+      '- "Roll 1d20+<bonus> to attack <REAL TARGET NAME> (AC <ac>)."',
+      '- "Roll a DC <dc> Dexterity save."',
+      '- "Roll a DC <dc> Perception check."',
+      '- "Roll <XdY+bonus> <type> damage."',
     ];
   })();
 
@@ -1749,21 +1759,17 @@ ${languageStrictNote}`;
  * the master gets wrong here often enough to warrant the explicit rule.
  */
 export const MASTER_ATTACK_DAMAGE_TWO_TURN_OVERLAY = `### Attack & damage are TWO SEPARATE TURNS — never the same message
-Attacks always happen in two steps, across two of your turns:
+Attacks always happen in two steps, across two of your turns. Use the player character's REAL attack bonus from the snapshot and the ACTUAL target name/AC from the current scene — never reuse placeholder names or bonuses from these instructions.
 
-**Turn N (attack roll):** ask only for the to-hit roll. End your turn there.
-   - "Tira 1d20+4 per attaccare il fuggitivo (CA 13)."
-   - "Roll 1d20+5 to attack the goblin (AC 13)."
+**Turn N (attack roll):** ask only for the to-hit roll, then end the turn. Shape: "Tira 1d20+<bonus> per attaccare <bersaglio reale>" (omit AC when HIDE-DIFFICULTY is active).
 
-**Turn N+1 (damage, ONLY if it hit):** the player replies with the to-hit total. You compare against AC. If it hit, ask for damage now. If it missed, narrate the miss and move on — never ask for damage on a miss.
-   - "Hai colpito! Tira 1d8+2 danni taglienti."
-   - "You hit! Roll 1d8+3 for damage."
+**Turn N+1 (damage, ONLY if it hit):** the player replies with the to-hit total. Compare against AC. If hit, ask for damage NOW with the weapon's real damage formula. If missed, narrate the miss and move on — never ask for damage on a miss.
 
-**Forbidden patterns — do NOT do this:**
-- ❌ "Tira 1d20+4 per attaccare. Se colpisci, tira 1d8+2 danni." (damage button rendered before knowing the to-hit result)
-- ❌ "Roll 1d20+5 to attack. If you hit, roll 1d8+3 for damage." (same problem in English)
-- ❌ Listing both an attack and a damage roll in the same message under any phrasing — bullets, options, conditionals, or otherwise.
-- ❌ Listing 3 attack options where each option includes both attack and damage formulas. Each option should ONLY have the attack roll. Damage comes after, in a separate turn, only for the path the player chose AND only if that path hit.
+**Forbidden:**
+- ❌ Pre-emitting damage alongside the to-hit ("Tira 1d20+X per attaccare. Se colpisci, tira XdY danni.") — damage button must wait for the hit confirmation.
+- ❌ Listing attack + damage in the same message under any phrasing (bullets, options, conditionals).
+- ❌ Listing multiple attack options each containing damage formulas — damage comes after the player commits to a path AND lands the hit.
+- ❌ Copying placeholder names ("fuggitivo", "goblin", "bersaglio") into your prose when the actual enemy in the scene has a different name. ALWAYS substitute the real entity from the current snapshot.
 
 This rule applies even inside a "Vuoi: / Choose:" choice list. Each option lists only the ATTACK roll. Once the player picks a path and rolls to hit, you reveal whether it landed and ask for damage in the next message.
 
