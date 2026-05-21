@@ -28,6 +28,12 @@ export interface OllamaResponseMessage {
 export interface OllamaUsage {
   prompt_eval_count?: number;
   eval_count?: number;
+  /** Model-load duration in nanoseconds (Ollama `load_duration`). */
+  load_duration?: number;
+  /** Prompt-eval duration in nanoseconds (Ollama `prompt_eval_duration`). */
+  prompt_eval_duration?: number;
+  /** Token-generation duration in nanoseconds (Ollama `eval_duration`). */
+  eval_duration?: number;
 }
 
 /** Joins Anthropic system blocks into a single Ollama system message.
@@ -220,12 +226,16 @@ export function ollamaDoneReasonToStopReason(
 }
 
 /** Normalizes Ollama usage counts to our canonical shape. Cache fields are
- *  always 0 (Ollama has no prompt-cache concept). */
+ *  always 0 (Ollama has no prompt-cache concept). Timing fields are converted
+ *  from Ollama's nanoseconds to milliseconds; undefined when not reported. */
 export function normalizeOllamaUsage(u: OllamaUsage): NormalizedUsage {
   return {
     inputTokens: u.prompt_eval_count ?? 0,
     outputTokens: u.eval_count ?? 0,
     cacheReadTokens: 0,
     cacheCreationTokens: 0,
+    loadDurationMs: u.load_duration != null ? Math.round(u.load_duration / 1_000_000) : undefined,
+    promptEvalDurationMs: u.prompt_eval_duration != null ? Math.round(u.prompt_eval_duration / 1_000_000) : undefined,
+    evalDurationMs: u.eval_duration != null ? Math.round(u.eval_duration / 1_000_000) : undefined,
   };
 }

@@ -18,7 +18,7 @@ import {
   type OllamaResponseMessage,
 } from './ollama-adapter';
 import { recordUsage } from '@/ai/master/usage';
-import { isBakedModel, getBakedBaseModel } from '@/ai/master/baked-models';
+import { isBakedModel, thinkingFlagFor } from '@/ai/master/baked-models';
 import { ollamaHeaders } from '@/lib/local-fetch';
 
 const KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE ?? '5m';
@@ -32,55 +32,12 @@ const KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE ?? '5m';
 // dependent). User can lower via OLLAMA_NUM_CTX if RAM-bound.
 const NUM_CTX = Number(process.env.OLLAMA_NUM_CTX ?? '65536');
 
-/**
- * "Thinking models" (qwen3, deepseek-r1, gpt-oss, etc.) emit a separate
- * `thinking` field instead of putting content in `message.content`. We
- * resolve the right value of Ollama's top-level `think` flag for each
- * model:
- *
- *   true       → force thinking ON. Used for qwen3:30b-a3b (Max 3 tier)
- *                where the user wants the chain-of-thought head active.
- *   false      → force thinking OFF. Used for other qwen3 thinking
- *                bases, deepseek-r1, gpt-oss — there we want plain
- *                content directly. Models that ignore the flag still
- *                emit <think>…</think>; the adapter strips that.
- *   undefined  → leave to model default. Used for non-thinking bases
- *                (qwen3-*-instruct-*, mistral, llama3.x, ...) where
- *                adding the flag adds tokens with no value and would
- *                invalidate the KV cache.
- */
-function thinkingFlagFor(model: string | undefined): boolean | undefined {
-  if (!model) return undefined;
-  const m = model.toLowerCase();
-  // Resolve baked variants (legacy slug-derived AND tier names like
-  // dnd-master-max / -max2 / -max3 / -plus / -lite) to their underlying
-  // base slug, then match families. Without this, the flag was silently
-  // dropped for the new tier names.
-  const resolved = isBakedModel(m) ? (getBakedBaseModel(m) ?? m) : m;
-  const r = resolved.toLowerCase();
-  // Max 3 tier: qwen3:30b-a3b base (incl. quantization variants) wants
-  // thinking ON. User opted in for the chain-of-thought head.
-  if (/^qwen3:30b-a3b(?:-(?:q4_k_m|q8_0|fp16))?$/i.test(r)) return true;
-  // Qwen3 non-thinking instruct (e.g. qwen3:30b-a3b-instruct-2507): no
-  // internal monologue — leave default. Short-circuit before the generic
-  // qwen3 thinking-off match below.
-  if (/qwen3.*-instruct-/i.test(r)) return undefined;
-  // Other qwen3 thinking bases + deepseek-r1 + gpt-oss: force OFF so
-  // they emit content directly. (Some models ignore the flag and emit
-  // <think>…</think> anyway; the adapter strips it.)
-  if (r.startsWith('qwen3') || r.includes('/qwen3') || r.includes('qwen3')
-    || r.startsWith('deepseek-r1') || r.includes('deepseek-r1')
-    || r.startsWith('gpt-oss') || r.includes('/gpt-oss') || r.includes('gpt-oss')) {
-    return false;
-  }
-  return undefined;
-}
-
 /** Back-compat: legacy callers test "is this a thinking model?" as a
- *  boolean. Map the new tri-state down to that for the `noReasoning`
- *  preamble path which only cares whether the model has a thinking
- *  head at all (true for both Max 3 with thinking-on AND the others
- *  with thinking-off-via-flag). */
+ *  boolean. The single source of truth (thinkingFlagFor) is now in
+ *  baked-models.ts so the turn route can reuse it. Map the tri-state
+ *  down to a boolean for the `noReasoning` preamble path which only
+ *  cares whether the model has a thinking head at all (true for both
+ *  Max 3 with thinking-on AND the others with thinking-off-via-flag). */
 function isThinkingModel(model: string | undefined): boolean {
   return thinkingFlagFor(model) !== undefined;
 }
@@ -552,17 +509,34 @@ export class LocalProvider implements MasterProvider {
     // is unchanged.
     const useStream = typeof input.onDelta === 'function';
     const campaignLanguage = input.campaignLanguage;
-    // num_predict cap. Small models (3-4B llama/qwen) routinely run away
-    // with chain-of-thought when asked to plan + tool-call + narrate. At
-    // num_predict=4096 they often hit the limit MID-THOUGHT, leaving a
-    // truncated content that the reasoning-strip then drops to empty
-    // → "Master non ha prodotto risposta" UX failure. Cap them at 2048
-    // so a runaway CoT either gets cut short OR (more often) the model
-    // wraps up sooner. Capable models (qwen3-30b-a3b, gpt-oss-20b) keep
-    // the original 4096 — they don't dump CoT and need the headroom for
-    // long combat narrations + multi-tool turns.
+    // num_predict cap. Three tiers:
+    //
+    //  - Small models (3-4B llama/qwen): 2048. They run away with
+    //    chain-of-thought when asked to plan + tool-call + narrate; at
+    //    4096 they hit the limit mid-thought and the stripped content
+    //    comes back empty ("Master non ha prodotto risposta").
+    //
+    //  - Thinking-ON models (Max 3 = qwen3:30b-a3b currently): 2500.
+    //    Empirically measured (ai_usage.eval_duration_ms / output_tokens):
+    //    Max 3 runs at ~22 tok/s decode and was hitting the old 1500-token
+    //    cap on 100% of turns — meaning every response was truncated. The
+    //    thinking block alone can reach 700-1000 tokens even with
+    //    MASTER_BRIEF_THINKING_RULE asking for ≤200 tok of CoT, leaving
+    //    virtually nothing for tool calls + narration. 2500 gives ~1500
+    //    tokens of headroom after a 1000-tok thinking block, enough for
+    //    a full narration + one or two tool calls (~113s decode vs 67s at
+    //    1500). Raise to 3000 if capping persists; watch eval_duration_ms
+    //    column to confirm.
+    //
+    //  - Capable non-thinking (qwen3-instruct, gpt-oss, mistral):
+    //    keep 4096 — they don't dump CoT, and combat-heavy turns with
+    //    long multi-tool narrations occasionally need the headroom.
+    //
+    // Cap can be overridden per-call via `input.maxTokens` (e.g. small
+    // utility calls like language detection set 8).
     const isSmallModel = /(?:llama3\.2.*3b|qwen3.*[34]b|gemma2?.*2b|dnd-master-(?:lite|balance))/i.test(input.model ?? '');
-    const defaultMaxTokens = isSmallModel ? 2048 : 4096;
+    const isThinkingOn = thinkingFlagFor(input.model) === true;
+    const defaultMaxTokens = isSmallModel ? 2048 : (isThinkingOn ? 2500 : 4096);
     const json = await chat(
       {
         model: input.model,
@@ -585,6 +559,9 @@ export class LocalProvider implements MasterProvider {
       usage: normalizeOllamaUsage({
         prompt_eval_count: json.prompt_eval_count,
         eval_count: json.eval_count,
+        load_duration: json.load_duration,
+        prompt_eval_duration: json.prompt_eval_duration,
+        eval_duration: json.eval_duration,
       }),
     };
   }
@@ -613,6 +590,9 @@ export class LocalProvider implements MasterProvider {
           usage: normalizeOllamaUsage({
             prompt_eval_count: json.prompt_eval_count,
             eval_count: json.eval_count,
+            load_duration: json.load_duration,
+            prompt_eval_duration: json.prompt_eval_duration,
+            eval_duration: json.eval_duration,
           }),
         });
       }
@@ -645,6 +625,9 @@ export class LocalProvider implements MasterProvider {
         usage: normalizeOllamaUsage({
           prompt_eval_count: json.prompt_eval_count,
           eval_count: json.eval_count,
+          load_duration: json.load_duration,
+          prompt_eval_duration: json.prompt_eval_duration,
+          eval_duration: json.eval_duration,
         }),
       });
     }
@@ -656,6 +639,9 @@ export class LocalProvider implements MasterProvider {
           usage: normalizeOllamaUsage({
             prompt_eval_count: json.prompt_eval_count,
             eval_count: json.eval_count,
+            load_duration: json.load_duration,
+            prompt_eval_duration: json.prompt_eval_duration,
+            eval_duration: json.eval_duration,
           }),
         };
       }

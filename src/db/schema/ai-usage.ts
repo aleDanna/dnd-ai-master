@@ -29,6 +29,24 @@ export const aiUsage = pgTable(
      * Validation query: `SELECT … WHERE rag_chunk_count IS NOT NULL`.
      */
     ragChunkCount: integer('rag_chunk_count'),
+    /**
+     * Ollama model-load time (ms) — cold-start cost paid on the first call
+     * after the model was evicted from VRAM. Typically 0-2s on a warm model
+     * and 30-120s on a cold one. NULL for cloud providers.
+     */
+    loadDurationMs: integer('load_duration_ms'),
+    /**
+     * Ollama prompt-eval time (ms) — time spent processing the input tokens
+     * (prefill phase). Proportional to prompt length; grows with system prompt +
+     * history + RAG chunks. NULL for cloud providers.
+     */
+    promptEvalDurationMs: integer('prompt_eval_duration_ms'),
+    /**
+     * Ollama eval time (ms) — time spent generating output tokens (decode
+     * phase). Proportional to response length; bounded by num_predict cap.
+     * NULL for cloud providers.
+     */
+    evalDurationMs: integer('eval_duration_ms'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

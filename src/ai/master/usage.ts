@@ -7,6 +7,12 @@ export interface UsageNumbers {
   outputTokens?: number;
   cacheReadTokens?: number;
   cacheCreationTokens?: number;
+  /** Ollama model-load time (ms). Undefined/null → cloud provider or not reported. */
+  loadDurationMs?: number;
+  /** Ollama prompt-eval time / prefill (ms). Undefined/null → cloud provider or not reported. */
+  promptEvalDurationMs?: number;
+  /** Ollama eval time / decode (ms). Undefined/null → cloud provider or not reported. */
+  evalDurationMs?: number;
 }
 
 export async function recordUsage(args: {
@@ -45,6 +51,9 @@ export async function recordUsage(args: {
     mode: args.mode ?? null,
     needsSpellcasting: args.needsSpellcasting ?? null,
     ragChunkCount: args.ragChunkCount ?? null,
+    loadDurationMs: args.usage.loadDurationMs ?? null,
+    promptEvalDurationMs: args.usage.promptEvalDurationMs ?? null,
+    evalDurationMs: args.usage.evalDurationMs ?? null,
   };
   await db.insert(aiUsage).values(row);
 }

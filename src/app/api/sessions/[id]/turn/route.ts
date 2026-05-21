@@ -16,7 +16,7 @@ import { retrieveRelevant } from '@/ai/master/rag/retriever';
 import { getRagStore } from '@/ai/master/rag/store';
 import { embed } from '@/ai/master/rag/embedder';
 import { isMechanicalIntent } from '@/ai/master/rag/intent';
-import { isBakedModel, warnIfBakedModelStale } from '@/ai/master/baked-models';
+import { isBakedModel, warnIfBakedModelStale, thinkingFlagFor } from '@/ai/master/baked-models';
 import { getRuntimePromptHash } from '@/ai/master/runtime-prompt-hash';
 import { detectLanguage } from '@/ai/master/language';
 import { runToolLoop } from '@/ai/master/tool-loop';
@@ -384,18 +384,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // and retrieve top-3 chunks. Failure (embedder down, store empty) returns
         // [] so the prompt builder skips the block entirely.
         //
-        // Mechanical-action gating: on turns where the latest user message is a
-        // clear mechanical action ("tiro percezione", "I attack the goblin",
-        // ...), skip retrieval entirely. The model resolves these via the baked
-        // SRD + tool definitions; handbook chunks add ~80ms latency + hundreds
-        // of tokens of prompt for no narrative benefit. Questions and narrative
-        // declarations still trigger retrieval. See `isMechanicalIntent`.
+        // RAG retrieval gating — two conditions must hold:
+        //
+        //  1. Baked model only. Non-baked models already receive the full
+        //     master_handbook.md + master_world_lore.md verbatim in the system
+        //     prompt (handbook/worldLore are '' only for baked variants). The RAG
+        //     corpus is built exclusively from those same two files, so injecting
+        //     chunks for a non-baked model would duplicate content the model can
+        //     already see in full. Skipping also saves the embedding + vector-search
+        //     round-trip (~80 ms) for cloud calls where the handbook is always in
+        //     context anyway.
+        //
+        //  2. Non-mechanical turn. On clear mechanical actions ("tiro percezione",
+        //     "I attack the goblin", …) the model resolves via the baked SRD + tool
+        //     definitions; handbook narrative chunks add latency + tokens for no
+        //     benefit. Questions and narrative declarations still trigger retrieval.
+        //     See `isMechanicalIntent`.
         const lastUserText = (() => {
           const last = [...history].reverse().find((m) => m.role === 'user');
           return last && typeof last.content === 'string' ? last.content : '';
         })();
         const mechanical = isMechanicalIntent(lastUserText);
-        const useRag = userPrefs.useRagRetrieval && !mechanical;
+        const useRag = userPrefs.useRagRetrieval && baked && !mechanical;
         let ragChunks: Awaited<ReturnType<typeof retrieveRelevant>> = [];
         if (useRag) {
           const recentForQuery = [
@@ -415,6 +425,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               k: 3,
             });
           }
+        } else if (userPrefs.useRagRetrieval && !baked) {
+          // eslint-disable-next-line no-console
+          console.log('[rag] skipped (non-baked model — handbook already in prompt)');
         } else if (userPrefs.useRagRetrieval && mechanical) {
           // eslint-disable-next-line no-console
           console.log('[rag] skipped (mechanical action detected):', lastUserText.slice(0, 80));
@@ -436,6 +449,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // on bandwidth-bound bases).
           inCombat: snap.state.combat !== null,
           partySize: snap.party?.length ?? 1,
+          // Inject the brief-thinking rule only when the active model has
+          // its chain-of-thought head enabled at runtime. Currently only
+          // Max 3 (qwen3:30b-a3b) qualifies; everything else (Max 2
+          // instruct, Plus, cloud) skips the ~120 token cost.
+          thinkingEnabled: thinkingFlagFor(userPrefs.aiMasterModel) === true,
           masterGuidanceLevel: userPrefs.masterGuidanceLevel,
           showDifficultyNumbers: userPrefs.showDifficultyNumbers,
           narrationPace: userPrefs.narrationPace,

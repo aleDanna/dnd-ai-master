@@ -275,3 +275,41 @@ export async function warnIfBakedModelStale(args: {
 export function _clearStaleWarningCache(): void {
   _warnedKeys.clear();
 }
+
+/**
+ * Resolve the right value of Ollama's top-level `think` flag for a given
+ * model slug. Returns:
+ *
+ *   true       — qwen3:30b-a3b family (Max 3 tier). Forces thinking ON
+ *                so the chain-of-thought head emits <think>…</think> the
+ *                adapter strips before showing the player.
+ *   false      — other qwen3 thinking bases, deepseek-r1, gpt-oss.
+ *                Forces thinking OFF.
+ *   undefined  — non-thinking bases (qwen3-*-instruct-*, mistral,
+ *                llama3.x, …). Omits the flag entirely so we don't
+ *                invalidate the KV cache.
+ *
+ * Used by:
+ *  - local.ts → as the chat-request `think` value
+ *  - turn route → to derive the `thinkingEnabled` flag that gates the
+ *    MASTER_BRIEF_THINKING_RULE block in buildMasterSystemPrompt
+ */
+export function thinkingFlagFor(model: string | undefined): boolean | undefined {
+  if (!model) return undefined;
+  const m = model.toLowerCase();
+  // Resolve baked variants (tier names + legacy slug-derived) to their
+  // underlying base slug, then match families.
+  const resolved = isBakedModel(m) ? (getBakedBaseModel(m) ?? m) : m;
+  const r = resolved.toLowerCase();
+  // Max 3 tier: qwen3:30b-a3b base (incl. quantization variants).
+  if (/^qwen3:30b-a3b(?:-(?:q4_k_m|q8_0|fp16))?$/i.test(r)) return true;
+  // Qwen3 non-thinking instruct (e.g. qwen3:30b-a3b-instruct-2507).
+  if (/qwen3.*-instruct-/i.test(r)) return undefined;
+  // Other qwen3 thinking + deepseek-r1 + gpt-oss: force OFF.
+  if (r.startsWith('qwen3') || r.includes('/qwen3') || r.includes('qwen3')
+    || r.startsWith('deepseek-r1') || r.includes('deepseek-r1')
+    || r.startsWith('gpt-oss') || r.includes('/gpt-oss') || r.includes('gpt-oss')) {
+    return false;
+  }
+  return undefined;
+}

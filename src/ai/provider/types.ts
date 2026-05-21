@@ -31,6 +31,12 @@ export interface NormalizedUsage {
   outputTokens: number;
   cacheReadTokens: number;
   cacheCreationTokens: number;
+  /** Ollama model-load time (ms). Undefined for cloud providers. */
+  loadDurationMs?: number;
+  /** Ollama prompt-eval time / prefill (ms). Undefined for cloud providers. */
+  promptEvalDurationMs?: number;
+  /** Ollama eval time / decode (ms). Undefined for cloud providers. */
+  evalDurationMs?: number;
 }
 
 export interface CompleteMessageInput {
