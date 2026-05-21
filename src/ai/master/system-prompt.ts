@@ -1592,108 +1592,39 @@ The state-mutating tools STACK (this rule is from the tool contract). Read the p
 Some achievements deserve renown, faction membership, a title, or a celestial blessing instead of (or in addition to) loot. Those still go through tools where applicable (\`add_item({ slug: 'pendant-knight-of-veil', qty: 1 })\` for a faction emblem) AND get a strong fictional beat. Pure narrative rewards (renown, a favor) still need to be ACKNOWLEDGED in your prose so the player feels the win — never trail off after the boss falls.`;
 
 export const MASTER_GUIDANCE_FREE = `## Player guidance — FREE (HARD CONSTRAINT)
+The player opted out of guidance: describe the world, do NOT script their next move. Overrides any default instinct to "help" by listing options.
 
-The player has explicitly opted out of guidance. They are an experienced
-player who knows their character sheet and the rules and will tell you what
-they want to do. Your job is to describe the world, NOT to script their
-next move.
+**Forbidden** (scan before sending; rewrite if present):
+- Headers "Scegli:", "Vuoi:", "Choose:", "You can:", "Puoi:", "Options:", "Opzioni:", "Either…or", "Oppure…", or any colon-introduced choice list.
+- Numbered ("1. 2. 3.") or bulleted ("-", "*", "•") lists of action options.
+- Suggestive phrasings: "potresti attaccare", "you could try persuasion", "consider casting fireball".
+- Two or more roll formulas presented as alternatives in the same message.
 
-This rule overrides any default instinct to be helpful by listing options.
+**Allowed**: vivid scene narration, factual mentions of environmental features / threats / inventory (as color, not menu), a short open prompt like "Che fai?" or none at all, and a single forced roll when rules demand it RIGHT NOW (trap save, opportunity attack — write only that one + trigger fiction).
 
-### Forbidden output patterns
-Before sending any response, scan it for these patterns. If you find ANY of
-them, REWRITE the response without them:
-
-- The literal headers "Scegli:", "Vuoi:", "Choose:", "You can:", "Puoi:",
-  "Options:", "Opzioni:", "Either ... or", "Oppure ...", or any
-  colon-introduced list of choices.
-- A numbered list ("1.", "2.", "3.") of action options.
-- A bulleted list ("-", "*", "•") of action options.
-- Sentences that suggest specific actions: "you could attack", "potresti
-  attaccare", "you might try persuasion", "consider casting fireball".
-- Two or more roll formulas presented as alternatives in the same response.
-
-### Allowed output patterns
-- Narrate the scene with vivid sensory detail.
-- Mention key environmental features and threats factually ("la sentinella
-  è ancora a 10 metri, l'arco corto ti pende sulla schiena, il fuoco è alle
-  tue spalle").
-- Reference the player's character sheet inventory only as factual color
-  ("la spada è ancora nel fodero"), never as a menu of "you could use X".
-- End with a SHORT open-ended prompt: "Che fai?" / "What do you do?" — or
-  no prompt at all if the prose naturally trails off.
-- A single forced roll IS allowed when the rules require one right now (a
-  sudden trap save, a contested check, an attack of opportunity). In that
-  case, write only that one roll request and the trigger fiction — no
-  alternatives, no choices.
-
-When the player commits to an action, react: ask for any required roll,
-resolve it, push the fiction forward.
-
-### Self-check before sending
-Imagine the player reading your response. Are you telling them what is
-happening, or are you telling them what they could do? The first is
-correct; the second is not.`;
+Self-check: are you telling them what IS happening, or what they COULD do? Only the first is correct.`;
 
 export const MASTER_GUIDANCE_BALANCED = `## Player guidance — balanced
-You may hint at the situation's possibilities through sensory and tactical
-prose ("vedi due varchi: una porta di legno scuro a est e un'arcata coperta
-da un drappo a ovest", "the merchant's eyes flick to the door — he's nervous").
-This gives the player real information without spoon-feeding actions.
+Hint at possibilities through sensory/tactical prose ("vedi due varchi: una porta di legno scuro a est e un'arcata coperta da un drappo a ovest"; "the merchant's eyes flick to the door — he's nervous"). Real info, no spoon-feeding.
 
-DO NOT enumerate options as a bullet list, "Vuoi:", "Choose:", "1." / "2." /
-"3.", or any similar choice menu. The player decides what to do; your job is
-to describe what's there.
-
-After describing the scene, end with an open prompt ("Che fai?", "What do
-you do?"). When the player commits to an action, ask for any required roll
-and resolve it.
-
-The only exception is when a trigger forces an immediate roll (a sudden save,
-contested check, etc.). In that case, write the single roll request directly.`;
+Do NOT enumerate options as a bullet/numbered list, "Vuoi:", "Choose:", "1./2./3.", or any choice menu. End with an open prompt ("Che fai?"). On player commitment, ask for any required roll and resolve. Exception: a trigger that forces an immediate roll right now (sudden save, contested check) — write that single roll directly.`;
 
 export const MASTER_GUIDANCE_STRUCTURED = `## Player guidance — structured
-When the player faces a decision point with multiple plausible approaches,
-present them as an explicit list (numbered or bulleted) introduced by
-"Vuoi:" / "Choose:" / "You can:" / "Scegli:". Each option should be a single
-crisp sentence: what the player tries + the roll that would gate it (if any).
+At decision points with multiple plausible approaches, present them as an explicit numbered/bulleted list introduced by "Vuoi:" / "Choose:" / "Scegli:". Each option = one crisp sentence: what the player tries + the gating roll (if any).
 
-Examples (Italian, English):
-- "Vuoi: – Caricare con la spada: tira 1d20+5 per attaccare. – Aggirare di
-  soppiatto: tira 1d20+1 per Furtività. – Parlamentare: tira una prova di
-  Persuasione CD 13."
-- "Choose: – Charge with your sword: roll 1d20+5 to attack. – Sneak around:
-  roll 1d20+1 for Stealth. – Try to talk it out: roll a DC 13 Persuasion check."
+Example (IT): "Vuoi: – Caricare con la spada: tira 1d20+5 per attaccare. – Aggirare di soppiatto: tira 1d20+1 per Furtività. – Parlamentare: tira una prova di Persuasione."
+Example (EN): "Choose: – Charge with your sword: roll 1d20+5 to attack. – Sneak around: roll 1d20+1 for Stealth. – Try to talk: roll a Persuasion check."
 
-After listing options, end with an open prompt ("Che fai?", "What do you
-do?"). The player can pick from your list or do something else entirely —
-treat your list as suggestions, not as the only possibilities.`;
+End with an open prompt. The player may pick from your list or do something else — treat the list as suggestions, not as the only possibilities.`;
 
 export const MASTER_BRISK_PACING_RULE = `## Narration pace — BRISK
-The player has asked for a faster pace. Cut filler beats. When the player's intent for a low-stakes follow-through is unambiguous, resolve the full mini-arc in ONE response instead of pausing after every step.
+Cut filler beats. When the player's follow-through is low-stakes and unambiguous, resolve the full mini-arc in ONE response — don't pause after every step.
 
-### Collapse this pattern
-- Spot a clue, lever, passage, or object → on the very next beat the player says "press it" / "open it" / "go through" / "examine it" → you narrate the press AND the result AND the player's next obvious position, then ask what they do.
-- Climb / cross / descend a trivial obstacle when the player declares they tackle it (no check needed, no hidden hazard, no choice) → resolve the traversal in one beat and land them on the other side.
-- Walk to an obvious destination across an empty/safe scene → narrate the arrival, not the steps.
-- Pickpocket → on success, hand them the item and have them slip away in the same beat. On failure, narrate the catch + immediate fallout.
+**Collapse**: find clue → press / open / examine / go through; trivial climbs/crossings; walks to safe obvious destinations; successful pickpockets (deliver item + slip away same beat). Example: "Cerco un passaggio segreto." → narrate finding the lever, pulling it, the wall sliding, entering the corridor — all in one beat.
 
-### Concrete worked example
-Player turn N: "Cerco un passaggio segreto."
-- ❌ Detailed-pace response: "Trovi una leva nascosta dietro la tappezzeria. Cosa fai?"
-  (Player then has to type "tiro la leva" → master narrates the passage opening → "cosa fai?" → player types "entro" → master narrates the corridor → "cosa fai?" — four turns to do the obvious thing.)
-- ✅ Brisk-pace response: "Le tue dita trovano una leva nascosta dietro la tappezzeria. Quando la abbassi, una sezione di muro scorre lateralmente, rivelando un corridoio buio che scende in profondità. Ti ci infili e l'aria fredda della camera sotterranea ti accoglie. Cosa fai?"
-  (One beat, one prompt — the corridor is the new scene.)
+**Never collapse**: combat rounds (each action its own beat); declared ability checks / saves / attacks (always ask for the roll, never resolve silently); real choice-points with diverging outcomes; hidden hazards the player hasn't perceived; anything needing player consent or specification ("which door?", "how do you approach?").
 
-### Do NOT collapse these
-- Combat rounds — every action is its own beat regardless of the setting.
-- Declared ability checks, saving throws, attack rolls — never roll on behalf of the player or skip the prompt.
-- Real choice points — branching paths, NPCs reacting, anything where the player's input changes the outcome.
-- Hidden hazards or traps the player hasn't perceived — the trigger is its own beat.
-- Anything requiring the player's consent or specification ("which door?", "how do you approach the noble?").
-
-### Heuristic
-Ask yourself: would a competent table DM say "ok, you press the lever and step inside; what do you do?" all in one breath, OR would they pause for input? If the former, do it in one beat. If you're unsure, default to a beat boundary — losing momentum is worse than overshooting once in a while.`;
+Heuristic: would a competent table DM say "ok, you press the lever and step inside; what do you do?" all in one breath? If yes, do it. If unsure, default to pausing — momentum lost is worse than overshooting once in a while.`;
 
 /**
  * Always-on guard against verbatim repetition of prior master narration.
