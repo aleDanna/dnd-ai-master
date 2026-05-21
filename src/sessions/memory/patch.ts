@@ -13,7 +13,7 @@ import {
 } from '@/db/schema';
 import type { CodexUpsert, MemoryPatch } from './types';
 
-function validate(u: CodexUpsert): void {
+export function validateUpsert(u: CodexUpsert): void {
   const { kind, data } = u;
   const need = (b: boolean, msg: string): void => {
     if (!b) throw new Error(`patch_invalid:${kind}:${msg}`);
@@ -57,6 +57,34 @@ function validate(u: CodexUpsert): void {
   }
 }
 
+/** Split upserts into the ones that pass shape validation and the ones that
+ * don't. The caller decides what to do with the rejects (typically: log + skip).
+ *
+ * Motivation: weak local LLMs (notably the qwen3:30b-a3b family baked as
+ * `dnd-master-max3`) occasionally emit a `named_item` upsert without the
+ * mandatory `magical: boolean`, or pick a non-enum value for `npc.disposition`.
+ * Before this helper, the extractor handed the raw list to `applyPatch` —
+ * one malformed row caused the WHOLE batch (including a valid chapter
+ * summary in FULL mode) to be discarded silently, degrading narrative
+ * continuity over time. `applyPatch` itself stays fail-atomic so callers
+ * that don't pre-filter still get all-or-nothing semantics. */
+export function partitionUpserts(upserts: CodexUpsert[]): {
+  valid: CodexUpsert[];
+  invalid: { upsert: CodexUpsert; reason: string }[];
+} {
+  const valid: CodexUpsert[] = [];
+  const invalid: { upsert: CodexUpsert; reason: string }[] = [];
+  for (const u of upserts) {
+    try {
+      validateUpsert(u);
+      valid.push(u);
+    } catch (e) {
+      invalid.push({ upsert: u, reason: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return { valid, invalid };
+}
+
 /** Apply a memory patch atomically.
  *
  * Slug contract: the caller (extractor / prompt) is responsible for producing
@@ -70,7 +98,7 @@ function validate(u: CodexUpsert): void {
  * (session_id, kind, slug) as the conflict target; chapters dedup by
  * (session_id, chapter_index). */
 export async function applyPatch(sessionId: string, patch: MemoryPatch): Promise<void> {
-  for (const u of patch.upserts) validate(u);
+  for (const u of patch.upserts) validateUpsert(u);
 
   await db.transaction(async (tx) => {
     for (const u of patch.upserts) {

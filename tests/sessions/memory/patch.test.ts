@@ -12,7 +12,7 @@ import {
   sessionChapters,
   campaigns,
 } from '@/db/schema';
-import { applyPatch } from '@/sessions/memory/patch';
+import { applyPatch, partitionUpserts } from '@/sessions/memory/patch';
 
 const TEST_USER = 'user_patch_' + Date.now();
 let SESSION_ID = '';
@@ -210,6 +210,28 @@ describe('applyPatch', () => {
         lastSeenMsgId: MSG_B,
       }),
     ).rejects.toThrow(/patch_invalid:location:description/);
+  });
+
+  it('partitionUpserts splits valid from invalid without throwing', () => {
+    const { valid, invalid } = partitionUpserts([
+      {
+        kind: 'npc',
+        slug: 'good-npc',
+        name: 'Good NPC',
+        data: { description: 'ok', status: 'alive', disposition: 'ally', tags: [] },
+      },
+      // Missing `magical` — the exact prod failure on session 621ea6c5.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { kind: 'named_item', slug: 'badge', name: 'Badge', data: { description: 'x' } as any },
+      // Empty slug — rejected upstream of kind-specific checks.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { kind: 'location', slug: '', name: 'Nowhere', data: { description: 'x', tags: [] } as any },
+    ]);
+    expect(valid).toHaveLength(1);
+    expect(valid[0]!.slug).toBe('good-npc');
+    expect(invalid).toHaveLength(2);
+    expect(invalid[0]!.reason).toMatch(/patch_invalid:named_item:magical/);
+    expect(invalid[1]!.reason).toMatch(/patch_invalid:location:slug/);
   });
 
   it('chapter insert is idempotent on (session_id, chapter_index)', async () => {

@@ -210,4 +210,54 @@ describe('extractMemory', () => {
     const npcs = await db.select().from(codexEntities).where(eq(codexEntities.sessionId, SESSION_ID));
     expect(npcs).toHaveLength(0);
   });
+
+  it('partial validity: invalid upserts are skipped, valid ones + chapter still apply', async () => {
+    // Reproduction of session 621ea6c5 prod failure: dnd-master-max3 emitted a
+    // `named_item` upsert without the required `magical` boolean. Previously
+    // applyPatch failed-atomic on this and the chapter + valid NPCs were lost.
+    await seedMessages(40);
+    __setExtractorProviderForTest(
+      fakeProvider(
+        JSON.stringify({
+          upserts: [
+            // Valid NPC — must be persisted.
+            {
+              kind: 'npc',
+              slug: 'aldric',
+              name: 'Aldric',
+              data: { description: 'wizard', status: 'alive', disposition: 'ally', tags: [] },
+            },
+            // Invalid named_item — missing `magical`. Must be skipped, not throw.
+            {
+              kind: 'named_item',
+              slug: 'badge',
+              name: 'Captains Badge',
+              data: { description: 'A unique badge' },
+            },
+            // Valid location — must be persisted even though the named_item above is bad.
+            {
+              kind: 'location',
+              slug: 'silver-tavern',
+              name: 'Silver Tavern',
+              data: { description: 'cozy', tags: ['inn'] },
+            },
+          ],
+          chapterSummary: 'A chapter that includes a partly-malformed named_item.',
+        }),
+      ),
+    );
+
+    await extractMemory(SESSION_ID);
+
+    const entities = await db.select().from(codexEntities).where(eq(codexEntities.sessionId, SESSION_ID));
+    const slugs = entities.map((e) => e.slug).sort();
+    expect(slugs).toEqual(['aldric', 'silver-tavern']);
+
+    const chapters = await db
+      .select()
+      .from(sessionChapters)
+      .where(eq(sessionChapters.sessionId, SESSION_ID));
+    expect(chapters).toHaveLength(1);
+    expect(chapters[0]!.summary).toContain('named_item');
+  });
 });

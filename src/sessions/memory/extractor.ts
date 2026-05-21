@@ -8,7 +8,7 @@ import {
   campaigns,
   type SessionMessage,
 } from '@/db/schema';
-import { applyPatch } from './patch';
+import { applyPatch, partitionUpserts } from './patch';
 import {
   buildExtractorSystemPrompt,
   formatExistingCodex,
@@ -352,7 +352,24 @@ async function runExtraction(
   }
 
   const lastSeenMsgId = ctx.inputMessages[ctx.inputMessages.length - 1]!.id;
-  const patch: MemoryPatch = { upserts: raw.upserts, lastSeenMsgId };
+
+  // Drop individually invalid upserts so a single bad row from a weak local
+  // LLM doesn't sink the whole patch (including the chapter summary in FULL
+  // mode). Observed live: dnd-master-max3 (qwen3:30b-a3b) periodically emits
+  // a `named_item` upsert without the mandatory `magical: boolean`, which
+  // used to surface as `extractor.apply_failed patch_invalid:named_item:magical`
+  // and silently lose all extracted memory for that turn.
+  const { valid, invalid } = partitionUpserts(raw.upserts);
+  for (const bad of invalid) {
+    console.warn('extractor.upsert_skipped', bad.reason, {
+      sessionId,
+      kind: bad.upsert.kind,
+      slug: bad.upsert.slug,
+      name: bad.upsert.name,
+    });
+  }
+
+  const patch: MemoryPatch = { upserts: valid, lastSeenMsgId };
   if (ctx.mode === 'full') {
     if (typeof raw.chapterSummary === 'string' && raw.chapterSummary.length > 0) {
       patch.chapter = {
