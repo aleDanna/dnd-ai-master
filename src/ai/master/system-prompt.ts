@@ -2118,7 +2118,14 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
   // Goes after the mode block (mode-stable) but BEFORE the active character
   // block (per-turn dynamic). The RAG block changes per turn (new query
   // embedding) so it sits in the dynamic region — cache invalidates here.
-  if (input.ragChunks && input.ragChunks.length > 0) {
+  //
+  // Guard: only inject when staticBlocksAlreadyBaked is true. Non-baked models
+  // receive the full master_handbook.md + master_world_lore.md verbatim earlier
+  // in this same prompt (section 1 static blocks). The RAG corpus is built
+  // exclusively from those two files, so injecting chunks here for a non-baked
+  // model would give the model the same text twice. The turn route already
+  // enforces this (useRag && baked), but this guard is a second safety net.
+  if (input.staticBlocksAlreadyBaked && input.ragChunks && input.ragChunks.length > 0) {
     blocks.push({
       type: 'text',
       text: formatRagBlock(input.ragChunks),
