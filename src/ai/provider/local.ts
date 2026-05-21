@@ -516,13 +516,17 @@ export class LocalProvider implements MasterProvider {
     //    4096 they hit the limit mid-thought and the stripped content
     //    comes back empty ("Master non ha prodotto risposta").
     //
-    //  - Thinking-ON models (Max 3 = qwen3:30b-a3b currently): 1500.
-    //    With MASTER_BRIEF_THINKING_RULE capping <think> at 200 tokens
-    //    and a typical narration of 300-500 tokens, 1500 leaves 2-3x
-    //    headroom for combat turns with multiple tool calls. Going
-    //    higher (4096) just lets the model spend 60-90s of decode on
-    //    needless verbosity. The reduction is the single biggest
-    //    perceived-latency win on Max 3.
+    //  - Thinking-ON models (Max 3 = qwen3:30b-a3b currently): 2500.
+    //    Empirically measured (ai_usage.eval_duration_ms / output_tokens):
+    //    Max 3 runs at ~22 tok/s decode and was hitting the old 1500-token
+    //    cap on 100% of turns — meaning every response was truncated. The
+    //    thinking block alone can reach 700-1000 tokens even with
+    //    MASTER_BRIEF_THINKING_RULE asking for ≤200 tok of CoT, leaving
+    //    virtually nothing for tool calls + narration. 2500 gives ~1500
+    //    tokens of headroom after a 1000-tok thinking block, enough for
+    //    a full narration + one or two tool calls (~113s decode vs 67s at
+    //    1500). Raise to 3000 if capping persists; watch eval_duration_ms
+    //    column to confirm.
     //
     //  - Capable non-thinking (qwen3-instruct, gpt-oss, mistral):
     //    keep 4096 — they don't dump CoT, and combat-heavy turns with
@@ -532,7 +536,7 @@ export class LocalProvider implements MasterProvider {
     // utility calls like language detection set 8).
     const isSmallModel = /(?:llama3\.2.*3b|qwen3.*[34]b|gemma2?.*2b|dnd-master-(?:lite|balance))/i.test(input.model ?? '');
     const isThinkingOn = thinkingFlagFor(input.model) === true;
-    const defaultMaxTokens = isSmallModel ? 2048 : (isThinkingOn ? 1500 : 4096);
+    const defaultMaxTokens = isSmallModel ? 2048 : (isThinkingOn ? 2500 : 4096);
     const json = await chat(
       {
         model: input.model,
