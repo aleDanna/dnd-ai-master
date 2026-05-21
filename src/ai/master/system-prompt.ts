@@ -1671,31 +1671,31 @@ If the player's input is brief or ambiguous and you genuinely have nothing new t
  * doubling or tripling per-turn latency on a memory-bandwidth-bound
  * machine like the Mac Mini M4 base.
  *
- * This block is a "soft cap" — qwen3 doesn't expose a hard reasoning-effort
- * parameter the way gpt-oss does, but instruction-following is strong
- * enough that explicit prose like "keep thinking under 200 tokens" gets
- * roughly respected. ~120 tokens of system-prompt cost, typical savings
- * of 400-800 tokens of thinking output per turn ≈ 25-50s on the local
- * tier. Net win is large.
+ * Schema-format cap: instead of a "soft" prose limit ("≤200 tokens")
+ * that the model routinely ignored (empirically: 700-1000 tok of CoT
+ * despite the instruction), this version gives a fixed 4-field schema.
+ * Filling the schema correctly costs ~50-80 tokens — the model can't
+ * exceed that without visibly violating the format.
  *
- * Injected only when `thinkingEnabled=true` so models that don't think
+ * Expected savings: from ~800 tok average CoT → ~65 tok ≈ 32s decode
+ * saved per turn at 22.9 tok/s on Max 3. Rule itself costs ~90 tokens
+ * of system prompt (vs ~120 for the old prose version). Net win large.
+ *
+ * Injected only when `thinkingEnabled=true` so non-thinking models
  * don't pay the cost.
  */
-export const MASTER_BRIEF_THINKING_RULE = `## Reasoning budget (THINKING is ON for this model)
-You have a chain-of-thought scratchpad — use it sparingly. The player is on a memory-bandwidth-bound local machine; every \`<think>\` token costs ~60ms of decode latency they wait through.
+export const MASTER_BRIEF_THINKING_RULE = `## Thinking — SCHEMA FORMAT (chain-of-thought ON)
+Fill EXACTLY this schema inside \`<think>\` — nothing else.
 
-Hard caps:
-- **Total <think> content: 200 tokens max.** Identify the player intent, pick the right tool/skill/DC, decide if a roll is needed, then STOP thinking and write the response.
-- **No re-deriving facts already in the snapshot.** The character sheet, scene card, codex, and chapter digests are authoritative — don't recompute HP, AC, skill modifiers, or "what's in the room" from scratch.
-- **No outlining the response.** Don't draft prose inside \`<think>\` then rewrite it outside. Think only about MECHANICS / DECISIONS, write directly in the final response.
-- **No second-guessing.** First conclusion that satisfies the rules + tonal frame is the right one. Move on.
+Intent: <what the player wants, ≤8 words>
+Tool: <tool_name.action_subtype — or "none">
+Mechanic: <skill + DC/modifier — or "none">
+Tono: <one word matching the tonal frame>
 
-Forbidden in \`<think>\`:
-- Multi-paragraph narrative drafts.
-- Restating the previous master turn ("the player just said X, which means…" — go straight to the decision).
-- Listing every possible interpretation when one is clearly correct.
+In combat with multiple actors, one extra line only:
+Order: <actor1 → actor2 → …>
 
-The narrative quality the player sees does NOT depend on thinking length — it depends on how well you connect the snapshot to the response. Keep thinking surgical.`;
+Close \`</think>\` immediately after the last line. No prose. No drafts. No re-reading the snapshot. No "the player said X which means…". Every token beyond the schema is decode latency the player waits through.`;
 
 /**
  * Builds the Manual Rolls rule with examples calibrated for the active

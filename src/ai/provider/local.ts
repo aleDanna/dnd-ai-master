@@ -516,17 +516,15 @@ export class LocalProvider implements MasterProvider {
     //    4096 they hit the limit mid-thought and the stripped content
     //    comes back empty ("Master non ha prodotto risposta").
     //
-    //  - Thinking-ON models (Max 3 = qwen3:30b-a3b currently): 2500.
-    //    Empirically measured (ai_usage.eval_duration_ms / output_tokens):
-    //    Max 3 runs at ~22 tok/s decode and was hitting the old 1500-token
-    //    cap on 100% of turns — meaning every response was truncated. The
-    //    thinking block alone can reach 700-1000 tokens even with
-    //    MASTER_BRIEF_THINKING_RULE asking for ≤200 tok of CoT, leaving
-    //    virtually nothing for tool calls + narration. 2500 gives ~1500
-    //    tokens of headroom after a 1000-tok thinking block, enough for
-    //    a full narration + one or two tool calls (~113s decode vs 67s at
-    //    1500). Raise to 3000 if capping persists; watch eval_duration_ms
-    //    column to confirm.
+    //  - Thinking-ON models (Max 3 = qwen3:30b-a3b currently): 3000.
+    //    Empirically measured (ai_usage timing columns, 19 turns):
+    //    Max 3 runs at ~22.9 tok/s decode.  Raising from 1500→2500
+    //    reduced capping from 100% to 26% of turns. Raising further to
+    //    3000 covers heavy combat turns (multiple tool calls + long
+    //    narration). MASTER_BRIEF_THINKING_RULE (schema format) targets
+    //    ~50-80 tok of CoT, leaving ~2200+ tok for tool calls + narration.
+    //    At 22.9 tok/s: worst-case 3000-tok turn ≈ 131s decode.
+    //    Raise to 3500 if the new cap is still routinely hit.
     //
     //  - Capable non-thinking (qwen3-instruct, gpt-oss, mistral):
     //    keep 4096 — they don't dump CoT, and combat-heavy turns with
@@ -536,7 +534,7 @@ export class LocalProvider implements MasterProvider {
     // utility calls like language detection set 8).
     const isSmallModel = /(?:llama3\.2.*3b|qwen3.*[34]b|gemma2?.*2b|dnd-master-(?:lite|balance))/i.test(input.model ?? '');
     const isThinkingOn = thinkingFlagFor(input.model) === true;
-    const defaultMaxTokens = isSmallModel ? 2048 : (isThinkingOn ? 2500 : 4096);
+    const defaultMaxTokens = isSmallModel ? 2048 : (isThinkingOn ? 3000 : 4096);
     const json = await chat(
       {
         model: input.model,
