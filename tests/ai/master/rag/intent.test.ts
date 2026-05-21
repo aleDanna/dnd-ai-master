@@ -24,6 +24,31 @@ describe('isMechanicalIntent — Italian patterns', () => {
     'cerco indizi',
     'esamino la statua',
     'spendo ispirazione',
+    // ── 2026-05-21: inspection/investigation/check verbs added after
+    // session 6b11f581 where "ispeziono il sigillo" bypassed the gate
+    // and the master narrated the outcome without asking for a roll.
+    'Ispeziono il sigillo di ferro',
+    'ispeziona la porta',
+    'Investigo la stanza segreta',
+    'investiga il pavimento',
+    'Indago sul mercante',
+    'Studio l\'iscrizione sul muro',
+    'Decifro la pergamena arcana',
+    'analizzo la trappola',
+    'scruto le ombre',
+    'tasto il muro per trovare un meccanismo',
+    'ascolto dietro la porta',
+    'origlio la conversazione',
+    // "faccio un tiro/prova" — explicit roll declarations
+    'Faccio un tiro di percezione',
+    'faccio una prova di Atletica',
+    'tento una prova di intuito',
+    'provo un controllo di forza',
+    // Social-skill verbs
+    'persuado il mercante',
+    'intimidisco la guardia',
+    'inganno il guardiano',
+    'convinco il sindaco a darmi la mappa',
   ])('returns true for: %s', (text) => {
     expect(isMechanicalIntent(text)).toBe(true);
   });
@@ -43,6 +68,13 @@ describe('isMechanicalIntent — English patterns', () => {
     'short rest',
     'long rest',
     'saving throw on wisdom',
+    'I inspect the seal',
+    'I investigate the ancient inscription',
+    'I study the runes',
+    'I decipher the scroll',
+    'I persuade the merchant',
+    'I make a strength check',
+    'I try a perception roll',
   ])('returns true for: %s', (text) => {
     expect(isMechanicalIntent(text)).toBe(true);
   });

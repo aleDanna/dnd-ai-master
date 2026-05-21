@@ -1499,6 +1499,48 @@ When manual rolls are enabled (see MANUAL ROLLS RULE if present), instead of cal
 
 If you find yourself writing "riesci a…" / "non riesci a…" / "you manage to…" / "you fail to…" without a preceding tool call or roll formula, STOP — emit the tool call (or formula) first and END THE TURN there.`;
 
+/**
+ * Manual-rolls variant of MASTER_ROLL_TRIGGERS_SLIM. Used when manualRolls
+ * is on: the model must NOT emit tool calls (the previous variant would
+ * conflict with the Manual Rolls Rule and produce visible JSON to the
+ * player). Instead it writes the formula as Italian/English prose that the
+ * in-app parser converts into a button.
+ *
+ * Injected by buildMasterSystemPrompt when `baked && mechanical &&
+ * manualRolls` (mirror condition of the non-manual variant).
+ *
+ * Decision matrix is intentionally explicit — the model had no guidance
+ * for "ispeziono il sigillo" → ability check until this block was added
+ * (session 6b11f581 showed the master narrating the inspection outcome
+ * with no roll request, which breaks the d&d contract).
+ */
+export const MASTER_ROLL_TRIGGERS_SLIM_MANUAL = `## When to ask for a roll — MANDATORY (this turn looks mechanical)
+
+The player's latest message reads as a declared action with an uncertain outcome — inspection, ability check, attack, save, perception, persuasion, stealth, etc. On this turn you MUST ask the player to roll BEFORE narrating the outcome. Narrating "riesci a…" / "non riesci a…" / "noti che…" / "scopri che…" without first asking for a roll is a HARD violation that bypasses the dice contract.
+
+Trigger map (write the formula in prose, the app renders a button; pick exactly one and end the turn):
+
+- **Ispezionare / esaminare un oggetto, sigillo, iscrizione, trappola**:
+  - Per dettagli fisici nascosti → \`Tira una prova di Investigazione.\`
+  - Per riconoscere simbolo storico/araldico → \`Tira una prova di Storia.\`
+  - Per riconoscere simbolo divino/religioso → \`Tira una prova di Religione.\`
+  - Per riconoscere magia/glifo arcano → \`Tira una prova di Arcano.\`
+  - Per natura/animali/piante → \`Tira una prova di Natura.\`
+- **Notare qualcosa nell'ambiente** → \`Tira una prova di Percezione.\`
+- **Capire intenzioni / leggere bugie di un PNG** → \`Tira una prova di Intuito.\`
+- **Persuadere / intimidire / ingannare un PNG** → \`Tira una prova di Persuasione.\` (o Intimidazione / Inganno)
+- **Forzare, arrampicarsi, saltare, nuotare** → \`Tira una prova di Atletica.\`
+- **Equilibrio, acrobazia, schivata fine** → \`Tira una prova di Acrobazia.\`
+- **Muoversi furtivo / nascondersi** → \`Tira una prova di Furtività.\`
+- **Curare ferite senza magia** → \`Tira una prova di Medicina.\`
+- **Sopravvivenza, tracce, orientamento** → \`Tira una prova di Sopravvivenza.\`
+- **Attacco con arma** → \`Tira 1d20+<bonus> per attaccare.\` (end-of-turn; damage in next turn IF hit)
+- **Tiro salvezza** (esplosione, veleno, charme, ecc.) → \`Tira un TS Destrezza.\` (o Costituzione / Saggezza / …)
+
+LANGUAGE-STRICT: Italian narration uses Italian verbs + Italian skill names (\`Tira una prova di Percezione\`, NOT \`Roll a Perception check\` or \`Tira a Perception check\`). The in-app parser only matches the pure-language form.
+
+If you find yourself writing "riesci a…" / "non riesci a…" / "noti che…" / "scopri che…" / "you manage to…" without a preceding roll request, STOP — write the formula first and END THE TURN there.`;
+
 export const MASTER_REWARDS_MANDATE = `## Rewards at the end of every dungeon (CRITICAL — do not skip)
 
 The player has explicitly told us this is one of the most important parts of the experience: **the gratification of receiving a reward at the end of a dungeon, encounter, or completed objective**. Treat this as a hard rule, not a stylistic preference.
@@ -2059,13 +2101,25 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
   // Baked models don't carry the full MASTER_ROLL_TRIGGERS (Plan E.1 slim
   // manifest), and on mechanical-intent turns the RAG retrieval is also
   // skipped (commit 65d7bf5), leaving the baked master with no explicit
-  // roll-trigger rules right when it needs them most ("tiro percezione").
-  // The runtime injects MASTER_ROLL_TRIGGERS_SLIM (~500 tok) only on those
-  // turns — zero cost on narrative turns, hard guard-rail on mechanical ones.
-  // Placed right before the RAG block because both are turn-dynamic and we
-  // want the trigger rules attended together with the resolved chunks.
+  // roll-trigger rules right when it needs them most ("tiro percezione",
+  // "ispeziono il sigillo", "convinco il mercante", ...).
+  //
+  // Two variants exist:
+  //  - SLIM (tool-call) — used when manualRolls=false. Tells the model
+  //    "you MUST emit a narrative_action({...}) tool call".
+  //  - SLIM_MANUAL — used when manualRolls=true. Tells the model "you MUST
+  //    write the formula in prose (Tira una prova di X.) so the in-app
+  //    parser can render a button". Includes an explicit trigger map by
+  //    skill that the model had previously been missing — see session
+  //    6b11f581 where "ispeziono il sigillo" produced bare narration
+  //    instead of an Investigation/History check request.
+  //
+  // The caller still gates on baked && mechanical-intent. When manualRolls
+  // is on we now inject the MANUAL variant (~500 tok) — zero cost on
+  // narrative turns, hard guard-rail on mechanical ones.
   if (input.injectRollTriggersSlim) {
-    blocks.push({ type: 'text', text: MASTER_ROLL_TRIGGERS_SLIM, cache_control: { type: 'ephemeral' } });
+    const trigger = input.manualRolls ? MASTER_ROLL_TRIGGERS_SLIM_MANUAL : MASTER_ROLL_TRIGGERS_SLIM;
+    blocks.push({ type: 'text', text: trigger, cache_control: { type: 'ephemeral' } });
   }
 
   // ── (2.6) PLAN E.2 RAG RETRIEVED CONTEXT ──

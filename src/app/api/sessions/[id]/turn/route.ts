@@ -416,20 +416,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // Compensation for the mechanical-intent RAG skip: baked variants
           // don't carry the full MASTER_ROLL_TRIGGERS in their Modelfile, and
           // when isMechanicalIntent fires we also skip RAG — so on a "tiro
-          // percezione" turn the master would have no explicit roll-trigger
-          // guidance left. Inject the SLIM block (~500 tok) only on those
-          // turns and only for baked models.
+          // percezione" or "ispeziono il sigillo" turn the master would
+          // have no explicit roll-trigger guidance left. Inject the SLIM
+          // block (~500 tok) only on those turns and only for baked models.
           //
-          // ALSO: gate on `!manualRolls`. ROLL_TRIGGERS_SLIM tells the model
-          // "you MUST emit a tool call (narrative_action({...}))" — directly
-          // contradicting MANUAL_ROLLS_RULE that says "DO NOT call rolling
-          // tools, write the formula explicitly so the app can render a
-          // button". The model would follow the more concrete/recent block
-          // (TRIGGERS_SLIM) and emit a tool-call literal as text inside
-          // content, breaking the manual-roll UI and showing a raw JSON to
-          // the player. When manualRolls=true the MANUAL_ROLLS_RULE already
-          // covers what to do on mechanical turns — no SLIM needed.
-          injectRollTriggersSlim: baked && mechanical && !userPrefs.manualRolls,
+          // The variant (tool-call vs manual-prose) is picked inside
+          // buildMasterSystemPrompt based on `manualRolls`. We previously
+          // gated this off entirely when manualRolls=true to avoid a
+          // conflict with MANUAL_ROLLS_RULE (the old SLIM told the model
+          // to emit a tool call which manual-rolls forbids), but that
+          // left the model with no trigger map → silent narration with
+          // no roll request (session 6b11f581 — "ispeziono il sigillo").
+          // The new MANUAL variant resolves the conflict: it tells the
+          // model to write the formula in prose, perfectly compatible
+          // with MANUAL_ROLLS_RULE.
+          injectRollTriggersSlim: baked && mechanical,
         });
 
         // 5. Run the tool loop — events forwarded to SSE subscribers via notifySession.
