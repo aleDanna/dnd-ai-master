@@ -1639,7 +1639,71 @@ Player turn N: "Cerco un passaggio segreto."
 ### Heuristic
 Ask yourself: would a competent table DM say "ok, you press the lever and step inside; what do you do?" all in one breath, OR would they pause for input? If the former, do it in one beat. If you're unsure, default to a beat boundary — losing momentum is worse than overshooting once in a while.`;
 
-export const MASTER_MANUAL_ROLLS_RULE = `## Manual rolls (player rolls in-app)
+/**
+ * Builds the Manual Rolls rule with examples calibrated for the active
+ * campaign settings:
+ *  - language='it' → examples use Italian-only phrasing the parser is
+ *    actually tuned for (`Tira una prova di Percezione`, `Tira un TS
+ *    Destrezza`). Without this, the model tends to mix verbs and skill
+ *    names across languages ("Roll un tiro di Perception") which the
+ *    in-app parser doesn't match → no roll button appears.
+ *  - hideDC=true → examples omit numeric DC/AC/CD/CA. With the legacy
+ *    DC-visible examples, the model imitated them even when the
+ *    MASTER_HIDE_DIFFICULTY_RULE was also active.
+ *
+ * Back-compat: MASTER_MANUAL_ROLLS_RULE below exports the default
+ * (English, DC visible) — same content the rule had before this refactor.
+ */
+export function buildManualRollsRule(opts: {
+  hideDC?: boolean;
+  language?: string | null;
+} = {}): string {
+  const hideDC = opts.hideDC === true;
+  const it = opts.language === 'it';
+
+  const examples = (() => {
+    if (hideDC && it) return [
+      '- "Tira 1d20+5 per attaccare il fuggitivo."  (omit CA — the player won\'t see the difficulty)',
+      '- "Tira un TS Destrezza."',
+      '- "Tira una prova di Percezione."',
+      '- "Tira 1d8+3 danni."',
+    ];
+    if (hideDC) return [
+      '- "Roll 1d20+5 for your attack against the goblin."  (omit AC)',
+      '- "Roll a Dexterity save."',
+      '- "Roll a Perception check."',
+      '- "Roll 1d8+3 for damage."',
+    ];
+    if (it) return [
+      '- "Tira 1d20+5 per attaccare il fuggitivo (CA 13)."',
+      '- "Tira un TS Destrezza CD 14."',
+      '- "Tira una prova di Percezione CD 15."',
+      '- "Tira 1d8+3 danni."',
+    ];
+    return [
+      '- "Roll 1d20+5 for your attack against the goblin (AC 13)."',
+      '- "Roll a DC 14 Dexterity save."',
+      '- "Roll a DC 15 Perception check."',
+      '- "Roll 1d8+3 for damage."',
+    ];
+  })();
+
+  const languageStrictNote = it
+    ? `### LINGUA — VINCOLANTE
+Quando narri in italiano, scrivi le formule di tiro **solo** in italiano:
+- Verbo italiano: \`Tira\` (o \`Fai\` / \`Effettua\`) — MAI \`Roll\`/\`Make\`.
+- Nome dell'abilità in italiano: \`Percezione\`, \`Atletica\`, \`Intuito\`, \`Persuasione\`, \`Furtività\`, \`Sopravvivenza\`, ... — MAI \`Perception\`, \`Athletics\`, ...
+- Forma corretta: \`Tira una prova di Percezione.\` (per skill check), \`Tira un TS Destrezza.\` (per saving throw).
+- Mix come \`Roll un tiro di Perception\`, \`Tira a Perception check\`, \`Roll una prova di Intimidazione\` confondono il parser in-app: il giocatore NON vede il bottone di tiro e tu blocchi il flusso di gioco.`
+    : `### Match the verb to the narration language
+The roll-request verb MUST be in the same language as the surrounding narration — never mix. When narrating in English use \`Roll\` (or \`Make\`) with English skill names (\`Perception\`, \`Athletics\`, ...). Hybrid phrasings like "Roll una prova di Intimidazione" or "Tira a Perception check" confuse the in-app parser and the player will see no button.`;
+
+  const hideDCNote = hideDC
+    ? `\n\n### Difficoltà nascosta (HIDE-DIFFICULTY è attivo)
+Quando scrivi una formula di tiro, **NON** includere il valore numerico di CD/CA/DC/AC. Internamente conosci il DC e lo userai per giudicare l'esito, ma il giocatore tira "alla cieca". Forme corrette in questo regime: \`Tira una prova di Percezione.\` (no CD). Forme proibite: \`Tira una prova di Percezione CD 15.\``
+    : '';
+
+  return `## Manual rolls (player rolls in-app)
 The app shows the player an in-app roll button for each formula you write. The player taps it; the app rolls the dice with a small animation; the result is sent back as the next player message. The exact format is:
 
   🎲 I rolled **<TOTAL>** for <label>.                        (no modifier, single die)
@@ -1659,13 +1723,9 @@ Examples (the bolded number is the only one you should ever narrate):
 The player is NOT using physical dice and does not need to "grab their dice" — the app handles the roll.
 
 When mechanics call for an attack, ability check, saving throw, or damage roll, DO NOT call the rolling tools (\`make_attack\`, \`roll_d20\`, \`saving_throw\`, \`ability_check\`, \`roll_dice\`). Instead, write the formula explicitly so the app can render a button. Use these phrasings (the in-app parser is tuned for them):
-- "Roll 1d20+5 for your attack against the goblin (AC 13)."
-- "Roll a DC 14 Dexterity save."
-- "Roll a DC 15 Perception check."
-- "Roll 1d8+3 for damage."
+${examples.join('\n')}${hideDCNote}
 
-### Match the verb to the narration language
-The roll-request verb MUST be in the same language as the surrounding narration — never mix. When narrating in Italian use \`Tira\` (or \`Fai\` / \`Effettua\`); when narrating in English use \`Roll\` (or \`Make\`). Hybrid phrasings like "Roll una prova di Intimidazione" or "Tira a Perception check" confuse the in-app parser and the player will see no button. Italian skill names ("Intimidazione", "Percezione", "Sopravvivenza") pair with Italian verbs; English skill names ("Intimidation", "Perception", "Survival") pair with English verbs.
+${languageStrictNote}
 
 ### Attack & damage are TWO SEPARATE TURNS — never the same message
 Attacks always happen in two steps, across two of your turns:
@@ -1715,6 +1775,15 @@ This means:
 - If the action belongs to a DIFFERENT party member, you MUST call \`set_current_player({ characterId: <uuid of that PG> })\` BEFORE ending the beat. The next beat is when that PG sees the button.
 - **NEVER narrate a roll result for any PG yourself.** "Tira... il risultato è 8" / "you roll... you get an 8" is FORBIDDEN. Always write only the formula, then stop. The player rolls.
 - **NEVER compute or invent a roll for a non-active PG.** You don't have their character sheet in the snapshot — only the active PG's stats. If you find yourself thinking "Kank rolls History 8…" while Bruce is active, STOP. Hand the turn to Kank first (set_current_player), then in the NEXT beat ask Kank to tira 1d20+modifier.`;
+}
+
+/**
+ * Back-compat export: the legacy English / DC-visible variant of the
+ * Manual Rolls rule. Equivalent to `buildManualRollsRule({})`. Kept so
+ * external imports and tests that referenced this constant by name
+ * continue to compile. New call sites should prefer the function form.
+ */
+export const MASTER_MANUAL_ROLLS_RULE = buildManualRollsRule();
 
 /** ISO 639-1 → full English name. Codes not in the map fall back to the
  *  bare code (the model usually still parses common ISO codes correctly). */
@@ -1822,7 +1891,21 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
 
   // ── (2) STABLE PER SESSION — set at campaign creation, rarely mutated. ──
   if (input.manualRolls) {
-    blocks.push({ type: 'text', text: MASTER_MANUAL_ROLLS_RULE, cache_control: { type: 'ephemeral' } });
+    // Variant calibrated for current preferences:
+    //  - hideDC=true → examples omit DC/AC so they don't conflict with
+    //    MASTER_HIDE_DIFFICULTY_RULE that is also injected below.
+    //  - language='it' → examples use Italian-only phrasing the in-app
+    //    parser is actually tuned for (`Tira una prova di Percezione`),
+    //    not mixed verbs like `Roll un tiro di Perception` that the parser
+    //    misses → no roll button appears in the UI.
+    blocks.push({
+      type: 'text',
+      text: buildManualRollsRule({
+        hideDC: input.showDifficultyNumbers === false,
+        language: input.language,
+      }),
+      cache_control: { type: 'ephemeral' },
+    });
   }
   const guidance = input.masterGuidanceLevel ?? 'balanced';
   if (guidance === 'free') {

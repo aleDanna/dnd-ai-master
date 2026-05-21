@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildMasterSystemPrompt,
+  buildManualRollsRule,
   MASTER_GUIDANCE_FREE,
   MASTER_GUIDANCE_BALANCED,
   MASTER_GUIDANCE_STRUCTURED,
@@ -70,6 +71,81 @@ describe('buildMasterSystemPrompt — master guidance level', () => {
     const { system } = buildMasterSystemPrompt(baseInput);
     const texts = system.map((b) => b.text);
     expect(texts).not.toContain(MASTER_HIDE_DIFFICULTY_RULE);
+  });
+
+  // Manual rolls rule — examples adapt to language and hide-DC pref.
+  it('buildManualRollsRule: default = English examples WITH DC visible', () => {
+    const rule = buildManualRollsRule();
+    expect(rule).toMatch(/Roll a DC 14 Dexterity save/);
+    expect(rule).toMatch(/Roll a DC 15 Perception check/);
+    expect(rule).not.toMatch(/Tira una prova di Percezione/);
+  });
+
+  it('buildManualRollsRule: hideDC=true strips numeric DC from English examples', () => {
+    const rule = buildManualRollsRule({ hideDC: true });
+    expect(rule).toMatch(/Roll a Dexterity save\."/);
+    expect(rule).toMatch(/Roll a Perception check\."/);
+    expect(rule).not.toMatch(/DC 14/);
+    expect(rule).not.toMatch(/DC 15/);
+  });
+
+  it('buildManualRollsRule: language=it swaps to Italian-only parser-friendly examples', () => {
+    const rule = buildManualRollsRule({ language: 'it' });
+    expect(rule).toMatch(/Tira una prova di Percezione/);
+    expect(rule).toMatch(/Tira un TS Destrezza/);
+    // STRICT-language note in Italian must be present.
+    expect(rule).toMatch(/LINGUA — VINCOLANTE/);
+    expect(rule).not.toMatch(/Roll a Perception check/);
+  });
+
+  it('buildManualRollsRule: language=it + hideDC=true → primary examples carry no CD; Italian phrasing', () => {
+    const rule = buildManualRollsRule({ language: 'it', hideDC: true });
+    expect(rule).toMatch(/Tira una prova di Percezione/);
+    expect(rule).toMatch(/Tira un TS Destrezza/);
+    // Hide-DC note must be embedded.
+    expect(rule).toMatch(/Difficoltà nascosta/);
+    // Scope the assertion to the PRIMARY examples block (between "Use these
+    // phrasings" and the hide-DC note). Inside that span no DC numeric
+    // should appear. Later sections (Attack & damage, Multiple rolls)
+    // retain illustrative CA/CD numbers as structural examples — the
+    // hide-DC note that ships alongside instructs the model to ignore
+    // those numerics in its own output.
+    const primaryStart = rule.indexOf('Use these phrasings');
+    const primaryEnd = rule.indexOf('### Difficoltà nascosta');
+    const primaryBlock = rule.slice(primaryStart, primaryEnd);
+    expect(primaryBlock).not.toMatch(/CD \d+/);
+    expect(primaryBlock).not.toMatch(/CA \d+/);
+  });
+
+  it('buildMasterSystemPrompt: manualRolls=true + language=it injects Italian manual-rolls examples', () => {
+    const { system } = buildMasterSystemPrompt({
+      ...baseInput, manualRolls: true, language: 'it',
+    });
+    const joined = system.map((b) => b.text).join('\n');
+    expect(joined).toMatch(/Tira una prova di Percezione/);
+    // The English DC example must not appear in the live manual-rolls rule
+    // (it can still appear inside HIDE_DIFFICULTY's "before -> after"
+    // transformation guide, but only with the " -> " arrow following).
+    expect(joined).not.toMatch(/Roll a Perception check\."(?! -> )/);
+  });
+
+  it('buildMasterSystemPrompt: manualRolls=true + hideDC=true → DC stripped from live examples', () => {
+    const { system } = buildMasterSystemPrompt({
+      ...baseInput, manualRolls: true, showDifficultyNumbers: false,
+    });
+    // Pick out the MANUAL_ROLLS block specifically — not the whole system
+    // (HIDE_DIFFICULTY contains a "before -> after" transformation guide
+    // that legitimately MENTIONS the DC-visible form to explain what to
+    // strip; we're checking that the live formula examples don't carry it).
+    const manualRollsBlock = system
+      .map((b) => b.text)
+      .find((t) => t.startsWith('## Manual rolls'));
+    expect(manualRollsBlock).toBeDefined();
+    expect(manualRollsBlock!).not.toMatch(/DC 14/);
+    expect(manualRollsBlock!).not.toMatch(/DC 15/);
+    // The HIDE_DIFFICULTY rule still ships alongside.
+    const joined = system.map((b) => b.text).join('\n');
+    expect(joined).toMatch(/Hide difficulty numbers/);
   });
 
   it('places the guidance block AFTER the cached static prefix (so prompt cache survives)', () => {
