@@ -285,6 +285,11 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
           // the composer locked. Clearing it here releases that gate now
           // that the persisted message is on screen.
           clearStreamingMessage();
+          // Same defensive cleanup for the local `pendingTurn` flag — when
+          // SSE chunks never arrived AND the final `message` event was
+          // dropped, `pendingTurn` would stay set until the 15-min ceiling.
+          // The safety poll already proved the turn finished, so unlock now.
+          setPendingTurn(false);
           clearSafetyPoll();
           return;
         }
@@ -344,6 +349,22 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     const t = setTimeout(() => setPendingTurn(false), 900_000);
     return () => clearTimeout(t);
   }, [pendingTurn, streamingMessage, turnError]);
+
+  // Defensive fallback: when the server-side `message` SSE event delivers
+  // (or the safety poll picks up a new persisted master message), the
+  // `useSessionStream` hook bumps `finalizedSeq`. Mirror that signal here
+  // to force-clear any local `pendingTurn` flag that for whatever reason
+  // hasn't been cleared yet (e.g. SSE channel dropped after chunks but
+  // before the final `message` event). Without this, the "Master is
+  // responding…" indicator can remain pinned for the full 15-min ceiling
+  // even though the turn has actually completed on the server. Triggers
+  // also on the inverse case where chunks were never delivered but the
+  // final message landed via safety-poll refetch.
+  React.useEffect(() => {
+    if (finalizedSeq > 0) {
+      setPendingTurn(false);
+    }
+  }, [finalizedSeq]);
 
   const send = (text: string): void => {
     setMessages((prev) => [
