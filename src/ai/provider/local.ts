@@ -509,17 +509,30 @@ export class LocalProvider implements MasterProvider {
     // is unchanged.
     const useStream = typeof input.onDelta === 'function';
     const campaignLanguage = input.campaignLanguage;
-    // num_predict cap. Small models (3-4B llama/qwen) routinely run away
-    // with chain-of-thought when asked to plan + tool-call + narrate. At
-    // num_predict=4096 they often hit the limit MID-THOUGHT, leaving a
-    // truncated content that the reasoning-strip then drops to empty
-    // → "Master non ha prodotto risposta" UX failure. Cap them at 2048
-    // so a runaway CoT either gets cut short OR (more often) the model
-    // wraps up sooner. Capable models (qwen3-30b-a3b, gpt-oss-20b) keep
-    // the original 4096 — they don't dump CoT and need the headroom for
-    // long combat narrations + multi-tool turns.
+    // num_predict cap. Three tiers:
+    //
+    //  - Small models (3-4B llama/qwen): 2048. They run away with
+    //    chain-of-thought when asked to plan + tool-call + narrate; at
+    //    4096 they hit the limit mid-thought and the stripped content
+    //    comes back empty ("Master non ha prodotto risposta").
+    //
+    //  - Thinking-ON models (Max 3 = qwen3:30b-a3b currently): 1500.
+    //    With MASTER_BRIEF_THINKING_RULE capping <think> at 200 tokens
+    //    and a typical narration of 300-500 tokens, 1500 leaves 2-3x
+    //    headroom for combat turns with multiple tool calls. Going
+    //    higher (4096) just lets the model spend 60-90s of decode on
+    //    needless verbosity. The reduction is the single biggest
+    //    perceived-latency win on Max 3.
+    //
+    //  - Capable non-thinking (qwen3-instruct, gpt-oss, mistral):
+    //    keep 4096 — they don't dump CoT, and combat-heavy turns with
+    //    long multi-tool narrations occasionally need the headroom.
+    //
+    // Cap can be overridden per-call via `input.maxTokens` (e.g. small
+    // utility calls like language detection set 8).
     const isSmallModel = /(?:llama3\.2.*3b|qwen3.*[34]b|gemma2?.*2b|dnd-master-(?:lite|balance))/i.test(input.model ?? '');
-    const defaultMaxTokens = isSmallModel ? 2048 : 4096;
+    const isThinkingOn = thinkingFlagFor(input.model) === true;
+    const defaultMaxTokens = isSmallModel ? 2048 : (isThinkingOn ? 1500 : 4096);
     const json = await chat(
       {
         model: input.model,
