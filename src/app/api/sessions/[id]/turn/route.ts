@@ -290,42 +290,85 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // distribution rather than in English.
           history = [{ role: 'user', content: buildBeginUserMessage(campaign.premise, campaign.language) }];
         } else {
-          // History window: how many recent messages to pull. 6 = ~3 turn
+          // History window: how many recent messages to pull. 10 = ~5 turn
           // back (user+assistant pairs).
           //
-          // Lowered from 10 to 6 on 2026-05-21 after diagnosing qwen3:30b-A3B
-          // (Max 2 tier) breaking under prompt sizes >~13K input tokens — it
-          // returns empty content with bare eval_count when the prompt
-          // exceeds that threshold, even though it handles the same prompt
-          // perfectly at ~6K (verified via direct curl). With SYSTEM baked
-          // ~7K + tools ~1.5K + dynamic prefix ~2.4K = ~10.9K fixed, the
-          // history budget for Max 2 is ~2K tokens. 10 messages produced
-          // ~3.7K → over the cliff. 6 messages produce ~2.2K → just inside.
+          // 2026-05-21 update: budget-aware truncation. We pull HISTORY_LIMIT
+          // candidates (default 10 — preserves short-term narrative memory
+          // before chapter digests kick in at message 40) and then trim
+          // them down by token count IF the running total would push the
+          // total prompt over a model-specific cliff.
           //
-          // Trade-off: master "forgets" older turns faster. Mitigated by the
-          // scene card + chapter digests + codex index already in the prompt
-          // (all summarise pre-window state). Bump back to 10 via env var
-          // if you observe continuity loss on a model that handles long
-          // context well (gpt-oss:20b / cloud providers can afford 10+).
+          // Why this matters: qwen3:30b-A3B (Max 2) returns empty content
+          // when total input tokens exceed ~13K. Plus / cloud providers
+          // happily handle 30K+. Hard-capping history at 6 saved Max 2
+          // but starved continuity on every other model. The right
+          // tradeoff is per-prompt: keep as much history as the model
+          // can chew, drop oldest first when forced to choose.
           //
-          // TODO(perf): switch to budget-aware truncation (sum token counts,
-          // drop oldest until under budget) so different models can pull
-          // different amounts naturally. For now a flat 6 is the safest
-          // default across the local tier.
-          const HISTORY_LIMIT = Number(process.env.MASTER_HISTORY_LIMIT ?? '6');
-          const recent = await db
+          // Continuity safety net: scene card + codex index ship every
+          // turn (cover current scene); chapter digests cover history
+          // older than the window once they form at ~40 messages
+          // (CHAPTER_SIZE in extractor.ts).
+          const HISTORY_LIMIT = Number(process.env.MASTER_HISTORY_LIMIT ?? '10');
+          const recentRaw = await db
             .select()
             .from(sessionMessages)
             .where(and(eq(sessionMessages.sessionId, sessionId), eq(sessionMessages.cacheBreakpoint, false)))
             .orderBy(desc(sessionMessages.createdAt))
             .limit(HISTORY_LIMIT);
+
+          // Budget-aware truncation: keep newest messages, drop oldest until
+          // the estimated history token count fits the per-model budget.
+          // The fixed cost of a turn is roughly:
+          //   SYSTEM baked (Modelfile, ~7000 tok)
+          //   + tools array (8 meta-tools with properties, ~1500 tok)
+          //   + dynamic prefix (~2000-3500 tok depending on flags)
+          // Leaving ~2000-4000 tok for history before the qwen3:30b-A3B
+          // empty-content cliff at ~13K total input tokens. Plus / cloud
+          // providers comfortably ride 25K+, so this gate is most relevant
+          // for the local-baked path.
+          //
+          // We can't precisely estimate the SYSTEM baked size (Ollama
+          // doesn't expose it), so we use a conservative fixed envelope.
+          // Char/4 is the standard rough tokens estimate for mixed EN/IT.
+          const MASTER_PROMPT_BUDGET = Number(process.env.MASTER_PROMPT_BUDGET ?? '12500');
+          const ESTIMATED_FIXED_COST = 7000 + 1500;  // baked SYSTEM + tools
+          // We don't have the rendered dynamic prefix here yet (built below
+          // in step 4). Estimate it conservatively from the flags we'll set:
+          // base session-stable cluster ~2400 tok + roll-triggers ~500 tok
+          // when mechanical. Overshoot by 200 tok for safety.
+          const ESTIMATED_DYNAMIC_COST = 2400 + 500 + 200;
+          const remainingBudget = MASTER_PROMPT_BUDGET - ESTIMATED_FIXED_COST - ESTIMATED_DYNAMIC_COST;
+
+          // recentRaw is desc (newest first). Accumulate from index 0 until
+          // budget exhausted. Keep at least the most recent message no
+          // matter what (worst-case the master sees only the current player
+          // input — better than nothing).
+          const kept: typeof recentRaw = [];
+          let usedTokens = 0;
+          for (const msg of recentRaw) {
+            const msgTok = Math.ceil((msg.content?.length ?? 0) / 4);
+            if (kept.length > 0 && usedTokens + msgTok > remainingBudget) break;
+            kept.push(msg);
+            usedTokens += msgTok;
+          }
+          // Log only when we actually truncated below the requested limit.
+          if (kept.length < recentRaw.length) {
+            // eslint-disable-next-line no-console
+            console.log(
+              '[turn]', sessionId,
+              `history truncated by budget: ${kept.length}/${recentRaw.length} msgs kept (~${usedTokens}/${remainingBudget} tok)`,
+            );
+          }
+
           // In PARTY MODE the master needs to know which PG authored each
           // player message — otherwise it can't tell "I tip the guard" from
           // "Kank tips the guard". Solo mode keeps the bare content (no
           // bracket noise for a single-character session).
           const nameById = new Map<string, string>(snap.party.map((c) => [c.id, c.name]));
           const usePrefix = snap.party.length > 1;
-          history = recent
+          history = kept
             .reverse()
             .filter((m) => m.role !== 'system')
             .map((m) => {
