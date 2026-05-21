@@ -555,6 +555,9 @@ export class LocalProvider implements MasterProvider {
       usage: normalizeOllamaUsage({
         prompt_eval_count: json.prompt_eval_count,
         eval_count: json.eval_count,
+        load_duration: json.load_duration,
+        prompt_eval_duration: json.prompt_eval_duration,
+        eval_duration: json.eval_duration,
       }),
     };
   }
@@ -583,6 +586,9 @@ export class LocalProvider implements MasterProvider {
           usage: normalizeOllamaUsage({
             prompt_eval_count: json.prompt_eval_count,
             eval_count: json.eval_count,
+            load_duration: json.load_duration,
+            prompt_eval_duration: json.prompt_eval_duration,
+            eval_duration: json.eval_duration,
           }),
         });
       }
@@ -615,6 +621,9 @@ export class LocalProvider implements MasterProvider {
         usage: normalizeOllamaUsage({
           prompt_eval_count: json.prompt_eval_count,
           eval_count: json.eval_count,
+          load_duration: json.load_duration,
+          prompt_eval_duration: json.prompt_eval_duration,
+          eval_duration: json.eval_duration,
         }),
       });
     }
@@ -626,6 +635,9 @@ export class LocalProvider implements MasterProvider {
           usage: normalizeOllamaUsage({
             prompt_eval_count: json.prompt_eval_count,
             eval_count: json.eval_count,
+            load_duration: json.load_duration,
+            prompt_eval_duration: json.prompt_eval_duration,
+            eval_duration: json.eval_duration,
           }),
         };
       }
