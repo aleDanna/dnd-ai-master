@@ -33,32 +33,56 @@ const KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE ?? '5m';
 const NUM_CTX = Number(process.env.OLLAMA_NUM_CTX ?? '65536');
 
 /**
- * "Thinking models" (qwen3, deepseek-r1, etc.) emit a separate `thinking`
- * field instead of putting content in `message.content`. When the loop sees
- * an empty content + tool_calls absent, it has nothing to render. We disable
- * thinking mode at the API level for models we know carry it, so they emit
- * actual content directly. `think: false` is a top-level Ollama option (not
- * inside `options`); models that don't recognize it ignore it silently.
+ * "Thinking models" (qwen3, deepseek-r1, gpt-oss, etc.) emit a separate
+ * `thinking` field instead of putting content in `message.content`. We
+ * resolve the right value of Ollama's top-level `think` flag for each
+ * model:
+ *
+ *   true       → force thinking ON. Used for qwen3:30b-a3b (Max 3 tier)
+ *                where the user wants the chain-of-thought head active.
+ *   false      → force thinking OFF. Used for other qwen3 thinking
+ *                bases, deepseek-r1, gpt-oss — there we want plain
+ *                content directly. Models that ignore the flag still
+ *                emit <think>…</think>; the adapter strips that.
+ *   undefined  → leave to model default. Used for non-thinking bases
+ *                (qwen3-*-instruct-*, mistral, llama3.x, ...) where
+ *                adding the flag adds tokens with no value and would
+ *                invalidate the KV cache.
  */
-function isThinkingModel(model: string | undefined): boolean {
-  if (!model) return false;
+function thinkingFlagFor(model: string | undefined): boolean | undefined {
+  if (!model) return undefined;
   const m = model.toLowerCase();
-  // Resolve baked variants (legacy slug-derived AND new tier names like
-  // dnd-master-max / -plus / -balance / -lite) to their underlying base
-  // slug, then match families. Without this, after the tier rename, the
-  // `think: false` flag was silently dropped for the new names and qwen3
-  // baked variants started running their full chain-of-thought server-side.
+  // Resolve baked variants (legacy slug-derived AND tier names like
+  // dnd-master-max / -max2 / -max3 / -plus / -lite) to their underlying
+  // base slug, then match families. Without this, the flag was silently
+  // dropped for the new tier names.
   const resolved = isBakedModel(m) ? (getBakedBaseModel(m) ?? m) : m;
   const r = resolved.toLowerCase();
-  // Qwen3 ships both thinking (default) and non-thinking instruct variants
-  // (e.g. qwen3:30b-a3b-instruct-2507). The instruct line has no internal
-  // monologue — applying the no-reasoning wrap adds tokens with no value
-  // and invalidates the KV cache. Short-circuit on the `-instruct-` infix
-  // before the generic qwen3 match below.
-  if (/qwen3.*-instruct-/i.test(r)) return false;
-  return r.startsWith('qwen3') || r.includes('/qwen3') || r.includes('qwen3')
+  // Max 3 tier: qwen3:30b-a3b base (incl. quantization variants) wants
+  // thinking ON. User opted in for the chain-of-thought head.
+  if (/^qwen3:30b-a3b(?:-(?:q4_k_m|q8_0|fp16))?$/i.test(r)) return true;
+  // Qwen3 non-thinking instruct (e.g. qwen3:30b-a3b-instruct-2507): no
+  // internal monologue — leave default. Short-circuit before the generic
+  // qwen3 thinking-off match below.
+  if (/qwen3.*-instruct-/i.test(r)) return undefined;
+  // Other qwen3 thinking bases + deepseek-r1 + gpt-oss: force OFF so
+  // they emit content directly. (Some models ignore the flag and emit
+  // <think>…</think> anyway; the adapter strips it.)
+  if (r.startsWith('qwen3') || r.includes('/qwen3') || r.includes('qwen3')
     || r.startsWith('deepseek-r1') || r.includes('deepseek-r1')
-    || r.startsWith('gpt-oss') || r.includes('/gpt-oss') || r.includes('gpt-oss');
+    || r.startsWith('gpt-oss') || r.includes('/gpt-oss') || r.includes('gpt-oss')) {
+    return false;
+  }
+  return undefined;
+}
+
+/** Back-compat: legacy callers test "is this a thinking model?" as a
+ *  boolean. Map the new tri-state down to that for the `noReasoning`
+ *  preamble path which only cares whether the model has a thinking
+ *  head at all (true for both Max 3 with thinking-on AND the others
+ *  with thinking-off-via-flag). */
+function isThinkingModel(model: string | undefined): boolean {
+  return thinkingFlagFor(model) !== undefined;
 }
 
 /** qwen3 responds to a `/no_think` control token in the user message — BUT
@@ -546,7 +570,7 @@ export class LocalProvider implements MasterProvider {
         tools: input.tools.map(anthropicToolToOllama),
         stream: useStream,
         keep_alive: KEEP_ALIVE,
-        think: isThinkingModel(input.model) ? false : undefined,
+        think: thinkingFlagFor(input.model),
         options: { num_predict: input.maxTokens ?? defaultMaxTokens, num_ctx: NUM_CTX },
       },
       input.onDelta,
@@ -577,7 +601,7 @@ export class LocalProvider implements MasterProvider {
         ],
         stream: false,
         keep_alive: KEEP_ALIVE,
-        think: isThinkingModel(langModel) ? false : undefined,
+        think: thinkingFlagFor(langModel),
         options: { num_predict: 8, num_ctx: NUM_CTX },
       });
       if (input.userId) {
@@ -609,7 +633,7 @@ export class LocalProvider implements MasterProvider {
       tools: [anthropicToolToOllama(input.toolDefinition)],
       stream: false,
       keep_alive: KEEP_ALIVE,
-      think: isThinkingModel(input.model) ? false : undefined,
+      think: thinkingFlagFor(input.model),
       options: { num_predict: 1024, num_ctx: NUM_CTX },
     });
     if (input.userId) {
