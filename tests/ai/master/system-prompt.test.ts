@@ -13,6 +13,9 @@ import {
   MASTER_ROLL_TRIGGERS,
   MASTER_REWARDS_MANDATE,
   MASTER_MEMORY_TOOL_RULE,
+  MASTER_ATTACK_DAMAGE_TWO_TURN_OVERLAY,
+  MASTER_PARTY_MODE_OVERLAY,
+  MASTER_MULTI_ROLL_COORDINATION_OVERLAY,
 } from '@/ai/master/system-prompt';
 
 const baseInput = {
@@ -127,6 +130,68 @@ describe('buildMasterSystemPrompt — master guidance level', () => {
     // (it can still appear inside HIDE_DIFFICULTY's "before -> after"
     // transformation guide, but only with the " -> " arrow following).
     expect(joined).not.toMatch(/Roll a Perception check\."(?! -> )/);
+  });
+
+  // Conditional overlays of the manual-rolls rule — Phase 1 of the
+  // prompt-budget refactor. CORE is always present when manualRolls=true.
+  // Overlays ship only when contextually relevant.
+  it('manual-rolls overlays: out-of-combat single-player → no attack/damage, no party overlays', () => {
+    const { system } = buildMasterSystemPrompt({
+      ...baseInput, manualRolls: true, inCombat: false, partySize: 1,
+    });
+    const texts = system.map((b) => b.text);
+    expect(texts.some((t) => t.startsWith('## Manual rolls'))).toBe(true);
+    expect(texts).not.toContain(MASTER_ATTACK_DAMAGE_TWO_TURN_OVERLAY);
+    expect(texts).not.toContain(MASTER_PARTY_MODE_OVERLAY);
+  });
+
+  it('manual-rolls overlays: in-combat single-player → attack/damage overlay injected, party not', () => {
+    const { system } = buildMasterSystemPrompt({
+      ...baseInput, manualRolls: true, inCombat: true, partySize: 1,
+    });
+    const texts = system.map((b) => b.text);
+    expect(texts).toContain(MASTER_ATTACK_DAMAGE_TWO_TURN_OVERLAY);
+    expect(texts).not.toContain(MASTER_PARTY_MODE_OVERLAY);
+  });
+
+  it('manual-rolls overlays: out-of-combat multiplayer → party overlay injected, attack/damage not', () => {
+    const { system } = buildMasterSystemPrompt({
+      ...baseInput, manualRolls: true, inCombat: false, partySize: 3,
+    });
+    const texts = system.map((b) => b.text);
+    expect(texts).not.toContain(MASTER_ATTACK_DAMAGE_TWO_TURN_OVERLAY);
+    expect(texts).toContain(MASTER_PARTY_MODE_OVERLAY);
+  });
+
+  it('manual-rolls overlays: in-combat multiplayer → BOTH overlays injected', () => {
+    const { system } = buildMasterSystemPrompt({
+      ...baseInput, manualRolls: true, inCombat: true, partySize: 4,
+    });
+    const texts = system.map((b) => b.text);
+    expect(texts).toContain(MASTER_ATTACK_DAMAGE_TWO_TURN_OVERLAY);
+    expect(texts).toContain(MASTER_PARTY_MODE_OVERLAY);
+  });
+
+  it('manual-rolls overlays: manualRolls=false → no manual-rolls blocks at all (CORE or overlays)', () => {
+    const { system } = buildMasterSystemPrompt({
+      ...baseInput, manualRolls: false, inCombat: true, partySize: 3,
+    });
+    const texts = system.map((b) => b.text);
+    expect(texts.some((t) => t.startsWith('## Manual rolls'))).toBe(false);
+    expect(texts).not.toContain(MASTER_ATTACK_DAMAGE_TWO_TURN_OVERLAY);
+    expect(texts).not.toContain(MASTER_PARTY_MODE_OVERLAY);
+  });
+
+  it('manual-rolls overlays: MULTI_ROLL_COORDINATION is exported but NOT auto-injected (opt-in)', () => {
+    const { system } = buildMasterSystemPrompt({
+      ...baseInput, manualRolls: true, inCombat: true, partySize: 5,
+    });
+    const texts = system.map((b) => b.text);
+    // Should be defined as a usable constant…
+    expect(MASTER_MULTI_ROLL_COORDINATION_OVERLAY.length).toBeGreaterThan(100);
+    // …but the default build does NOT ship it (saves ~380 tok on the
+    // <5% of turns that don't need it).
+    expect(texts).not.toContain(MASTER_MULTI_ROLL_COORDINATION_OVERLAY);
   });
 
   it('buildMasterSystemPrompt: manualRolls=true + hideDC=true → DC stripped from live examples', () => {

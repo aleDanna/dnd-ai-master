@@ -373,6 +373,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           scene: snap.scene,
           language: campaign.language ?? snap.language,
           manualRolls: userPrefs.manualRolls,
+          // Gate conditional overlays of the manual-rolls rule on the live
+          // session state, so we don't ship combat-only / multiplayer-only
+          // guidance on turns where it doesn't apply (saves ~430 tok and
+          // ~250 tok respectively per turn — meaningful on the local path
+          // where each saved token cuts prefill + speeds up tool-emission
+          // on bandwidth-bound bases).
+          inCombat: snap.state.combat !== null,
+          partySize: snap.party?.length ?? 1,
           masterGuidanceLevel: userPrefs.masterGuidanceLevel,
           showDifficultyNumbers: userPrefs.showDifficultyNumbers,
           narrationPace: userPrefs.narrationPace,

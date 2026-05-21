@@ -1284,6 +1284,20 @@ export interface MasterPromptInput {
   /** When true, the master asks the player to roll dice instead of calling rolling tools. */
   manualRolls?: boolean;
   /**
+   * Combat flag (from sessions.in_combat). Drives conditional injection
+   * of MASTER_ATTACK_DAMAGE_TWO_TURN_OVERLAY: outside combat, the model
+   * never has to coordinate attack→damage across turns, so the ~430-token
+   * overlay is omitted. Defaults to false when undefined.
+   */
+  inCombat?: boolean;
+  /**
+   * Party size (from session snapshot). Drives conditional injection of
+   * MASTER_PARTY_MODE_OVERLAY: only useful when 2+ PCs share the table.
+   * Singleplayer sessions (the common case at time of writing) save the
+   * ~250 tokens. Defaults to 1 when undefined.
+   */
+  partySize?: number;
+  /**
    * How proactively the master suggests possible actions. See
    * UserPreferences.masterGuidanceLevel for the full description.
    */
@@ -1725,9 +1739,18 @@ The player is NOT using physical dice and does not need to "grab their dice" —
 When mechanics call for an attack, ability check, saving throw, or damage roll, DO NOT call the rolling tools (\`make_attack\`, \`roll_d20\`, \`saving_throw\`, \`ability_check\`, \`roll_dice\`). Instead, write the formula explicitly so the app can render a button. Use these phrasings (the in-app parser is tuned for them):
 ${examples.join('\n')}${hideDCNote}
 
-${languageStrictNote}
+${languageStrictNote}`;
+}
 
-### Attack & damage are TWO SEPARATE TURNS — never the same message
+/**
+ * Combat-specific extension of the Manual Rolls rule. Injected by
+ * `buildMasterSystemPrompt` ONLY when manualRolls=true AND inCombat=true.
+ * In non-combat scenes the model never has to choose between to-hit and
+ * damage emission, so this block is dead weight (~430 tokens) and pays
+ * no narrative dividend. The "two-turn" discipline is the only thing
+ * the master gets wrong here often enough to warrant the explicit rule.
+ */
+export const MASTER_ATTACK_DAMAGE_TWO_TURN_OVERLAY = `### Attack & damage are TWO SEPARATE TURNS — never the same message
 Attacks always happen in two steps, across two of your turns:
 
 **Turn N (attack roll):** ask only for the to-hit roll. End your turn there.
@@ -1749,9 +1772,16 @@ This rule applies even inside a "Vuoi: / Choose:" choice list. Each option lists
 The same two-turn pattern applies to:
 - Spells with attack rolls (cast → to-hit → damage on hit, three turns total).
 - Saving-throw spells (cast → describe → ask for save → on a fail apply damage; never pre-emit the damage roll alongside the save).
-- Reaction attacks, opportunity attacks, etc.
+- Reaction attacks, opportunity attacks, etc.`;
 
-### Multiple rolls in one turn — choice vs. all-required
+/**
+ * Multi-roll coordination overlay (~380 tokens). Optional: in 95%+ of
+ * turns the master writes a single roll, so this block is dead weight.
+ * Injected only when the caller explicitly requests it (e.g. encounter
+ * setups where multiple saves at once are expected). Left available for
+ * future call-site decisions; default behaviour is to NOT inject it.
+ */
+export const MASTER_MULTI_ROLL_COORDINATION_OVERLAY = `### Multiple rolls in one turn — choice vs. all-required
 When you DO need to write more than one roll in the same message (rare, see exceptions below), the app coordinates them automatically. There are two cases — phrase your prose so the parser picks the right mode:
 
 1. **Mutually exclusive options (OR)** — the player picks ONE path; only that roll runs. Introduce the list with a clear cue:
@@ -1765,9 +1795,14 @@ When you DO need to write more than one roll in the same message (rare, see exce
 
 Note that the attack→damage cycle is NEITHER of these — it is two separate turns, not a single multi-roll message.
 
-Then end your turn and wait. When the player replies with the rolled total(s), narrate the outcome and call the deterministic state tools (\`apply_damage\`, \`use_resource\`, \`apply_condition\`, etc.) using their numbers. The player's numbers are authoritative — do not second-guess them, do not re-roll, do not ask them to "physically roll" or "grab dice".
+Then end your turn and wait. When the player replies with the rolled total(s), narrate the outcome and call the deterministic state tools (\`apply_damage\`, \`use_resource\`, \`apply_condition\`, etc.) using their numbers. The player's numbers are authoritative — do not second-guess them, do not re-roll, do not ask them to "physically roll" or "grab dice".`;
 
-### Party mode interaction
+/**
+ * Party-mode interaction overlay (~250 tokens). Injected ONLY when the
+ * session has 2+ party members. In single-player campaigns (the common
+ * case at time of writing) the rule never fires and is dead weight.
+ */
+export const MASTER_PARTY_MODE_OVERLAY = `### Party mode interaction
 The in-app roll button only appears in the UI of the **currently active PG** (the cpcId named in the PARTY MODE block). The app gates other players out so they can't click a button that isn't theirs.
 
 This means:
@@ -1775,13 +1810,13 @@ This means:
 - If the action belongs to a DIFFERENT party member, you MUST call \`set_current_player({ characterId: <uuid of that PG> })\` BEFORE ending the beat. The next beat is when that PG sees the button.
 - **NEVER narrate a roll result for any PG yourself.** "Tira... il risultato è 8" / "you roll... you get an 8" is FORBIDDEN. Always write only the formula, then stop. The player rolls.
 - **NEVER compute or invent a roll for a non-active PG.** You don't have their character sheet in the snapshot — only the active PG's stats. If you find yourself thinking "Kank rolls History 8…" while Bruce is active, STOP. Hand the turn to Kank first (set_current_player), then in the NEXT beat ask Kank to tira 1d20+modifier.`;
-}
 
 /**
- * Back-compat export: the legacy English / DC-visible variant of the
+ * Back-compat export: the legacy English / DC-visible CORE variant of the
  * Manual Rolls rule. Equivalent to `buildManualRollsRule({})`. Kept so
  * external imports and tests that referenced this constant by name
- * continue to compile. New call sites should prefer the function form.
+ * continue to compile. New call sites should prefer the function form
+ * and inject overlays selectively via `buildMasterSystemPrompt`.
  */
 export const MASTER_MANUAL_ROLLS_RULE = buildManualRollsRule();
 
@@ -1891,7 +1926,7 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
 
   // ── (2) STABLE PER SESSION — set at campaign creation, rarely mutated. ──
   if (input.manualRolls) {
-    // Variant calibrated for current preferences:
+    // CORE — variant calibrated for current preferences:
     //  - hideDC=true → examples omit DC/AC so they don't conflict with
     //    MASTER_HIDE_DIFFICULTY_RULE that is also injected below.
     //  - language='it' → examples use Italian-only phrasing the in-app
@@ -1906,6 +1941,29 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
       }),
       cache_control: { type: 'ephemeral' },
     });
+    // OVERLAY 1 — attack/damage two-turn discipline. Only matters inside
+    // combat. Out-of-combat narration never coordinates to-hit and damage,
+    // so the ~430-token overlay would be pure prompt bloat.
+    if (input.inCombat) {
+      blocks.push({
+        type: 'text',
+        text: MASTER_ATTACK_DAMAGE_TWO_TURN_OVERLAY,
+        cache_control: { type: 'ephemeral' },
+      });
+    }
+    // OVERLAY 2 — party-mode rule. Only relevant with 2+ characters.
+    if ((input.partySize ?? 1) > 1) {
+      blocks.push({
+        type: 'text',
+        text: MASTER_PARTY_MODE_OVERLAY,
+        cache_control: { type: 'ephemeral' },
+      });
+    }
+    // OVERLAY 3 (multi-roll coordination) is intentionally NOT injected
+    // by default. It applies to <5% of turns (only when the master writes
+    // 2+ formulas in the same beat) and the ~380-token cost is not worth
+    // the rare hit. Re-enable here if regressions appear in turns with
+    // simultaneous saves or "choose: …" branching prose.
   }
   const guidance = input.masterGuidanceLevel ?? 'balanced';
   if (guidance === 'free') {
