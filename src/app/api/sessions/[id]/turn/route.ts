@@ -16,7 +16,7 @@ import { retrieveRelevant } from '@/ai/master/rag/retriever';
 import { getRagStore } from '@/ai/master/rag/store';
 import { embed } from '@/ai/master/rag/embedder';
 import { isMechanicalIntent } from '@/ai/master/rag/intent';
-import { isBakedModel, warnIfBakedModelStale } from '@/ai/master/baked-models';
+import { isBakedModel, warnIfBakedModelStale, thinkingFlagFor } from '@/ai/master/baked-models';
 import { getRuntimePromptHash } from '@/ai/master/runtime-prompt-hash';
 import { detectLanguage } from '@/ai/master/language';
 import { runToolLoop } from '@/ai/master/tool-loop';
@@ -436,6 +436,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // on bandwidth-bound bases).
           inCombat: snap.state.combat !== null,
           partySize: snap.party?.length ?? 1,
+          // Inject the brief-thinking rule only when the active model has
+          // its chain-of-thought head enabled at runtime. Currently only
+          // Max 3 (qwen3:30b-a3b) qualifies; everything else (Max 2
+          // instruct, Plus, cloud) skips the ~120 token cost.
+          thinkingEnabled: thinkingFlagFor(userPrefs.aiMasterModel) === true,
           masterGuidanceLevel: userPrefs.masterGuidanceLevel,
           showDifficultyNumbers: userPrefs.showDifficultyNumbers,
           narrationPace: userPrefs.narrationPace,

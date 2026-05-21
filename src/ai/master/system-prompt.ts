@@ -1298,6 +1298,15 @@ export interface MasterPromptInput {
    */
   partySize?: number;
   /**
+   * Whether the active model has its chain-of-thought head ENABLED at
+   * runtime (true for Max 3 / qwen3:30b-a3b; false for non-thinking
+   * variants like Max 2 instruct + cloud providers; undefined for
+   * "unknown / leave default"). When true, buildMasterSystemPrompt
+   * injects MASTER_BRIEF_THINKING_RULE (~120 tok) to cap the reasoning
+   * length and shave 25-50s off per-turn latency on the local tier.
+   */
+  thinkingEnabled?: boolean;
+  /**
    * How proactively the master suggests possible actions. See
    * UserPreferences.masterGuidanceLevel for the full description.
    */
@@ -1655,6 +1664,40 @@ Every response you write MUST move the story forward. Each of your turns deliver
 If the player's input is brief or ambiguous and you genuinely have nothing new to add, acknowledge the action in ONE short sentence and pose a specific follow-up question that opens a new beat — do not pad with rewrites of earlier descriptions, and do not invent a roll request to fill the space.`;
 
 /**
+ * Thinking-budget guidance. Injected into the system prompt ONLY when the
+ * runtime has thinking ON for the active model (Max 3 / qwen3:30b-a3b at
+ * time of writing). qwen3 thinking heads will happily produce 800-1500
+ * tokens of `<think>…</think>` chain-of-thought before the narrative,
+ * doubling or tripling per-turn latency on a memory-bandwidth-bound
+ * machine like the Mac Mini M4 base.
+ *
+ * This block is a "soft cap" — qwen3 doesn't expose a hard reasoning-effort
+ * parameter the way gpt-oss does, but instruction-following is strong
+ * enough that explicit prose like "keep thinking under 200 tokens" gets
+ * roughly respected. ~120 tokens of system-prompt cost, typical savings
+ * of 400-800 tokens of thinking output per turn ≈ 25-50s on the local
+ * tier. Net win is large.
+ *
+ * Injected only when `thinkingEnabled=true` so models that don't think
+ * don't pay the cost.
+ */
+export const MASTER_BRIEF_THINKING_RULE = `## Reasoning budget (THINKING is ON for this model)
+You have a chain-of-thought scratchpad — use it sparingly. The player is on a memory-bandwidth-bound local machine; every \`<think>\` token costs ~60ms of decode latency they wait through.
+
+Hard caps:
+- **Total <think> content: 200 tokens max.** Identify the player intent, pick the right tool/skill/DC, decide if a roll is needed, then STOP thinking and write the response.
+- **No re-deriving facts already in the snapshot.** The character sheet, scene card, codex, and chapter digests are authoritative — don't recompute HP, AC, skill modifiers, or "what's in the room" from scratch.
+- **No outlining the response.** Don't draft prose inside \`<think>\` then rewrite it outside. Think only about MECHANICS / DECISIONS, write directly in the final response.
+- **No second-guessing.** First conclusion that satisfies the rules + tonal frame is the right one. Move on.
+
+Forbidden in \`<think>\`:
+- Multi-paragraph narrative drafts.
+- Restating the previous master turn ("the player just said X, which means…" — go straight to the decision).
+- Listing every possible interpretation when one is clearly correct.
+
+The narrative quality the player sees does NOT depend on thinking length — it depends on how well you connect the snapshot to the response. Keep thinking surgical.`;
+
+/**
  * Builds the Manual Rolls rule with examples calibrated for the active
  * campaign settings:
  *  - language='it' → examples use Italian-only phrasing the parser is
@@ -1973,6 +2016,18 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
   // verbatim-copy-of-prior-narration failure mode that surfaced after the
   // Phase-1 manual-rolls overlay split reduced the dynamic preamble.
   blocks.push({ type: 'text', text: MASTER_ADVANCE_NARRATIVE_RULE, cache_control: { type: 'ephemeral' } });
+
+  // Thinking-budget cap — injected ONLY when the active model has its
+  // chain-of-thought head enabled at runtime (Max 3 currently). qwen3
+  // thinking models can produce 800-1500 tokens of <think> per turn,
+  // which on a memory-bandwidth-bound Mac is 60+ seconds of pure
+  // user-visible wait. This soft cap pulls that down to ~200 tokens
+  // for ~25-50s of latency savings per turn at a cost of ~120 prompt
+  // tokens. Skipped when thinking is off (non-thinking models don't
+  // benefit and would just pay the prompt tax).
+  if (input.thinkingEnabled === true) {
+    blocks.push({ type: 'text', text: MASTER_BRIEF_THINKING_RULE, cache_control: { type: 'ephemeral' } });
+  }
 
   const guidance = input.masterGuidanceLevel ?? 'balanced';
   if (guidance === 'free') {
