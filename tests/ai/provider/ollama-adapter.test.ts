@@ -7,6 +7,7 @@ import {
   ollamaDoneReasonToStopReason,
   normalizeOllamaUsage,
   stripThinkingFromContent,
+  recoverInlineToolCall,
 } from '@/ai/provider/ollama-adapter';
 
 describe('anthropicSystemToOllamaMessage', () => {
@@ -118,6 +119,83 @@ describe('ollamaResponseToContentBlocks', () => {
 
   it('skips empty text blocks', () => {
     expect(ollamaResponseToContentBlocks({ role: 'assistant', content: '' })).toEqual([]);
+  });
+
+  it('recovers inline text-format tool call into tool_use (gpt-oss long-context fallback)', () => {
+    const r = ollamaResponseToContentBlocks({
+      role: 'assistant',
+      content: 'narrative_action({ "subaction": "ability_check", "actor": "pc-001", "skill": "perception", "dc": 14 })',
+    });
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({
+      type: 'tool_use',
+      name: 'narrative_action',
+      input: { subaction: 'ability_check', actor: 'pc-001', skill: 'perception', dc: 14 },
+    });
+    if (r[0]?.type === 'tool_use') expect(r[0].id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('does NOT recover when structured tool_calls already present (no double-emit)', () => {
+    const r = ollamaResponseToContentBlocks({
+      role: 'assistant',
+      content: 'narrative_action({ "subaction": "ability_check" })',
+      tool_calls: [{ function: { name: 'narrative_action', arguments: { subaction: 'ability_check' } } }],
+    });
+    // Should keep both: the structured call AND the text (since recovery is gated on missing tool_calls)
+    expect(r.some((b) => b.type === 'tool_use')).toBe(true);
+    expect(r.filter((b) => b.type === 'tool_use')).toHaveLength(1);
+  });
+
+  it('does NOT recover unknown tool names (avoids false positives from narration)', () => {
+    const r = ollamaResponseToContentBlocks({
+      role: 'assistant',
+      content: 'frobnicate({ "x": 1 })',
+    });
+    expect(r).toEqual([{ type: 'text', text: 'frobnicate({ "x": 1 })' }]);
+  });
+
+  it('does NOT recover when content has extra prose around the call', () => {
+    const r = ollamaResponseToContentBlocks({
+      role: 'assistant',
+      content: 'Tu chiami narrative_action({ "subaction": "ability_check" }) per controllare.',
+    });
+    expect(r[0]).toMatchObject({ type: 'text' });
+    expect(r.some((b) => b.type === 'tool_use')).toBe(false);
+  });
+
+  it('does NOT recover when arguments are malformed JSON', () => {
+    const r = ollamaResponseToContentBlocks({
+      role: 'assistant',
+      content: 'narrative_action({ subaction: ability_check, missing quotes })',
+    });
+    expect(r[0]).toMatchObject({ type: 'text' });
+  });
+});
+
+describe('recoverInlineToolCall', () => {
+  it('parses a strict-JSON gpt-oss style invocation', () => {
+    const r = recoverInlineToolCall('narrative_action({"subaction":"ability_check","actor":"pc-001","skill":"perception","dc":12})');
+    expect(r).toEqual({
+      name: 'narrative_action',
+      input: { subaction: 'ability_check', actor: 'pc-001', skill: 'perception', dc: 12 },
+    });
+  });
+
+  it('tolerates whitespace around the call', () => {
+    const r = recoverInlineToolCall('  combat_action(  {"subaction":"attack","attacker":"pc-001"}  )  ');
+    expect(r?.name).toBe('combat_action');
+  });
+
+  it('returns null for an unknown tool name', () => {
+    expect(recoverInlineToolCall('hack_action({"x":1})')).toBeNull();
+  });
+
+  it('returns null when arguments are not strict JSON', () => {
+    expect(recoverInlineToolCall('narrative_action({foo: 1})')).toBeNull();
+  });
+
+  it('returns null when content has prose around the call', () => {
+    expect(recoverInlineToolCall('I will call narrative_action({"subaction":"ability_check"})')).toBeNull();
   });
 });
 
