@@ -411,7 +411,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // percezione" turn the master would have no explicit roll-trigger
           // guidance left. Inject the SLIM block (~500 tok) only on those
           // turns and only for baked models.
-          injectRollTriggersSlim: baked && mechanical,
+          //
+          // ALSO: gate on `!manualRolls`. ROLL_TRIGGERS_SLIM tells the model
+          // "you MUST emit a tool call (narrative_action({...}))" — directly
+          // contradicting MANUAL_ROLLS_RULE that says "DO NOT call rolling
+          // tools, write the formula explicitly so the app can render a
+          // button". The model would follow the more concrete/recent block
+          // (TRIGGERS_SLIM) and emit a tool-call literal as text inside
+          // content, breaking the manual-roll UI and showing a raw JSON to
+          // the player. When manualRolls=true the MANUAL_ROLLS_RULE already
+          // covers what to do on mechanical turns — no SLIM needed.
+          injectRollTriggersSlim: baked && mechanical && !userPrefs.manualRolls,
         });
 
         // 5. Run the tool loop — events forwarded to SSE subscribers via notifySession.

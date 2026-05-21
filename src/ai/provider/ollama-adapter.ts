@@ -127,25 +127,39 @@ const RECOVERABLE_TOOL_NAMES: readonly string[] = [
  *  content + null tool_calls; that path is not recoverable here and needs
  *  a smaller prompt or model swap.)
  *
- *  This function recovers the text-format case. Match is strict: the
- *  ENTIRE content must be only a tool-call invocation (whitespace
- *  tolerated). We don't false-positive on narration that happens to
- *  mention a tool name. The name must be in `RECOVERABLE_TOOL_NAMES`
- *  and the arguments must parse as strict JSON.
+ *  This function recovers the text-format case. The match is anchored to
+ *  the START of the content (offset 0, whitespace tolerated) — gpt-oss
+ *  emits the tool literal as the first thing and then sometimes appends
+ *  prose. We extract the call, return its parsed arguments, and pass any
+ *  trailing prose back via `remainingText` so the adapter can preserve it
+ *  as a separate text block. The name must be in `RECOVERABLE_TOOL_NAMES`
+ *  and the arguments must parse as strict JSON — that's how we avoid
+ *  false-positives on prose that happens to cite a tool name.
  *
- *  Returns the recovered tool call or null when content doesn't match. */
+ *  Returns null when the head of content doesn't start with a tool-call
+ *  literal. */
 export function recoverInlineToolCall(content: string): {
   name: string;
   input: Record<string, unknown>;
+  remainingText: string;
 } | null {
   const namesGroup = RECOVERABLE_TOOL_NAMES.join('|');
-  const re = new RegExp(`^\\s*(${namesGroup})\\s*\\(\\s*(\\{[\\s\\S]*?\\})\\s*\\)\\s*$`);
+  // Anchored to start (^), no $ anchor — captures only the leading call.
+  // Note `\\s*` at the start tolerates whitespace before the tool name but
+  // explicitly disallows preceding prose; this is how we reject hits like
+  // "I will call narrative_action({...})" while still accepting the
+  // gpt-oss pattern where the literal is the first thing on the line.
+  const re = new RegExp(`^\\s*(${namesGroup})\\s*\\(\\s*(\\{[\\s\\S]*?\\})\\s*\\)`);
   const m = re.exec(content);
   if (!m) return null;
   try {
     const args = JSON.parse(m[2]!);
     if (typeof args !== 'object' || args === null || Array.isArray(args)) return null;
-    return { name: m[1]!, input: args as Record<string, unknown> };
+    return {
+      name: m[1]!,
+      input: args as Record<string, unknown>,
+      remainingText: content.slice(m[0].length).trimStart(),
+    };
   } catch {
     return null;
   }
@@ -162,10 +176,11 @@ export function ollamaResponseToContentBlocks(msg: OllamaResponseMessage): Conte
   const cleanContent = msg.content ? stripThinkingFromContent(msg.content) : '';
 
   // Text-format tool-call recovery (defensive). Only kicks in when the
-  // structured channel is empty AND the entire content looks like a
-  // tool-call literal. The text block is suppressed when recovered so
-  // the player doesn't see the JSON envelope.
-  let suppressText = false;
+  // structured channel is empty AND content starts with a tool-call
+  // literal. The leading call is converted to a tool_use block; any
+  // trailing prose is preserved as a text block (so we don't lose the
+  // model's narration when it emits both).
+  let textBlock = cleanContent;
   if (!msg.tool_calls?.length && cleanContent.length > 0) {
     const recovered = recoverInlineToolCall(cleanContent);
     if (recovered) {
@@ -175,12 +190,12 @@ export function ollamaResponseToContentBlocks(msg: OllamaResponseMessage): Conte
         name: recovered.name,
         input: recovered.input,
       });
-      suppressText = true;
+      textBlock = recovered.remainingText;
     }
   }
 
-  if (!suppressText && cleanContent.length > 0) {
-    blocks.push({ type: 'text', text: cleanContent });
+  if (textBlock.length > 0) {
+    blocks.push({ type: 'text', text: textBlock });
   }
   for (const tc of msg.tool_calls ?? []) {
     blocks.push({

@@ -154,13 +154,31 @@ describe('ollamaResponseToContentBlocks', () => {
     expect(r).toEqual([{ type: 'text', text: 'frobnicate({ "x": 1 })' }]);
   });
 
-  it('does NOT recover when content has extra prose around the call', () => {
+  it('does NOT recover when content has extra prose BEFORE the call (no leading anchor match)', () => {
     const r = ollamaResponseToContentBlocks({
       role: 'assistant',
       content: 'Tu chiami narrative_action({ "subaction": "ability_check" }) per controllare.',
     });
     expect(r[0]).toMatchObject({ type: 'text' });
     expect(r.some((b) => b.type === 'tool_use')).toBe(false);
+  });
+
+  it('RECOVERS when the leading content is a tool literal and prose follows (gpt-oss mixed-output case)', () => {
+    const r = ollamaResponseToContentBlocks({
+      role: 'assistant',
+      content: 'narrative_action({ "subaction": "ability_check", "actor": "pc-001", "skill": "Perception" })\nIl sindaco ti osserva, gli occhi affilati.',
+    });
+    // First block is the recovered tool_use
+    expect(r[0]).toMatchObject({
+      type: 'tool_use',
+      name: 'narrative_action',
+      input: { subaction: 'ability_check', actor: 'pc-001', skill: 'Perception' },
+    });
+    // Second block is the trailing narration as text
+    expect(r[1]).toMatchObject({
+      type: 'text',
+      text: 'Il sindaco ti osserva, gli occhi affilati.',
+    });
   });
 
   it('does NOT recover when arguments are malformed JSON', () => {
@@ -173,17 +191,25 @@ describe('ollamaResponseToContentBlocks', () => {
 });
 
 describe('recoverInlineToolCall', () => {
-  it('parses a strict-JSON gpt-oss style invocation', () => {
+  it('parses a strict-JSON gpt-oss style invocation with no trailing prose', () => {
     const r = recoverInlineToolCall('narrative_action({"subaction":"ability_check","actor":"pc-001","skill":"perception","dc":12})');
     expect(r).toEqual({
       name: 'narrative_action',
       input: { subaction: 'ability_check', actor: 'pc-001', skill: 'perception', dc: 12 },
+      remainingText: '',
     });
   });
 
-  it('tolerates whitespace around the call', () => {
+  it('captures trailing prose as remainingText (mixed-output case)', () => {
+    const r = recoverInlineToolCall('narrative_action({"subaction":"ability_check"})\n\nIl sindaco ti osserva.');
+    expect(r?.name).toBe('narrative_action');
+    expect(r?.remainingText).toBe('Il sindaco ti osserva.');
+  });
+
+  it('tolerates whitespace around the leading call', () => {
     const r = recoverInlineToolCall('  combat_action(  {"subaction":"attack","attacker":"pc-001"}  )  ');
     expect(r?.name).toBe('combat_action');
+    expect(r?.remainingText).toBe('');
   });
 
   it('returns null for an unknown tool name', () => {
@@ -194,7 +220,7 @@ describe('recoverInlineToolCall', () => {
     expect(recoverInlineToolCall('narrative_action({foo: 1})')).toBeNull();
   });
 
-  it('returns null when content has prose around the call', () => {
+  it('returns null when content has prose BEFORE the call (no leading anchor match)', () => {
     expect(recoverInlineToolCall('I will call narrative_action({"subaction":"ability_check"})')).toBeNull();
   });
 });
