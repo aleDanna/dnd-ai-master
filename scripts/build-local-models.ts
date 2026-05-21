@@ -8,18 +8,27 @@
  *   pnpm build-local-models --force        # rebuild even if up-to-date
  *   pnpm build-local-models --dry-run      # write Modelfiles, skip `ollama create`
  *
+ * # Pointing the bake at a non-default DB (e.g. Supabase prod from the Mac Mini)
+ *
+ * The bake reads SRD rule docs from Postgres to embed in the Modelfile SYSTEM.
+ * On the Mac Mini there is usually no local Postgres running — point it at
+ * Supabase prod by PREFIXING the command with DATABASE_URL:
+ *
+ *   DATABASE_URL='postgres://USER:PWD@HOST:6543/postgres?sslmode=require' \
+ *     pnpm build-local-models --base qwen3:30b-a3b --force
+ *
+ * Why not `BAKE_DATABASE_URL`? An earlier version of this script offered that
+ * env var as a "safer" alias, but the override happens too late: ESM imports
+ * (e.g. `srd-context` → `db/client`) are evaluated before the top-level body
+ * runs, so `db/client` reads `process.env.DATABASE_URL` first and creates the
+ * pool against the wrong host. Passing DATABASE_URL directly via the shell
+ * gets it into `process.env` BEFORE node starts evaluating modules, which is
+ * the only reliable way to influence the pool's connection string.
+ *
  * See docs/superpowers/specs/2026-05-16-local-baked-models-design.md.
  */
 
 import { loadDbEnv } from '../src/db/connection-url';
-
-// One-shot DATABASE_URL override for bake-time only. Lets the Mac point at
-// the Supabase prod DB while keeping the dev .env.local / .env.development.local
-// pointed at the local docker Postgres. Set BEFORE loadDbEnv so dotenv's
-// first-write-wins precedence keeps this value.
-if (process.env.BAKE_DATABASE_URL) {
-  process.env.DATABASE_URL = process.env.BAKE_DATABASE_URL;
-}
 loadDbEnv();
 
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
