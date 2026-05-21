@@ -77,6 +77,17 @@ export const TIER_NAMES: Record<string, string> = {
   'qwen3:30b-a3b-instruct-2507-q4_K_M':    'dnd-master-max2',
   'qwen3:30b-a3b-instruct-2507-q8_0':      'dnd-master-max2',
   'qwen3:30b-a3b-instruct-2507-fp16':      'dnd-master-max2',
+  // Qwen3 30B-A3B (thinking-mode MoE base) — Max 3 tier. Same underlying
+  // architecture as the instruct-2507 sibling but the base variant has the
+  // chain-of-thought head active. The runtime sends `think: false` so the
+  // model behaves like an instruct variant in practice, while the broader
+  // pretraining of the thinking head can occasionally yield more
+  // creative narration. Kept as a separate tier so users can install
+  // both side-by-side and pick from the dropdown.
+  'qwen3:30b-a3b':                         'dnd-master-max3',
+  'qwen3:30b-a3b-q4_K_M':                  'dnd-master-max3',
+  'qwen3:30b-a3b-q8_0':                    'dnd-master-max3',
+  'qwen3:30b-a3b-fp16':                    'dnd-master-max3',
   // GPT-OSS 20B — Plus tier (solid tool-calling fallback)
   'gpt-oss:20b':                           'dnd-master-plus',
   'gpt-oss:20b-q4_K_M':                    'dnd-master-plus',

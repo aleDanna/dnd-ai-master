@@ -100,23 +100,24 @@ const DEFAULT_PARAMS: Record<string, string | number | boolean> = {
 };
 
 const PER_BASE_PARAMS: Record<string, Record<string, string | number | boolean>> = {
-  // qwen3 thinking mode benefits from a slightly lower temp on tool selection.
+  // qwen3 30B dense (thinking) — lower temp helps converge tool selection.
   'qwen3:30b': { temperature: 0.6 },
-  'qwen3:30b-a3b': { temperature: 0.6 },
-  // qwen3 non-thinking instruct: defaults to slightly higher temp than thinking
-  // siblings because there's no internal monologue to converge selection — but
-  // we keep top_p tight and pin min_p to prune the long tail without killing
+  // qwen3 30B-A3B thinking-MoE base (Max 3 tier). Same underlying
+  // architecture as the instruct-2507 sibling below; the runtime sends
+  // `think: false` so it behaves like the instruct variant in practice.
+  // We share the tuned parameter block — repeat_penalty 1.13 is the key
+  // one (combats A3B MoE routing locking onto a stylistic anchor across
+  // turns; verbatim re-narration loop seen in session 7406a0a5).
+  'qwen3:30b-a3b': { temperature: 0.7, top_p: 0.9, min_p: 0.05, repeat_penalty: 1.13 },
+  // qwen3 non-thinking instruct (Max 2 tier). Higher temp than the dense
+  // thinking sibling because there's no internal monologue to converge
+  // selection; tight top_p + min_p prune the long tail without killing
   // narrative diversity.
-  // repeat_penalty 1.13 (vs 1.07 default) — A3B MoE routing tends to lock onto
-  // a stylistic anchor on long creative generations, re-activating the same
-  // experts and reproducing identical phrases across turns. Higher token-level
-  // penalty doesn't fully break the routing lock but raises the bar enough to
-  // surface alternative phrasings. Pushed to 1.13 after observing verbatim
-  // re-narration loops in session 7406a0a5 (5 master turns, same imagery).
   'qwen3:30b-a3b-instruct-2507': { temperature: 0.7, top_p: 0.9, min_p: 0.05, repeat_penalty: 1.13 },
-  // mistral-small 3.2: tuned per modern-narrative best practice — temp 0.8 for
-  // evocative prose, min_p 0.05 (modern alternative to top_p alone),
-  // repeat_penalty 1.07 (1.1 default is slightly too aggressive on names/places).
+  // mistral-small 3.2 (Max tier): tuned per modern-narrative best practice —
+  // temp 0.8 for evocative prose, min_p 0.05 (modern alternative to top_p
+  // alone), repeat_penalty 1.07 (1.1 default is slightly too aggressive on
+  // names/places).
   'mistral-small3.2:24b': { temperature: 0.8, top_p: 0.9, min_p: 0.05, repeat_penalty: 1.07 },
 };
 
