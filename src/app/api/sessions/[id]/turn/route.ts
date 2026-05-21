@@ -290,17 +290,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // distribution rather than in English.
           history = [{ role: 'user', content: buildBeginUserMessage(campaign.premise, campaign.language) }];
         } else {
-          // History window: how many recent messages to pull. 10 = ~5 turn
-          // back (user+assistant pairs) which keeps prompt size ~10-12K
-          // instead of ~21K with 20 msgs. Saves ~3-5x on prompt_eval time
-          // for slow local models. Tuned for llama3.2:3b / qwen3:4b which
-          // are 30-40 tok/s on M-series unified memory.
+          // History window: how many recent messages to pull. 6 = ~3 turn
+          // back (user+assistant pairs).
+          //
+          // Lowered from 10 to 6 on 2026-05-21 after diagnosing qwen3:30b-A3B
+          // (Max 2 tier) breaking under prompt sizes >~13K input tokens — it
+          // returns empty content with bare eval_count when the prompt
+          // exceeds that threshold, even though it handles the same prompt
+          // perfectly at ~6K (verified via direct curl). With SYSTEM baked
+          // ~7K + tools ~1.5K + dynamic prefix ~2.4K = ~10.9K fixed, the
+          // history budget for Max 2 is ~2K tokens. 10 messages produced
+          // ~3.7K → over the cliff. 6 messages produce ~2.2K → just inside.
           //
           // Trade-off: master "forgets" older turns faster. Mitigated by the
           // scene card + chapter digests + codex index already in the prompt
-          // (all summarise pre-window state). Bump back to 20 if you observe
-          // continuity loss across long sessions.
-          const HISTORY_LIMIT = Number(process.env.MASTER_HISTORY_LIMIT ?? '10');
+          // (all summarise pre-window state). Bump back to 10 via env var
+          // if you observe continuity loss on a model that handles long
+          // context well (gpt-oss:20b / cloud providers can afford 10+).
+          //
+          // TODO(perf): switch to budget-aware truncation (sum token counts,
+          // drop oldest until under budget) so different models can pull
+          // different amounts naturally. For now a flat 6 is the safest
+          // default across the local tier.
+          const HISTORY_LIMIT = Number(process.env.MASTER_HISTORY_LIMIT ?? '6');
           const recent = await db
             .select()
             .from(sessionMessages)
