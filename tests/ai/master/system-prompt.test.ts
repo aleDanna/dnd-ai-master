@@ -16,6 +16,7 @@ import {
   MASTER_ATTACK_DAMAGE_TWO_TURN_OVERLAY,
   MASTER_PARTY_MODE_OVERLAY,
   MASTER_MULTI_ROLL_COORDINATION_OVERLAY,
+  MASTER_ADVANCE_NARRATIVE_RULE,
 } from '@/ai/master/system-prompt';
 
 const baseInput = {
@@ -180,6 +181,20 @@ describe('buildMasterSystemPrompt — master guidance level', () => {
     expect(texts.some((t) => t.startsWith('## Manual rolls'))).toBe(false);
     expect(texts).not.toContain(MASTER_ATTACK_DAMAGE_TWO_TURN_OVERLAY);
     expect(texts).not.toContain(MASTER_PARTY_MODE_OVERLAY);
+  });
+
+  it('ADVANCE_NARRATIVE_RULE is always injected (anti-repetition guard, on every turn)', () => {
+    // Out-of-combat single-player
+    const a = buildMasterSystemPrompt({ ...baseInput, inCombat: false, partySize: 1 });
+    expect(a.system.map((b) => b.text)).toContain(MASTER_ADVANCE_NARRATIVE_RULE);
+
+    // In-combat party
+    const b = buildMasterSystemPrompt({ ...baseInput, inCombat: true, partySize: 4 });
+    expect(b.system.map((b) => b.text)).toContain(MASTER_ADVANCE_NARRATIVE_RULE);
+
+    // manualRolls=false (rule is independent of that pref)
+    const c = buildMasterSystemPrompt({ ...baseInput, manualRolls: false });
+    expect(c.system.map((b) => b.text)).toContain(MASTER_ADVANCE_NARRATIVE_RULE);
   });
 
   it('manual-rolls overlays: MULTI_ROLL_COORDINATION is exported but NOT auto-injected (opt-in)', () => {

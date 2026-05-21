@@ -1654,6 +1654,31 @@ Player turn N: "Cerco un passaggio segreto."
 Ask yourself: would a competent table DM say "ok, you press the lever and step inside; what do you do?" all in one breath, OR would they pause for input? If the former, do it in one beat. If you're unsure, default to a beat boundary — losing momentum is worse than overshooting once in a while.`;
 
 /**
+ * Always-on guard against verbatim repetition of prior master narration.
+ * After the Phase-1 prompt-budget refactor we observed the master copying
+ * an earlier message word-for-word across multiple turns (e.g. message
+ * #5 echoed in #7, #9, #11 of the same session). Root cause: with the
+ * smaller dynamic preamble, the model anchors more strongly on the chat
+ * history and falls back to "least-effort" repetition when it doesn't
+ * know how to advance. ~80 tokens of explicit anti-repetition guidance
+ * is well worth the cost — without it the user experience degrades to
+ * a stuck loop.
+ *
+ * Injected by `buildMasterSystemPrompt` on every turn (no gate). Sits in
+ * the session-stable cluster so it stays in the ephemeral cache prefix.
+ */
+export const MASTER_ADVANCE_NARRATIVE_RULE = `## Advance the narrative every turn (HARD)
+Every response you write MUST move the story forward. Each of your turns delivers AT LEAST ONE of:
+- a new sensory beat (something the player can now see / hear / smell / feel that they couldn't a moment ago);
+- an NPC reaction or line of dialogue not yet stated this scene;
+- a consequence of the player's last action that wasn't visible before;
+- a new fact, clue, or decision-point the player can act on.
+
+**Forbidden — never do this:** copy or near-copy your own prior narration. If you find yourself about to write a sentence that already appeared in an earlier master turn, REPHRASE and ADD new content. Looping the same paragraph across turns breaks the game.
+
+If the player's input is brief or ambiguous and you genuinely have nothing new to add, acknowledge the action in ONE short sentence and pose a specific follow-up question that opens a new beat — do not pad with rewrites of earlier descriptions.`;
+
+/**
  * Builds the Manual Rolls rule with examples calibrated for the active
  * campaign settings:
  *  - language='it' → examples use Italian-only phrasing the parser is
@@ -1965,6 +1990,11 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
     // the rare hit. Re-enable here if regressions appear in turns with
     // simultaneous saves or "choose: …" branching prose.
   }
+  // Anti-repetition guard — always on. ~80 tok defense against the
+  // verbatim-copy-of-prior-narration failure mode that surfaced after the
+  // Phase-1 manual-rolls overlay split reduced the dynamic preamble.
+  blocks.push({ type: 'text', text: MASTER_ADVANCE_NARRATIVE_RULE, cache_control: { type: 'ephemeral' } });
+
   const guidance = input.masterGuidanceLevel ?? 'balanced';
   if (guidance === 'free') {
     blocks.push({ type: 'text', text: MASTER_GUIDANCE_FREE, cache_control: { type: 'ephemeral' } });
