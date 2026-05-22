@@ -1,0 +1,66 @@
+{
+  "stable": [
+    {
+      "wall_ms": 2717,
+      "prefill_ms": 52,
+      "prefill_tokens": 250,
+      "load_ms": 79
+    },
+    {
+      "wall_ms": 755022,
+      "prefill_ms": 37,
+      "prefill_tokens": 250,
+      "load_ms": 78
+    },
+    {
+      "wall_ms": 4358,
+      "prefill_ms": 41,
+      "prefill_tokens": 251,
+      "load_ms": 75
+    },
+    {
+      "wall_ms": 3084,
+      "prefill_ms": 56,
+      "prefill_tokens": 252,
+      "load_ms": 76
+    },
+    {
+      "wall_ms": 2957,
+      "prefill_ms": 56,
+      "prefill_tokens": 251,
+      "load_ms": 76
+    }
+  ],
+  "drift": [
+    {
+      "wall_ms": 4877,
+      "prefill_ms": 205,
+      "prefill_tokens": 270,
+      "load_ms": 76
+    },
+    {
+      "wall_ms": 8224,
+      "prefill_ms": 200,
+      "prefill_tokens": 269,
+      "load_ms": 75
+    },
+    {
+      "wall_ms": 9605,
+      "prefill_ms": 202,
+      "prefill_tokens": 271,
+      "load_ms": 78
+    },
+    {
+      "wall_ms": 407097,
+      "prefill_ms": 203,
+      "prefill_tokens": 272,
+      "load_ms": 77
+    },
+    {
+      "wall_ms": 3654,
+      "prefill_ms": 222,
+      "prefill_tokens": 271,
+      "load_ms": 94
+    }
+  ]
+}

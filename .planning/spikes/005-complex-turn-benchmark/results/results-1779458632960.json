@@ -1,0 +1,58 @@
+[
+  {
+    "setup": "baked",
+    "state": "cold",
+    "wall_ms": 30670,
+    "tool_calls": 0,
+    "prompt_tokens": 269,
+    "eval_tokens": 1664,
+    "prefill_ms": 378,
+    "eval_ms": 27006,
+    "response": "**Round 1 – One Full Combat Round (Aragorn vs. a Goblin)**  \n\n| Character | HP | AC | Notes |\n|-----------|----|----|-------|\n| **Aragorn** | **44** | **16** | Longsword, Strength 16 (+3), proficiency +3 → Attack bonus +6 |\n| **Goblin**  | **7**  | **15** | CR ¼, Nimble Escape (bonus action to Disengage or Hide) |\n\n---\n\n### Aragorn’s Turn\n\n1. **Action – Attack with Longsword**  \n   - **Attack roll:** `d20 + 6`  \n   - **Target AC:** 15  \n   - **Hit threshold:** 9 or higher (`9 + 6 = 15`).  \n   - **Outcome if hit:**  \n     - Roll damage: `1d8 + 3` (Strength mod).  \n     - If the damage total is **7 or more**, the Goblin’s hit points drop to 0 and it dies.  \n     - If the damage total is **6 or less**, the Goblin survives with that many HP remaining.\n\n2. **Movement** (if any) – not specified,",
+    "keywords_found": 5,
+    "keywords_total": 5,
+    "tool_call_min_met": true
+  },
+  {
+    "setup": "baked",
+    "state": "warm",
+    "wall_ms": 32788,
+    "tool_calls": 0,
+    "prompt_tokens": 269,
+    "eval_tokens": 1985,
+    "prefill_ms": 17,
+    "eval_ms": 32354,
+    "response": "**Round 1 – Aragorn’s turn**\n\n| Character | HP | AC | Attack bonus (longsword) | Attack roll needed to hit |\n|-----------|----|----|--------------------------|---------------------------|\n| **Aragorn** | **44** | **16** | +6 (Prof +3 + Str +3) | Roll a d20 + 6 ≥ 15 → you need **9 or higher** |\n| **Goblin**  | **7**  | **15** | – | – |\n\n1. **Aragorn attacks** with his longsword.  \n   *Roll a d20 + 6.*  \n   *If the total is 9 or higher, the attack hits the goblin’s AC 15.*\n\n2. **If the attack hits**:  \n   *Roll 1d8 for the longsword damage and add 3 (Strength bonus).  \n   *Damage = 1d8 + 3 (range 4–11).  \n   *The goblin has 7 HP, so any damage roll of 4 or higher will reduce its HP to 0 or below and kill it.  \n   *If the goblin dies, the round ends immediately; no Goblin turn.*\n\n3. **If the ",
+    "keywords_found": 5,
+    "keywords_total": 5,
+    "tool_call_min_met": true
+  },
+  {
+    "setup": "vault",
+    "state": "cold",
+    "wall_ms": 17591,
+    "tool_calls": 3,
+    "prompt_tokens": 2269,
+    "eval_tokens": 814,
+    "prefill_ms": 1255,
+    "eval_ms": 13212,
+    "response": "You’re ready to swing your longsword at the goblin. Let’s walk through the numbers.\n\n---\n**Aragorn**\n- Hit Points: **44** (full) \n- Armor Class: **16**\n- Attack bonus with the longsword: **+ proficiency bonus + Strength modifier**. At 5th level the proficiency bonus is +3. The Strength modifier isn’t on the sheet, so you’ll need to add whatever your Strength score gives you.\n\n**Goblin**\n- Hit Points: **7** \n- Armor Class: **15**\n\n**Attack roll**\nTo hit the goblin you must roll a d20 and add your attack bonus. The goblin’s AC is 15, so you need a total of 15 or higher. For example, if your Strength modifier is +3, you’d need a d20 roll of 12 or higher (12 + 3 + 3 = 18). If your modifier is different, adjust accordingly.\n\n**If you hit**\nYou roll 1d8 for the longsword’s damage and add the sam",
+    "keywords_found": 5,
+    "keywords_total": 5,
+    "tool_call_min_met": true
+  },
+  {
+    "setup": "vault",
+    "state": "warm",
+    "wall_ms": 32437,
+    "tool_calls": 9,
+    "prompt_tokens": 13022,
+    "eval_tokens": 1814,
+    "prefill_ms": 1468,
+    "eval_ms": 29648,
+    "response": "Here’s a quick rundown of the round:\n\n**Aragorn**\n- HP: 44/44\n- AC: 16\n- Attack bonus with a longsword: *unknown* (you’ll need to add Aragorn’s proficiency bonus + the relevant ability modifier – normally it’s Strength or Dexterity).  In practice you’ll roll a d20, add that bonus, and try to beat the goblin’s AC of 15.\n\n**Goblin**\n- HP: 7/7\n- AC: 15\n\n**Attack roll**\n- To hit the goblin you need a total of 15 or higher.  So if your attack bonus is, say, +5, you’d need a d20 roll of 10 or higher (10 + 5 = 15).  Adjust the number accordingly once you know the exact bonus.\n\n**Damage**\n- A hit deals 1d8 + 3 slashing damage.  The damage range is 4–11.  If the roll is 4–6 you’ll wound the goblin but it will survive; a 7–11 roll will finish it off.\n\n**Nimble Escape**\n- The goblin’s Nimble Escape t",
+    "keywords_found": 5,
+    "keywords_total": 5,
+    "tool_call_min_met": true
+  }
+]
