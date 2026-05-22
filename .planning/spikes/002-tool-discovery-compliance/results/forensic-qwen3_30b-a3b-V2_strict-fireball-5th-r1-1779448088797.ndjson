@@ -1,0 +1,18 @@
+{"ts":"2026-05-22T11:08:08.797Z","type":"turn_start","model":"qwen3:30b-a3b","strength":"V2_strict","scenario":"fireball-5th","repetition":1,"query":"How much damage does a Fireball do when cast with a 5th-level spell slot?"}
+{"ts":"2026-05-22T11:08:08.797Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":2}
+{"ts":"2026-05-22T11:08:21.271Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":811,"prompt_eval_duration_ms":14,"eval_count":952,"eval_duration_ms":12291,"load_duration_ms":42,"total_duration_ms":12469}
+{"ts":"2026-05-22T11:08:21.271Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/index.md"}}
+{"ts":"2026-05-22T11:08:21.271Z","type":"tool_result","name":"read_vault","ok":true,"bytes":332}
+{"ts":"2026-05-22T11:08:21.271Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":4}
+{"ts":"2026-05-22T11:08:26.426Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1863,"prompt_eval_duration_ms":1497,"eval_count":269,"eval_duration_ms":3577,"load_duration_ms":41,"total_duration_ms":5151}
+{"ts":"2026-05-22T11:08:26.426Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/read_vault.md"}}
+{"ts":"2026-05-22T11:08:26.426Z","type":"tool_result","name":"read_vault","ok":true,"bytes":690}
+{"ts":"2026-05-22T11:08:26.426Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":6}
+{"ts":"2026-05-22T11:08:35.982Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":2323,"prompt_eval_duration_ms":705,"eval_count":641,"eval_duration_ms":8722,"load_duration_ms":42,"total_duration_ms":9554}
+{"ts":"2026-05-22T11:08:35.982Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/fireball.md"}}
+{"ts":"2026-05-22T11:08:35.983Z","type":"tool_result","name":"read_vault","ok":true,"bytes":764}
+{"ts":"2026-05-22T11:08:35.983Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":8}
+{"ts":"2026-05-22T11:08:46.046Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":3167,"prompt_eval_duration_ms":1385,"eval_count":609,"eval_duration_ms":8553,"load_duration_ms":42,"total_duration_ms":10061}
+{"ts":"2026-05-22T11:08:46.046Z","type":"tool_call","name":"end_turn","args":{"response":"When cast using a 5th-level spell slot, Fireball deals **10d6 fire damage** (8d6 base + 2d6 for the two levels above 3rd). Creatures take half damage on a successful Dexterity saving throw."}}
+{"ts":"2026-05-22T11:08:46.046Z","type":"end_turn","reason":"end_turn_tool","response_preview":"When cast using a 5th-level spell slot, Fireball deals **10d6 fire damage** (8d6 base + 2d6 for the two levels above 3rd). Creatures take half damage on a successful Dexterity saving throw."}
+{"ts":"2026-05-22T11:08:46.046Z","type":"summary","duration_ms":37249,"event_counts":{"turn_start":1,"ollama_request":4,"ollama_response":4,"tool_call":4,"tool_result":3,"end_turn":1},"tool_calls":[{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"end_turn","ok":true}],"total_prompt_eval_ms":3601,"total_eval_ms":33143,"total_prompt_tokens":8164,"total_eval_tokens":2471,"trace_length":4,"compliance_strict":false,"compliance_lenient":true}

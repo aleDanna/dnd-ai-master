@@ -1,0 +1,18 @@
+{"ts":"2026-05-22T11:07:02.902Z","type":"turn_start","model":"gpt-oss:20b","strength":"V2_strict","scenario":"aragorn-level","repetition":1,"query":"What level is Aragorn?"}
+{"ts":"2026-05-22T11:07:02.902Z","type":"ollama_request","model":"gpt-oss:20b","message_count":2}
+{"ts":"2026-05-22T11:07:04.533Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":754,"prompt_eval_duration_ms":16,"eval_count":95,"eval_duration_ms":1513,"load_duration_ms":80,"total_duration_ms":1629}
+{"ts":"2026-05-22T11:07:04.533Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/index.md"}}
+{"ts":"2026-05-22T11:07:04.533Z","type":"tool_result","name":"read_vault","ok":true,"bytes":332}
+{"ts":"2026-05-22T11:07:04.533Z","type":"ollama_request","model":"gpt-oss:20b","message_count":4}
+{"ts":"2026-05-22T11:07:05.421Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":949,"prompt_eval_duration_ms":212,"eval_count":37,"eval_duration_ms":584,"load_duration_ms":78,"total_duration_ms":887}
+{"ts":"2026-05-22T11:07:05.422Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/read_vault.md"}}
+{"ts":"2026-05-22T11:07:05.422Z","type":"tool_result","name":"read_vault","ok":true,"bytes":690}
+{"ts":"2026-05-22T11:07:05.422Z","type":"ollama_request","model":"gpt-oss:20b","message_count":6}
+{"ts":"2026-05-22T11:07:06.438Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1176,"prompt_eval_duration_ms":288,"eval_count":40,"eval_duration_ms":631,"load_duration_ms":78,"total_duration_ms":1015}
+{"ts":"2026-05-22T11:07:06.439Z","type":"tool_call","name":"read_vault","args":{"path":"/campaigns/test/characters/Aragorn.md"}}
+{"ts":"2026-05-22T11:07:06.439Z","type":"tool_result","name":"read_vault","ok":true,"bytes":335}
+{"ts":"2026-05-22T11:07:06.439Z","type":"ollama_request","model":"gpt-oss:20b","message_count":8}
+{"ts":"2026-05-22T11:07:07.374Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1350,"prompt_eval_duration_ms":246,"eval_count":37,"eval_duration_ms":584,"load_duration_ms":78,"total_duration_ms":933}
+{"ts":"2026-05-22T11:07:07.374Z","type":"tool_call","name":"end_turn","args":{"response":"Aragorn is a level 5 ranger."}}
+{"ts":"2026-05-22T11:07:07.374Z","type":"end_turn","reason":"end_turn_tool","response_preview":"Aragorn is a level 5 ranger."}
+{"ts":"2026-05-22T11:07:07.374Z","type":"summary","duration_ms":4472,"event_counts":{"turn_start":1,"ollama_request":4,"ollama_response":4,"tool_call":4,"tool_result":3,"end_turn":1},"tool_calls":[{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"end_turn","ok":true}],"total_prompt_eval_ms":762,"total_eval_ms":3312,"total_prompt_tokens":4229,"total_eval_tokens":209,"trace_length":4,"compliance_strict":false,"compliance_lenient":true}

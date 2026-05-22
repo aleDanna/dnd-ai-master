@@ -1,0 +1,9 @@
+{"ts":"2026-05-22T11:06:02.723Z","type":"turn_start","model":"llama3.2:3b","strength":"V2_strict","scenario":"list-spells","repetition":0,"query":"List every spell available in the handbook."}
+{"ts":"2026-05-22T11:06:02.723Z","type":"ollama_request","model":"llama3.2:3b","message_count":2}
+{"ts":"2026-05-22T11:06:03.200Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":802,"prompt_eval_duration_ms":238,"eval_count":21,"eval_duration_ms":185,"load_duration_ms":47,"total_duration_ms":476}
+{"ts":"2026-05-22T11:06:03.201Z","type":"tool_call","name":"list_vault","args":{"directory":"/handbook/spells"}}
+{"ts":"2026-05-22T11:06:03.201Z","type":"tool_result","name":"list_vault","ok":true,"bytes":43}
+{"ts":"2026-05-22T11:06:03.201Z","type":"ollama_request","model":"llama3.2:3b","message_count":4}
+{"ts":"2026-05-22T11:06:03.631Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":false,"tool_call_count":0,"prompt_eval_count":635,"prompt_eval_duration_ms":65,"eval_count":35,"eval_duration_ms":312,"load_duration_ms":43,"total_duration_ms":428}
+{"ts":"2026-05-22T11:06:03.631Z","type":"end_turn","reason":"no_tool_calls","content_preview":"end_turn({\"response\": \"Here is a list of spells available in the handbook:\\n1. Cure Wounds\\n2. Fireball\\n3. Magic Missile\"})"}
+{"ts":"2026-05-22T11:06:03.632Z","type":"summary","duration_ms":908,"event_counts":{"turn_start":1,"ollama_request":2,"ollama_response":2,"tool_call":1,"tool_result":1,"end_turn":1},"tool_calls":[{"name":"list_vault","ok":true}],"total_prompt_eval_ms":303,"total_eval_ms":497,"total_prompt_tokens":1437,"total_eval_tokens":56,"trace_length":1,"compliance_strict":false,"compliance_lenient":false}

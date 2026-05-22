@@ -1,0 +1,9 @@
+{"ts":"2026-05-22T11:05:54.467Z","type":"turn_start","model":"llama3.2:3b","strength":"V2_strict","scenario":"fireball-5th","repetition":1,"query":"How much damage does a Fireball do when cast with a 5th-level spell slot?"}
+{"ts":"2026-05-22T11:05:54.467Z","type":"ollama_request","model":"llama3.2:3b","message_count":2}
+{"ts":"2026-05-22T11:05:54.973Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":813,"prompt_eval_duration_ms":239,"eval_count":24,"eval_duration_ms":216,"load_duration_ms":42,"total_duration_ms":504}
+{"ts":"2026-05-22T11:05:54.974Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/fireball.md"}}
+{"ts":"2026-05-22T11:05:54.974Z","type":"tool_result","name":"read_vault","ok":true,"bytes":764}
+{"ts":"2026-05-22T11:05:54.974Z","type":"ollama_request","model":"llama3.2:3b","message_count":4}
+{"ts":"2026-05-22T11:05:56.418Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":false,"tool_call_count":0,"prompt_eval_count":821,"prompt_eval_duration_ms":240,"eval_count":122,"eval_duration_ms":1133,"load_duration_ms":44,"total_duration_ms":1442}
+{"ts":"2026-05-22T11:05:56.418Z","type":"end_turn","reason":"no_tool_calls","content_preview":"When cast with a 5th-level spell slot, a Fireball deals an additional 1d6 per level beyond 3rd. This means the damage increases by 1d6 for every level of the spell slot used.\n\nSo, the total damage is:"}
+{"ts":"2026-05-22T11:05:56.418Z","type":"summary","duration_ms":1951,"event_counts":{"turn_start":1,"ollama_request":2,"ollama_response":2,"tool_call":1,"tool_result":1,"end_turn":1},"tool_calls":[{"name":"read_vault","ok":true}],"total_prompt_eval_ms":479,"total_eval_ms":1349,"total_prompt_tokens":1634,"total_eval_tokens":146,"trace_length":1,"compliance_strict":false,"compliance_lenient":false}

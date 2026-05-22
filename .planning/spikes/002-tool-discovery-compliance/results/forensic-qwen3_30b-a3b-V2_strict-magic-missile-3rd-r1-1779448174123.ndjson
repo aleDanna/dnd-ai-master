@@ -1,0 +1,21 @@
+{"ts":"2026-05-22T11:09:34.123Z","type":"turn_start","model":"qwen3:30b-a3b","strength":"V2_strict","scenario":"magic-missile-3rd","repetition":1,"query":"How many darts does Magic Missile create when cast at 3rd level?"}
+{"ts":"2026-05-22T11:09:34.123Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":2}
+{"ts":"2026-05-22T11:09:45.758Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":808,"prompt_eval_duration_ms":13,"eval_count":896,"eval_duration_ms":11466,"load_duration_ms":43,"total_duration_ms":11634}
+{"ts":"2026-05-22T11:09:45.759Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/index.md"}}
+{"ts":"2026-05-22T11:09:45.759Z","type":"tool_result","name":"read_vault","ok":true,"bytes":332}
+{"ts":"2026-05-22T11:09:45.759Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":4}
+{"ts":"2026-05-22T11:09:50.880Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1804,"prompt_eval_duration_ms":1378,"eval_count":276,"eval_duration_ms":3661,"load_duration_ms":42,"total_duration_ms":5118}
+{"ts":"2026-05-22T11:09:50.880Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/read_vault.md"}}
+{"ts":"2026-05-22T11:09:50.881Z","type":"tool_result","name":"read_vault","ok":true,"bytes":690}
+{"ts":"2026-05-22T11:09:50.881Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":6}
+{"ts":"2026-05-22T11:09:56.612Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":2271,"prompt_eval_duration_ms":715,"eval_count":364,"eval_duration_ms":4923,"load_duration_ms":42,"total_duration_ms":5729}
+{"ts":"2026-05-22T11:09:56.612Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/magic_missile.md"}}
+{"ts":"2026-05-22T11:09:56.612Z","type":"tool_result","name":"read_vault","ok":false,"bytes":58}
+{"ts":"2026-05-22T11:09:56.612Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":8}
+{"ts":"2026-05-22T11:10:02.341Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":2665,"prompt_eval_duration_ms":657,"eval_count":363,"eval_duration_ms":4976,"load_duration_ms":44,"total_duration_ms":5726}
+{"ts":"2026-05-22T11:10:02.341Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/magic-missile.md"}}
+{"ts":"2026-05-22T11:10:02.341Z","type":"tool_result","name":"read_vault","ok":true,"bytes":587}
+{"ts":"2026-05-22T11:10:02.341Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":10}
+{"ts":"2026-05-22T11:10:08.564Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":false,"tool_call_count":0,"prompt_eval_count":3193,"prompt_eval_duration_ms":916,"eval_count":373,"eval_duration_ms":5206,"load_duration_ms":46,"total_duration_ms":6220}
+{"ts":"2026-05-22T11:10:08.564Z","type":"end_turn","reason":"no_tool_calls","content_preview":"The Magic Missile spell creates **3 darts** at 1st level. When cast using a 3rd-level spell slot (two levels above 1st), it creates **5 darts total** (3 + 2). Each additional slot level beyond 1st add"}
+{"ts":"2026-05-22T11:10:08.564Z","type":"summary","duration_ms":34441,"event_counts":{"turn_start":1,"ollama_request":5,"ollama_response":5,"tool_call":4,"tool_result":4,"end_turn":1},"tool_calls":[{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true}],"total_prompt_eval_ms":3679,"total_eval_ms":30232,"total_prompt_tokens":10741,"total_eval_tokens":2272,"trace_length":4,"compliance_strict":true,"compliance_lenient":true}

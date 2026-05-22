@@ -1,0 +1,26 @@
+{"ts":"2026-05-22T11:10:08.565Z","type":"turn_start","model":"qwen3:30b-a3b","strength":"V2_strict","scenario":"aragorn-level","repetition":0,"query":"What level is Aragorn?"}
+{"ts":"2026-05-22T11:10:08.565Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":2}
+{"ts":"2026-05-22T11:10:20.983Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":799,"prompt_eval_duration_ms":71,"eval_count":955,"eval_duration_ms":12182,"load_duration_ms":41,"total_duration_ms":12414}
+{"ts":"2026-05-22T11:10:20.983Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/index.md"}}
+{"ts":"2026-05-22T11:10:20.983Z","type":"tool_result","name":"read_vault","ok":true,"bytes":332}
+{"ts":"2026-05-22T11:10:20.983Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":4}
+{"ts":"2026-05-22T11:10:26.718Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1854,"prompt_eval_duration_ms":1542,"eval_count":307,"eval_duration_ms":4109,"load_duration_ms":41,"total_duration_ms":5733}
+{"ts":"2026-05-22T11:10:26.718Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/list_vault.md"}}
+{"ts":"2026-05-22T11:10:26.718Z","type":"tool_result","name":"read_vault","ok":true,"bytes":570}
+{"ts":"2026-05-22T11:10:26.718Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":6}
+{"ts":"2026-05-22T11:10:32.055Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":2327,"prompt_eval_duration_ms":717,"eval_count":334,"eval_duration_ms":4528,"load_duration_ms":43,"total_duration_ms":5335}
+{"ts":"2026-05-22T11:10:32.056Z","type":"tool_call","name":"list_vault","args":{"directory":"/campaigns/test/characters/"}}
+{"ts":"2026-05-22T11:10:32.056Z","type":"tool_result","name":"list_vault","ok":true,"bytes":10}
+{"ts":"2026-05-22T11:10:32.056Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":8}
+{"ts":"2026-05-22T11:10:47.577Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":2678,"prompt_eval_duration_ms":589,"eval_count":1060,"eval_duration_ms":14753,"load_duration_ms":42,"total_duration_ms":15519}
+{"ts":"2026-05-22T11:10:47.578Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/read_vault.md"}}
+{"ts":"2026-05-22T11:10:47.578Z","type":"tool_result","name":"read_vault","ok":true,"bytes":690}
+{"ts":"2026-05-22T11:10:47.578Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":10}
+{"ts":"2026-05-22T11:10:54.215Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":3930,"prompt_eval_duration_ms":2114,"eval_count":309,"eval_duration_ms":4438,"load_duration_ms":40,"total_duration_ms":6635}
+{"ts":"2026-05-22T11:10:54.215Z","type":"tool_call","name":"read_vault","args":{"path":"/campaigns/test/characters/aragorn.md"}}
+{"ts":"2026-05-22T11:10:54.215Z","type":"tool_result","name":"read_vault","ok":true,"bytes":335}
+{"ts":"2026-05-22T11:10:54.216Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":12}
+{"ts":"2026-05-22T11:10:58.722Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":4379,"prompt_eval_duration_ms":830,"eval_count":243,"eval_duration_ms":3594,"load_duration_ms":42,"total_duration_ms":4504}
+{"ts":"2026-05-22T11:10:58.722Z","type":"tool_call","name":"end_turn","args":{"response":"Aragorn is a 5th-level Ranger, quiet and deadly with his longsword."}}
+{"ts":"2026-05-22T11:10:58.722Z","type":"end_turn","reason":"end_turn_tool","response_preview":"Aragorn is a 5th-level Ranger, quiet and deadly with his longsword."}
+{"ts":"2026-05-22T11:10:58.722Z","type":"summary","duration_ms":50157,"event_counts":{"turn_start":1,"ollama_request":6,"ollama_response":6,"tool_call":6,"tool_result":5,"end_turn":1},"tool_calls":[{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"list_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"end_turn","ok":true}],"total_prompt_eval_ms":5863,"total_eval_ms":43604,"total_prompt_tokens":15967,"total_eval_tokens":3208,"trace_length":6,"compliance_strict":false,"compliance_lenient":true}

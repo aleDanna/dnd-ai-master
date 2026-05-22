@@ -1,0 +1,26 @@
+{"ts":"2026-05-22T11:12:25.469Z","type":"turn_start","model":"qwen3:30b-a3b","strength":"V2_strict","scenario":"cure-wounds-on-aragorn","repetition":0,"query":"If I cast Cure Wounds on Aragorn with my +3 spellcasting modifier, what range of HP does he recover?"}
+{"ts":"2026-05-22T11:12:25.470Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":2}
+{"ts":"2026-05-22T11:12:38.153Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":818,"prompt_eval_duration_ms":189,"eval_count":942,"eval_duration_ms":12342,"load_duration_ms":36,"total_duration_ms":12681}
+{"ts":"2026-05-22T11:12:38.153Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/index.md"}}
+{"ts":"2026-05-22T11:12:38.153Z","type":"tool_result","name":"read_vault","ok":true,"bytes":332}
+{"ts":"2026-05-22T11:12:38.153Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":4}
+{"ts":"2026-05-22T11:12:44.982Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1860,"prompt_eval_duration_ms":1674,"eval_count":376,"eval_duration_ms":5064,"load_duration_ms":40,"total_duration_ms":6827}
+{"ts":"2026-05-22T11:12:44.982Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/read_vault.md"}}
+{"ts":"2026-05-22T11:12:44.983Z","type":"tool_result","name":"read_vault","ok":true,"bytes":690}
+{"ts":"2026-05-22T11:12:44.983Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":6}
+{"ts":"2026-05-22T11:12:52.843Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":2428,"prompt_eval_duration_ms":1066,"eval_count":484,"eval_duration_ms":6693,"load_duration_ms":37,"total_duration_ms":7858}
+{"ts":"2026-05-22T11:12:52.843Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/cure_wounds.md"}}
+{"ts":"2026-05-22T11:12:52.844Z","type":"tool_result","name":"read_vault","ok":false,"bytes":56}
+{"ts":"2026-05-22T11:12:52.844Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":8}
+{"ts":"2026-05-22T11:13:01.545Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":2942,"prompt_eval_duration_ms":906,"eval_count":537,"eval_duration_ms":7686,"load_duration_ms":36,"total_duration_ms":8699}
+{"ts":"2026-05-22T11:13:01.546Z","type":"tool_call","name":"list_vault","args":{"directory":"/handbook/spells"}}
+{"ts":"2026-05-22T11:13:01.546Z","type":"tool_result","name":"list_vault","ok":true,"bytes":43}
+{"ts":"2026-05-22T11:13:01.546Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":10}
+{"ts":"2026-05-22T11:13:05.909Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":3508,"prompt_eval_duration_ms":1156,"eval_count":219,"eval_duration_ms":3135,"load_duration_ms":38,"total_duration_ms":4361}
+{"ts":"2026-05-22T11:13:05.909Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/cure-wounds.md"}}
+{"ts":"2026-05-22T11:13:05.910Z","type":"tool_result","name":"read_vault","ok":true,"bytes":488}
+{"ts":"2026-05-22T11:13:05.910Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":12}
+{"ts":"2026-05-22T11:13:11.313Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":3871,"prompt_eval_duration_ms":722,"eval_count":314,"eval_duration_ms":4600,"load_duration_ms":36,"total_duration_ms":5402}
+{"ts":"2026-05-22T11:13:11.314Z","type":"tool_call","name":"end_turn","args":{"response":"Casting *Cure Wounds* with a +3 spellcasting modifier heals **4 to 11 hit points** (1d8 + 3). Aragorn regains between 4 and 11 HP depending on the die roll."}}
+{"ts":"2026-05-22T11:13:11.314Z","type":"end_turn","reason":"end_turn_tool","response_preview":"Casting *Cure Wounds* with a +3 spellcasting modifier heals **4 to 11 hit points** (1d8 + 3). Aragorn regains between 4 and 11 HP depending on the die roll."}
+{"ts":"2026-05-22T11:13:11.314Z","type":"summary","duration_ms":45845,"event_counts":{"turn_start":1,"ollama_request":6,"ollama_response":6,"tool_call":6,"tool_result":5,"end_turn":1},"tool_calls":[{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"list_vault","ok":true},{"name":"read_vault","ok":true},{"name":"end_turn","ok":true}],"total_prompt_eval_ms":5713,"total_eval_ms":39520,"total_prompt_tokens":15427,"total_eval_tokens":2872,"trace_length":6,"compliance_strict":false,"compliance_lenient":true}

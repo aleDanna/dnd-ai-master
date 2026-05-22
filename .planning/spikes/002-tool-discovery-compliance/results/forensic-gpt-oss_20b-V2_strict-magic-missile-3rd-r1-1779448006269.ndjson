@@ -1,0 +1,30 @@
+{"ts":"2026-05-22T11:06:46.269Z","type":"turn_start","model":"gpt-oss:20b","strength":"V2_strict","scenario":"magic-missile-3rd","repetition":1,"query":"How many darts does Magic Missile create when cast at 3rd level?"}
+{"ts":"2026-05-22T11:06:46.269Z","type":"ollama_request","model":"gpt-oss:20b","message_count":2}
+{"ts":"2026-05-22T11:06:49.636Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":763,"prompt_eval_duration_ms":16,"eval_count":200,"eval_duration_ms":3233,"load_duration_ms":79,"total_duration_ms":3366}
+{"ts":"2026-05-22T11:06:49.637Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/index.md"}}
+{"ts":"2026-05-22T11:06:49.637Z","type":"tool_result","name":"read_vault","ok":true,"bytes":332}
+{"ts":"2026-05-22T11:06:49.637Z","type":"ollama_request","model":"gpt-oss:20b","message_count":4}
+{"ts":"2026-05-22T11:06:50.527Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1063,"prompt_eval_duration_ms":211,"eval_count":37,"eval_duration_ms":583,"load_duration_ms":79,"total_duration_ms":889}
+{"ts":"2026-05-22T11:06:50.528Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/read_vault.md"}}
+{"ts":"2026-05-22T11:06:50.528Z","type":"tool_result","name":"read_vault","ok":true,"bytes":690}
+{"ts":"2026-05-22T11:06:50.528Z","type":"ollama_request","model":"gpt-oss:20b","message_count":6}
+{"ts":"2026-05-22T11:06:51.568Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1290,"prompt_eval_duration_ms":292,"eval_count":41,"eval_duration_ms":649,"load_duration_ms":78,"total_duration_ms":1039}
+{"ts":"2026-05-22T11:06:51.569Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/magic_missile.md"}}
+{"ts":"2026-05-22T11:06:51.569Z","type":"tool_result","name":"read_vault","ok":false,"bytes":58}
+{"ts":"2026-05-22T11:06:51.569Z","type":"ollama_request","model":"gpt-oss:20b","message_count":8}
+{"ts":"2026-05-22T11:06:52.500Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1360,"prompt_eval_duration_ms":127,"eval_count":44,"eval_duration_ms":699,"load_duration_ms":79,"total_duration_ms":930}
+{"ts":"2026-05-22T11:06:52.501Z","type":"tool_call","name":"list_vault","args":{"directory":"/handbook/spells"}}
+{"ts":"2026-05-22T11:06:52.501Z","type":"tool_result","name":"list_vault","ok":true,"bytes":43}
+{"ts":"2026-05-22T11:06:52.501Z","type":"ollama_request","model":"gpt-oss:20b","message_count":10}
+{"ts":"2026-05-22T11:06:53.502Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1431,"prompt_eval_duration_ms":120,"eval_count":48,"eval_duration_ms":764,"load_duration_ms":78,"total_duration_ms":1000}
+{"ts":"2026-05-22T11:06:53.503Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/magic-missile.md"}}
+{"ts":"2026-05-22T11:06:53.503Z","type":"tool_result","name":"read_vault","ok":true,"bytes":587}
+{"ts":"2026-05-22T11:06:53.503Z","type":"ollama_request","model":"gpt-oss:20b","message_count":12}
+{"ts":"2026-05-22T11:06:54.455Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1640,"prompt_eval_duration_ms":273,"eval_count":35,"eval_duration_ms":555,"load_duration_ms":79,"total_duration_ms":951}
+{"ts":"2026-05-22T11:06:54.455Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/end_turn.md"}}
+{"ts":"2026-05-22T11:06:54.456Z","type":"tool_result","name":"read_vault","ok":true,"bytes":581}
+{"ts":"2026-05-22T11:06:54.456Z","type":"ollama_request","model":"gpt-oss:20b","message_count":14}
+{"ts":"2026-05-22T11:06:55.883Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1835,"prompt_eval_duration_ms":276,"eval_count":63,"eval_duration_ms":1014,"load_duration_ms":79,"total_duration_ms":1426}
+{"ts":"2026-05-22T11:06:55.883Z","type":"tool_call","name":"end_turn","args":{"response":"At 3rd level, *Magic Missile* creates five darts—three base darts plus two additional darts for the two levels above 1st."}}
+{"ts":"2026-05-22T11:06:55.883Z","type":"end_turn","reason":"end_turn_tool","response_preview":"At 3rd level, *Magic Missile* creates five darts—three base darts plus two additional darts for the two levels above 1st."}
+{"ts":"2026-05-22T11:06:55.883Z","type":"summary","duration_ms":9614,"event_counts":{"turn_start":1,"ollama_request":7,"ollama_response":7,"tool_call":7,"tool_result":6,"end_turn":1},"tool_calls":[{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"list_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"end_turn","ok":true}],"total_prompt_eval_ms":1315,"total_eval_ms":7497,"total_prompt_tokens":9382,"total_eval_tokens":468,"trace_length":7,"compliance_strict":false,"compliance_lenient":true}

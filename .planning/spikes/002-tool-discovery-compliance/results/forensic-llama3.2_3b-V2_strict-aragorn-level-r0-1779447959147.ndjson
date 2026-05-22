@@ -1,0 +1,9 @@
+{"ts":"2026-05-22T11:05:59.148Z","type":"turn_start","model":"llama3.2:3b","strength":"V2_strict","scenario":"aragorn-level","repetition":0,"query":"What level is Aragorn?"}
+{"ts":"2026-05-22T11:05:59.148Z","type":"ollama_request","model":"llama3.2:3b","message_count":2}
+{"ts":"2026-05-22T11:05:59.602Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":801,"prompt_eval_duration_ms":209,"eval_count":22,"eval_duration_ms":195,"load_duration_ms":42,"total_duration_ms":452}
+{"ts":"2026-05-22T11:05:59.602Z","type":"tool_call","name":"list_vault","args":{"directory":"/handbook/monsters"}}
+{"ts":"2026-05-22T11:05:59.603Z","type":"tool_result","name":"list_vault","ok":false,"bytes":48}
+{"ts":"2026-05-22T11:05:59.603Z","type":"ollama_request","model":"llama3.2:3b","message_count":4}
+{"ts":"2026-05-22T11:06:01.212Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":false,"tool_call_count":0,"prompt_eval_count":632,"prompt_eval_duration_ms":65,"eval_count":160,"eval_duration_ms":1465,"load_duration_ms":42,"total_duration_ms":1608}
+{"ts":"2026-05-22T11:06:01.213Z","type":"end_turn","reason":"no_tool_calls","content_preview":"It seems like you didn't follow the tool usage protocol. The correct sequence would be:\n\n1. `read_vault({\"path\": \"/tools/index.md\"})` to discover what tools exist\n2. `read_vault({\"path\": \"/handbook/mo"}
+{"ts":"2026-05-22T11:06:01.213Z","type":"summary","duration_ms":2065,"event_counts":{"turn_start":1,"ollama_request":2,"ollama_response":2,"tool_call":1,"tool_result":1,"end_turn":1},"tool_calls":[{"name":"list_vault","ok":true}],"total_prompt_eval_ms":274,"total_eval_ms":1660,"total_prompt_tokens":1433,"total_eval_tokens":182,"trace_length":1,"compliance_strict":false,"compliance_lenient":false}

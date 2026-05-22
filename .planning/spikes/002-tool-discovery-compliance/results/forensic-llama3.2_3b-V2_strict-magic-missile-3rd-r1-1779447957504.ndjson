@@ -1,0 +1,9 @@
+{"ts":"2026-05-22T11:05:57.504Z","type":"turn_start","model":"llama3.2:3b","strength":"V2_strict","scenario":"magic-missile-3rd","repetition":1,"query":"How many darts does Magic Missile create when cast at 3rd level?"}
+{"ts":"2026-05-22T11:05:57.504Z","type":"ollama_request","model":"llama3.2:3b","message_count":2}
+{"ts":"2026-05-22T11:05:58.028Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":810,"prompt_eval_duration_ms":240,"eval_count":26,"eval_duration_ms":232,"load_duration_ms":44,"total_duration_ms":523}
+{"ts":"2026-05-22T11:05:58.028Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/magic_missile.md"}}
+{"ts":"2026-05-22T11:05:58.029Z","type":"tool_result","name":"read_vault","ok":false,"bytes":58}
+{"ts":"2026-05-22T11:05:58.029Z","type":"ollama_request","model":"llama3.2:3b","message_count":4}
+{"ts":"2026-05-22T11:05:59.147Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":false,"tool_call_count":0,"prompt_eval_count":649,"prompt_eval_duration_ms":94,"eval_count":105,"eval_duration_ms":957,"load_duration_ms":42,"total_duration_ms":1116}
+{"ts":"2026-05-22T11:05:59.147Z","type":"end_turn","reason":"no_tool_calls","content_preview":"It seems like the tool usage protocol wasn't followed correctly. Here are the correct steps:\n\n\n1. read_vault({\"path\": \"/tools/index.md\"}) ← discover what tools exist\n2. read_vault({\"path\": \"/tools/rea"}
+{"ts":"2026-05-22T11:05:59.147Z","type":"summary","duration_ms":1643,"event_counts":{"turn_start":1,"ollama_request":2,"ollama_response":2,"tool_call":1,"tool_result":1,"end_turn":1},"tool_calls":[{"name":"read_vault","ok":true}],"total_prompt_eval_ms":334,"total_eval_ms":1189,"total_prompt_tokens":1459,"total_eval_tokens":131,"trace_length":1,"compliance_strict":false,"compliance_lenient":false}

@@ -1,0 +1,29 @@
+{"ts":"2026-05-22T11:13:11.314Z","type":"turn_start","model":"qwen3:30b-a3b","strength":"V2_strict","scenario":"cure-wounds-on-aragorn","repetition":1,"query":"If I cast Cure Wounds on Aragorn with my +3 spellcasting modifier, what range of HP does he recover?"}
+{"ts":"2026-05-22T11:13:11.314Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":2}
+{"ts":"2026-05-22T11:13:23.592Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":818,"prompt_eval_duration_ms":13,"eval_count":931,"eval_duration_ms":12113,"load_duration_ms":38,"total_duration_ms":12276}
+{"ts":"2026-05-22T11:13:23.592Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/index.md"}}
+{"ts":"2026-05-22T11:13:23.593Z","type":"tool_result","name":"read_vault","ok":true,"bytes":332}
+{"ts":"2026-05-22T11:13:23.593Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":4}
+{"ts":"2026-05-22T11:13:30.032Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1849,"prompt_eval_duration_ms":1611,"eval_count":352,"eval_duration_ms":4742,"load_duration_ms":36,"total_duration_ms":6435}
+{"ts":"2026-05-22T11:13:30.033Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/read_vault.md"}}
+{"ts":"2026-05-22T11:13:30.033Z","type":"tool_result","name":"read_vault","ok":true,"bytes":690}
+{"ts":"2026-05-22T11:13:30.033Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":6}
+{"ts":"2026-05-22T11:13:35.370Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":2392,"prompt_eval_duration_ms":992,"eval_count":313,"eval_duration_ms":4265,"load_duration_ms":36,"total_duration_ms":5335}
+{"ts":"2026-05-22T11:13:35.371Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/cure_wounds.md"}}
+{"ts":"2026-05-22T11:13:35.371Z","type":"tool_result","name":"read_vault","ok":false,"bytes":56}
+{"ts":"2026-05-22T11:13:35.371Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":8}
+{"ts":"2026-05-22T11:13:46.452Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":2735,"prompt_eval_duration_ms":622,"eval_count":734,"eval_duration_ms":10329,"load_duration_ms":37,"total_duration_ms":11080}
+{"ts":"2026-05-22T11:13:46.453Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/list_vault.md"}}
+{"ts":"2026-05-22T11:13:46.453Z","type":"tool_result","name":"read_vault","ok":true,"bytes":570}
+{"ts":"2026-05-22T11:13:46.453Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":10}
+{"ts":"2026-05-22T11:13:52.053Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":3636,"prompt_eval_duration_ms":1612,"eval_count":268,"eval_duration_ms":3912,"load_duration_ms":37,"total_duration_ms":5598}
+{"ts":"2026-05-22T11:13:52.053Z","type":"tool_call","name":"list_vault","args":{"directory":"/handbook/spells"}}
+{"ts":"2026-05-22T11:13:52.054Z","type":"tool_result","name":"list_vault","ok":true,"bytes":43}
+{"ts":"2026-05-22T11:13:52.054Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":12}
+{"ts":"2026-05-22T11:13:56.733Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":3933,"prompt_eval_duration_ms":604,"eval_count":272,"eval_duration_ms":4001,"load_duration_ms":36,"total_duration_ms":4677}
+{"ts":"2026-05-22T11:13:56.734Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/cure-wounds.md"}}
+{"ts":"2026-05-22T11:13:56.734Z","type":"tool_result","name":"read_vault","ok":true,"bytes":488}
+{"ts":"2026-05-22T11:13:56.734Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":14}
+{"ts":"2026-05-22T11:14:02.188Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":false,"tool_call_count":0,"prompt_eval_count":4349,"prompt_eval_duration_ms":839,"eval_count":300,"eval_duration_ms":4529,"load_duration_ms":36,"total_duration_ms":5449}
+{"ts":"2026-05-22T11:14:02.188Z","type":"end_turn","reason":"no_tool_calls","content_preview":"The Cure Wounds spell heals **1d8 + spellcasting modifier**. With a +3 modifier, Aragorn recovers **4 to 11 hit points** (1 + 3 to 8 + 3). The exact amount depends on the dice roll."}
+{"ts":"2026-05-22T11:14:02.188Z","type":"summary","duration_ms":50874,"event_counts":{"turn_start":1,"ollama_request":7,"ollama_response":7,"tool_call":6,"tool_result":6,"end_turn":1},"tool_calls":[{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"list_vault","ok":true},{"name":"read_vault","ok":true}],"total_prompt_eval_ms":6293,"total_eval_ms":43891,"total_prompt_tokens":19712,"total_eval_tokens":3170,"trace_length":6,"compliance_strict":true,"compliance_lenient":true}
