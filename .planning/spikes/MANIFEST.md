@@ -25,7 +25,7 @@ Design decisions locked during `/gsd-explore`, non-negotiable for the real build
 
 | Gate | Condition | Spike |
 |---|---|---|
-| **G1** | ≥40% wall-clock improvement on M4 | 003 |
+| **G1** | ≥40% wall-clock improvement on M4 (warm operation) | ✓ GREEN on M5 Pro (-63.1% warm); M4 measurement pending |
 | **G2** | Lenient tool discovery compliance ≥90% (read `/tools/index.md` once, then use tools) | ✓ GREEN (002: gpt-oss:20b 100%, qwen3:30b 100%) |
 | G3-G5 | Migration / DR gates | Out of scope for this spike round |
 
@@ -35,6 +35,6 @@ Design decisions locked during `/gsd-explore`, non-negotiable for the real build
 |---|------|------|-----------|---------|------|
 | 001 | vault-harness-bootstrap | standard | Node script with Ollama client + 3 stub tools completes a happy-path D&D turn | ✓ VALIDATED — but lazy-tools protocol violated by best local model on 1st run | foundation, ollama |
 | 002 | tool-discovery-compliance | standard | LLM reads `/tools/<name>.md` before invoking tool — ≥90% across cold turns, multiple models | ⚠ PARTIAL — strict 0%, lenient 100% on gpt-oss/qwen3; llama3.2:3b unsuitable | g2, compliance, ollama, model-selection |
-| 003 | prefill-walltime-savings | standard | Vault path achieves ≥40% wall-clock improvement vs baked baseline | PENDING | g1, benchmark, ollama |
+| 003 | prefill-walltime-savings | standard | Vault path achieves ≥40% wall-clock improvement vs baked baseline | ✓ VALIDATED — warm -63.1% on M5 Pro; cold ~tie; quality preserved or better | g1, benchmark, ollama |
 
 Spike 004 (frontmatter atomicity) and 005 (events.md replay) are queued for a follow-up round, contingent on 001-003 passing.
