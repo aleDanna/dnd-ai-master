@@ -1,0 +1,62 @@
+[
+  {
+    "setup": "sequential",
+    "state": "cold",
+    "wall_ms": 15631,
+    "tool_calls": 2,
+    "read_calls": 2,
+    "paths_total": 2,
+    "prompt_tokens": 1994,
+    "eval_tokens": 760,
+    "prefill_ms": 1080,
+    "eval_ms": 11490,
+    "load_ms": 2708,
+    "response": "**Aragorn (Ranger 5)**  \n- **HP:** 44 (max)  \n- **AC:** 16  \n\n**Goblin (CR 1/4)**  \n- **HP:** 7  \n- **AC:** 15  \n\n### What to roll to hit\n- **Attack type:** Melee weapon attack with a longsword.  \n- **Attack bonus:** `+ proficiency bonus (3) + Strength or Dexterity modifier`.  \n  - The character sheet does **not** list Aragorn’s ability scores, so the exact modifier isn’t known.  \n  - If Aragorn has a typical Strength of 16 (+3), the attack bonus would be `+3 (prof) +3 (STR) = +6`.  \n  - If he uses Dexterity instead, use that modifier in the same formula.  \n- **Roll:** `1d20 + (proficiency + r",
+    "keywords_found": 5
+  },
+  {
+    "setup": "sequential",
+    "state": "warm",
+    "wall_ms": 24551,
+    "tool_calls": 8,
+    "read_calls": 8,
+    "paths_total": 8,
+    "prompt_tokens": 8460,
+    "eval_tokens": 1333,
+    "prefill_ms": 1104,
+    "eval_ms": 20474,
+    "load_ms": 74,
+    "response": "I’m having trouble locating the character and monster files in the vault. Could you confirm the exact paths (e.g., `/vault/campaigns/test/characters/Aragorn.md` and the goblin file’s ID) so I can pull the precise stats?",
+    "keywords_found": 2
+  },
+  {
+    "setup": "batched",
+    "state": "cold",
+    "wall_ms": 11975,
+    "tool_calls": 1,
+    "read_calls": 1,
+    "paths_total": 2,
+    "prompt_tokens": 1430,
+    "eval_tokens": 548,
+    "prefill_ms": 997,
+    "eval_ms": 8286,
+    "load_ms": 2475,
+    "response": "**Aragorn (Ranger 5)**  \n- **HP:** 44  \n- **AC:** 16  \n\n**Goblin (CR 1/4)**  \n- **HP:** 7  \n- **AC:** 15  \n\n**Attack roll**  \n- Use a d20 + **proficiency bonus (+3)** + **Strength modifier**.  \n- If Aragorn’s Strength is the typical 16 (+3), the roll is **d20 + 6**. (Adjust if his Strength is different.)\n\n**Nimble Escape**  \n- The Goblin’s Nimble Escape is a *bonus action* (Disengage or Hide).  \n- It does **not** grant a reaction, so it cannot be used to avoid an attack.",
+    "keywords_found": 5
+  },
+  {
+    "setup": "batched",
+    "state": "warm",
+    "wall_ms": 9885,
+    "tool_calls": 2,
+    "read_calls": 1,
+    "paths_total": 2,
+    "prompt_tokens": 1350,
+    "eval_tokens": 559,
+    "prefill_ms": 571,
+    "eval_ms": 9040,
+    "load_ms": 80,
+    "response": "Aragorn\n- HP: 44/44\n- AC: 16\n\nGoblin\n- HP: 7\n- AC: 15\n\nAttack roll: d20 + proficiency bonus (5th‑level ranger = +3) + Strength or Dexterity modifier (not listed on the sheet).  If, for example, Aragorn has a +3 Str or Dex, the total bonus would be +6.\n\nNimble Escape is a **bonus action** the goblin can take on its turn; it does not function as a reaction, so it cannot be used to avoid your attack.\n",
+    "keywords_found": 5
+  }
+]

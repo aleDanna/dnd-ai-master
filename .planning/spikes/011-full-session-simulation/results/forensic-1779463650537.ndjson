@@ -1,0 +1,10 @@
+{"ts":"2026-05-22T15:27:30.537Z","type":"turn_start","turn":1,"query":"What level spell is Fireball, and what's its base damage?"}
+{"ts":"2026-05-22T15:27:34.765Z","type":"turn_start","turn":2,"query":"I want to attack a Goblin with my longsword. Tell me its AC and HP."}
+{"ts":"2026-05-22T15:27:37.448Z","type":"turn_start","turn":3,"query":"I rolled 17 to hit. Did I hit? If so, with my +5 attack and 1d8+3 damage roll of 7, how much HP does the goblin have left?"}
+{"ts":"2026-05-22T15:27:40.926Z","type":"turn_start","turn":4,"query":"Can the goblin use Nimble Escape as a reaction? Walk me through the timing."}
+{"ts":"2026-05-22T15:27:48.008Z","type":"turn_start","turn":5,"query":"What's Aragorn's current HP and AC?"}
+{"ts":"2026-05-22T15:27:51.190Z","type":"turn_start","turn":6,"query":"I cast Cure Wounds on Aragorn — with my +3 spellcasting modifier, what range can he recover?"}
+{"ts":"2026-05-22T15:27:54.026Z","type":"turn_start","turn":7,"query":"Magic Missile at 3rd level — how many darts and total damage range?"}
+{"ts":"2026-05-22T15:28:02.687Z","type":"turn_start","turn":8,"query":"List all available spells in the handbook."}
+{"ts":"2026-05-22T15:28:34.258Z","type":"turn_start","turn":9,"query":"If a fireball misses (Dex save succeeded), how much damage does the target still take?"}
+{"ts":"2026-05-22T15:28:37.478Z","type":"turn_start","turn":10,"query":"Aragorn finishes a long rest. What gets restored?"}

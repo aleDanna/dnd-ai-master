@@ -1,0 +1,13 @@
+{"ts":"2026-05-22T15:25:28.115Z","type":"tool_call","setup":"sequential","name":"read_vault","args":{"path":"/campaigns/test/characters/Aragorn.md"}}
+{"ts":"2026-05-22T15:25:29.022Z","type":"tool_call","setup":"sequential","name":"read_vault","args":{"path":"/handbook/monsters/goblin.md"}}
+{"ts":"2026-05-22T15:25:42.303Z","type":"tool_call","setup":"sequential","name":"read_vault","args":{"path":"/vault/campaigns/test/characters/Aragorn.md"}}
+{"ts":"2026-05-22T15:25:44.050Z","type":"tool_call","setup":"sequential","name":"read_vault","args":{"path":"/vault/campaigns/test/index.md"}}
+{"ts":"2026-05-22T15:25:46.357Z","type":"tool_call","setup":"sequential","name":"read_vault","args":{"path":"/vault/campaigns/test/characters/Aragorn"}}
+{"ts":"2026-05-22T15:25:47.688Z","type":"tool_call","setup":"sequential","name":"read_vault","args":{"path":"/vault/characters/Aragorn.md"}}
+{"ts":"2026-05-22T15:25:50.605Z","type":"tool_call","setup":"sequential","name":"read_vault","args":{"path":"/vault/handbook/monsters/goblin.md"}}
+{"ts":"2026-05-22T15:25:51.912Z","type":"tool_call","setup":"sequential","name":"read_vault","args":{"path":"/vault/handbook/monsters/goblin"}}
+{"ts":"2026-05-22T15:25:53.333Z","type":"tool_call","setup":"sequential","name":"read_vault","args":{"path":"/vault/handbook/monsters/001.md"}}
+{"ts":"2026-05-22T15:25:57.244Z","type":"tool_call","setup":"sequential","name":"read_vault","args":{"path":"/vault/campaigns/test/characters/aragorn.md"}}
+{"ts":"2026-05-22T15:26:09.769Z","type":"tool_call","setup":"batched","name":"read_vault_multi","args":{"paths":["/campaigns/test/characters/Aragorn.md","/handbook/monsters/Goblin.md"]}}
+{"ts":"2026-05-22T15:26:17.667Z","type":"tool_call","setup":"batched","name":"read_vault_multi","args":{"paths":["/campaigns/test/characters/Aragorn.md","/handbook/monsters/goblin.md"]}}
+{"ts":"2026-05-22T15:26:25.524Z","type":"tool_call","setup":"batched","name":"end_turn","args":{"response":"Aragorn\n- HP: 44/44\n- AC: 16\n\nGoblin\n- HP: 7\n- AC: 15\n\nAttack roll: d20 + proficiency bonus (5th‑level ranger = +3) + Strength or Dexterity modifier (not listed on the sheet).  If, for example, Aragorn has a +3 Str or Dex, the total bonus would be +6.\n\nNimble Escape is a **bonus action** the goblin can take on its turn; it does not function as a reaction, so it cannot be used to avoid your attack.\n"}}
