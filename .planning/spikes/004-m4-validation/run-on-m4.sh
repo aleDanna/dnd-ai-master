@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # Spike 004: m4-validation
-# Re-runs spike 002 (compliance) and spike 003 (wall-clock) on Mac Mini M4 hardware.
-# G1 and G2 measured on M5 Pro dev are informative only; this script produces
-# decision-grade measurements on the production target hardware.
+#
+# Sweeps spike 002 (compliance) and spike 003 (wall-clock) across the
+# 5 candidate models on Mac Mini M4 production hardware. Each model
+# is tested as the vault candidate against the dnd-master-plus baked
+# baseline. Compliance is measured with V2_strict prompt.
+#
+# Decision-grade for G1 (≥40% warm wall) and G2 (≥90% lenient compliance).
 
 set -euo pipefail
 
@@ -29,22 +33,80 @@ if [[ "$CHIP" != *"M4"* ]]; then
   [[ "$ans" =~ ^[yY]$ ]] || exit 1
 fi
 
+# Candidate models for M4 production. Order matters: smallest first so
+# we see fast feedback before committing to the longer 30b runs.
+CANDIDATES=(
+  "mistral-small3.2:24b-instruct-2506-q4_K_M"
+  "mistral-small3.2:24b"
+  "qwen3:30b-a3b-instruct-2507-q4_K_M"
+  "qwen3:30b-a3b-instruct-2507"
+  "qwen3:30b-a3b"
+)
+
 OUT_DIR=".planning/spikes/004-m4-validation/results"
 mkdir -p "$OUT_DIR"
 
-echo "▶ Step 1/2: re-run spike 002 (compliance) on this hardware..."
-SPIKE_REPETITIONS=2 pnpm exec tsx .planning/spikes/002-tool-discovery-compliance/run-compliance.ts 2>&1 | tee "$OUT_DIR/compliance-m4.log"
-
+# Pre-flight: verify every candidate is pulled
+echo "▶ Pre-flight: verifying candidate models are available locally..."
+MISSING=()
+for m in "${CANDIDATES[@]}"; do
+  if ! ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx "$m"; then
+    MISSING+=("$m")
+  fi
+done
+if (( ${#MISSING[@]} > 0 )); then
+  echo "  ✗ Missing models — please pull them first:"
+  for m in "${MISSING[@]}"; do echo "      ollama pull $m"; done
+  exit 1
+fi
+echo "  ✓ All 5 candidates present"
 echo ""
-echo "▶ Step 2/2: re-run spike 003 (wall-clock) on this hardware..."
-pnpm exec tsx .planning/spikes/003-prefill-walltime-savings/run-walltime.ts 2>&1 | tee "$OUT_DIR/walltime-m4.log"
+
+# Also check the baked baseline for the walltime comparison
+if ! ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx "dnd-master-plus:latest"; then
+  echo "  ✗ Baked baseline 'dnd-master-plus:latest' missing — build it with 'pnpm build-local-models'"
+  exit 1
+fi
+
+# Stage 1: compliance sweep across all 5 candidates
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo " Stage 1/2: tool-discovery compliance sweep (spike 002)"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+for m in "${CANDIDATES[@]}"; do
+  SAFE_NAME=$(echo "$m" | tr ':/' '__')
+  LOG_FILE="$OUT_DIR/compliance-m4-${SAFE_NAME}.log"
+  echo ""
+  echo "▶ Compliance — model: $m"
+  echo "  log: $LOG_FILE"
+  SPIKE_MODELS="$m" SPIKE_REPETITIONS=2 \
+    pnpm exec tsx .planning/spikes/002-tool-discovery-compliance/run-compliance.ts \
+    2>&1 | tee "$LOG_FILE"
+done
+
+# Stage 2: wall-clock vault vs baked, for each candidate as vault
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo " Stage 2/2: wall-clock vault vs baked (spike 003)"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+for m in "${CANDIDATES[@]}"; do
+  SAFE_NAME=$(echo "$m" | tr ':/' '__')
+  LOG_FILE="$OUT_DIR/walltime-m4-${SAFE_NAME}.log"
+  echo ""
+  echo "▶ Wall-clock — vault candidate: $m (baseline: dnd-master-plus:latest)"
+  echo "  log: $LOG_FILE"
+  VAULT_MODEL="$m" BAKED_MODEL="dnd-master-plus:latest" \
+    pnpm exec tsx .planning/spikes/003-prefill-walltime-savings/run-walltime.ts \
+    2>&1 | tee "$LOG_FILE"
+done
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo " Spike 004: Results saved to $OUT_DIR/"
+echo " Spike 004 complete"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "Results: $OUT_DIR/"
 echo ""
-echo "Now update .planning/spikes/004-m4-validation/README.md with:"
-echo "  - M4 compliance rates (compare to M5 Pro figures in spike 002)"
-echo "  - M4 wall-clock deltas (compare to M5 Pro figures in spike 003)"
-echo "  - Final G1 / G2 decision-grade verdict"
+echo "Now update .planning/spikes/004-m4-validation/README.md:"
+echo "  1. Fill the per-model comparison tables"
+echo "  2. Identify the winner (lowest warm wall + ≥90% lenient compliance)"
+echo "  3. Set the final G1/G2 verdicts (decision-grade)"
+echo "  4. git add + commit + push"
