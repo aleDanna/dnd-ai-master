@@ -35,6 +35,7 @@ These rankings shaped the design: the vault is a **performance instrument**, not
 - **32GB RAM with OS + Next.js + Postgres ≈ 22-24 GB usable for Ollama.** qwen3:30b Q4 (~18-20 GB) leaves only ~3 GB headroom — embedder co-residence (`OLLAMA_MAX_LOADED_MODELS=2`) is fragile. **Eliminating the embedder entirely (vault has no embedder) is a much bigger win on M4 than on M5 Pro.**
 - **256 GB SSD** caps the number of baked model variants you can keep installed (each ~14-20 GB). Multiple baked variants for different scenarios is borderline infeasible. **Vault content is KB-MB, not GB → near-zero storage footprint.**
 - **Realistic local model candidates on M4:** qwen3:8b (~5 GB), mistral:24b Q4 (~14 GB). qwen3:30b is at the hard limit; co-loading anything else means it gets evicted under pressure.
+- **CRITICAL CORRECTION (added 2026-05-24 after spike 004 M4 sweep):** The bandwidth-ratio prediction (×2-2.5 slowdown on M4) **does NOT apply to MoE models with active-params routing**. `qwen3:30b-a3b-instruct-2507-q4_K_M` activates only 3B of its 30B parameters per token via the A3B MoE router — wall-clock behaves like a 3-8B dense model, not a 30B one. Measured M4 warm wall = **3.78 s** (faster than the M5 Pro gpt-oss:20b measurement of 4.5 s in spike 003). The model is the surprise winner of the M4 sweep. Primary model selection updated below.
 
 ## 2. Current state baseline (measured)
 
@@ -204,19 +205,24 @@ Two tables: one on dev machine (M5 Pro, for reference) and one on the production
 | Per-turn tool calls | 2-4 typical | 3-6 typical | **+1-2 calls** |
 | Per-turn wall-clock (1K resp) | ~15-25s | ~10-20s? | **NOT GUARANTEED** |
 
-### M4 production (the real target)
+### M4 production (the real target) — MEASURED 2026-05-24 via spike 004
 
-| Metric | Status quo (baked) | Vault wiki (target) | Delta |
+Replaces the prior estimates. Primary model is `qwen3:30b-a3b-instruct-2507-q4_K_M`.
+
+| Metric | Status quo (baked dnd-master-plus) | Vault (qwen3-a3b-instruct-q4_K_M) | Delta |
 |---|---|---|---|
 | Static prompt tokens | ~8,790 | ~3,000 | **-66%** |
 | Embedder cold-start | 15-30s (first turn, worse w/ 32GB pressure) | 0 (no embedder) | **eliminated** |
-| Per-turn prefill (warm) | **~22-25s** | **~7-9s** (smaller × M4 penalty) | **-65%** est. |
-| Per-turn tool calls | 2-4 typical | 3-6 typical | **+1-2 calls** |
-| Per-turn wall-clock (1K resp @ 10 tok/s) | **~35-40s** | **~17-25s** est. | **-40 to -55%** est. |
+| Per-turn wall-clock (warm) | **26,052 ms** | **3,782 ms** | **-85.5%** ✓ |
+| Per-turn wall-clock (cold) | **34,856 ms** | **15,746 ms** | **-54.8%** ✓ |
+| Avg prefill (warm, cumulative) | 42 ms | 1,097 ms | +2,512% |
+| Avg eval (decode) per turn | dominates baked wall | ~2.7 s | drastically lower |
+| G2 lenient tool compliance | n/a (no tool surface) | **100%** | n/a |
+| Output quality (5-keyword check) | 4/5 | 4/5 | parity |
 | SSD budget for baked variants | ~14-20 GB × N | ~0 GB (vault is KB) | **frees disk** |
 | Loaded models (RAM pressure) | master + embedder = ~20GB | master only = ~18GB | **less eviction churn** |
 
-**Critical honesty (M4 specific):** the wall-clock case is *stronger on M4 than on M5 Pro* because every prefill-token saved costs ~2.5× more time. But the extra tool calls also cost more per round-trip (each round-trip adds prefill + decode at M4 rates). Net direction is favorable but magnitude requires empirical validation.
+**Validation status (2026-05-24):** the M4 case is now empirically confirmed at **-85.5% warm wall-clock**, not just "favorable". The surprise upside came from the MoE A3B routing — active-3B params decode at the cost of a small dense model regardless of total-param count. The chosen `qwen3:30b-a3b-instruct-2507-q4_K_M` was not even the front-runner in the design's a-priori analysis (gpt-oss:20b was) — empirical sweep produced a better candidate on the actual target hardware.
 
 LlamaIndex's 2026 benchmark ([filesystem agent vs RAG](https://www.llamaindex.ai/blog/did-filesystem-tools-kill-vector-search)) shows filesystem agents win on **quality** (correctness 8.4 vs 6.4) but can lose wall-clock at small scale due to extra round-trips. That risk is *lower* on a memory-bandwidth-bound machine like M4 where prefill dominates wall-clock — but still must be measured, not assumed.
 

@@ -45,6 +45,8 @@ If this fails, every saved token of "lazy tool contract" turns into a runtime er
 
 **Likelihood.** High. No public evidence the pattern works reliably at qwen3:8b/mistral:24b scale. The "look it up first" discipline is a Claude/GPT-class behavior in current literature.
 
+**UPDATE 2026-05-24 (spike 004 M4 sweep results):** R1 risk **substantially mitigated** for the chosen primary model. `qwen3:30b-a3b-instruct-2507-q4_K_M` measured at **100% lenient compliance** on M4 (n=10), with quality-fallback `qwen3:30b-a3b-instruct-2507` also at 100%. Both mistral-small3.2:24b variants eliminated at 80% lenient (below the 90% gate) — confirming the risk for that model family but not for the chosen one. Strict per-tool-doc compliance is still low (60%) but the design has already pivoted to the lenient protocol, where the chosen model excels. Risk severity downgraded from "Critical" to "Low-Medium" for the chosen primary; remains "High" only if a future model swap requires re-validation.
+
 **Mitigation.**
 - **Pre-implementation gate:** run a smoke test (10-20 turns) with each target model where the system prompt says "before calling X, you MUST read `/tools/X.md`". Measure compliance rate. <90% = abort or fallback.
 - **Fallback design:** keep TOOL_CONTRACT_SLIM (218 tok) inline + lazy-load only *examples* and *advanced schemas* in `/tools/`. Compromise: floor moves from 3K to ~3.2K, but tool calls are anchored.
