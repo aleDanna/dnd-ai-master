@@ -1,0 +1,222 @@
+[
+  {
+    "scenario_id": "scene-description",
+    "dimension": "Scene description / atmosphere",
+    "model": "qwen3:30b-a3b-instruct-2507-q4_K_M",
+    "wall_ms": 18605,
+    "prompt_tokens": 171,
+    "eval_tokens": 251,
+    "prefill_ms": 648,
+    "eval_ms": 6169,
+    "response": "La porta di quercia scricchiola lentamente, come se il tempo stesso si stesse aprendo in silenzio, rivelando un'oscurità che non sembra solo priva di luce, ma che sembra *assorbirla*. All'interno, l'aria è densa di polvere antica e di un odore metallico, come se il tempo si fosse cristallizzato in un respiro trattenuto. Su un tavolo di pietra al centro della stanza, una lampada di cristallo senza fiamma pulsa con un debole bagliore azzurrognolo, come un battito cardiaco insonne. File di libri caduti si sparpagliano sul pavimento, le pagine ingiallite che sembrano sussurrare nomi dimenticati al vento immaginario. E in fondo, nell'ombra più profonda, una figura di vetro si muove appena, le sue forme sfocate che si riflettono in un'antica pozza d'acqua nera, come se qualcosa dentro stesse osservando."
+  },
+  {
+    "scenario_id": "npc-dialogue",
+    "dimension": "NPC voicing / dialogue",
+    "model": "qwen3:30b-a3b-instruct-2507-q4_K_M",
+    "wall_ms": 6687,
+    "prompt_tokens": 194,
+    "eval_tokens": 251,
+    "prefill_ms": 412,
+    "eval_ms": 6191,
+    "response": "Bargo: «Ah, vieni dal nord? Sì, sì… lo sento nell’aria, quel gelo che non si scioglie neanche col sole. Voi non sapete quanto è pericoloso, il freddo che non ti morde, ma ti inghiotte.»\n\nBargo: «Questo ciondolo… no, non è un semplice ornamento. È un ricordo. Di qualcuno che non avresti mai dovuto incontrare.»\n\nBargo: «Sei sicuro che non ci sia qualcuno che ti segue? No, non guardare dietro… non è il momento. Il silenzio, sai, è una bestia che mangia le parole.»\n\nBargo: «Le stelle non brillano più come prima. Forse perché qualcuno ha spento una lampada… o forse perché qualcuno ha cominciato a scrivere sulle loro schiene.»\n\nBargo: «Se mi chiedi perché porto queste strane tavolette di legno… beh, chiedi al vento. Ma non aspettare la risposta.»"
+  },
+  {
+    "scenario_id": "combat-narration",
+    "dimension": "Combat narration",
+    "model": "qwen3:30b-a3b-instruct-2507-q4_K_M",
+    "wall_ms": 4253,
+    "prompt_tokens": 175,
+    "eval_tokens": 154,
+    "prefill_ms": 410,
+    "eval_ms": 3777,
+    "response": "La spada di Aragorn si abbatte come un fulmine tra le ombre del bosco, l'impeto della sua schivata trasformato in un fendente che squarcia l'aria con un sibilo secco. Il goblin, ancora a metà di un balzo per scappare, si spezza in due con un rumore di carne lacerata e ossa che scricchiolano, il corpo scosso da un'esplosione di sangue e frammenti di tessuto. Un attimo prima era un’ombra sfruttata dal buio; un istante dopo, non è più nulla che il vento non porti via."
+  },
+  {
+    "scenario_id": "moral-choice",
+    "dimension": "Choice quality / dramatic weight",
+    "model": "qwen3:30b-a3b-instruct-2507-q4_K_M",
+    "wall_ms": 4647,
+    "prompt_tokens": 262,
+    "eval_tokens": 162,
+    "prefill_ms": 541,
+    "eval_ms": 4035,
+    "response": "Il soffitto si spacca con un rombo di pietra che scende come un pugno del cielo, schegge acuminati si abbattono sul pavimento ai tuoi piedi. La bambina urla, gli occhi dilatati dal terrore, le corde che si tendono come fili di vetro. La statuetta di giada, fredda e antica, scintilla nell'ultimo bagliore della luce tremolante, come un sogno che si spegne. In un istante, puoi spezzare le corde con una mossa, o afferrare l’oggetto che vale più della vita di chiunque, ma non puoi fare entrambe."
+  },
+  {
+    "scenario_id": "lore-improv",
+    "dimension": "Lore improvisation",
+    "model": "qwen3:30b-a3b-instruct-2507-q4_K_M",
+    "wall_ms": 8223,
+    "prompt_tokens": 215,
+    "eval_tokens": 310,
+    "prefill_ms": 449,
+    "eval_ms": 7688,
+    "response": "*La pagina è sbavata in un angolo, come se qualcuno l’avesse afferrata con dita sporche di fango. La grafia è tremula, tracciata con un bastoncino appuntito, a tratti quasi illeggibile. Si legge:*\n\n> Oggi ho visto il fuoco dentro il vecchio albero. Non era fuoco vero, ma qualcosa di più... vivo. Mi ha chiamato col nome di mio padre, che è morto da anni.  \n>  \n> Ho paura, ma non posso dirlo agli altri. Hanno detto che i canti delle radici sono bugie, che sono solo fantasie di goblin codardi.  \n>  \n> Ma la notte scorsa, il mio sogno non era un sogno. Ho camminato nella foresta con occhi di luce nera, e ho visto la grotta sotto il covo. Non è un covo. È una tomba.  \n>  \n> C’è qualcosa che dorme là sotto. E qualcosa che si sveglia quando i goblin muoiono.  \n>  \n> Non so cosa sia, ma so che non vuole che lo troviamo.  \n>  \n> Se leggi questo, non andare nella grotta.  \n>  \n> E... non dimenticare il nome del mio padre. Non lo dimenticare mai."
+  },
+  {
+    "scenario_id": "scene-description",
+    "dimension": "Scene description / atmosphere",
+    "model": "qwen3:30b-a3b-instruct-2507",
+    "wall_ms": 6174,
+    "prompt_tokens": 171,
+    "eval_tokens": 232,
+    "prefill_ms": 379,
+    "eval_ms": 5719,
+    "response": "La porta si spalanca con un gemito lungo, come un respiro sepolto da secoli, rivelando un corridoio buio che si perde in un’oscurità più densa del velluto. L’aria che ne fuoriesce è gelida, umida, carica di polvere antica e dell’odore dolciastro di erbe marce e metallo arrugginito. Una luce fioca, verdognola e pulsante, filtra da una serie di finestre rotte, proiettando ombre lunghe e tremolanti sulle pareti ricoperte di simboli incisi con rabbia, quasi scavati nella pietra da mani disperate. Al centro del corridoio, una scala a chiocciola di pietra scura si avvita verso le tenebre superiori, mentre qualcosa — un sussurro, forse un respiro — sembra provenire dal nulla, sottile come un filo di ragnatela."
+  },
+  {
+    "scenario_id": "npc-dialogue",
+    "dimension": "NPC voicing / dialogue",
+    "model": "qwen3:30b-a3b-instruct-2507",
+    "wall_ms": 7180,
+    "prompt_tokens": 194,
+    "eval_tokens": 270,
+    "prefill_ms": 413,
+    "eval_ms": 6687,
+    "response": "Bargo: «Ah, sì... vieni da lontano, vero? Non l’odore del sudore di strada, no. Quello è solo polvere di strada. Voi profumate di... di qualcosa che non dovrebbe essere qui.»\n\nBargo: «Il mio carico? Oh, è tutto a posto. Niente di che. Solo vasi, spezie, un po’ di fili di lana... e qualche ricordo che non dovrebbe essere venduto.»\n\nBargo: «Guarda le stelle, amico. Sì, quelle lì. Non ti guardano. Ma io sì. E ho visto gente come te... sparire tra un respiro e il prossimo.»\n\nBargo: «Se vuoi sapere dove si trova la grotta del silenzio, non chiedere a me. Chiedi al vento. Ma non ascoltare la sua risposta... se non vuoi che ti porti via la voce.»\n\nBargo: «Ah... hai un corno, vero? Quello che suona quando non c’è nessuno da ascoltare. Interessante. Mi chiedo... chi te l’ha dato?»"
+  },
+  {
+    "scenario_id": "combat-narration",
+    "dimension": "Combat narration",
+    "model": "qwen3:30b-a3b-instruct-2507",
+    "wall_ms": 4386,
+    "prompt_tokens": 175,
+    "eval_tokens": 159,
+    "prefill_ms": 410,
+    "eval_ms": 3908,
+    "response": "La spada di Aragorn fendette l'aria con un sibilo che tagliò il silenzio della grotta, la lama che lampeggiò come un fulmine in un cielo notturno. Il goblin, ancora con gli occhi spalancati dal terrore, fu sollevato da terra dal colpo, il corpo scosso da un lampo di luce nera che si espandeva lungo la spina dorsale. Quando cadde, non si mosse più: il suo ultimo respiro si spezzò in un sussurro, e il sangue si sparse sulle pietre umide come un tappeto di violette al tramonto."
+  },
+  {
+    "scenario_id": "moral-choice",
+    "dimension": "Choice quality / dramatic weight",
+    "model": "qwen3:30b-a3b-instruct-2507",
+    "wall_ms": 4985,
+    "prompt_tokens": 262,
+    "eval_tokens": 176,
+    "prefill_ms": 541,
+    "eval_ms": 4376,
+    "response": "Il soffitto si spacca in un boato di pietra e polvere, schegge che piove come schegge di luce morta. La bambina urla, la voce spezzata dal terrore, i suoi occhi fissi su di te, imploranti, mentre il pavimento trema sotto i tuoi piedi. La statuetta di giada, appoggiata sull’altare di pietra grezza, brilla con un alone opaco, quasi che il suo stesso metallo sussurri: *“Non sei venuto per niente.”* Il tempo si spezza in un istante, e tu devi scegliere: afferrare l’oro che ti attende, o strappare un’anima dal baratro."
+  },
+  {
+    "scenario_id": "lore-improv",
+    "dimension": "Lore improvisation",
+    "model": "qwen3:30b-a3b-instruct-2507",
+    "wall_ms": 8227,
+    "prompt_tokens": 215,
+    "eval_tokens": 308,
+    "prefill_ms": 450,
+    "eval_ms": 7691,
+    "response": "*Il diario è scritto con una grafia tremula, le lettere malformate, a tratti sbavate, come se il goblin avesse scritto con un bastoncino in un pozzo di fango. Le pagine sono ingiallite, strappate in un angolo, e c’è una macchia scura che sembra sangue.*\n\nOggi ho visto il vecchio grugno. Dice che il vecchio non è più vecchio. Dice che è il padre del buio. Io non capisco. Solo lui parla col buio.\n\nIl mio fratello piccolo è sparito. L’ho cercato nei cunicoli. C’era un odore di fuoco vecchio e di pelle bruciata. Ho sentito un sussurro: *“Non è morto. È diventato uno di noi.”*\n\nIl grugno dice che devo trovare il libro con le parole che bruciano. Dice che se lo trovo, potrò tornare a casa. Ma non so dove sia casa.\n\nHo visto le ombre muoversi senza corpo. Non sono goblin. Non sono animali. Sono cose che non dovrebbero esistere.\n\nSe qualcuno legge questo… non andare nei cunicoli sotto il vecchio albero. Lui non è un albero. È un portale. E ha fame."
+  },
+  {
+    "scenario_id": "scene-description",
+    "dimension": "Scene description / atmosphere",
+    "model": "qwen3:30b-a3b",
+    "wall_ms": 64949,
+    "prompt_tokens": 173,
+    "eval_tokens": 2000,
+    "prefill_ms": 645,
+    "eval_ms": 51911,
+    "response": ""
+  },
+  {
+    "scenario_id": "npc-dialogue",
+    "dimension": "NPC voicing / dialogue",
+    "model": "qwen3:30b-a3b",
+    "wall_ms": 52561,
+    "prompt_tokens": 196,
+    "eval_tokens": 2000,
+    "prefill_ms": 423,
+    "eval_ms": 51820,
+    "response": ""
+  },
+  {
+    "scenario_id": "combat-narration",
+    "dimension": "Combat narration",
+    "model": "qwen3:30b-a3b",
+    "wall_ms": 52581,
+    "prompt_tokens": 177,
+    "eval_tokens": 2000,
+    "prefill_ms": 415,
+    "eval_ms": 51850,
+    "response": ""
+  },
+  {
+    "scenario_id": "moral-choice",
+    "dimension": "Choice quality / dramatic weight",
+    "model": "qwen3:30b-a3b",
+    "wall_ms": 53108,
+    "prompt_tokens": 264,
+    "eval_tokens": 2000,
+    "prefill_ms": 570,
+    "eval_ms": 52220,
+    "response": ""
+  },
+  {
+    "scenario_id": "lore-improv",
+    "dimension": "Lore improvisation",
+    "model": "qwen3:30b-a3b",
+    "wall_ms": 52618,
+    "prompt_tokens": 217,
+    "eval_tokens": 2000,
+    "prefill_ms": 465,
+    "eval_ms": 51837,
+    "response": ""
+  },
+  {
+    "scenario_id": "scene-description",
+    "dimension": "Scene description / atmosphere",
+    "model": "mistral-small3.2:24b",
+    "wall_ms": 35887,
+    "prompt_tokens": 148,
+    "eval_tokens": 180,
+    "prefill_ms": 2203,
+    "eval_ms": 24215,
+    "response": "La porta cigola come un'anziana strega che racconta segreti dimenticati, rivelando un corridoio avvolto nelle ombre danzanti di fiaccole morenti. Le pareti di pietra grigia sono ricoperte da una patina di muffa che brilla debolmente sotto la luce tremolante, come se la torre stessa respirasse. L'aria è densa di polvere e un odore pungente di erbe antiche e cera bruciata aleggia nel silenzio. In lontananza, una scala a chiocciola si perde nell'oscurità, i suoi gradini consumati dal tempo e dai passi di chi non è più. Un vento gelido soffia attraverso le crepe nelle pietre, portando con sé un sussurro di incantesimi lontani."
+  },
+  {
+    "scenario_id": "npc-dialogue",
+    "dimension": "NPC voicing / dialogue",
+    "model": "mistral-small3.2:24b",
+    "wall_ms": 35118,
+    "prompt_tokens": 169,
+    "eval_tokens": 249,
+    "prefill_ms": 1422,
+    "eval_ms": 33590,
+    "response": "Bargo: «Ah, nuovi volti in questa landa desolata! Scommetto che avete più segreti voi di un drago con un forziere pieno d'oro...»\n\nBargo: «Oh, non fate caso a questo vecchio sacco di ossa. Sono solo un povero mercante che cerca di tirare avanti in questi tempi bui. Ma ditemi, avete per caso visto passare un tipo alto, con un cappello a tricorno e un occhio solo? No? Peccato...»\n\nBargo: «Questi collari di piume di fenice sono autentici, ve lo giuro sul mio onore... Be', almeno per la metà del loro valore. Se avete qualche spicciolo da spendere, potrei anche chiudere un occhio su qualche peccatuccio di poco conto...»\n\nBargo: «Ah, la gioventù! Sempre così impaziente. Vi sconsiglio vivamente di avventurarvi nella Foresta di Bruma questa notte. A meno che, ovviamente, non siate ansiosi di incontrare le ombre che si aggirano tra gli alberi...»"
+  },
+  {
+    "scenario_id": "combat-narration",
+    "dimension": "Combat narration",
+    "model": "mistral-small3.2:24b",
+    "wall_ms": 19500,
+    "prompt_tokens": 158,
+    "eval_tokens": 133,
+    "prefill_ms": 1478,
+    "eval_ms": 17937,
+    "response": "Con un lampo d'acciaio, la lunga spada di Aragorn fende l'aria con precisione letale, il goblin non ha neanche il tempo di emettere un ultimo grido prima che la lama gli trapassi il cuore, il sangue schizza in un arco crimson sulla roccia grigia. Il corpo del goblin si affloscia a terra, gli occhi spalancati fissano il nulla, la vita che lo abbandonava in un istante. L'eco del colpo risuona nella caverna, un suono netto e definitivo, come il sigillo di un destino già scritto."
+  },
+  {
+    "scenario_id": "moral-choice",
+    "dimension": "Choice quality / dramatic weight",
+    "model": "mistral-small3.2:24b",
+    "wall_ms": 23153,
+    "prompt_tokens": 233,
+    "eval_tokens": 153,
+    "prefill_ms": 2413,
+    "eval_ms": 20654,
+    "response": "Il tempio trema, polvere e detriti cadono dal soffitto crepato, illuminato da un bagliore rosso sanguigno. La bambina, legata sull'altare, piange disperata, i suoi occhi pieni di terrore si fissano su di te. Accanto a lei, la statuetta di giada brilla di un potere antico, promettendo ricchezza e fama. Il tempo scorre, ogni secondo è prezioso: puoi afferrare la statuetta e assicurarti il tuo premio, o correre a salvare la bambina, strappandola alla sua sorte crudele. Il soffitto sta per crollare, la decisione è tua."
+  },
+  {
+    "scenario_id": "lore-improv",
+    "dimension": "Lore improvisation",
+    "model": "mistral-small3.2:24b",
+    "wall_ms": 36570,
+    "prompt_tokens": 183,
+    "eval_tokens": 259,
+    "prefill_ms": 1496,
+    "eval_ms": 34970,
+    "response": "Il diario è un mucchio di pergamene ingiallite, tenute insieme da una cordicella di cuoio consunto. La scrittura è sgraziata, piena di sbavature e simboli appuntiti, come se le parole fossero state incise con rabbia. Il party riesce a decifrare il grottesco linguaggio goblin, scoprendo:\n\n\"Ugh, oggi capo arrabbiato. Dice che 'umani vicini, prendere cose'. Io non capisco, ma capo dice che 'noi rubare, loro non vedere'. Forse capo pazzo. Lui ha una cosa che brilla, ma non lascia guardare. Dice che 'se rubare, noi vivere'. Io ho paura, ma non dire. Capo dice che 'se parlare, io uccidere'. Io non sapere cosa fare. Forse io scappare. Forse io rubare la cosa che brilla. Forse io morire. Ugh.\"\n\nLe parole si fanno più frenetiche verso la fine, come se chi scrive fosse in preda al panico. L'ultima pagina è strappata a metà, lasciando solo un ultimo messaggio inquietante: \"Loro sapere. Loro venire. Io non...\""
+  }
+]
