@@ -63,7 +63,7 @@ Design decisions locked during `/gsd-explore`, non-negotiable for the real build
 
 ## Spike phase closed — 2026-05-24
 
-**Verdict tally:** 12 ✓ VALIDATED, 1 ✗ INVALIDATED (→ design pivoted, mitigation found). All gates GREEN on production hardware.
+**Verdict tally:** 13 ✓ VALIDATED, 1 ✗ INVALIDATED (→ design pivoted, mitigation found). All gates GREEN on production hardware. Narrative quality assessed and primary confirmed.
 
 **Outcome:** Migration `vault-llm-wiki` is **technically feasible**. Five stacked mitigations (read_vault_multi, EventsWriter mutex, stable prompt builder, events.md as source of truth, lenient tool protocol) form a cohesive design validated end-to-end on M5 Pro. Quality preserved or improved vs the baked baseline; warm wall-clock advantage in the -60% range on simple turns, recovered to similar magnitude on complex turns once `read_vault_multi` is used.
 
