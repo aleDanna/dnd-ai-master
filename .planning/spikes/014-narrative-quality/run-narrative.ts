@@ -31,13 +31,14 @@ interface OllamaResponse {
 const SYSTEM_PROMPT = `Sei un esperto Dungeon Master di D&D 5e. Stai conducendo una sessione in italiano. Rispondi sempre in italiano, mai in inglese. Usa uno stile vivido, evocativo, e cinematografico quando appropriato. Mostra non dire (show don't tell). Evita cliché logorati. Non chiedere "cosa fai?" alla fine se la domanda non lo richiede.`;
 
 async function chat(model: string, messages: OllamaMessage[]): Promise<OllamaResponse> {
-  const body = {
+  const body: Record<string, unknown> = {
     model,
     messages,
     stream: false,
     keep_alive: KEEP_ALIVE,
     options: { temperature: 0.8, num_predict: 2000, top_p: 0.9 },
   };
+  if (process.env.THINK_DISABLED === "true") body.think = false;
   const res = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -22,7 +22,11 @@ Design decisions locked during `/gsd-explore`, non-negotiable for the real build
 - **Per-turn summarization required for long sessions** (added by spike 011). Context growth (accumulated tool_result history) is the new primary bottleneck. Trigger: cumulative prompt > 15K tokens → condense prior 5 turns into a 200-word summary block.
 - **DR procedure: events.md is the only file that needs durable backup** (validated by spike 013). Derived views are regenerable. Vault = git repo. Restore = `git clone` + replay script.
 - **Tool contract = lazy-loaded via index** (revised by spike 002): LLM reads `/tools/index.md` once at session start, then may use any listed tool directly. Per-tool `/tools/<name>.md` lookups are optional/preferred but not enforced. Strict per-tool lookup proved impractical on local models; index-based discovery achieves the same end (no inline tool contract) while matching observed model behavior.
-- **Primary local model = `qwen3:30b-a3b-instruct-2507-q4_K_M`** (final, revised by spike 004 M4 sweep). M4 warm wall-clock 3.78 s, G2 lenient 100%, G1 -85.5% vs baked. **Quality-fallback = `qwen3:30b-a3b-instruct-2507`** (non-q4, 3.87 s warm, within 2.4%). **Offline content generator = `qwen3:30b-a3b`** (5/5 quality but 36.6 s warm, unusable for live turns). **Eliminated: both mistral-small3.2:24b variants** (G2 80% < 90%, G1 borderline/fail on M4). gpt-oss:20b retained on M5 Pro dev only.
+- **Primary local model = `qwen3:30b-a3b-instruct-2507-q4_K_M`** (final, validated on feasibility by spike 004 AND on narrative quality by spike 014). M4 warm wall-clock 3.78 s, G2 lenient 100%, G1 -85.5% vs baked, narrative-quality tied at 9 pts with non-q4.
+- **Quality-fallback (opt-in) = `qwen3:30b-a3b-instruct-2507`** (non-q4, 3.87 s warm, within 2.4%; marginally stronger NPC voicing and moral-choice dramaturgy per spike 014).
+- **Offline content-only (non-default) = `mistral-small3.2:24b`**: failed G2 (80%) so not for live turns, but spike 014 showed it's the strongest local model for *authentic non-standard voice* (e.g. goblin pidgin). Useful tool for generating in-game found-text, foreign scripts, ritual writings — produced offline, stored as static vault content.
+- **DROPPED entirely: `qwen3:30b-a3b` base** (spike 014 iteration 2): even with `think: false` the model leaks its English chain-of-thought into the content stream. Unusable for direct narrative output without a CoT extraction pipeline (out of scope).
+- **gpt-oss:20b** retained as M5 Pro dev convenience only (not deployed to M4).
 - **Server accepts both turn terminators:** `end_turn` tool call AND `no_tool_calls + content` are both valid completions.
 - **Target hardware = Mac Mini M4.** All G1 wall-clock measurements must be validated on M4 before commit.
 
@@ -53,7 +57,7 @@ Design decisions locked during `/gsd-explore`, non-negotiable for the real build
 | 011 | full-session-simulation | standard | 10-turn realistic D&D session: avg warm < 25s on M5 Pro, quality ≥4/5 per turn | ✓ VALIDATED (excl. outlier) — avg 7.4s, quality 85.7%, prefix hash stable | g1, session-level, integration |
 | 012 | prompt-builder-stability | standard | SystemPromptBuilder + linter: same inputs → identical SHA256; forbidden patterns rejected | ✓ VALIDATED — 6/7 (1 self-lint false positive documented) | implementation, ci-test |
 | 013 | vault-backup-restore | standard | Corrupted derived views restored from events.md replay; byte-exact match to pre-corruption | ✓ VALIDATED — byte-for-byte restore via events replay | r7, dr, backup |
-| 014 | narrative-quality | comparison | Human-eval 4 candidates × 5 Italian narrative scenarios (scene, NPC, combat, choice, lore); identify model with best prose for narrative-heavy turns | PENDING_M4 — script ready, requires human evaluation of the markdown report | m4, narrative, qualitative, italian, human-eval, model-selection |
+| 014 | narrative-quality | comparison | Human-eval 4 candidates × 5 Italian narrative scenarios (scene, NPC, combat, choice, lore); identify model with best prose for narrative-heavy turns | ✓ VALIDATED — primary unchanged (q4_K_M tied with non-q4 at 9 pts); mistral useful for offline non-standard voice; qwen3-a3b BASE dropped (CoT leak even with think:false) | m4, narrative, qualitative, italian, human-eval, model-selection |
 
 ---
 

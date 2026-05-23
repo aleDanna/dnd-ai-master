@@ -3,7 +3,7 @@ spike: 014
 name: narrative-quality-comparison
 type: comparison
 validates: "Given 5 narrative-heavy D&D scenarios in Italian, when run on the 4 M4 candidate models with NO 'concise' constraint, then human evaluation identifies which model produces the most engaging prose, NPC voicing, scene description, and improvised lore"
-verdict: PENDING_M4
+verdict: VALIDATED
 related: [002, 003, 004]
 tags: [m4, narrative, qualitative, italian, human-eval, model-selection]
 ---
@@ -93,14 +93,34 @@ Aggregate ranks → choose primary for narrative-heavy turns.
 
 ## Results
 
-**PENDING — run the script on M4 and complete the markdown comparison report.**
+**Verdict: ✓ VALIDATED — Outcome #1 (primary unchanged).**
 
-After human evaluation, the final decision should fall into one of:
+20 turns generated on M4 + 5 retest turns of base model on M5 Pro with `think: false`. Human evaluation (Claude-assisted, user-confirmed) produced per-scenario ranks aggregated below.
 
-1. **Primary unchanged**: `qwen3:30b-a3b-instruct-2507-q4_K_M` wins both feasibility AND narrative → no design change.
-2. **Tier split**: q4_K_M stays primary for *mechanical* turns (combat resolution, rules lookup), but a different model (e.g. qwen3-base or mistral) handles *narrative-heavy* turns (scene description, NPC voicing). Implementation: turn-type classifier picks model per turn.
-3. **Primary swap**: a different candidate wins narrative convincingly enough that the small feasibility cost (slower wall-clock or lower G2 compliance) is worth paying. Update MANIFEST primary.
-4. **All four are bland**: none of the local models produces engaging Italian D&D narration. Revisit: maybe accept this as a known limit and design the system to use the cloud Anthropic master for narrative-heavy turns while local handles mechanics.
+### Aggregate ranks (lower = better)
+
+| Model | S1 scene | S2 NPC | S3 combat | S4 choice | S5 lore | **Total** | Average |
+|---|---|---|---|---|---|---|---|
+| **qwen3:30b-a3b-instruct-2507-q4_K_M** | 1 | 2 | 1 | 2 | 3 | **9** | 1.8 |
+| **qwen3:30b-a3b-instruct-2507** | 2 | 1 | 3 | 1 | 2 | **9** | 1.8 |
+| mistral-small3.2:24b | 3 | 3 | 2 | 3 | 1 | 12 | 2.4 |
+| qwen3:30b-a3b BASE | 4 | 4 | 4 | 4 | 4 | 20 | 4.0 |
+
+### Findings
+
+1. **q4_K_M and non-q4 instruct tied at 9 points** with complementary strengths:
+   - q4_K_M: stronger on *sensory-cinematic* prose (scene atmosphere, combat fisicality, overkill spectacle)
+   - non-q4: stronger on *narrative structure* (NPC voices with hook plot, dramatic weight in moral choices)
+2. **mistral-small3.2:24b** wins ONE dimension only — *authentic goblin voice* (pidgin "Ugh, oggi capo arrabbiato", "umani vicini prendere cose"). Elsewhere conventional and cliché-prone. Useful role: offline content generation for voice-strong non-standard text.
+3. **qwen3:30b-a3b BASE re-test with `think: false`** still produces unusable output — the model leaks its English chain-of-thought into the content stream instead of emitting a clean Italian final answer. Dropped from candidate pool. See Iteration 2 section of the comparison report.
+
+### Decision (locked)
+
+- **Primary:** `qwen3:30b-a3b-instruct-2507-q4_K_M` — unchanged from spike 004. Quality tie with non-q4 on narrative + wins on feasibility (G1 -85.5% on M4, smaller disk footprint).
+- **Quality-fallback (opt-in):** `qwen3:30b-a3b-instruct-2507` — marginally stronger NPC voicing and moral-choice presentation. Δ wall-clock ~90 ms (trivial). User can switch from settings when NPC depth matters.
+- **Mistral utility:** keep `mistral-small3.2:24b` as a non-default tool for offline content generation when voice-strong non-standard prose is needed (goblin scripts, draconic dialogue, ritual texts).
+- **qwen3:30b-a3b base: DROPPED from candidate pool.** Without a chain-of-thought extraction pipeline (out of scope), the model is unusable for direct narrative output.
+- **Tier-split NOT required at Phase 1.** Δ between q4 and non-q4 is too small to justify implementing a per-turn model router. Re-evaluate post-launch with engagement data.
 
 ## Why this is the right time to ask
 
