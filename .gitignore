@@ -53,7 +53,11 @@ next-env.d.ts
 
 # IntelliJ
 /.idea/
-.claude/
+.claude/*
+# Project-shared skills (auto-loaded in build sessions) — whitelisted for git
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/spike-findings-*/
 
 # git worktrees
 .worktrees/
