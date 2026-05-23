@@ -1,0 +1,22 @@
+{"ts":"2026-05-23T21:26:34.006Z","type":"turn_start","model":"mistral-small3.2:24b-instruct-2506-q4_K_M","strength":"V2_strict","scenario":"aragorn-level","repetition":0,"query":"What level is Aragorn?"}
+{"ts":"2026-05-23T21:26:34.006Z","type":"ollama_request","model":"mistral-small3.2:24b-instruct-2506-q4_K_M","message_count":2}
+{"ts":"2026-05-23T21:26:39.005Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":755,"prompt_eval_duration_ms":3152,"eval_count":14,"eval_duration_ms":1776,"load_duration_ms":63,"total_duration_ms":4996}
+{"ts":"2026-05-23T21:26:39.006Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/index.md"}}
+{"ts":"2026-05-23T21:26:39.006Z","type":"tool_result","name":"read_vault","ok":true,"bytes":332}
+{"ts":"2026-05-23T21:26:39.006Z","type":"ollama_request","model":"mistral-small3.2:24b-instruct-2506-q4_K_M","message_count":4}
+{"ts":"2026-05-23T21:26:43.104Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":673,"prompt_eval_duration_ms":1845,"eval_count":17,"eval_duration_ms":2181,"load_duration_ms":62,"total_duration_ms":4094}
+{"ts":"2026-05-23T21:26:43.104Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/read_vault.md"}}
+{"ts":"2026-05-23T21:26:43.104Z","type":"tool_result","name":"read_vault","ok":true,"bytes":690}
+{"ts":"2026-05-23T21:26:43.104Z","type":"ollama_request","model":"mistral-small3.2:24b-instruct-2506-q4_K_M","message_count":6}
+{"ts":"2026-05-23T21:26:49.204Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":879,"prompt_eval_duration_ms":3153,"eval_count":22,"eval_duration_ms":2870,"load_duration_ms":62,"total_duration_ms":6096}
+{"ts":"2026-05-23T21:26:49.204Z","type":"tool_call","name":"read_vault","args":{"path":"/campaigns/test/characters/Aragorn.md"}}
+{"ts":"2026-05-23T21:26:49.205Z","type":"tool_result","name":"read_vault","ok":true,"bytes":335}
+{"ts":"2026-05-23T21:26:49.205Z","type":"ollama_request","model":"mistral-small3.2:24b-instruct-2506-q4_K_M","message_count":8}
+{"ts":"2026-05-23T21:26:53.791Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1037,"prompt_eval_duration_ms":2298,"eval_count":17,"eval_duration_ms":2215,"load_duration_ms":58,"total_duration_ms":4581}
+{"ts":"2026-05-23T21:26:53.791Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/end_turn.md"}}
+{"ts":"2026-05-23T21:26:53.792Z","type":"tool_result","name":"read_vault","ok":true,"bytes":581}
+{"ts":"2026-05-23T21:26:53.792Z","type":"ollama_request","model":"mistral-small3.2:24b-instruct-2506-q4_K_M","message_count":10}
+{"ts":"2026-05-23T21:26:59.340Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1214,"prompt_eval_duration_ms":2727,"eval_count":21,"eval_duration_ms":2743,"load_duration_ms":59,"total_duration_ms":5545}
+{"ts":"2026-05-23T21:26:59.340Z","type":"tool_call","name":"end_turn","args":{"response":"Aragorn is a level 5 Ranger."}}
+{"ts":"2026-05-23T21:26:59.341Z","type":"end_turn","reason":"end_turn_tool","response_preview":"Aragorn is a level 5 Ranger."}
+{"ts":"2026-05-23T21:26:59.341Z","type":"summary","duration_ms":25335,"event_counts":{"turn_start":1,"ollama_request":5,"ollama_response":5,"tool_call":5,"tool_result":4,"end_turn":1},"tool_calls":[{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"end_turn","ok":true}],"total_prompt_eval_ms":13175,"total_eval_ms":11785,"total_prompt_tokens":4558,"total_eval_tokens":91,"trace_length":5,"compliance_strict":true,"compliance_lenient":true}

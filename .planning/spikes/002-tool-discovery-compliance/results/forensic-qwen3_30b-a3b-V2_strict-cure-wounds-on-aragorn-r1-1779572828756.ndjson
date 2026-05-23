@@ -1,0 +1,26 @@
+{"ts":"2026-05-23T21:47:08.756Z","type":"turn_start","model":"qwen3:30b-a3b","strength":"V2_strict","scenario":"cure-wounds-on-aragorn","repetition":1,"query":"If I cast Cure Wounds on Aragorn with my +3 spellcasting modifier, what range of HP does he recover?"}
+{"ts":"2026-05-23T21:47:08.756Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":2}
+{"ts":"2026-05-23T21:47:30.399Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":818,"prompt_eval_duration_ms":27,"eval_count":830,"eval_duration_ms":21459,"load_duration_ms":41,"total_duration_ms":21639}
+{"ts":"2026-05-23T21:47:30.399Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/index.md"}}
+{"ts":"2026-05-23T21:47:30.399Z","type":"tool_result","name":"read_vault","ok":true,"bytes":332}
+{"ts":"2026-05-23T21:47:30.400Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":4}
+{"ts":"2026-05-23T21:47:41.174Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1748,"prompt_eval_duration_ms":2799,"eval_count":292,"eval_duration_ms":7888,"load_duration_ms":41,"total_duration_ms":10772}
+{"ts":"2026-05-23T21:47:41.175Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/read_vault.md"}}
+{"ts":"2026-05-23T21:47:41.175Z","type":"tool_result","name":"read_vault","ok":true,"bytes":690}
+{"ts":"2026-05-23T21:47:41.175Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":6}
+{"ts":"2026-05-23T21:47:51.372Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":2232,"prompt_eval_duration_ms":1573,"eval_count":313,"eval_duration_ms":8535,"load_duration_ms":41,"total_duration_ms":10195}
+{"ts":"2026-05-23T21:47:51.373Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/cure_wounds.md"}}
+{"ts":"2026-05-23T21:47:51.373Z","type":"tool_result","name":"read_vault","ok":false,"bytes":56}
+{"ts":"2026-05-23T21:47:51.373Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":8}
+{"ts":"2026-05-23T21:48:12.755Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":2575,"prompt_eval_duration_ms":1250,"eval_count":716,"eval_duration_ms":19983,"load_duration_ms":44,"total_duration_ms":21379}
+{"ts":"2026-05-23T21:48:12.755Z","type":"tool_call","name":"list_vault","args":{"directory":"/handbook/spells"}}
+{"ts":"2026-05-23T21:48:12.756Z","type":"tool_result","name":"list_vault","ok":true,"bytes":43}
+{"ts":"2026-05-23T21:48:12.756Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":10}
+{"ts":"2026-05-23T21:48:22.629Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":3319,"prompt_eval_duration_ms":2673,"eval_count":249,"eval_duration_ms":7117,"load_duration_ms":42,"total_duration_ms":9871}
+{"ts":"2026-05-23T21:48:22.630Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/cure-wounds.md"}}
+{"ts":"2026-05-23T21:48:22.630Z","type":"tool_result","name":"read_vault","ok":true,"bytes":488}
+{"ts":"2026-05-23T21:48:22.630Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":12}
+{"ts":"2026-05-23T21:48:34.589Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":3712,"prompt_eval_duration_ms":1517,"eval_count":357,"eval_duration_ms":10344,"load_duration_ms":41,"total_duration_ms":11956}
+{"ts":"2026-05-23T21:48:34.589Z","type":"tool_call","name":"end_turn","args":{"response":"Casting Cure Wounds with a +3 spellcasting modifier heals **4 to 11 hit points** (1d8 + 3). The healing range is calculated as the minimum (1 + 3 = 4) and maximum (8 + 3 = 11) of the d8 roll plus your modifier."}}
+{"ts":"2026-05-23T21:48:34.590Z","type":"end_turn","reason":"end_turn_tool","response_preview":"Casting Cure Wounds with a +3 spellcasting modifier heals **4 to 11 hit points** (1d8 + 3). The healing range is calculated as the minimum (1 + 3 = 4) and maximum (8 + 3 = 11) of the d8 roll plus your"}
+{"ts":"2026-05-23T21:48:34.590Z","type":"summary","duration_ms":85834,"event_counts":{"turn_start":1,"ollama_request":6,"ollama_response":6,"tool_call":6,"tool_result":5,"end_turn":1},"tool_calls":[{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"list_vault","ok":true},{"name":"read_vault","ok":true},{"name":"end_turn","ok":true}],"total_prompt_eval_ms":9839,"total_eval_ms":75326,"total_prompt_tokens":14404,"total_eval_tokens":2757,"trace_length":6,"compliance_strict":false,"compliance_lenient":true}

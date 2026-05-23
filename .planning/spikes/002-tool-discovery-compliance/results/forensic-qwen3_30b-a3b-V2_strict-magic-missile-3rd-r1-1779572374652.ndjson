@@ -1,0 +1,22 @@
+{"ts":"2026-05-23T21:39:34.652Z","type":"turn_start","model":"qwen3:30b-a3b","strength":"V2_strict","scenario":"magic-missile-3rd","repetition":1,"query":"How many darts does Magic Missile create when cast at 3rd level?"}
+{"ts":"2026-05-23T21:39:34.652Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":2}
+{"ts":"2026-05-23T21:40:09.925Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":808,"prompt_eval_duration_ms":26,"eval_count":1338,"eval_duration_ms":35020,"load_duration_ms":41,"total_duration_ms":35270}
+{"ts":"2026-05-23T21:40:09.925Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/index.md"}}
+{"ts":"2026-05-23T21:40:09.925Z","type":"tool_result","name":"read_vault","ok":true,"bytes":332}
+{"ts":"2026-05-23T21:40:09.925Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":4}
+{"ts":"2026-05-23T21:40:19.630Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":2246,"prompt_eval_duration_ms":4363,"eval_count":195,"eval_duration_ms":5268,"load_duration_ms":40,"total_duration_ms":9701}
+{"ts":"2026-05-23T21:40:19.630Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/read_vault.md"}}
+{"ts":"2026-05-23T21:40:19.631Z","type":"tool_result","name":"read_vault","ok":true,"bytes":690}
+{"ts":"2026-05-23T21:40:19.631Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":6}
+{"ts":"2026-05-23T21:40:30.387Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":2633,"prompt_eval_duration_ms":1357,"eval_count":339,"eval_duration_ms":9307,"load_duration_ms":40,"total_duration_ms":10754}
+{"ts":"2026-05-23T21:40:30.388Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/magic_missile.md"}}
+{"ts":"2026-05-23T21:40:30.388Z","type":"tool_result","name":"read_vault","ok":false,"bytes":58}
+{"ts":"2026-05-23T21:40:30.388Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":8}
+{"ts":"2026-05-23T21:40:47.302Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":3002,"prompt_eval_duration_ms":1368,"eval_count":548,"eval_duration_ms":15423,"load_duration_ms":41,"total_duration_ms":16911}
+{"ts":"2026-05-23T21:40:47.303Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/magic-missile.md"}}
+{"ts":"2026-05-23T21:40:47.303Z","type":"tool_result","name":"read_vault","ok":true,"bytes":587}
+{"ts":"2026-05-23T21:40:47.303Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":10}
+{"ts":"2026-05-23T21:41:00.648Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":3715,"prompt_eval_duration_ms":2728,"eval_count":365,"eval_duration_ms":10518,"load_duration_ms":42,"total_duration_ms":13342}
+{"ts":"2026-05-23T21:41:00.649Z","type":"tool_call","name":"end_turn","args":{"response":"Magic Missile creates **5 darts** when cast using a 3rd-level spell slot. The base spell creates 3 darts at 1st level, and each additional level (up to 3rd) adds one more dart per slot level above 1st."}}
+{"ts":"2026-05-23T21:41:00.649Z","type":"end_turn","reason":"end_turn_tool","response_preview":"Magic Missile creates **5 darts** when cast using a 3rd-level spell slot. The base spell creates 3 darts at 1st level, and each additional level (up to 3rd) adds one more dart per slot level above 1st"}
+{"ts":"2026-05-23T21:41:00.649Z","type":"summary","duration_ms":85997,"event_counts":{"turn_start":1,"ollama_request":5,"ollama_response":5,"tool_call":5,"tool_result":4,"end_turn":1},"tool_calls":[{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"end_turn","ok":true}],"total_prompt_eval_ms":9842,"total_eval_ms":75536,"total_prompt_tokens":12404,"total_eval_tokens":2785,"trace_length":5,"compliance_strict":false,"compliance_lenient":true}

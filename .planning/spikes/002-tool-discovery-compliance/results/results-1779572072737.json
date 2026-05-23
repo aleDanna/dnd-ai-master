@@ -1,0 +1,662 @@
+[
+  {
+    "scenario": "fireball-5th",
+    "model": "qwen3:30b-a3b-instruct-2507-q4_K_M",
+    "strength": "V2_strict",
+    "repetition": 0,
+    "trace": [
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/index.md"
+        },
+        "index": 0
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/read_vault.md"
+        },
+        "index": 1
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/handbook/spells/fireball.md"
+        },
+        "index": 2
+      }
+    ],
+    "finished": "no_tool_calls",
+    "wall_clock_ms": 19601,
+    "prompt_tokens_total": 4260,
+    "eval_tokens_total": 164,
+    "prompt_eval_ms_total": 4328,
+    "eval_ms_total": 4143,
+    "load_duration_ms_first": 0,
+    "compliance_strict": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        }
+      ]
+    },
+    "compliance_lenient": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "fireball-5th",
+    "model": "qwen3:30b-a3b-instruct-2507-q4_K_M",
+    "strength": "V2_strict",
+    "repetition": 1,
+    "trace": [
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/index.md"
+        },
+        "index": 0
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/read_vault.md"
+        },
+        "index": 1
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/handbook/spells/fireball.md"
+        },
+        "index": 2
+      }
+    ],
+    "finished": "no_tool_calls",
+    "wall_clock_ms": 6500,
+    "prompt_tokens_total": 4260,
+    "eval_tokens_total": 164,
+    "prompt_eval_ms_total": 2142,
+    "eval_ms_total": 4147,
+    "load_duration_ms_first": 0,
+    "compliance_strict": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        }
+      ]
+    },
+    "compliance_lenient": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "magic-missile-3rd",
+    "model": "qwen3:30b-a3b-instruct-2507-q4_K_M",
+    "strength": "V2_strict",
+    "repetition": 0,
+    "trace": [
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/index.md"
+        },
+        "index": 0
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/read_vault.md"
+        },
+        "index": 1
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/handbook/spells/magic_missile.md"
+        },
+        "index": 2
+      },
+      {
+        "name": "list_vault",
+        "args": {
+          "directory": "/handbook/spells"
+        },
+        "index": 3
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/handbook/spells/magic-missile.md"
+        },
+        "index": 4
+      }
+    ],
+    "finished": "no_tool_calls",
+    "wall_clock_ms": 7542,
+    "prompt_tokens_total": 6772,
+    "eval_tokens_total": 168,
+    "prompt_eval_ms_total": 3048,
+    "eval_ms_total": 4192,
+    "load_duration_ms_first": 0,
+    "compliance_strict": {
+      "passed": false,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "list_vault",
+          "pre_read": false
+        }
+      ]
+    },
+    "compliance_lenient": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "list_vault",
+          "pre_read": true
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "magic-missile-3rd",
+    "model": "qwen3:30b-a3b-instruct-2507-q4_K_M",
+    "strength": "V2_strict",
+    "repetition": 1,
+    "trace": [
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/index.md"
+        },
+        "index": 0
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/read_vault.md"
+        },
+        "index": 1
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/handbook/spells/magic_missile.md"
+        },
+        "index": 2
+      },
+      {
+        "name": "list_vault",
+        "args": {
+          "directory": "/handbook/spells"
+        },
+        "index": 3
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/handbook/spells/magic-missile.md"
+        },
+        "index": 4
+      }
+    ],
+    "finished": "no_tool_calls",
+    "wall_clock_ms": 7442,
+    "prompt_tokens_total": 6772,
+    "eval_tokens_total": 170,
+    "prompt_eval_ms_total": 2869,
+    "eval_ms_total": 4268,
+    "load_duration_ms_first": 0,
+    "compliance_strict": {
+      "passed": false,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "list_vault",
+          "pre_read": false
+        }
+      ]
+    },
+    "compliance_lenient": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "list_vault",
+          "pre_read": true
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "aragorn-level",
+    "model": "qwen3:30b-a3b-instruct-2507-q4_K_M",
+    "strength": "V2_strict",
+    "repetition": 0,
+    "trace": [
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/index.md"
+        },
+        "index": 0
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/read_vault.md"
+        },
+        "index": 1
+      }
+    ],
+    "finished": "no_tool_calls",
+    "wall_clock_ms": 5671,
+    "prompt_tokens_total": 2850,
+    "eval_tokens_total": 160,
+    "prompt_eval_ms_total": 1462,
+    "eval_ms_total": 4045,
+    "load_duration_ms_first": 0,
+    "compliance_strict": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        }
+      ]
+    },
+    "compliance_lenient": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "aragorn-level",
+    "model": "qwen3:30b-a3b-instruct-2507-q4_K_M",
+    "strength": "V2_strict",
+    "repetition": 1,
+    "trace": [
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/index.md"
+        },
+        "index": 0
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/read_vault.md"
+        },
+        "index": 1
+      }
+    ],
+    "finished": "no_tool_calls",
+    "wall_clock_ms": 4990,
+    "prompt_tokens_total": 2850,
+    "eval_tokens_total": 139,
+    "prompt_eval_ms_total": 1331,
+    "eval_ms_total": 3501,
+    "load_duration_ms_first": 0,
+    "compliance_strict": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        }
+      ]
+    },
+    "compliance_lenient": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "list-spells",
+    "model": "qwen3:30b-a3b-instruct-2507-q4_K_M",
+    "strength": "V2_strict",
+    "repetition": 0,
+    "trace": [
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/index.md"
+        },
+        "index": 0
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/list_vault.md"
+        },
+        "index": 1
+      },
+      {
+        "name": "list_vault",
+        "args": {
+          "directory": "/handbook/spells"
+        },
+        "index": 2
+      }
+    ],
+    "finished": "no_tool_calls",
+    "wall_clock_ms": 4394,
+    "prompt_tokens_total": 3989,
+    "eval_tokens_total": 98,
+    "prompt_eval_ms_total": 1786,
+    "eval_ms_total": 2409,
+    "load_duration_ms_first": 0,
+    "compliance_strict": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "list_vault",
+          "pre_read": true
+        }
+      ]
+    },
+    "compliance_lenient": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "list_vault",
+          "pre_read": true
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "list-spells",
+    "model": "qwen3:30b-a3b-instruct-2507-q4_K_M",
+    "strength": "V2_strict",
+    "repetition": 1,
+    "trace": [
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/index.md"
+        },
+        "index": 0
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/list_vault.md"
+        },
+        "index": 1
+      },
+      {
+        "name": "list_vault",
+        "args": {
+          "directory": "/handbook/spells"
+        },
+        "index": 2
+      }
+    ],
+    "finished": "no_tool_calls",
+    "wall_clock_ms": 4135,
+    "prompt_tokens_total": 3989,
+    "eval_tokens_total": 93,
+    "prompt_eval_ms_total": 1654,
+    "eval_ms_total": 2284,
+    "load_duration_ms_first": 0,
+    "compliance_strict": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "list_vault",
+          "pre_read": true
+        }
+      ]
+    },
+    "compliance_lenient": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "list_vault",
+          "pre_read": true
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "cure-wounds-on-aragorn",
+    "model": "qwen3:30b-a3b-instruct-2507-q4_K_M",
+    "strength": "V2_strict",
+    "repetition": 0,
+    "trace": [
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/index.md"
+        },
+        "index": 0
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/read_vault.md"
+        },
+        "index": 1
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/handbook/spells/cure_wounds.md"
+        },
+        "index": 2
+      },
+      {
+        "name": "list_vault",
+        "args": {
+          "directory": "/handbook/spells"
+        },
+        "index": 3
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/handbook/spells/cure-wounds.md"
+        },
+        "index": 4
+      },
+      {
+        "name": "end_turn",
+        "args": {
+          "response": "When you cast *Cure Wounds* on Aragorn with your +3 spellcasting modifier, he regains between **4 and 11 hit points**. The healing is calculated as 1d8 + 3, so the minimum recovery is 4 (1 + 3) and the maximum is 11 (8 + 3)."
+        },
+        "index": 5
+      }
+    ],
+    "finished": "end_turn_tool",
+    "wall_clock_ms": 12775,
+    "prompt_tokens_total": 6810,
+    "eval_tokens_total": 360,
+    "prompt_eval_ms_total": 3146,
+    "eval_ms_total": 9297,
+    "load_duration_ms_first": 0,
+    "compliance_strict": {
+      "passed": false,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "list_vault",
+          "pre_read": false
+        },
+        {
+          "tool": "end_turn",
+          "pre_read": false
+        }
+      ]
+    },
+    "compliance_lenient": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "list_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "end_turn",
+          "pre_read": true
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "cure-wounds-on-aragorn",
+    "model": "qwen3:30b-a3b-instruct-2507-q4_K_M",
+    "strength": "V2_strict",
+    "repetition": 1,
+    "trace": [
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/index.md"
+        },
+        "index": 0
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/read_vault.md"
+        },
+        "index": 1
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/handbook/spells/cure_wounds.md"
+        },
+        "index": 2
+      },
+      {
+        "name": "list_vault",
+        "args": {
+          "directory": "/handbook/spells"
+        },
+        "index": 3
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/handbook/spells/cure-wounds.md"
+        },
+        "index": 4
+      },
+      {
+        "name": "end_turn",
+        "args": {
+          "response": "When you cast *Cure Wounds* on Aragorn with a +3 spellcasting modifier, he regains between 4 and 11 hit points. The healing is calculated as 1d8 + 3, so the minimum is 4 (1 + 3) and the maximum is 11 (8 + 3)."
+        },
+        "index": 5
+      }
+    ],
+    "finished": "end_turn_tool",
+    "wall_clock_ms": 13479,
+    "prompt_tokens_total": 6810,
+    "eval_tokens_total": 397,
+    "prompt_eval_ms_total": 2861,
+    "eval_ms_total": 10273,
+    "load_duration_ms_first": 0,
+    "compliance_strict": {
+      "passed": false,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "list_vault",
+          "pre_read": false
+        },
+        {
+          "tool": "end_turn",
+          "pre_read": false
+        }
+      ]
+    },
+    "compliance_lenient": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "list_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "end_turn",
+          "pre_read": true
+        }
+      ]
+    }
+  }
+]

@@ -1,0 +1,16 @@
+{"ts":"2026-05-23T21:30:53.526Z","type":"turn_start","model":"mistral-small3.2:24b","strength":"V2_strict","scenario":"aragorn-level","repetition":0,"query":"What level is Aragorn?"}
+{"ts":"2026-05-23T21:30:53.526Z","type":"ollama_request","model":"mistral-small3.2:24b","message_count":2}
+{"ts":"2026-05-23T21:31:05.963Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":4,"prompt_eval_count":755,"prompt_eval_duration_ms":3365,"eval_count":67,"eval_duration_ms":8997,"load_duration_ms":60,"total_duration_ms":12434}
+{"ts":"2026-05-23T21:31:05.963Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/index.md"}}
+{"ts":"2026-05-23T21:31:05.964Z","type":"tool_result","name":"read_vault","ok":true,"bytes":332}
+{"ts":"2026-05-23T21:31:05.964Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/read_vault.md"}}
+{"ts":"2026-05-23T21:31:05.964Z","type":"tool_result","name":"read_vault","ok":true,"bytes":690}
+{"ts":"2026-05-23T21:31:05.964Z","type":"tool_call","name":"read_vault","args":{"path":"/campaigns/test/characters/Aragorn.md"}}
+{"ts":"2026-05-23T21:31:05.965Z","type":"tool_result","name":"read_vault","ok":true,"bytes":335}
+{"ts":"2026-05-23T21:31:05.965Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/end_turn.md"}}
+{"ts":"2026-05-23T21:31:05.965Z","type":"tool_result","name":"read_vault","ok":true,"bytes":581}
+{"ts":"2026-05-23T21:31:05.965Z","type":"ollama_request","model":"mistral-small3.2:24b","message_count":7}
+{"ts":"2026-05-23T21:31:18.872Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1211,"prompt_eval_duration_ms":9950,"eval_count":22,"eval_duration_ms":2877,"load_duration_ms":60,"total_duration_ms":12904}
+{"ts":"2026-05-23T21:31:18.872Z","type":"tool_call","name":"end_turn","args":{"response":"Aragorn is a 5th-level Ranger."}}
+{"ts":"2026-05-23T21:31:18.873Z","type":"end_turn","reason":"end_turn_tool","response_preview":"Aragorn is a 5th-level Ranger."}
+{"ts":"2026-05-23T21:31:18.873Z","type":"summary","duration_ms":25347,"event_counts":{"turn_start":1,"ollama_request":2,"ollama_response":2,"tool_call":5,"tool_result":4,"end_turn":1},"tool_calls":[{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"end_turn","ok":true}],"total_prompt_eval_ms":13315,"total_eval_ms":11874,"total_prompt_tokens":1966,"total_eval_tokens":89,"trace_length":5,"compliance_strict":true,"compliance_lenient":true}

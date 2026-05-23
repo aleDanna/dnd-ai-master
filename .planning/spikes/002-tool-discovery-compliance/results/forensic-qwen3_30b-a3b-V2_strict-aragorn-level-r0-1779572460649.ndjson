@@ -1,0 +1,26 @@
+{"ts":"2026-05-23T21:41:00.649Z","type":"turn_start","model":"qwen3:30b-a3b","strength":"V2_strict","scenario":"aragorn-level","repetition":0,"query":"What level is Aragorn?"}
+{"ts":"2026-05-23T21:41:00.650Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":2}
+{"ts":"2026-05-23T21:41:22.709Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":799,"prompt_eval_duration_ms":174,"eval_count":841,"eval_duration_ms":21726,"load_duration_ms":40,"total_duration_ms":22055}
+{"ts":"2026-05-23T21:41:22.709Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/index.md"}}
+{"ts":"2026-05-23T21:41:22.709Z","type":"tool_result","name":"read_vault","ok":true,"bytes":332}
+{"ts":"2026-05-23T21:41:22.709Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":4}
+{"ts":"2026-05-23T21:41:33.024Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1740,"prompt_eval_duration_ms":2770,"eval_count":280,"eval_duration_ms":7459,"load_duration_ms":42,"total_duration_ms":10312}
+{"ts":"2026-05-23T21:41:33.024Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/list_vault.md"}}
+{"ts":"2026-05-23T21:41:33.025Z","type":"tool_result","name":"read_vault","ok":true,"bytes":570}
+{"ts":"2026-05-23T21:41:33.025Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":6}
+{"ts":"2026-05-23T21:41:43.030Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":2186,"prompt_eval_duration_ms":1438,"eval_count":314,"eval_duration_ms":8475,"load_duration_ms":42,"total_duration_ms":10002}
+{"ts":"2026-05-23T21:41:43.030Z","type":"tool_call","name":"list_vault","args":{"directory":"/campaigns/test/characters/"}}
+{"ts":"2026-05-23T21:41:43.031Z","type":"tool_result","name":"list_vault","ok":true,"bytes":10}
+{"ts":"2026-05-23T21:41:43.031Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":8}
+{"ts":"2026-05-23T21:42:09.064Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":2517,"prompt_eval_duration_ms":1179,"eval_count":889,"eval_duration_ms":24688,"load_duration_ms":41,"total_duration_ms":26034}
+{"ts":"2026-05-23T21:42:09.064Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/read_vault.md"}}
+{"ts":"2026-05-23T21:42:09.064Z","type":"tool_result","name":"read_vault","ok":true,"bytes":690}
+{"ts":"2026-05-23T21:42:09.065Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":10}
+{"ts":"2026-05-23T21:42:20.357Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":3598,"prompt_eval_duration_ms":3933,"eval_count":252,"eval_duration_ms":7275,"load_duration_ms":41,"total_duration_ms":11291}
+{"ts":"2026-05-23T21:42:20.357Z","type":"tool_call","name":"read_vault","args":{"path":"/campaigns/test/characters/aragorn.md"}}
+{"ts":"2026-05-23T21:42:20.359Z","type":"tool_result","name":"read_vault","ok":true,"bytes":335}
+{"ts":"2026-05-23T21:42:20.359Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":12}
+{"ts":"2026-05-23T21:42:29.252Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":3990,"prompt_eval_duration_ms":1533,"eval_count":248,"eval_duration_ms":7270,"load_duration_ms":46,"total_duration_ms":8890}
+{"ts":"2026-05-23T21:42:29.252Z","type":"tool_call","name":"end_turn","args":{"response":"Aragorn is a 5th-level Ranger."}}
+{"ts":"2026-05-23T21:42:29.253Z","type":"end_turn","reason":"end_turn_tool","response_preview":"Aragorn is a 5th-level Ranger."}
+{"ts":"2026-05-23T21:42:29.253Z","type":"summary","duration_ms":88604,"event_counts":{"turn_start":1,"ollama_request":6,"ollama_response":6,"tool_call":6,"tool_result":5,"end_turn":1},"tool_calls":[{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"list_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"end_turn","ok":true}],"total_prompt_eval_ms":11027,"total_eval_ms":76893,"total_prompt_tokens":14830,"total_eval_tokens":2824,"trace_length":6,"compliance_strict":false,"compliance_lenient":true}

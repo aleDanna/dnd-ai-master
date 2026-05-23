@@ -1,0 +1,17 @@
+{"ts":"2026-05-23T21:33:25.800Z","type":"turn_start","model":"qwen3:30b-a3b-instruct-2507-q4_K_M","strength":"V2_strict","scenario":"fireball-5th","repetition":1,"query":"How much damage does a Fireball do when cast with a 5th-level spell slot?"}
+{"ts":"2026-05-23T21:33:25.800Z","type":"ollama_request","model":"qwen3:30b-a3b-instruct-2507-q4_K_M","message_count":2}
+{"ts":"2026-05-23T21:33:26.435Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":809,"prompt_eval_duration_ms":26,"eval_count":23,"eval_duration_ms":561,"load_duration_ms":41,"total_duration_ms":633}
+{"ts":"2026-05-23T21:33:26.436Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/index.md"}}
+{"ts":"2026-05-23T21:33:26.436Z","type":"tool_result","name":"read_vault","ok":true,"bytes":332}
+{"ts":"2026-05-23T21:33:26.436Z","type":"ollama_request","model":"qwen3:30b-a3b-instruct-2507-q4_K_M","message_count":4}
+{"ts":"2026-05-23T21:33:27.611Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":931,"prompt_eval_duration_ms":539,"eval_count":24,"eval_duration_ms":587,"load_duration_ms":41,"total_duration_ms":1173}
+{"ts":"2026-05-23T21:33:27.611Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/read_vault.md"}}
+{"ts":"2026-05-23T21:33:27.612Z","type":"tool_result","name":"read_vault","ok":true,"bytes":690}
+{"ts":"2026-05-23T21:33:27.612Z","type":"ollama_request","model":"qwen3:30b-a3b-instruct-2507-q4_K_M","message_count":6}
+{"ts":"2026-05-23T21:33:29.057Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1146,"prompt_eval_duration_ms":749,"eval_count":26,"eval_duration_ms":645,"load_duration_ms":41,"total_duration_ms":1442}
+{"ts":"2026-05-23T21:33:29.057Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/fireball.md"}}
+{"ts":"2026-05-23T21:33:29.057Z","type":"tool_result","name":"read_vault","ok":true,"bytes":764}
+{"ts":"2026-05-23T21:33:29.058Z","type":"ollama_request","model":"qwen3:30b-a3b-instruct-2507-q4_K_M","message_count":8}
+{"ts":"2026-05-23T21:33:32.299Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":false,"tool_call_count":0,"prompt_eval_count":1374,"prompt_eval_duration_ms":828,"eval_count":91,"eval_duration_ms":2354,"load_duration_ms":42,"total_duration_ms":3239}
+{"ts":"2026-05-23T21:33:32.300Z","type":"end_turn","reason":"no_tool_calls","content_preview":"When you cast *Fireball* using a 5th-level spell slot, the damage increases by 1d6 for each slot level above 3rd. Since a 5th-level slot is two levels above 3rd, the damage becomes **8d6 + 2d6**, or *"}
+{"ts":"2026-05-23T21:33:32.300Z","type":"summary","duration_ms":6500,"event_counts":{"turn_start":1,"ollama_request":4,"ollama_response":4,"tool_call":3,"tool_result":3,"end_turn":1},"tool_calls":[{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true}],"total_prompt_eval_ms":2142,"total_eval_ms":4147,"total_prompt_tokens":4260,"total_eval_tokens":164,"trace_length":3,"compliance_strict":true,"compliance_lenient":true}

@@ -1,0 +1,26 @@
+{"ts":"2026-05-23T21:35:20.029Z","type":"turn_start","model":"qwen3:30b-a3b-instruct-2507","strength":"V2_strict","scenario":"cure-wounds-on-aragorn","repetition":0,"query":"If I cast Cure Wounds on Aragorn with my +3 spellcasting modifier, what range of HP does he recover?"}
+{"ts":"2026-05-23T21:35:20.029Z","type":"ollama_request","model":"qwen3:30b-a3b-instruct-2507","message_count":2}
+{"ts":"2026-05-23T21:35:20.954Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":816,"prompt_eval_duration_ms":317,"eval_count":23,"eval_duration_ms":559,"load_duration_ms":42,"total_duration_ms":923}
+{"ts":"2026-05-23T21:35:20.954Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/index.md"}}
+{"ts":"2026-05-23T21:35:20.955Z","type":"tool_result","name":"read_vault","ok":true,"bytes":332}
+{"ts":"2026-05-23T21:35:20.955Z","type":"ollama_request","model":"qwen3:30b-a3b-instruct-2507","message_count":4}
+{"ts":"2026-05-23T21:35:22.153Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":938,"prompt_eval_duration_ms":558,"eval_count":24,"eval_duration_ms":591,"load_duration_ms":42,"total_duration_ms":1196}
+{"ts":"2026-05-23T21:35:22.153Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/read_vault.md"}}
+{"ts":"2026-05-23T21:35:22.154Z","type":"tool_result","name":"read_vault","ok":true,"bytes":690}
+{"ts":"2026-05-23T21:35:22.154Z","type":"ollama_request","model":"qwen3:30b-a3b-instruct-2507","message_count":6}
+{"ts":"2026-05-23T21:35:23.692Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1153,"prompt_eval_duration_ms":777,"eval_count":28,"eval_duration_ms":711,"load_duration_ms":42,"total_duration_ms":1537}
+{"ts":"2026-05-23T21:35:23.693Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/cure_wounds.md"}}
+{"ts":"2026-05-23T21:35:23.693Z","type":"tool_result","name":"read_vault","ok":false,"bytes":56}
+{"ts":"2026-05-23T21:35:23.693Z","type":"ollama_request","model":"qwen3:30b-a3b-instruct-2507","message_count":8}
+{"ts":"2026-05-23T21:35:24.766Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1210,"prompt_eval_duration_ms":411,"eval_count":24,"eval_duration_ms":610,"load_duration_ms":43,"total_duration_ms":1071}
+{"ts":"2026-05-23T21:35:24.767Z","type":"tool_call","name":"list_vault","args":{"directory":"/handbook/spells"}}
+{"ts":"2026-05-23T21:35:24.767Z","type":"tool_result","name":"list_vault","ok":true,"bytes":43}
+{"ts":"2026-05-23T21:35:24.767Z","type":"ollama_request","model":"qwen3:30b-a3b-instruct-2507","message_count":10}
+{"ts":"2026-05-23T21:35:25.903Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1261,"prompt_eval_duration_ms":380,"eval_count":28,"eval_duration_ms":704,"load_duration_ms":43,"total_duration_ms":1134}
+{"ts":"2026-05-23T21:35:25.903Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/cure-wounds.md"}}
+{"ts":"2026-05-23T21:35:25.905Z","type":"tool_result","name":"read_vault","ok":true,"bytes":488}
+{"ts":"2026-05-23T21:35:25.905Z","type":"ollama_request","model":"qwen3:30b-a3b-instruct-2507","message_count":12}
+{"ts":"2026-05-23T21:35:33.207Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1432,"prompt_eval_duration_ms":744,"eval_count":247,"eval_duration_ms":6479,"load_duration_ms":42,"total_duration_ms":7300}
+{"ts":"2026-05-23T21:35:33.207Z","type":"tool_call","name":"end_turn","args":{"response":"Aragorn regains 4 to 11 hit points when you cast *Cure Wounds* with your +3 spellcasting ability modifier. The healing is determined by rolling 1d8 and adding your +3 modifier, resulting in a range of 4 to 11 hit points."}}
+{"ts":"2026-05-23T21:35:33.208Z","type":"end_turn","reason":"end_turn_tool","response_preview":"Aragorn regains 4 to 11 hit points when you cast *Cure Wounds* with your +3 spellcasting ability modifier. The healing is determined by rolling 1d8 and adding your +3 modifier, resulting in a range of"}
+{"ts":"2026-05-23T21:35:33.208Z","type":"summary","duration_ms":13179,"event_counts":{"turn_start":1,"ollama_request":6,"ollama_response":6,"tool_call":6,"tool_result":5,"end_turn":1},"tool_calls":[{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"list_vault","ok":true},{"name":"read_vault","ok":true},{"name":"end_turn","ok":true}],"total_prompt_eval_ms":3187,"total_eval_ms":9654,"total_prompt_tokens":6810,"total_eval_tokens":374,"trace_length":6,"compliance_strict":false,"compliance_lenient":true}

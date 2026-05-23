@@ -1,0 +1,18 @@
+{"ts":"2026-05-23T21:44:54.400Z","type":"turn_start","model":"qwen3:30b-a3b","strength":"V2_strict","scenario":"list-spells","repetition":1,"query":"List every spell available in the handbook."}
+{"ts":"2026-05-23T21:44:54.400Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":2}
+{"ts":"2026-05-23T21:45:09.191Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":800,"prompt_eval_duration_ms":26,"eval_count":570,"eval_duration_ms":14640,"load_duration_ms":41,"total_duration_ms":14787}
+{"ts":"2026-05-23T21:45:09.191Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/index.md"}}
+{"ts":"2026-05-23T21:45:09.192Z","type":"tool_result","name":"read_vault","ok":true,"bytes":332}
+{"ts":"2026-05-23T21:45:09.192Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":4}
+{"ts":"2026-05-23T21:45:17.149Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1470,"prompt_eval_duration_ms":2097,"eval_count":219,"eval_duration_ms":5784,"load_duration_ms":42,"total_duration_ms":7954}
+{"ts":"2026-05-23T21:45:17.149Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/list_vault.md"}}
+{"ts":"2026-05-23T21:45:17.150Z","type":"tool_result","name":"read_vault","ok":true,"bytes":570}
+{"ts":"2026-05-23T21:45:17.150Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":6}
+{"ts":"2026-05-23T21:45:29.176Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1856,"prompt_eval_duration_ms":1263,"eval_count":392,"eval_duration_ms":10661,"load_duration_ms":42,"total_duration_ms":12022}
+{"ts":"2026-05-23T21:45:29.176Z","type":"tool_call","name":"list_vault","args":{"directory":"/handbook/spells"}}
+{"ts":"2026-05-23T21:45:29.177Z","type":"tool_result","name":"list_vault","ok":true,"bytes":43}
+{"ts":"2026-05-23T21:45:29.177Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":8}
+{"ts":"2026-05-23T21:45:40.057Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":2276,"prompt_eval_duration_ms":1389,"eval_count":343,"eval_duration_ms":9395,"load_duration_ms":42,"total_duration_ms":10878}
+{"ts":"2026-05-23T21:45:40.057Z","type":"tool_call","name":"end_turn","args":{"response":"Available spells:\n\n- Cure Wounds\n- Fireball\n- Magic Missile"}}
+{"ts":"2026-05-23T21:45:40.058Z","type":"end_turn","reason":"end_turn_tool","response_preview":"Available spells:\n\n- Cure Wounds\n- Fireball\n- Magic Missile"}
+{"ts":"2026-05-23T21:45:40.058Z","type":"summary","duration_ms":45658,"event_counts":{"turn_start":1,"ollama_request":4,"ollama_response":4,"tool_call":4,"tool_result":3,"end_turn":1},"tool_calls":[{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"list_vault","ok":true},{"name":"end_turn","ok":true}],"total_prompt_eval_ms":4775,"total_eval_ms":40480,"total_prompt_tokens":6402,"total_eval_tokens":1524,"trace_length":4,"compliance_strict":false,"compliance_lenient":true}

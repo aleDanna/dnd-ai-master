@@ -1,0 +1,638 @@
+[
+  {
+    "scenario": "fireball-5th",
+    "model": "mistral-small3.2:24b",
+    "strength": "V2_strict",
+    "repetition": 0,
+    "trace": [
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/index.md"
+        },
+        "index": 0
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/read_vault.md"
+        },
+        "index": 1
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/handbook/spells/fireball.md"
+        },
+        "index": 2
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/end_turn.md"
+        },
+        "index": 3
+      },
+      {
+        "name": "end_turn",
+        "args": {
+          "response": "When cast with a 5th-level spell slot, Fireball deals **10d6** fire damage (8d6 base + 2d6 for upcasting)."
+        },
+        "index": 4
+      }
+    ],
+    "finished": "end_turn_tool",
+    "wall_clock_ms": 30095,
+    "prompt_tokens_total": 3161,
+    "eval_tokens_total": 113,
+    "prompt_eval_ms_total": 14693,
+    "eval_ms_total": 15110,
+    "load_duration_ms_first": 0,
+    "compliance_strict": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "end_turn",
+          "pre_read": true
+        }
+      ]
+    },
+    "compliance_lenient": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "end_turn",
+          "pre_read": true
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "fireball-5th",
+    "model": "mistral-small3.2:24b",
+    "strength": "V2_strict",
+    "repetition": 1,
+    "trace": [
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/index.md"
+        },
+        "index": 0
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/read_vault.md"
+        },
+        "index": 1
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/handbook/spells/fireball.md"
+        },
+        "index": 2
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/end_turn.md"
+        },
+        "index": 3
+      },
+      {
+        "name": "end_turn",
+        "args": {
+          "response": "Fireball at 5th-level slot deals 10d6 fire damage (8d6 base + 2d6 for slot upcasting)."
+        },
+        "index": 4
+      }
+    ],
+    "finished": "end_turn_tool",
+    "wall_clock_ms": 29477,
+    "prompt_tokens_total": 3161,
+    "eval_tokens_total": 108,
+    "prompt_eval_ms_total": 14804,
+    "eval_ms_total": 14436,
+    "load_duration_ms_first": 0,
+    "compliance_strict": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "end_turn",
+          "pre_read": true
+        }
+      ]
+    },
+    "compliance_lenient": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "end_turn",
+          "pre_read": true
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "magic-missile-3rd",
+    "model": "mistral-small3.2:24b",
+    "strength": "V2_strict",
+    "repetition": 0,
+    "trace": [
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/index.md"
+        },
+        "index": 0
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/read_vault.md"
+        },
+        "index": 1
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/handbook/spells/magic_missile.md"
+        },
+        "index": 2
+      }
+    ],
+    "finished": "no_tool_calls",
+    "wall_clock_ms": 19878,
+    "prompt_tokens_total": 1698,
+    "eval_tokens_total": 80,
+    "prompt_eval_ms_total": 9088,
+    "eval_ms_total": 10635,
+    "load_duration_ms_first": 0,
+    "compliance_strict": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        }
+      ]
+    },
+    "compliance_lenient": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "magic-missile-3rd",
+    "model": "mistral-small3.2:24b",
+    "strength": "V2_strict",
+    "repetition": 1,
+    "trace": [
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/index.md"
+        },
+        "index": 0
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/read_vault.md"
+        },
+        "index": 1
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/handbook/spells/magic-missile.md"
+        },
+        "index": 2
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/end_turn.md"
+        },
+        "index": 3
+      },
+      {
+        "name": "end_turn",
+        "args": {
+          "response": "At 3rd level, Magic Missile creates **five darts** (three base + two from upcasting)."
+        },
+        "index": 4
+      }
+    ],
+    "finished": "end_turn_tool",
+    "wall_clock_ms": 27858,
+    "prompt_tokens_total": 3078,
+    "eval_tokens_total": 102,
+    "prompt_eval_ms_total": 14039,
+    "eval_ms_total": 13585,
+    "load_duration_ms_first": 0,
+    "compliance_strict": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "end_turn",
+          "pre_read": true
+        }
+      ]
+    },
+    "compliance_lenient": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "end_turn",
+          "pre_read": true
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "aragorn-level",
+    "model": "mistral-small3.2:24b",
+    "strength": "V2_strict",
+    "repetition": 0,
+    "trace": [
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/index.md"
+        },
+        "index": 0
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/read_vault.md"
+        },
+        "index": 1
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/campaigns/test/characters/Aragorn.md"
+        },
+        "index": 2
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/end_turn.md"
+        },
+        "index": 3
+      },
+      {
+        "name": "end_turn",
+        "args": {
+          "response": "Aragorn is a 5th-level Ranger."
+        },
+        "index": 4
+      }
+    ],
+    "finished": "end_turn_tool",
+    "wall_clock_ms": 25347,
+    "prompt_tokens_total": 1966,
+    "eval_tokens_total": 89,
+    "prompt_eval_ms_total": 13315,
+    "eval_ms_total": 11874,
+    "load_duration_ms_first": 0,
+    "compliance_strict": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "end_turn",
+          "pre_read": true
+        }
+      ]
+    },
+    "compliance_lenient": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "end_turn",
+          "pre_read": true
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "aragorn-level",
+    "model": "mistral-small3.2:24b",
+    "strength": "V2_strict",
+    "repetition": 1,
+    "trace": [
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/index.md"
+        },
+        "index": 0
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/read_vault.md"
+        },
+        "index": 1
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/campaigns/test/characters/Aragorn.md"
+        },
+        "index": 2
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/end_turn.md"
+        },
+        "index": 3
+      },
+      {
+        "name": "end_turn",
+        "args": {
+          "response": "Aragorn is a level 5 Ranger."
+        },
+        "index": 4
+      }
+    ],
+    "finished": "end_turn_tool",
+    "wall_clock_ms": 26242,
+    "prompt_tokens_total": 4558,
+    "eval_tokens_total": 91,
+    "prompt_eval_ms_total": 14064,
+    "eval_ms_total": 11810,
+    "load_duration_ms_first": 0,
+    "compliance_strict": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "end_turn",
+          "pre_read": true
+        }
+      ]
+    },
+    "compliance_lenient": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        },
+        {
+          "tool": "end_turn",
+          "pre_read": true
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "list-spells",
+    "model": "mistral-small3.2:24b",
+    "strength": "V2_strict",
+    "repetition": 0,
+    "trace": [
+      {
+        "name": "list_vault",
+        "args": {
+          "directory": "/handbook/spells"
+        },
+        "index": 0
+      }
+    ],
+    "finished": "no_tool_calls",
+    "wall_clock_ms": 12030,
+    "prompt_tokens_total": 1360,
+    "eval_tokens_total": 57,
+    "prompt_eval_ms_total": 4401,
+    "eval_ms_total": 7491,
+    "load_duration_ms_first": 0,
+    "compliance_strict": {
+      "passed": false,
+      "details": [
+        {
+          "tool": "list_vault",
+          "pre_read": false
+        }
+      ]
+    },
+    "compliance_lenient": {
+      "passed": false,
+      "details": [
+        {
+          "tool": "list_vault",
+          "pre_read": false
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "list-spells",
+    "model": "mistral-small3.2:24b",
+    "strength": "V2_strict",
+    "repetition": 1,
+    "trace": [
+      {
+        "name": "list_vault",
+        "args": {
+          "directory": "/handbook/spells"
+        },
+        "index": 0
+      }
+    ],
+    "finished": "no_tool_calls",
+    "wall_clock_ms": 9439,
+    "prompt_tokens_total": 1360,
+    "eval_tokens_total": 38,
+    "prompt_eval_ms_total": 4395,
+    "eval_ms_total": 4907,
+    "load_duration_ms_first": 0,
+    "compliance_strict": {
+      "passed": false,
+      "details": [
+        {
+          "tool": "list_vault",
+          "pre_read": false
+        }
+      ]
+    },
+    "compliance_lenient": {
+      "passed": false,
+      "details": [
+        {
+          "tool": "list_vault",
+          "pre_read": false
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "cure-wounds-on-aragorn",
+    "model": "mistral-small3.2:24b",
+    "strength": "V2_strict",
+    "repetition": 0,
+    "trace": [
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/index.md"
+        },
+        "index": 0
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/read_vault.md"
+        },
+        "index": 1
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/handbook/spells/cure_wounds.md"
+        },
+        "index": 2
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/end_turn.md"
+        },
+        "index": 3
+      }
+    ],
+    "finished": "no_tool_calls",
+    "wall_clock_ms": 24976,
+    "prompt_tokens_total": 1892,
+    "eval_tokens_total": 96,
+    "prompt_eval_ms_total": 11921,
+    "eval_ms_total": 12899,
+    "load_duration_ms_first": 0,
+    "compliance_strict": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        }
+      ]
+    },
+    "compliance_lenient": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "cure-wounds-on-aragorn",
+    "model": "mistral-small3.2:24b",
+    "strength": "V2_strict",
+    "repetition": 1,
+    "trace": [
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/index.md"
+        },
+        "index": 0
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/read_vault.md"
+        },
+        "index": 1
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/handbook/spells/cure_wounds.md"
+        },
+        "index": 2
+      },
+      {
+        "name": "read_vault",
+        "args": {
+          "path": "/tools/end_turn.md"
+        },
+        "index": 3
+      }
+    ],
+    "finished": "no_tool_calls",
+    "wall_clock_ms": 34287,
+    "prompt_tokens_total": 1892,
+    "eval_tokens_total": 164,
+    "prompt_eval_ms_total": 11928,
+    "eval_ms_total": 22194,
+    "load_duration_ms_first": 0,
+    "compliance_strict": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        }
+      ]
+    },
+    "compliance_lenient": {
+      "passed": true,
+      "details": [
+        {
+          "tool": "read_vault",
+          "pre_read": true
+        }
+      ]
+    }
+  }
+]

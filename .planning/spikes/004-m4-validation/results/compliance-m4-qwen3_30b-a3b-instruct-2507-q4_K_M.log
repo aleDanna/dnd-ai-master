@@ -1,0 +1,18 @@
+▶ Running 10 turns (1 models × 1 strengths × 5 scenarios × 2 reps)
+
+[1/10] qwen3:30b-a3b-instruct-2507-q4_K_M V2_strict fireball-5th r0... ✓ no_tool_calls 19601ms calls=3
+[2/10] qwen3:30b-a3b-instruct-2507-q4_K_M V2_strict fireball-5th r1... ✓ no_tool_calls 6500ms calls=3
+[3/10] qwen3:30b-a3b-instruct-2507-q4_K_M V2_strict magic-missile-3rd r0... ~ no_tool_calls 7542ms calls=5
+[4/10] qwen3:30b-a3b-instruct-2507-q4_K_M V2_strict magic-missile-3rd r1... ~ no_tool_calls 7442ms calls=5
+[5/10] qwen3:30b-a3b-instruct-2507-q4_K_M V2_strict aragorn-level r0... ✓ no_tool_calls 5671ms calls=2
+[6/10] qwen3:30b-a3b-instruct-2507-q4_K_M V2_strict aragorn-level r1... ✓ no_tool_calls 4990ms calls=2
+[7/10] qwen3:30b-a3b-instruct-2507-q4_K_M V2_strict list-spells r0... ✓ no_tool_calls 4394ms calls=3
+[8/10] qwen3:30b-a3b-instruct-2507-q4_K_M V2_strict list-spells r1... ✓ no_tool_calls 4135ms calls=3
+[9/10] qwen3:30b-a3b-instruct-2507-q4_K_M V2_strict cure-wounds-on-aragorn r0... ~ end_turn_tool 12775ms calls=6
+[10/10] qwen3:30b-a3b-instruct-2507-q4_K_M V2_strict cure-wounds-on-aragorn r1... ~ end_turn_tool 13479ms calls=6
+
+────────────────────────────────────────────────────
+ COMPLIANCE RESULTS (strict | lenient)
+────────────────────────────────────────────────────
+qwen3:30b-a3b-instruct-2507-q4_K_M V2_strict    strict=6/10 (60%)  lenient=10/10 (100%)  avgWall=8653ms  avgPrompt=4936tok  finish={"no_tool_calls":8,"end_turn_tool":2}
+────────────────────────────────────────────────────

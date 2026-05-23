@@ -1,0 +1,22 @@
+{"ts":"2026-05-23T21:45:40.058Z","type":"turn_start","model":"qwen3:30b-a3b","strength":"V2_strict","scenario":"cure-wounds-on-aragorn","repetition":0,"query":"If I cast Cure Wounds on Aragorn with my +3 spellcasting modifier, what range of HP does he recover?"}
+{"ts":"2026-05-23T21:45:40.059Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":2}
+{"ts":"2026-05-23T21:46:05.301Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":818,"prompt_eval_duration_ms":368,"eval_count":951,"eval_duration_ms":24699,"load_duration_ms":42,"total_duration_ms":25239}
+{"ts":"2026-05-23T21:46:05.301Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/index.md"}}
+{"ts":"2026-05-23T21:46:05.301Z","type":"tool_result","name":"read_vault","ok":true,"bytes":332}
+{"ts":"2026-05-23T21:46:05.301Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":4}
+{"ts":"2026-05-23T21:46:16.577Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1869,"prompt_eval_duration_ms":3363,"eval_count":287,"eval_duration_ms":7828,"load_duration_ms":41,"total_duration_ms":11273}
+{"ts":"2026-05-23T21:46:16.577Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/read_vault.md"}}
+{"ts":"2026-05-23T21:46:16.578Z","type":"tool_result","name":"read_vault","ok":true,"bytes":690}
+{"ts":"2026-05-23T21:46:16.578Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":6}
+{"ts":"2026-05-23T21:46:28.367Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":2348,"prompt_eval_duration_ms":1553,"eval_count":371,"eval_duration_ms":10136,"load_duration_ms":42,"total_duration_ms":11786}
+{"ts":"2026-05-23T21:46:28.368Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/cure_wounds.md"}}
+{"ts":"2026-05-23T21:46:28.368Z","type":"tool_result","name":"read_vault","ok":false,"bytes":56}
+{"ts":"2026-05-23T21:46:28.368Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":8}
+{"ts":"2026-05-23T21:46:53.261Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":2748,"prompt_eval_duration_ms":1426,"eval_count":828,"eval_duration_ms":23303,"load_duration_ms":42,"total_duration_ms":24889}
+{"ts":"2026-05-23T21:46:53.261Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/cure-wounds.md"}}
+{"ts":"2026-05-23T21:46:53.262Z","type":"tool_result","name":"read_vault","ok":true,"bytes":488}
+{"ts":"2026-05-23T21:46:53.262Z","type":"ollama_request","model":"qwen3:30b-a3b","message_count":10}
+{"ts":"2026-05-23T21:47:08.755Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":3720,"prompt_eval_duration_ms":3437,"eval_count":409,"eval_duration_ms":11950,"load_duration_ms":41,"total_duration_ms":15489}
+{"ts":"2026-05-23T21:47:08.755Z","type":"tool_call","name":"end_turn","args":{"response":"Cure Wounds heals **4 to 11 hit points** (1d8 + 3). Aragorn regains 1d8 + 3 HP, with a minimum of 4 and maximum of 11."}}
+{"ts":"2026-05-23T21:47:08.755Z","type":"end_turn","reason":"end_turn_tool","response_preview":"Cure Wounds heals **4 to 11 hit points** (1d8 + 3). Aragorn regains 1d8 + 3 HP, with a minimum of 4 and maximum of 11."}
+{"ts":"2026-05-23T21:47:08.756Z","type":"summary","duration_ms":88697,"event_counts":{"turn_start":1,"ollama_request":5,"ollama_response":5,"tool_call":5,"tool_result":4,"end_turn":1},"tool_calls":[{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"end_turn","ok":true}],"total_prompt_eval_ms":10147,"total_eval_ms":77916,"total_prompt_tokens":11503,"total_eval_tokens":2846,"trace_length":5,"compliance_strict":false,"compliance_lenient":true}

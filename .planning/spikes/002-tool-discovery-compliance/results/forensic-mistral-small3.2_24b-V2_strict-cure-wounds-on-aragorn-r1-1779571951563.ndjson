@@ -1,0 +1,15 @@
+{"ts":"2026-05-23T21:32:31.564Z","type":"turn_start","model":"mistral-small3.2:24b","strength":"V2_strict","scenario":"cure-wounds-on-aragorn","repetition":1,"query":"If I cast Cure Wounds on Aragorn with my +3 spellcasting modifier, what range of HP does he recover?"}
+{"ts":"2026-05-23T21:32:31.564Z","type":"ollama_request","model":"mistral-small3.2:24b","message_count":2}
+{"ts":"2026-05-23T21:32:43.803Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":4,"prompt_eval_count":775,"prompt_eval_duration_ms":3387,"eval_count":65,"eval_duration_ms":8779,"load_duration_ms":57,"total_duration_ms":12236}
+{"ts":"2026-05-23T21:32:43.803Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/index.md"}}
+{"ts":"2026-05-23T21:32:43.804Z","type":"tool_result","name":"read_vault","ok":true,"bytes":332}
+{"ts":"2026-05-23T21:32:43.804Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/read_vault.md"}}
+{"ts":"2026-05-23T21:32:43.804Z","type":"tool_result","name":"read_vault","ok":true,"bytes":690}
+{"ts":"2026-05-23T21:32:43.804Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/cure_wounds.md"}}
+{"ts":"2026-05-23T21:32:43.804Z","type":"tool_result","name":"read_vault","ok":false,"bytes":56}
+{"ts":"2026-05-23T21:32:43.804Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/end_turn.md"}}
+{"ts":"2026-05-23T21:32:43.804Z","type":"tool_result","name":"read_vault","ok":true,"bytes":581}
+{"ts":"2026-05-23T21:32:43.805Z","type":"ollama_request","model":"mistral-small3.2:24b","message_count":7}
+{"ts":"2026-05-23T21:33:05.851Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":false,"tool_call_count":0,"prompt_eval_count":1117,"prompt_eval_duration_ms":8541,"eval_count":99,"eval_duration_ms":13415,"load_duration_ms":58,"total_duration_ms":22042}
+{"ts":"2026-05-23T21:33:05.851Z","type":"end_turn","reason":"no_tool_calls","content_preview":"I'm sorry, I couldn't find the details for the Cure Wounds spell. However, I can tell you that when you cast Cure Wounds with a +3 spellcasting modifier, the range of HP Aragorn can recover is typical"}
+{"ts":"2026-05-23T21:33:05.851Z","type":"summary","duration_ms":34287,"event_counts":{"turn_start":1,"ollama_request":2,"ollama_response":2,"tool_call":4,"tool_result":4,"end_turn":1},"tool_calls":[{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true}],"total_prompt_eval_ms":11928,"total_eval_ms":22194,"total_prompt_tokens":1892,"total_eval_tokens":164,"trace_length":4,"compliance_strict":true,"compliance_lenient":true}

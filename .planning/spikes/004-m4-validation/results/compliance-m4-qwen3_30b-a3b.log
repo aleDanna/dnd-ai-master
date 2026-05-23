@@ -1,0 +1,18 @@
+▶ Running 10 turns (1 models × 1 strengths × 5 scenarios × 2 reps)
+
+[1/10] qwen3:30b-a3b V2_strict fireball-5th r0... ~ end_turn_tool 55638ms calls=4
+[2/10] qwen3:30b-a3b V2_strict fireball-5th r1... ✓ no_tool_calls 54914ms calls=3
+[3/10] qwen3:30b-a3b V2_strict magic-missile-3rd r0... ~ end_turn_tool 116531ms calls=6
+[4/10] qwen3:30b-a3b V2_strict magic-missile-3rd r1... ~ end_turn_tool 85997ms calls=5
+[5/10] qwen3:30b-a3b V2_strict aragorn-level r0... ~ end_turn_tool 88603ms calls=6
+[6/10] qwen3:30b-a3b V2_strict aragorn-level r1... ~ end_turn_tool 89864ms calls=6
+[7/10] qwen3:30b-a3b V2_strict list-spells r0... ~ end_turn_tool 55281ms calls=4
+[8/10] qwen3:30b-a3b V2_strict list-spells r1... ~ end_turn_tool 45658ms calls=4
+[9/10] qwen3:30b-a3b V2_strict cure-wounds-on-aragorn r0... ~ end_turn_tool 88697ms calls=5
+[10/10] qwen3:30b-a3b V2_strict cure-wounds-on-aragorn r1... ~ end_turn_tool 85834ms calls=6
+
+────────────────────────────────────────────────────
+ COMPLIANCE RESULTS (strict | lenient)
+────────────────────────────────────────────────────
+qwen3:30b-a3b        V2_strict    strict=1/10 (10%)  lenient=10/10 (100%)  avgWall=76702ms  avgPrompt=11000tok  finish={"end_turn_tool":9,"no_tool_calls":1}
+────────────────────────────────────────────────────

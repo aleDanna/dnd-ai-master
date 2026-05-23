@@ -1,0 +1,25 @@
+{"ts":"2026-05-23T21:34:53.965Z","type":"turn_start","model":"qwen3:30b-a3b-instruct-2507","strength":"V2_strict","scenario":"magic-missile-3rd","repetition":1,"query":"How many darts does Magic Missile create when cast at 3rd level?"}
+{"ts":"2026-05-23T21:34:53.965Z","type":"ollama_request","model":"qwen3:30b-a3b-instruct-2507","message_count":2}
+{"ts":"2026-05-23T21:34:54.601Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":806,"prompt_eval_duration_ms":26,"eval_count":23,"eval_duration_ms":560,"load_duration_ms":41,"total_duration_ms":633}
+{"ts":"2026-05-23T21:34:54.601Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/index.md"}}
+{"ts":"2026-05-23T21:34:54.601Z","type":"tool_result","name":"read_vault","ok":true,"bytes":332}
+{"ts":"2026-05-23T21:34:54.601Z","type":"ollama_request","model":"qwen3:30b-a3b-instruct-2507","message_count":4}
+{"ts":"2026-05-23T21:34:55.794Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":928,"prompt_eval_duration_ms":556,"eval_count":24,"eval_duration_ms":588,"load_duration_ms":42,"total_duration_ms":1191}
+{"ts":"2026-05-23T21:34:55.795Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/read_vault.md"}}
+{"ts":"2026-05-23T21:34:55.795Z","type":"tool_result","name":"read_vault","ok":true,"bytes":690}
+{"ts":"2026-05-23T21:34:55.795Z","type":"ollama_request","model":"qwen3:30b-a3b-instruct-2507","message_count":6}
+{"ts":"2026-05-23T21:34:57.322Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1143,"prompt_eval_duration_ms":779,"eval_count":28,"eval_duration_ms":698,"load_duration_ms":42,"total_duration_ms":1526}
+{"ts":"2026-05-23T21:34:57.323Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/magic_missile.md"}}
+{"ts":"2026-05-23T21:34:57.323Z","type":"tool_result","name":"read_vault","ok":false,"bytes":58}
+{"ts":"2026-05-23T21:34:57.323Z","type":"ollama_request","model":"qwen3:30b-a3b-instruct-2507","message_count":8}
+{"ts":"2026-05-23T21:34:58.404Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1200,"prompt_eval_duration_ms":410,"eval_count":25,"eval_duration_ms":622,"load_duration_ms":41,"total_duration_ms":1079}
+{"ts":"2026-05-23T21:34:58.404Z","type":"tool_call","name":"list_vault","args":{"directory":"/handbook/spells/"}}
+{"ts":"2026-05-23T21:34:58.405Z","type":"tool_result","name":"list_vault","ok":true,"bytes":43}
+{"ts":"2026-05-23T21:34:58.405Z","type":"ollama_request","model":"qwen3:30b-a3b-instruct-2507","message_count":10}
+{"ts":"2026-05-23T21:34:59.562Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":1252,"prompt_eval_duration_ms":380,"eval_count":29,"eval_duration_ms":727,"load_duration_ms":41,"total_duration_ms":1155}
+{"ts":"2026-05-23T21:34:59.562Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/magic-missile.md"}}
+{"ts":"2026-05-23T21:34:59.562Z","type":"tool_result","name":"read_vault","ok":true,"bytes":587}
+{"ts":"2026-05-23T21:34:59.562Z","type":"ollama_request","model":"qwen3:30b-a3b-instruct-2507","message_count":12}
+{"ts":"2026-05-23T21:35:01.747Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":false,"tool_call_count":0,"prompt_eval_count":1445,"prompt_eval_duration_ms":790,"eval_count":52,"eval_duration_ms":1341,"load_duration_ms":42,"total_duration_ms":2183}
+{"ts":"2026-05-23T21:35:01.748Z","type":"end_turn","reason":"no_tool_calls","content_preview":"When cast using a 3rd-level spell slot, *Magic Missile* creates **five darts** (three at 1st level, plus one additional dart for each level above 1st, which is two more at 3rd level)."}
+{"ts":"2026-05-23T21:35:01.748Z","type":"summary","duration_ms":7783,"event_counts":{"turn_start":1,"ollama_request":6,"ollama_response":6,"tool_call":5,"tool_result":5,"end_turn":1},"tool_calls":[{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"list_vault","ok":true},{"name":"read_vault","ok":true}],"total_prompt_eval_ms":2941,"total_eval_ms":4536,"total_prompt_tokens":6774,"total_eval_tokens":181,"trace_length":5,"compliance_strict":false,"compliance_lenient":true}

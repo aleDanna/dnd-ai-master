@@ -1,0 +1,15 @@
+{"ts":"2026-05-23T21:28:13.146Z","type":"turn_start","model":"mistral-small3.2:24b-instruct-2506-q4_K_M","strength":"V2_strict","scenario":"cure-wounds-on-aragorn","repetition":0,"query":"If I cast Cure Wounds on Aragorn with my +3 spellcasting modifier, what range of HP does he recover?"}
+{"ts":"2026-05-23T21:28:13.147Z","type":"ollama_request","model":"mistral-small3.2:24b-instruct-2506-q4_K_M","message_count":2}
+{"ts":"2026-05-23T21:28:25.267Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":4,"prompt_eval_count":775,"prompt_eval_duration_ms":3330,"eval_count":65,"eval_duration_ms":8716,"load_duration_ms":58,"total_duration_ms":12117}
+{"ts":"2026-05-23T21:28:25.267Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/index.md"}}
+{"ts":"2026-05-23T21:28:25.267Z","type":"tool_result","name":"read_vault","ok":true,"bytes":332}
+{"ts":"2026-05-23T21:28:25.267Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/read_vault.md"}}
+{"ts":"2026-05-23T21:28:25.268Z","type":"tool_result","name":"read_vault","ok":true,"bytes":690}
+{"ts":"2026-05-23T21:28:25.268Z","type":"tool_call","name":"read_vault","args":{"path":"/handbook/spells/cure_wounds.md"}}
+{"ts":"2026-05-23T21:28:25.268Z","type":"tool_result","name":"read_vault","ok":false,"bytes":56}
+{"ts":"2026-05-23T21:28:25.268Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/end_turn.md"}}
+{"ts":"2026-05-23T21:28:25.268Z","type":"tool_result","name":"read_vault","ok":true,"bytes":581}
+{"ts":"2026-05-23T21:28:25.268Z","type":"ollama_request","model":"mistral-small3.2:24b-instruct-2506-q4_K_M","message_count":7}
+{"ts":"2026-05-23T21:28:38.502Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":false,"tool_call_count":0,"prompt_eval_count":1117,"prompt_eval_duration_ms":8498,"eval_count":35,"eval_duration_ms":4656,"load_duration_ms":60,"total_duration_ms":13231}
+{"ts":"2026-05-23T21:28:38.503Z","type":"end_turn","reason":"no_tool_calls","content_preview":"I'm sorry, but I currently don't have the information for the spell Cure Wounds. Could you please provide me with more details or check the spell's description?"}
+{"ts":"2026-05-23T21:28:38.503Z","type":"summary","duration_ms":25357,"event_counts":{"turn_start":1,"ollama_request":2,"ollama_response":2,"tool_call":4,"tool_result":4,"end_turn":1},"tool_calls":[{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true},{"name":"read_vault","ok":true}],"total_prompt_eval_ms":11828,"total_eval_ms":13372,"total_prompt_tokens":1892,"total_eval_tokens":100,"trace_length":4,"compliance_strict":true,"compliance_lenient":true}

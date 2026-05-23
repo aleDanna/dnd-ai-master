@@ -1,0 +1,18 @@
+▶ Running 10 turns (1 models × 1 strengths × 5 scenarios × 2 reps)
+
+[1/10] mistral-small3.2:24b V2_strict fireball-5th r0... ✓ end_turn_tool 30095ms calls=5
+[2/10] mistral-small3.2:24b V2_strict fireball-5th r1... ✓ end_turn_tool 29477ms calls=5
+[3/10] mistral-small3.2:24b V2_strict magic-missile-3rd r0... ✓ no_tool_calls 19878ms calls=3
+[4/10] mistral-small3.2:24b V2_strict magic-missile-3rd r1... ✓ end_turn_tool 27858ms calls=5
+[5/10] mistral-small3.2:24b V2_strict aragorn-level r0... ✓ end_turn_tool 25347ms calls=5
+[6/10] mistral-small3.2:24b V2_strict aragorn-level r1... ✓ end_turn_tool 26242ms calls=5
+[7/10] mistral-small3.2:24b V2_strict list-spells r0... ✗ no_tool_calls 12030ms calls=1
+[8/10] mistral-small3.2:24b V2_strict list-spells r1... ✗ no_tool_calls 9439ms calls=1
+[9/10] mistral-small3.2:24b V2_strict cure-wounds-on-aragorn r0... ✓ no_tool_calls 24976ms calls=4
+[10/10] mistral-small3.2:24b V2_strict cure-wounds-on-aragorn r1... ✓ no_tool_calls 34287ms calls=4
+
+────────────────────────────────────────────────────
+ COMPLIANCE RESULTS (strict | lenient)
+────────────────────────────────────────────────────
+mistral-small3.2:24b V2_strict    strict=8/10 (80%)  lenient=8/10 (80%)  avgWall=23963ms  avgPrompt=2413tok  finish={"end_turn_tool":5,"no_tool_calls":5}
+────────────────────────────────────────────────────

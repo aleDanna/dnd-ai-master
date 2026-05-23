@@ -1,0 +1,43 @@
+▶ BAKED baseline: dnd-master-plus:latest
+▶ VAULT candidate: mistral-small3.2:24b-instruct-2506-q4_K_M
+▶ Scenarios: 5
+▶ Per scenario: 1 cold + 1 warm per setup
+
+[baked cold] fireball-5th... ✓ wall=20351ms prefill=505ms eval=11535ms load=8212ms calls=0 ptok=144 etok=307
+[baked warm] fireball-5th... ✓ wall=6500ms prefill=41ms eval=6322ms load=98ms calls=0 ptok=144 etok=169
+[vault cold] fireball-5th... ✓ wall=30339ms prefill=9063ms eval=11786ms load=9373ms calls=1 ptok=810 etok=89
+[vault warm] fireball-5th... ✗ wall=15722ms prefill=6697ms eval=8882ms load=58ms calls=1 ptok=810 etok=67
+[baked cold] magic-missile-3rd... ✓ wall=16198ms prefill=494ms eval=7155ms load=8446ms calls=0 ptok=140 etok=191
+[baked warm] magic-missile-3rd... ✓ wall=6498ms prefill=43ms eval=6320ms load=99ms calls=0 ptok=140 etok=169
+[vault cold] magic-missile-3rd... ✓ wall=36680ms prefill=7689ms eval=19161ms load=9608ms calls=3 ptok=960 etok=144
+[vault warm] magic-missile-3rd... ✓ wall=15669ms prefill=4492ms eval=10964ms load=64ms calls=2 ptok=923 etok=84
+[baked cold] aragorn-level... ✓ wall=25709ms prefill=481ms eval=16598ms load=8465ms calls=0 ptok=131 etok=440
+[baked warm] aragorn-level... ✓ wall=15345ms prefill=41ms eval=15123ms load=102ms calls=0 ptok=131 etok=403
+[vault cold] aragorn-level... ✓ wall=21811ms prefill=8091ms eval=4235ms load=9378ms calls=1 ptok=724 etok=33
+[vault warm] aragorn-level... ✓ wall=10053ms prefill=5718ms eval=4197ms load=59ms calls=1 ptok=724 etok=33
+[baked cold] list-spells... ✗ wall=14786ms prefill=477ms eval=5690ms load=8516ms calls=0 ptok=133 etok=152
+[baked warm] list-spells... ✗ wall=7971ms prefill=41ms eval=7787ms load=100ms calls=0 ptok=133 etok=208
+[vault cold] list-spells... ✓ wall=20461ms prefill=6246ms eval=4745ms load=9365ms calls=1 ptok=609 etok=37
+[vault warm] list-spells... ✓ wall=11115ms prefill=3808ms eval=7169ms load=59ms calls=1 ptok=609 etok=55
+[baked cold] cure-wounds-on-aragorn... ✓ wall=14947ms prefill=636ms eval=6021ms load=8221ms calls=0 ptok=150 etok=161
+[baked warm] cure-wounds-on-aragorn... ✓ wall=9757ms prefill=41ms eval=9561ms load=102ms calls=0 ptok=150 etok=255
+[vault cold] cure-wounds-on-aragorn... ✗ wall=40328ms prefill=8545ms eval=22224ms load=9358ms calls=3 ptok=990 etok=167
+[vault warm] cure-wounds-on-aragorn... ✓ wall=31229ms prefill=4374ms eval=26695ms load=59ms calls=1 ptok=650 etok=197
+
+────────────────────────────────────────────────────
+ WALL-CLOCK COMPARISON (avg across scenarios)
+────────────────────────────────────────────────────
+COLD    baked: wall=18398ms prefill=519ms ptok=140 ok=4/5
+        vault: wall=29924ms prefill=7927ms ptok=819 ok=4/5
+        Δ wall: +62.6% (vault slower)
+        Δ prefill: +1427.4%
+WARM    baked: wall=9214ms prefill=41ms ptok=140 ok=4/5
+        vault: wall=16758ms prefill=5018ms ptok=743 ok=4/5
+        Δ wall: +81.9% (vault slower)
+        Δ prefill: +12139.0%
+────────────────────────────────────────────────────
+▶ Results JSON: /Users/alessiodanna/projects/dnd-ai-master/.planning/spikes/003-prefill-walltime-savings/results/results-*.json
+▶ Forensic log: /Users/alessiodanna/projects/dnd-ai-master/.planning/spikes/003-prefill-walltime-savings/results/forensic-1779572915000.ndjson
+▶ G1 gate (M5 Pro reference only): wall-clock improvement ≥ 40%? see table above
+▶ G1 decision-grade measurement requires M4 hardware.
+────────────────────────────────────────────────────

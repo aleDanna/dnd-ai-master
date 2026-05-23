@@ -1,0 +1,13 @@
+{"ts":"2026-05-23T21:35:01.748Z","type":"turn_start","model":"qwen3:30b-a3b-instruct-2507","strength":"V2_strict","scenario":"aragorn-level","repetition":0,"query":"What level is Aragorn?"}
+{"ts":"2026-05-23T21:35:01.749Z","type":"ollama_request","model":"qwen3:30b-a3b-instruct-2507","message_count":2}
+{"ts":"2026-05-23T21:35:02.511Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":797,"prompt_eval_duration_ms":154,"eval_count":23,"eval_duration_ms":560,"load_duration_ms":41,"total_duration_ms":760}
+{"ts":"2026-05-23T21:35:02.511Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/index.md"}}
+{"ts":"2026-05-23T21:35:02.512Z","type":"tool_result","name":"read_vault","ok":true,"bytes":332}
+{"ts":"2026-05-23T21:35:02.512Z","type":"ollama_request","model":"qwen3:30b-a3b-instruct-2507","message_count":4}
+{"ts":"2026-05-23T21:35:03.700Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":true,"tool_call_count":1,"prompt_eval_count":919,"prompt_eval_duration_ms":553,"eval_count":24,"eval_duration_ms":588,"load_duration_ms":40,"total_duration_ms":1187}
+{"ts":"2026-05-23T21:35:03.700Z","type":"tool_call","name":"read_vault","args":{"path":"/tools/read_vault.md"}}
+{"ts":"2026-05-23T21:35:03.700Z","type":"tool_result","name":"read_vault","ok":true,"bytes":690}
+{"ts":"2026-05-23T21:35:03.700Z","type":"ollama_request","model":"qwen3:30b-a3b-instruct-2507","message_count":6}
+{"ts":"2026-05-23T21:35:06.424Z","type":"ollama_response","done":true,"done_reason":"stop","has_tool_calls":false,"tool_call_count":0,"prompt_eval_count":1134,"prompt_eval_duration_ms":778,"eval_count":74,"eval_duration_ms":1888,"load_duration_ms":42,"total_duration_ms":2721}
+{"ts":"2026-05-23T21:35:06.424Z","type":"end_turn","reason":"no_tool_calls","content_preview":"Aragorn is not a character from Dungeons & Dragons 5th Edition. He is a fictional character from J.R.R. Tolkien's *The Lord of the Rings* and is not part of the official D&D 5e ruleset. If you'd like,"}
+{"ts":"2026-05-23T21:35:06.424Z","type":"summary","duration_ms":4676,"event_counts":{"turn_start":1,"ollama_request":3,"ollama_response":3,"tool_call":2,"tool_result":2,"end_turn":1},"tool_calls":[{"name":"read_vault","ok":true},{"name":"read_vault","ok":true}],"total_prompt_eval_ms":1485,"total_eval_ms":3036,"total_prompt_tokens":2850,"total_eval_tokens":121,"trace_length":2,"compliance_strict":true,"compliance_lenient":true}
