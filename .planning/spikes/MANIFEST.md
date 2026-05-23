@@ -53,6 +53,7 @@ Design decisions locked during `/gsd-explore`, non-negotiable for the real build
 | 011 | full-session-simulation | standard | 10-turn realistic D&D session: avg warm < 25s on M5 Pro, quality ≥4/5 per turn | ✓ VALIDATED (excl. outlier) — avg 7.4s, quality 85.7%, prefix hash stable | g1, session-level, integration |
 | 012 | prompt-builder-stability | standard | SystemPromptBuilder + linter: same inputs → identical SHA256; forbidden patterns rejected | ✓ VALIDATED — 6/7 (1 self-lint false positive documented) | implementation, ci-test |
 | 013 | vault-backup-restore | standard | Corrupted derived views restored from events.md replay; byte-exact match to pre-corruption | ✓ VALIDATED — byte-for-byte restore via events replay | r7, dr, backup |
+| 014 | narrative-quality | comparison | Human-eval 4 candidates × 5 Italian narrative scenarios (scene, NPC, combat, choice, lore); identify model with best prose for narrative-heavy turns | PENDING_M4 — script ready, requires human evaluation of the markdown report | m4, narrative, qualitative, italian, human-eval, model-selection |
 
 ---
 
@@ -68,3 +69,9 @@ Design decisions locked during `/gsd-explore`, non-negotiable for the real build
 - Companion docs (`docs/superpowers/specs/2026-05-22-vault-llm-wiki-*`) are the authoritative spec for plan-phase.
 
 **Closed by:** explicit user signal "spike terminata" 2026-05-24, finalized after M4 sweep results (commit `51dc6f8`) pulled from production hardware same day.
+
+---
+
+## Phase REOPENED — 2026-05-24
+
+User raised a gap that the closure didn't address: **narrative quality and choice quality of the chosen primary model** were never measured (spikes 002-004 were feasibility benchmarks, not creative-writing benchmarks). Spike 014 added to close that gap. The closure note above still stands for the feasibility track (G1/G2 GREEN); narrative track is its own validation slice.
