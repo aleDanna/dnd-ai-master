@@ -53,3 +53,18 @@ Design decisions locked during `/gsd-explore`, non-negotiable for the real build
 | 011 | full-session-simulation | standard | 10-turn realistic D&D session: avg warm < 25s on M5 Pro, quality ≥4/5 per turn | ✓ VALIDATED (excl. outlier) — avg 7.4s, quality 85.7%, prefix hash stable | g1, session-level, integration |
 | 012 | prompt-builder-stability | standard | SystemPromptBuilder + linter: same inputs → identical SHA256; forbidden patterns rejected | ✓ VALIDATED — 6/7 (1 self-lint false positive documented) | implementation, ci-test |
 | 013 | vault-backup-restore | standard | Corrupted derived views restored from events.md replay; byte-exact match to pre-corruption | ✓ VALIDATED — byte-for-byte restore via events replay | r7, dr, backup |
+
+---
+
+## Spike phase closed — 2026-05-24
+
+**Verdict tally:** 11 ✓ VALIDATED, 1 ✗ INVALIDATED (→ design pivoted, mitigation found), 1 ⏸ PENDING_M4 (deferred to Phase 1).
+
+**Outcome:** Migration `vault-llm-wiki` is **technically feasible**. Five stacked mitigations (read_vault_multi, EventsWriter mutex, stable prompt builder, events.md as source of truth, lenient tool protocol) form a cohesive design validated end-to-end on M5 Pro. Quality preserved or improved vs the baked baseline; warm wall-clock advantage in the -60% range on simple turns, recovered to similar magnitude on complex turns once `read_vault_multi` is used.
+
+**Carried into the real build:**
+- Spike 004 (M4 sweep across 5 candidates) runs **as the first task of Phase 1** — go/no-go gate on decision-grade hardware before any flip of production traffic.
+- Phase 1 deliverables identified: SystemPromptBuilder + ESLint rule, read_vault_multi tool, EventsWriter mutex, events projector, per-turn summarization at 15K-token boundary.
+- Companion docs (`docs/superpowers/specs/2026-05-22-vault-llm-wiki-*`) are the authoritative spec for plan-phase.
+
+**Closed by:** explicit user signal "spike terminata" 2026-05-24. No further spikes planned in this round.
