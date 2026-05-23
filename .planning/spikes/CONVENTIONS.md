@@ -1,6 +1,6 @@
 # Spike Conventions
 
-Patterns and stack choices established across spike rounds 1 and 2 (spikes 001-008). New spikes follow these unless the question requires otherwise.
+Patterns and stack choices established across all 14 spikes (rounds 1-3 + narrative iteration, 2026-05-22 through 2026-05-24). New spikes follow these unless the question requires otherwise. Spike phase closed; this file is the rosetta stone for future spike sessions.
 
 ## Stack
 
@@ -142,3 +142,54 @@ The empty generate + `keep_alive: 0` evicts the model from memory. The 1.5s paus
 > Compliance and quality metrics ARE HW-agnostic and can decide on M5 Pro.
 
 This is enforced in every spike README's "Limitations" section.
+
+## Patterns added in Round 3 + narrative iteration (spikes 009-014)
+
+### Batched tool reads (spike 009)
+- **Never expose singular `read_vault(path)`** — always `read_vault_multi({paths: []})`. Sequential reads degrade -59.7% wall-clock + quality 5/5 → 2/5 on complex turns. Pattern in `sources/009-read-vault-multi/run-multi.ts`.
+
+### Single-writer mutex (spike 010)
+- **`EventsWriter.append(path, line)`** uses an in-process Map<path, Promise<void>> queue. Stress-tested at 100 concurrent appends: 0 lost / 0 corrupted / 0 duplicated in 7ms. Pattern in `sources/010-events-md-concurrency/writer.ts`.
+- For multi-process scenarios (future scale), swap for `flock(2)` or a separate writer daemon.
+
+### Pure-function prompt builder + ESLint rule (spike 012)
+- **`buildSystemPrompt(input): string`** is pure. Validated 1000 builds with same input → 1 unique SHA256.
+- **Lint forbids in builder source:** `Date.now`, `new Date(`, `Math.random`, `process.hrtime`, `randomUUID`, `process.env.`, `.hostname(`.
+- **Caveat:** the lint scanning approach has a false positive on its own FORBIDDEN_PATTERNS array. Real production should use AST-based ESLint rule, not regex source scan.
+
+### Session-level integration test (spike 011)
+- Run 10 consecutive turns sharing one message history. Track per-turn wall-clock, prompt-token growth, SHA256 stability of the system message.
+- Discovered: context growth (accumulated tool_results) is the new bottleneck after ~7-8 turns. Mitigation: per-turn summarization at 15K-token boundary (Phase 1 deliverable).
+
+### Backup/DR via git + replay (spike 013)
+- Vault is a git repo. `git commit` after every event (or batched). Restore = `git clone` + run replay projector. Validated byte-exact restore.
+- No `pg_dump`, no migration tooling, no Postgres dependency in DR.
+
+### Human-eval scenarios (spike 014)
+- For dimensions that only human judgment can evaluate (narrative voice, NPC quality, choice presentation), the spike runner writes a side-by-side markdown report with empty verdict tables. The user fills them in. The spike README documents the final ranks and reasoning.
+- Pattern in `sources/014-narrative-quality/run-narrative.ts` + `scenarios.ts`.
+
+### `think: false` does NOT help with thinking-native models (spike 014 iter 2)
+- For qwen3:30b-a3b BASE: even passing `body.think = false` in the Ollama request, the model emits English chain-of-thought as the content. The flag stops filtering, doesn't suppress generation.
+- Implication: instruct-tuned variants are required for direct narrative output. Thinking-native models need a CoT-extraction pipeline (out of scope).
+
+## Final candidate pool (decision-locked)
+
+After spike 004 (M4 feasibility sweep) + spike 014 (narrative quality):
+
+| Role | Model | Why |
+|---|---|---|
+| **Primary** | `qwen3:30b-a3b-instruct-2507-q4_K_M` | G1 -85.5% warm M4, G2 100%, narrative 9 pts (tied for 1st) |
+| **Quality-fallback (opt-in)** | `qwen3:30b-a3b-instruct-2507` | within 2.4% wall-clock, marginally better NPC voicing |
+| **Offline content tool** | `mistral-small3.2:24b` | G2 80% (live-turn fail) but only model with authentic non-standard voice (goblin pidgin) |
+| Baked baseline (regression test) | `dnd-master-plus:latest` (gpt-oss:20b baked) | comparison anchor; do not deploy |
+| ✗ Eliminated | `qwen3:30b-a3b` BASE | thinking-native CoT leak even with `think:false` |
+| ✗ Eliminated | `mistral-small3.2:24b-instruct-2506-q4_K_M` | G1 +81.9% (slower than baked) |
+| ✗ Eliminated | `llama3.2:3b` | 0% tool compliance |
+
+## Wrap-up artifacts
+
+- Implementation blueprint skill: `./.claude/skills/spike-findings-dnd-ai-master/`
+- Project history summary: `./.planning/spikes/WRAP-UP-SUMMARY.md`
+- Companion design docs: `docs/superpowers/specs/2026-05-22-vault-llm-wiki-{design,risks}.md`
+- This file: rules for any future spike work on the same project.
