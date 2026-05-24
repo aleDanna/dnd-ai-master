@@ -110,7 +110,11 @@ export async function listVaultDir(input: string, root: string = VAULT_ROOT): Pr
   if (safe === null) return [];
   try {
     const entries = await readdir(safe);
-    return entries.slice().sort();
+    // Filter dot-prefixed entries (`.gitkeep`, `.obsidian/`, `.DS_Store`, …).
+    // The LLM should never see editor configs, version-control metadata, or
+    // placeholder files — they leak implementation noise into the tool result
+    // and risk confusing the model with paths that aren't content.
+    return entries.filter((e) => !e.startsWith('.')).sort();
   } catch {
     return [];
   }

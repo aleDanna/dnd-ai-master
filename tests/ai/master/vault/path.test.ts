@@ -126,6 +126,22 @@ describe('vault/path', () => {
       const entries = await listVaultDir('../', root);
       expect(entries).toEqual([]);
     });
+
+    it('filters out dot-prefixed entries (.gitkeep, .obsidian, .DS_Store)', async () => {
+      // Pollute the tmpdir with dot-files that the LLM should NEVER see in a
+      // tool result — they leak editor configs / VCS metadata / placeholders.
+      const dotDir = join(root, 'handbook', '.obsidian');
+      await mkdir(dotDir, { recursive: true });
+      await writeFile(join(dotDir, 'workspace.json'), '{}', 'utf8');
+      await writeFile(join(root, 'handbook', '.gitkeep'), '', 'utf8');
+      await writeFile(join(root, 'handbook', '.DS_Store'), 'binary', 'utf8');
+
+      const entries = await listVaultDir('/handbook', root);
+      // Original test setup created `spells/` and `lore/` under handbook.
+      // The dot-entries must not appear.
+      expect(entries).toEqual(['lore', 'spells']);
+      expect(entries.some((e) => e.startsWith('.'))).toBe(false);
+    });
   });
 
   describe('purity guard — narrower after REQ-007', () => {

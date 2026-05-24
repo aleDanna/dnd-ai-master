@@ -73,6 +73,11 @@ next-env.d.ts
 /vault-campaigns/
 /data/vault/campaigns/
 
+# Obsidian-app per-user workspace configs — created when a dev opens
+# data/vault/ as an Obsidian vault to browse content. Personal preferences
+# (workspace layout, plugin config) — must not enter the repo.
+.obsidian/
+
 # Generated Ollama Modelfiles (Plan D — pnpm build-local-models)
 /.ollama/
 
