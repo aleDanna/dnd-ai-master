@@ -6,13 +6,36 @@ Full design context: `docs/superpowers/specs/2026-05-22-vault-llm-wiki-design.md
 
 ## Flipping a campaign onto the vault backend
 
-### Via SQL (dev / quick toggling)
+### Via `pnpm vault:flip` (recommended)
+
+The CLI helper handles env loading + Drizzle update + safety checks:
 
 ```bash
-# 1. Find the campaign UUID
+# List campaigns + their current backend
+pnpm vault:flip
+
+# Flip one onto vault (UUID or short prefix both work)
+pnpm vault:flip --id=<short-or-full-uuid> --to=vault
+
+# Roll back
+pnpm vault:flip --id=<short-or-full-uuid> --to=baked
+```
+
+No `DATABASE_URL` export needed — the script loads it from
+`.env.production.local` via `scripts/_env-loader.ts`.
+
+### Via raw SQL (advanced)
+
+If you prefer psql, export `DATABASE_URL` first (`.env.production.local`
+is not auto-exported to your shell):
+
+```bash
+export DATABASE_URL=$(grep -E '^DATABASE_URL=' .env.production.local | cut -d= -f2- | sed 's/^"//;s/"$//')
+
+# Find the campaign UUID
 psql "$DATABASE_URL" -c "SELECT id, name FROM campaigns WHERE deleted_at IS NULL;"
 
-# 2. Set the flag
+# Set the flag
 psql "$DATABASE_URL" -c \
   "UPDATE campaigns
      SET settings = jsonb_set(settings, '{masterBackend}', '\"vault\"')
