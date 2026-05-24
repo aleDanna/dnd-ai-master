@@ -24,7 +24,11 @@ import { buildToolDefinitions } from '@/engine';
 import { getProviderByName } from '@/ai/provider';
 import { recordUsage } from '@/ai/master/usage';
 import { checkQuotas } from '@/ai/master/quotas';
-import { getSessionMasterPreferences } from '@/lib/preferences';
+import { getSessionMasterPreferences, resolveMasterBackend, type MasterBackend } from '@/lib/preferences';
+import { runVaultToolLoop } from '@/ai/master/vault/loop';
+import { buildVaultSystemPrompt } from '@/ai/master/vault/prompt-builder';
+import { VAULT_TOOL_COUNT, VAULT_TOOL_DEFINITIONS } from '@/ai/master/vault/tools';
+import { VAULT_ROOT } from '@/ai/master/vault/path';
 import { loadMemoryContext } from '@/sessions/memory/context';
 import { extractMemory } from '@/sessions/memory/extractor';
 import { touchCampaign } from '@/campaigns/persist';
@@ -240,6 +244,170 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // `compactPrompt` is on (defaults true for local, false for cloud),
         // load the trimmed variants — fits qwen3:14b's context window without
         // losing the rules + rewards mandate.
+        // ── Vault path (Phase 01 feature flag) ────────────────────────────────
+        //
+        // When the campaign opted into `masterBackend: 'vault'` (or env override
+        // MASTER_BACKEND=vault is set and campaign has no explicit value), bypass
+        // the baked/SRD/handbook/RAG/meta-tools stack entirely. The vault path is
+        // a parallel implementation that:
+        //   - reads static knowledge from data/vault/handbook/**.md via tool calls
+        //     (read_vault_multi / list_vault), instead of injecting full handbook
+        //     into the system prompt;
+        //   - exposes ONLY 3 tools (read_vault_multi, list_vault, end_turn) — NO
+        //     engine tools (cast_spell, set_current_player, etc.). Vault-flagged
+        //     campaigns in Phase 01 are READ-ONLY for game state. Phase 02 will
+        //     add apply_event and re-introduce mutation through events.md.
+        //   - passes the user's chosen model BASE slug straight through (the
+        //     baked-variant detection is intentionally skipped — vault path never
+        //     wants dnd-master-* models).
+        //
+        // After plan 06's parallel-shape fix, `userPrefs.masterBackend` is directly typed.
+        // See .planning/phases/01-vault-read-path/PLAN.md.
+        const masterBackend: MasterBackend = resolveMasterBackend(userPrefs.masterBackend);
+        if (masterBackend === 'vault') {
+          // 4v. Build minimal system prompt — no SRD, no handbook, no world lore,
+          // no scene card, no codex, no ROLL_TRIGGERS, no REWARDS_MANDATE,
+          // no meta-tools instructions.
+          const vaultSys = buildVaultSystemPrompt({
+            vaultRoot: VAULT_ROOT,
+            campaignId: campaign.id,
+            toolCount: VAULT_TOOL_COUNT,
+            language: campaign.language ?? snap.language ?? undefined,
+          });
+
+          // 5v. Build history — simpler than baked (no budget truncation needed,
+          // vault prompt is already small). Reuses the same HISTORY_LIMIT env var.
+          let vaultHistory: Anthropic.Messages.MessageParam[];
+          if (isBegin) {
+            vaultHistory = [
+              { role: 'user', content: buildBeginUserMessage(campaign.premise, campaign.language) },
+            ];
+          } else {
+            const HISTORY_LIMIT = Number(process.env.MASTER_HISTORY_LIMIT ?? '10');
+            const recentRaw = await db
+              .select()
+              .from(sessionMessages)
+              .where(and(eq(sessionMessages.sessionId, sessionId), eq(sessionMessages.cacheBreakpoint, false)))
+              .orderBy(desc(sessionMessages.createdAt))
+              .limit(HISTORY_LIMIT);
+            const nameById = new Map<string, string>(snap.party.map((c) => [c.id, c.name]));
+            const usePrefix = snap.party.length > 1;
+            vaultHistory = recentRaw
+              .reverse()
+              .filter((m) => m.role !== 'system')
+              .map((m) => {
+                if (m.role === 'master') return { role: 'assistant', content: m.content };
+                const name = usePrefix && m.authorCharacterId ? nameById.get(m.authorCharacterId) : null;
+                const content = name ? `[${name}] ${m.content}` : m.content;
+                return { role: 'user', content };
+              });
+          }
+
+          // 6v. Run vault tool loop.
+          const vaultProvider = getProviderByName(userPrefs.aiProvider);
+          const vaultMasterModel = userPrefs.aiMasterModel;
+          // eslint-disable-next-line no-console
+          console.log('[turn]', sessionId, 'vault path: model=', vaultMasterModel, 'tools=', VAULT_TOOL_DEFINITIONS.length);
+          const vaultResult = await runVaultToolLoop({
+            provider: vaultProvider,
+            model: vaultMasterModel,
+            systemBlocks: [{ type: 'text', text: vaultSys }],
+            history: vaultHistory,
+            sessionId,
+            campaignLanguage: campaign.language ?? snap.language ?? undefined,
+            recordUsage: async (usage) => {
+              await recordUsage({
+                userId,
+                sessionId,
+                endpoint: 'master',
+                model: vaultMasterModel,
+                usage,
+                // Vault path: no mode, no spellcasting overlay, no RAG.
+                // mode/needsSpellcasting are undefined → null in DB.
+                // ragChunkCount is null (retrieval not attempted) — distinct
+                // from 0 (attempted, no chunks), so the hit-rate metric stays honest.
+                mode: undefined,
+                needsSpellcasting: undefined,
+                ragChunkCount: null,
+              });
+            },
+            onEvent: (ev) => {
+              if (ev.type === 'narrative_delta') {
+                notifySession(sessionId, { type: 'message-chunk', messageId: '', text: ev.text }).catch(
+                  (e) => console.warn('notifySession(message-chunk) failed:', e instanceof Error ? e.message : String(e)),
+                );
+              } else if (ev.type === 'thinking') {
+                notifySession(sessionId, { type: 'thinking', state: ev.state }).catch(
+                  (e) => console.warn('notifySession(thinking) failed:', e instanceof Error ? e.message : String(e)),
+                );
+              }
+            },
+          });
+
+          // 7v. Post-loop: turn-advance + persist master message + memory extraction.
+          // Logic is identical to the baked path (same multiplayer semantics, same
+          // empty-response handling). Duplicated rather than extracted to a helper
+          // to keep this PR's risk surface minimal — Phase 02 may refactor.
+          await db.transaction(async (tx) => {
+            const [s] = await tx
+              .select({ cpcId: sessions.currentPlayerCharacterId, campaignId: sessions.campaignId })
+              .from(sessions)
+              .where(eq(sessions.id, sessionId))
+              .limit(1);
+            if (s && s.campaignId) {
+              const party = await tx
+                .select({ id: charactersTable.id, name: charactersTable.name, createdAt: charactersTable.createdAt })
+                .from(charactersTable)
+                .where(and(
+                  eq(charactersTable.campaignId, s.campaignId),
+                  isNull(charactersTable.deletedAt),
+                  isNotNull(charactersTable.templateId),
+                ))
+                .orderBy(charactersTable.createdAt);
+              const addressee = detectAddressee(vaultResult.finalText, party);
+              const decision = computeTurnAdvance({
+                isBegin,
+                beforeCpcId: authorCharacterId,
+                afterCpcId: s.cpcId,
+                party,
+                addresseeId: addressee?.id ?? null,
+              });
+              if (decision.kind === 'advance') {
+                await tx
+                  .update(sessions)
+                  .set({ currentPlayerCharacterId: decision.nextCharacterId, turnsSinceMasterAdvance: 0 })
+                  .where(eq(sessions.id, sessionId));
+                await notifySession(sessionId, { type: 'turn-change', characterId: decision.nextCharacterId });
+              }
+            }
+            await tx.update(sessions).set({ turnSeq: sql`turn_seq + 1` }).where(eq(sessions.id, sessionId));
+          });
+
+          if (vaultResult.finalText.trim()) {
+            const [mm] = await db.insert(sessionMessages).values({ sessionId, role: 'master', content: vaultResult.finalText }).returning();
+            notifySession(sessionId, { type: 'message', messageId: mm!.id }).catch(
+              (e) => console.warn('notifySession(message) failed:', e instanceof Error ? e.message : String(e)),
+            );
+            waitUntil(
+              extractMemory(sessionId, userPrefs.aiProvider, vaultMasterModel).catch((e) => {
+                console.error('memory.extract.fire_and_forget', e instanceof Error ? e.message : String(e));
+              }),
+            );
+          } else {
+            console.warn('turn produced empty response (vault path)', { sessionId });
+            notifySession(sessionId, {
+              type: 'turn-error',
+              reason: 'empty_response',
+              message: 'Il Master non ha prodotto una risposta. Riprova o riformula.',
+            }).catch((e) => console.warn('notifySession(turn-error) failed:', e instanceof Error ? e.message : String(e)));
+          }
+
+          // Early return: baked path below is skipped on vault-flagged campaigns.
+          // The outer `finally` block still runs touchCampaign + releaseTurnLock.
+          return;
+        }
+        // ── End vault path; baked path follows ───────────────────────────────
+
         const baked = isBakedModel(userPrefs.aiMasterModel);
         const useCompact = !baked && userPrefs.compactPrompt;
         const srd = baked ? '' : await buildSrdContext({ compact: useCompact });
