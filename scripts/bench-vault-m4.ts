@@ -27,9 +27,15 @@
  *   - Vault avg prompt_eval_count: ~3-5K (vs baked ~8.8K)
  *
  * Usage:
- *   pnpm bench-vault-m4 --session=<uuid> --user-jwt=<clerk-token>
+ *   pnpm bench-vault-m4 --user-jwt=<clerk-token>
+ *
+ * Without --session, the script auto-discovers the most-recently-played
+ * campaign with `masterBackend='vault'` and uses its first session. That
+ * removes the friction of looking up a session UUID for every run; the
+ * dev just needs to flip ONE campaign onto vault and the bench finds it.
  *
  * Optional:
+ *   --session=<uuid> (override auto-discovery with an explicit session)
  *   --host=<url>     (default http://localhost:3000)
  *   --turns=<n>      (default 5)
  *   --out=<path>     (default ./bench-vault-m4-<ts>.json)
@@ -45,7 +51,7 @@ import { aiUsage, campaigns, sessions } from '@/db/schema';
 import { resolveMasterBackend } from '@/lib/preferences';
 
 interface CliArgs {
-  session: string;
+  session: string | null; // null → auto-discover most recent vault-flagged session
   userJwt: string;
   host: string;
   turns: number;
@@ -54,6 +60,7 @@ interface CliArgs {
 
 function parseArgs(argv: string[]): CliArgs {
   const args: Partial<CliArgs> = {
+    session: null,
     host: 'http://localhost:3000',
     turns: 5,
     out: `./bench-vault-m4-${Date.now()}.json`,
@@ -65,9 +72,38 @@ function parseArgs(argv: string[]): CliArgs {
     else if (arg.startsWith('--turns=')) args.turns = Number(arg.slice('--turns='.length));
     else if (arg.startsWith('--out=')) args.out = arg.slice('--out='.length);
   }
-  if (!args.session) { console.error('Missing --session=<uuid>'); process.exit(2); }
-  if (!args.userJwt) { console.error('Missing --user-jwt=<clerk-token>'); process.exit(2); }
+  if (!args.userJwt) {
+    console.error('Missing --user-jwt=<clerk-token>');
+    console.error('Extract from devtools → Application → Cookies → __session value.');
+    process.exit(2);
+  }
   return args as CliArgs;
+}
+
+/**
+ * Auto-discover the most recent session belonging to a vault-flagged
+ * campaign. Avoids the dev having to look up a UUID by hand for every
+ * bench run.
+ */
+async function autoDiscoverSession(): Promise<{ sessionId: string; campaignName: string } | null> {
+  const rows = await db
+    .select({
+      sessionId: sessions.id,
+      campaignId: campaigns.id,
+      campaignName: campaigns.name,
+      settings: campaigns.settings,
+      lastPlayedAt: campaigns.lastPlayedAt,
+    })
+    .from(sessions)
+    .innerJoin(campaigns, eq(campaigns.id, sessions.campaignId))
+    .orderBy(desc(campaigns.lastPlayedAt))
+    .limit(50);
+  for (const row of rows) {
+    if (resolveMasterBackend(row.settings.masterBackend) === 'vault') {
+      return { sessionId: row.sessionId, campaignName: row.campaignName };
+    }
+  }
+  return null;
 }
 
 const PROMPTS = [
@@ -128,14 +164,19 @@ async function preflight(sessionId: string): Promise<void> {
   }
 }
 
-async function runTurn(args: CliArgs, prompt: string, turnIndex: number, t0Cutoff: Date): Promise<TurnResult> {
+async function runTurn(
+  ctx: { sessionId: string; userJwt: string; host: string },
+  prompt: string,
+  turnIndex: number,
+  t0Cutoff: Date,
+): Promise<TurnResult> {
   const t0 = Date.now();
   // POST the turn.
-  const res = await fetch(`${args.host}/api/sessions/${args.session}/turn`, {
+  const res = await fetch(`${ctx.host}/api/sessions/${ctx.sessionId}/turn`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'cookie': `__session=${args.userJwt}`,
+      'cookie': `__session=${ctx.userJwt}`,
     },
     body: JSON.stringify({ message: prompt }),
   });
@@ -149,7 +190,7 @@ async function runTurn(args: CliArgs, prompt: string, turnIndex: number, t0Cutof
     const [r] = await db
       .select()
       .from(aiUsage)
-      .where(and(eq(aiUsage.sessionId, args.session), gt(aiUsage.createdAt, t0Cutoff), eq(aiUsage.endpoint, 'master')))
+      .where(and(eq(aiUsage.sessionId, ctx.sessionId), gt(aiUsage.createdAt, t0Cutoff), eq(aiUsage.endpoint, 'master')))
       .orderBy(desc(aiUsage.createdAt))
       .limit(1);
     if (r) { usageRow = r; break; }
@@ -217,16 +258,36 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const turns = Math.min(args.turns, PROMPTS.length);
   const prompts = PROMPTS.slice(0, turns);
-  console.log(`Pre-flight checks for session ${args.session}...`);
-  await preflight(args.session);
+
+  let sessionId: string;
+  if (args.session) {
+    sessionId = args.session;
+    console.log(`Pre-flight checks for explicit session ${sessionId}...`);
+  } else {
+    console.log('No --session provided — auto-discovering most recent vault-flagged session...');
+    const found = await autoDiscoverSession();
+    if (!found) {
+      console.error('');
+      console.error('No vault-flagged campaign with a session found.');
+      console.error('Flip a campaign onto the vault backend first:');
+      console.error("  psql \"$DATABASE_URL\" -c \"UPDATE campaigns SET settings = jsonb_set(settings, '{masterBackend}', '\\\"vault\\\"') WHERE id = '<uuid>';\"");
+      console.error('');
+      console.error('Or set MASTER_BACKEND=vault env override and start a fresh session.');
+      process.exit(2);
+    }
+    sessionId = found.sessionId;
+    console.log(`  ✓ Picked session ${sessionId} from campaign "${found.campaignName}"`);
+  }
+  await preflight(sessionId);
   console.log('  ✓ Vault migrated, session has masterBackend=vault, Ollama reachable.');
 
   console.log(`\nRunning ${turns} turn(s) against ${args.host}...`);
   const startCutoff = new Date(Date.now() - 1000); // tolerate 1s clock skew
   const results: TurnResult[] = [];
+  const turnCtx = { sessionId, userJwt: args.userJwt, host: args.host };
   for (let i = 0; i < turns; i += 1) {
     const promptText = prompts[i]!;
-    const r = await runTurn(args, promptText, i, startCutoff);
+    const r = await runTurn(turnCtx, promptText, i, startCutoff);
     results.push(r);
     console.log(`[turn ${r.turn}] "${promptText.slice(0, 40)}…" wall=${r.wallMs}ms ptok=${r.promptEvalCount ?? '-'} etok=${r.evalCount ?? '-'}`);
   }

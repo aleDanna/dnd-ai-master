@@ -73,13 +73,23 @@ Makes ALL campaigns that have NO explicit `masterBackend` setting default to `'v
 ## Running the M4 benchmark
 
 ```bash
-# On the Mac Mini M4:
-pnpm migrate-handbook-to-vault       # one-time: generate data/vault/
+# On the Mac Mini M4 (one-time setup):
+vercel env pull .env.production.local --environment=production  # pull real DATABASE_URL
+pnpm migrate-handbook-to-vault                                   # generate data/vault/
+
+# Flip ONE campaign onto vault (any existing campaign works):
+psql "$DATABASE_URL" -c \
+  "UPDATE campaigns SET settings = jsonb_set(settings, '{masterBackend}', '\"vault\"')
+     WHERE id = '<campaign-uuid>';"
+
+# Run the bench — session is auto-discovered (most recently played
+# vault-flagged campaign's session).
 pnpm dev                              # in one terminal
-pnpm bench-vault-m4 \
-  --session=<uuid> \
-  --user-jwt=<clerk-session-cookie>
+pnpm bench-vault-m4 --user-jwt=<__session-cookie>  # in another
 ```
+
+Override auto-discovery with `--session=<uuid>` if you need to bench a
+specific session.
 
 The script:
 1. Pre-flight checks (vault migrated, session has `masterBackend=vault`, Ollama reachable).
