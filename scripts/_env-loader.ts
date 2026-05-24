@@ -1,17 +1,21 @@
 /**
  * Side-effect env loader for standalone scripts.
  *
- * The Vercel CLI on this project writes `.env.local` with EMPTY-string
- * placeholders for every secret (e.g. `DATABASE_URL=""`), and the real
- * values land in `.env.production.local`. tsx auto-loads `.env.local`
- * before any user code runs, so by the time our static imports execute,
- * `process.env.DATABASE_URL` is already `""` (empty, not undefined) —
- * which `@/db/client`'s `if (!url) throw` rejects.
+ * Project env file convention (per Vercel + Next.js):
+ *   - `.env.local`            — loaded by BOTH `pnpm dev` (Next.js) AND tsx
+ *                                scripts. This is where secrets should live
+ *                                so the same value works in both worlds.
+ *   - `.env.production.local` — loaded by Next.js production builds AND tsx
+ *                                (via this loader). Vercel CLI writes
+ *                                placeholders here when the secret is
+ *                                marked "sensitive" — values are typically
+ *                                empty unless manually populated.
+ *   - `.env`                  — defaults (rarely populated in this project).
  *
- * We must therefore EXPLICITLY load `.env.production.local` with
- * `override: true` so its real values overwrite tsx's empty placeholders.
- * Subsequent loads of `.env.local` / `.env` use `override: false` so
- * production secrets retain priority for any var also defined there.
+ * Load order below mirrors Vercel's: production-local first (would win in
+ * a prod build), then local, then defaults. `override: false` on all reads
+ * means tsx's prior auto-load of `.env.local` is preserved when a key is
+ * already in `process.env`.
  *
  * Import this FIRST in any script that touches `@/db/client`:
  *
@@ -22,7 +26,7 @@ import { config as loadDotenv } from 'dotenv';
 import { resolve } from 'node:path';
 
 const ROOT = process.cwd();
-loadDotenv({ path: resolve(ROOT, '.env.production.local'), override: true });
+loadDotenv({ path: resolve(ROOT, '.env.production.local'), override: false });
 loadDotenv({ path: resolve(ROOT, '.env.local'), override: false });
 loadDotenv({ path: resolve(ROOT, '.env'), override: false });
 
@@ -37,16 +41,18 @@ if (!process.env.DATABASE_URL) {
   console.error(
     [
       '',
-      'DATABASE_URL is empty after loading .env.production.local + .env.local + .env.',
-      'This project is linked to Vercel — the real value lives there.',
+      'DATABASE_URL is empty after loading .env.local + .env.production.local + .env.',
+      'This project is linked to Vercel and DATABASE_URL is marked "sensitive" —',
+      '`vercel env pull` leaves it empty.',
       '',
-      'Fix it once with:',
-      '  vercel env pull .env.production.local --environment=production',
+      'Fix once: copy the real value from the Vercel dashboard',
+      '  (Settings → Environment Variables → DATABASE_URL → reveal → copy)',
+      'and paste into .env.local (this single file works for BOTH',
+      '`pnpm dev` and standalone scripts):',
       '',
-      "Or, for the dev DB:",
-      '  vercel env pull .env.development.local --environment=development',
+      '  echo "DATABASE_URL=postgres://..." >> .env.local',
       '',
-      "Or, ad-hoc for a single run:",
+      'Ad-hoc for a single run:',
       "  DATABASE_URL='postgres://...' pnpm <script>",
       '',
     ].join('\n'),
