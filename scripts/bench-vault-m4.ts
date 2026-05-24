@@ -34,6 +34,9 @@
  *   --turns=<n>      (default 5)
  *   --out=<path>     (default ./bench-vault-m4-<ts>.json)
  */
+// MUST come before any import that touches @/db/client — tsx auto-loads
+// .env.local but not .env.production.local where the real DATABASE_URL lives.
+import './_env-loader';
 import { writeFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { and, desc, eq, gt } from 'drizzle-orm';
