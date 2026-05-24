@@ -1,9 +1,16 @@
 import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { sessions, users, campaigns, type UserPreferences, isMasterGuidanceLevel, isImageStylePreset, isNarrationPace, type CampaignSettings } from '@/db/schema';
+import {
+  sessions, users, campaigns,
+  type UserPreferences,
+  isMasterGuidanceLevel, isImageStylePreset, isNarrationPace,
+  type CampaignSettings,
+  type MasterBackend, isMasterBackend,
+} from '@/db/schema';
 import { isKnownProvider, isKnownMasterModel, isKnownImageProvider, isKnownImageModel, type ProviderName, type ImageProviderName } from '@/lib/ai-models';
 
-export type { UserPreferences };
+export type { UserPreferences, MasterBackend };
+export { isMasterBackend };
 export {
   TTS_VOICES, type TtsVoice, isValidTtsVoice,
   TTS_MODELS, type TtsModel, isValidTtsModel,
@@ -105,6 +112,23 @@ function envDefaultTtsProvider(): TtsProvider {
   return raw === 'gemini' ? 'gemini' : 'openai';
 }
 
+/**
+ * Resolves the campaign's master-backend flag. Order: explicit stored value
+ * (campaign settings) → env `MASTER_BACKEND` override → 'baked' default.
+ * The env override is for ops / CI smoke testing without touching DB rows;
+ * a stored value always wins. There is no user-preference layer — the field
+ * is campaign-only by design (Decision 2 in PLAN.md, validated by spike 004).
+ */
+function envDefaultMasterBackend(): MasterBackend {
+  const raw = (process.env.MASTER_BACKEND ?? '').trim().toLowerCase();
+  return raw === 'vault' ? 'vault' : 'baked';
+}
+
+export function resolveMasterBackend(stored: MasterBackend | undefined): MasterBackend {
+  if (stored === 'vault' || stored === 'baked') return stored;
+  return envDefaultMasterBackend();
+}
+
 /** Per-provider env-overridable model default. Falls back to the static
  *  per-provider default if no env var is set. */
 function envDefaultTtsModel(provider: TtsProvider): string {
@@ -160,6 +184,11 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   compactPrompt: true,
   useModeAwarePrompt: true,
   useRagRetrieval: true,
+  // Phase 01 vault-llm-wiki — campaign-only flag; user-side default is
+  // 'baked' for parallel-shape parity with CampaignSettings. The resolver
+  // ignores this user-side value; campaign-side resolution is in
+  // getCampaignSettings.
+  masterBackend: 'baked',
 };
 
 export async function getUserPreferences(userId: string): Promise<UserPreferences> {
@@ -208,6 +237,9 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
   const compactPrompt = prefs.compactPrompt ?? true;
   const useModeAwarePrompt = resolveUseModeAwarePrompt({ aiProvider: provider, useModeAwarePrompt: prefs.useModeAwarePrompt });
   const useRagRetrieval = resolveUseRagRetrieval({ aiProvider: provider, useRagRetrieval: prefs.useRagRetrieval });
+  // Phase 01 vault-llm-wiki — user-side parallel shape only; resolution is
+  // campaign-only at runtime (this value is never read directly).
+  const masterBackend = resolveMasterBackend(prefs.masterBackend);
   return {
     ttsProvider,
     ttsVoice,
@@ -227,6 +259,7 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
     compactPrompt,
     useModeAwarePrompt,
     useRagRetrieval,
+    masterBackend,
   };
 }
 
@@ -329,6 +362,8 @@ export async function getCampaignSettings(
   const compactPrompt = prefs.compactPrompt ?? true;
   const useModeAwarePrompt = resolveUseModeAwarePrompt({ aiProvider: provider, useModeAwarePrompt: prefs.useModeAwarePrompt });
   const useRagRetrieval = resolveUseRagRetrieval({ aiProvider: provider, useRagRetrieval: prefs.useRagRetrieval });
+  // Phase 01 vault-llm-wiki — authoritative campaign resolution.
+  const masterBackend = resolveMasterBackend(prefs.masterBackend);
   return {
     ttsProvider,
     ttsVoice,
@@ -347,6 +382,7 @@ export async function getCampaignSettings(
     compactPrompt,
     useModeAwarePrompt,
     useRagRetrieval,
+    masterBackend,
   };
 }
 
@@ -523,6 +559,15 @@ export function validateSettingsPatch(
   if ('useRagRetrieval' in body) {
     if (typeof body.useRagRetrieval !== 'boolean') return { ok: false, error: 'invalid-useRagRetrieval' };
     out.useRagRetrieval = body.useRagRetrieval;
+  }
+  if ('masterBackend' in body) {
+    if (body.masterBackend === undefined || body.masterBackend === null) {
+      out.masterBackend = undefined;
+    } else if (!isMasterBackend(body.masterBackend)) {
+      return { ok: false, error: 'invalid-masterBackend' };
+    } else {
+      out.masterBackend = body.masterBackend;
+    }
   }
   return { ok: true, patch: out };
 }

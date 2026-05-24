@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { pgTable, text, timestamp, jsonb } from 'drizzle-orm/pg-core';
 import type { ProviderName, ImageProviderName } from '@/lib/ai-models';
+import type { MasterBackend } from './campaigns';
 
 export interface UserPreferences {
   /** TTS provider. 'openai', 'gemini', or 'local' (Piper via env-gated
@@ -93,6 +94,14 @@ export interface UserPreferences {
    * (opt-in); Phase 3 flips the default to true for local providers.
    */
   useRagRetrieval?: boolean;
+  /**
+   * Phase 01 vault-llm-wiki migration — parallel-shape with `CampaignSettings.masterBackend`.
+   * This field exists on UserPreferences for type compatibility with
+   * `getSessionMasterPreferences` (which returns `Required<UserPreferences>`)
+   * — resolution is campaign-only by design (Decision 2 in PLAN.md).
+   * Never read directly by code; the campaign field is authoritative.
+   */
+  masterBackend?: MasterBackend;
 }
 
 export type MasterGuidanceLevel = NonNullable<UserPreferences['masterGuidanceLevel']>;

@@ -30,6 +30,7 @@ const ALLOWED_KEYS: ReadonlySet<keyof CampaignSettings> = new Set<keyof Campaign
   'compactPrompt',
   'useModeAwarePrompt',
   'useRagRetrieval',
+  'masterBackend',
 ]);
 
 export async function GET(

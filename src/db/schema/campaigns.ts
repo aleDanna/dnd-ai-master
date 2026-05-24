@@ -6,6 +6,19 @@ import type { ProviderName, ImageProviderName } from '@/lib/ai-models';
 export const campaignStatusEnum = pgEnum('campaign_status', ['active', 'ended']);
 
 /**
+ * Phase 01 vault-llm-wiki feature flag. Selects which knowledge backend
+ * the master uses for a given campaign.
+ *  - 'baked' (default) — existing baked variant + RAG path
+ *  - 'vault'           — markdown-vault path (read-only state in Phase 01;
+ *                        Phase 02 adds apply_event for mutation)
+ */
+export type MasterBackend = 'vault' | 'baked';
+
+export function isMasterBackend(v: unknown): v is MasterBackend {
+  return v === 'vault' || v === 'baked';
+}
+
+/**
  * Per-campaign game settings, owned by the campaign creator
  * (`campaigns.userId`). Mirrors the shared subset of `UserPreferences`
  * minus `ttsAutoplay` (which stays per-viewer). New campaigns snapshot
@@ -49,6 +62,14 @@ export interface CampaignSettings {
    * (opt-in); Phase 3 flips the default to true for local providers.
    */
   useRagRetrieval?: boolean;
+  /**
+   * Phase 01 feature flag (vault-llm-wiki migration). Selects which
+   * knowledge backend the master uses for this campaign.
+   *  - 'baked' (default) → existing baked variant + RAG path (system_prompt.ts → tool-loop.ts → engine tools)
+   *  - 'vault'           → markdown-vault path (vault/prompt-builder.ts → vault/loop.ts → vault tools, NO engine tools)
+   * When 'vault', game-state mutation is unavailable (Phase 02 adds apply_event).
+   */
+  masterBackend?: MasterBackend;
 }
 
 export const campaigns = pgTable(
