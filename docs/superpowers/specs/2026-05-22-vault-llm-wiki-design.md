@@ -92,9 +92,23 @@ BASE_SLIM (518) + TOOL_CONTRACT_SLIM (218) + META_TOOLS (469)
 
 ### 3.1 Storage model
 
-**Filesystem-only markdown vault.** Files (`.md`) on disk are the source of truth. The Next.js application reads and writes them directly via `fs/promises`. Obsidian-the-app is optional (visual inspection only).
+**Filesystem-only markdown vault, split into TWO roots** (decision 2026-05-24):
 
-No Postgres for knowledge or dynamic game state. Postgres retained only for:
+| Root | Path | Content | Git? |
+|---|---|---|---|
+| **Static content** | `data/vault/` (project-relative) | Handbook, lore, tool docs — same for every user/install | ✓ committed |
+| **Campaign data** | `$VAULT_CAMPAIGNS_ROOT` (default `~/.dnd-ai-master/vault/campaigns/`) | Per-campaign `events.md` + materialized views (characters, sessions, world) | ✗ gitignored / separate backup strategy |
+
+Files (`.md`) on disk are the source of truth in both roots. The Next.js application reads and writes them directly via `fs/promises`. Obsidian-the-app is optional (visual inspection only).
+
+**Why two roots:** spike 013 validated DR via `git clone + replay events.md`, which would have meant committing campaign data into this repo. That carries three problems:
+1. **Privacy/PII** — dialogue, narrative choices, player names enter git history. Bad if the repo is ever opened to others.
+2. **Repo bloat** — a long campaign accumulates 5-20 MB of events.md. Multi-campaign × time → unbounded.
+3. **CI/CD coupling** — Vercel deploys trigger on push. Every HP change shouldn't redeploy the app.
+
+Splitting roots fixes all three at the cost of a slightly more involved backup story (out-of-band tarball/S3/separate-repo instead of just `git push`).
+
+No Postgres for knowledge or dynamic game state once Phase 02 migration completes. Postgres retained only for:
 - `ai_usage` (telemetry — append-only, doesn't need migration)
 - Authentication / billing (if/when added)
 

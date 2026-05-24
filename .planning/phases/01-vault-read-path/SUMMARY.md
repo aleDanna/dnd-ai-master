@@ -45,6 +45,7 @@
 ## Known limits / follow-ups
 
 - **Phase 02 must add `apply_event`** to the vault tool surface — closes REQ-010's 4th tool. The events.md write path is already validated by spike 010 (`EventsWriter` mutex pattern).
+- **Phase 02 must respect REQ-007 (campaign data OUT of codebase repo).** A new constant `VAULT_CAMPAIGNS_ROOT` resolves an env-configurable path defaulting to `~/.dnd-ai-master/vault/campaigns/`. The static `VAULT_ROOT` (`data/vault/`) stays unchanged. Phase 02 planner picks the backup strategy: tarball+cron / separate git repo / S3 sync.
 - **Phase 02 may add a campaign-settings UI toggle** for `masterBackend` (Phase 01 ships backend-only).
 - **Phase 03 retires the RAG stack** (`src/ai/master/rag/*`, `scripts/build-rag-index.ts`, pgvector extension) + baked variants other than `dnd-master-plus` (regression-test baseline) once vault parity is confirmed.
 - **Vitest test-discovery scope:** vitest scans ONLY `tests/**/*.test.{ts,tsx}` (see `vitest.config.ts:31-40`). Colocated `src/**/*.test.ts` files are NOT picked up. All Phase 01 tests live under `tests/<area>/`. RESEARCH.md §6+§A7 incorrectly claimed colocated tests work — discovered during plan-check; SUMMARY records it so the Phase 02 planner does not re-trip.

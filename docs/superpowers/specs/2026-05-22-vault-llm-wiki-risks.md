@@ -142,8 +142,19 @@ LlamaIndex's 2026 benchmark explicitly warns: filesystem agents *can lose* on wa
 - **Detection:** `events.md` integrity check on session resume.
 
 ### R7 — Backup & disaster recovery regression
-- **Mitigation:** vault is a git repo. `commit-on-events.md-append` (one commit per turn). Push to private GitHub or local-mirror nightly. Bonus: full version history of every campaign for free.
-- **Detection:** scheduled `git log` sanity check.
+
+**UPDATE 2026-05-24:** the original mitigation ("vault is a git repo, commit-on-events.md-append") was withdrawn after the user-flagged design issue: committing campaign data into the codebase repo would leak PII, bloat the repo, and couple gameplay state to CI/CD redeploys.
+
+**New mitigation** (REQ-007 split-roots model):
+- Static content (`data/vault/`) is committed to the codebase repo as before. DR for it = `git clone`. Trivial.
+- Campaign data (`$VAULT_CAMPAIGNS_ROOT`) is OUT of the codebase repo. Backup strategy is out-of-band, with three viable patterns:
+  1. **Tarball + cloud sync** (e.g. `tar czf - $VAULT_CAMPAIGNS_ROOT | rclone rcat dropbox:dnd-vault.tgz`), daily cron.
+  2. **Separate git repo** (`dnd-ai-master-vault-data/`), commit-on-event or batched, pushed to private GitHub. Re-uses spike 013's `git clone + replay` proof.
+  3. **S3 sync via Vercel Blob** (or any object store) — events.md is append-only so `aws s3 sync` is cheap.
+
+Pattern (1) is the simplest for a single-user setup; pattern (2) preserves spike 013's clean DR rehearsal. Phase 02 will pick one and document it; Phase 01 is unaffected because no campaign data is in any vault yet.
+
+- **Detection:** post-restore `vault-rebuild` script (replay events.md, regenerate views, compare to last-known-good snapshot). Same script that handles partial-write corruption.
 
 ### R8 — Vault growth degrading reads
 - **Mitigation:** session bodies capped at ~5K tok. Older sessions get a "summary frontmatter" + offloaded body to `sessions/<n>-full.md`. LLM reads summary by default, full only on request.

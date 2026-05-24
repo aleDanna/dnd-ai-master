@@ -11,7 +11,8 @@ All requirements below are **LOCKED** by spike validation work (rounds 1-3 + nar
 | REQ-003 | Dynamic knowledge entry point: `/campaigns/<campaign-id>/index.md` (link traversal from there) | `/gsd-explore` 2026-05-22 |
 | REQ-004 | `events.md` per campaign is the source of truth. Per-entity `.md` files are materialized views. | spike 008, 010, 013 |
 | REQ-005 | Mutations go through `EventsWriter` single-writer mutex per campaign_id. NEVER naive read-modify-write on frontmatter. | spike 006 (invalidated), 010 |
-| REQ-006 | DR procedure: vault is a git repo, restore = `git clone` + replay events.md → regenerate views | spike 013 |
+| REQ-006 | DR procedure: events.md is the only durable artifact needed; restore = `replay events.md → regenerate views`. Backup strategy is out-of-band (cron tarball / S3 sync / separate git repo) — see REQ-007. | spike 013 + 2026-05-24 design decision |
+| REQ-007 | **Campaign data lives OUTSIDE the codebase repo.** `data/vault/` (committed) holds ONLY static content (handbook, lore, tool docs). Per-campaign dirs (`events.md` + materialized views) live under a configurable `VAULT_CAMPAIGNS_ROOT` directory, defaulting to `~/.dnd-ai-master/vault/campaigns/` (gitignored if it ends up inside the project root). Env var `VAULT_CAMPAIGNS_ROOT` overrides the default. Rationale: gameplay data is private/PII-bearing (player dialogue, narrative choices), repo would gonfiare with mutation history, and every state change would otherwise trigger a Vercel build. | 2026-05-24 design decision |
 
 ## LLM tool surface
 

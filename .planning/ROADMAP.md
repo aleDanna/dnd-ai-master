@@ -34,16 +34,19 @@ The migration is decomposed into 3 phases. Each phase ships independently (the s
 
 ## Phase 02: Vault Write Path (Event Sourcing)
 
-**Goal:** Game-state mutations (HP changes, condition adds, spell-slot use, narrative events) write to `events.md` via `EventsWriter`, with materialized views (`characters/<name>.md`, session logs) regenerated on read. Still behind feature flag — Postgres remains the source of truth for any campaign not opted in.
+**Goal:** Game-state mutations (HP changes, condition adds, spell-slot use, narrative events) write to `events.md` per-campaign via `EventsWriter`, with materialized views (`characters/<name>.md`, session logs) regenerated on read. Campaign data lives under a configurable `VAULT_CAMPAIGNS_ROOT` outside the codebase repo (REQ-007). Still behind feature flag — Postgres remains the source of truth for any campaign not opted in.
 
 **Scope:**
-- `EventsWriter` class with in-process Map<path, Promise> mutex (spike 010 pattern)
-- `apply_event(type, payload)` Ollama tool exposed in the LLM tool surface
+- `VAULT_CAMPAIGNS_ROOT` env-driven path resolver (default `~/.dnd-ai-master/vault/campaigns/`) — separate from the static `VAULT_ROOT`
+- `EventsWriter` class with in-process Map<path, Promise> mutex (spike 010 pattern), keyed on campaign id
+- `apply_event(type, payload)` Ollama tool exposed in the LLM vault tool surface
 - Event projector module: converts events.md → in-memory state, then serializes to `characters/<name>.md` frontmatter
 - Event type schema: `hp_change`, `condition_add`, `condition_remove`, `spell_slot_use`, `spell_slot_restore`, `inventory_add`, `inventory_remove`, plus extension hooks
 - Materialized-view regeneration triggered by every `apply_event` call (cheap; ~5ms per regeneration for a small campaign)
 - Concurrent-write smoke test in CI (100 parallel applyEvent calls, assert 0 lost — spike 010 pattern)
 - Per-campaign opt-in flag: `vault_mutations: true` in campaign settings
+- Backup strategy chosen + documented (REQ-007): tarball+cron, or separate git repo, or S3 sync (decision deferred to Phase 02 planning)
+- Vault campaign tools (`read_vault_campaign_multi`, `list_vault_campaign`?) — or extend existing `read_vault_multi` to accept paths in both roots transparently (Phase 02 planner decides)
 
 **Success criteria:**
 - ✓ A turn that resolves combat damage produces an `apply_event` tool call that lands in `events.md` AND updates `characters/<name>.md` frontmatter atomically
@@ -54,7 +57,7 @@ The migration is decomposed into 3 phases. Each phase ships independently (the s
 
 **Depends on:** Phase 01
 
-**Requirements:** REQ-004, REQ-005, REQ-006, REQ-010
+**Requirements:** REQ-004, REQ-005, REQ-006, REQ-007, REQ-010
 
 ---
 

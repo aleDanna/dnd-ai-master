@@ -15,6 +15,7 @@ describe('vault phase smoke', () => {
     const mod = await import('@/ai/master/vault');
     // Path primitives (plan 01)
     expect(typeof mod.VAULT_ROOT).toBe('string');
+    expect(typeof mod.VAULT_CAMPAIGNS_ROOT).toBe('string');  // REQ-007 — Phase 02 consumer
     expect(typeof mod.safeVaultPath).toBe('function');
     expect(typeof mod.readVaultFile).toBe('function');
     expect(typeof mod.listVaultDir).toBe('function');

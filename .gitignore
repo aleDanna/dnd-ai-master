@@ -65,6 +65,14 @@ next-env.d.ts
 # Local DB snapshots (pg_dump custom format)
 /.snapshots/
 
+# Campaign data — REQ-007 mandates this lives OUTSIDE the codebase repo.
+# Default location is ~/.dnd-ai-master/vault/campaigns/ (home-based, not here),
+# but if a developer sets VAULT_CAMPAIGNS_ROOT to a project-relative path
+# (e.g. ./local/vault-campaigns/), these patterns prevent accidental commits.
+/local/
+/vault-campaigns/
+/data/vault/campaigns/
+
 # Generated Ollama Modelfiles (Plan D — pnpm build-local-models)
 /.ollama/
 

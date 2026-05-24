@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm, symlink, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { safeVaultPath, readVaultFile, listVaultDir, VAULT_ROOT } from '@/ai/master/vault/path';
+import { safeVaultPath, readVaultFile, listVaultDir, VAULT_ROOT, VAULT_CAMPAIGNS_ROOT } from '@/ai/master/vault/path';
 
 describe('vault/path', () => {
   let root: string;
@@ -128,11 +128,11 @@ describe('vault/path', () => {
     });
   });
 
-  describe('purity guard — REQ-022 protection at the foundation', () => {
-    it('source file contains no process.env reads', async () => {
-      const src = await readFile(resolve(process.cwd(), 'src/ai/master/vault/path.ts'), 'utf8');
-      expect(src).not.toMatch(/process\.env\./);
-    });
+  describe('purity guard — narrower after REQ-007', () => {
+    // path.ts legitimately reads `process.env.VAULT_CAMPAIGNS_ROOT` per
+    // REQ-007 (campaign data root is operator-configurable). The strict
+    // purity rule applies to `prompt-builder.ts` only (REQ-022, enforced
+    // by tests/ai/master/vault/prompt-builder.test.ts).
 
     it('source file contains no Date.now / Math.random calls', async () => {
       const src = await readFile(resolve(process.cwd(), 'src/ai/master/vault/path.ts'), 'utf8');
@@ -144,6 +144,26 @@ describe('vault/path', () => {
   describe('VAULT_ROOT', () => {
     it('points at data/vault under the project root', () => {
       expect(VAULT_ROOT).toBe(resolve(process.cwd(), 'data/vault'));
+    });
+  });
+
+  describe('VAULT_CAMPAIGNS_ROOT (REQ-007 — out-of-repo campaign data)', () => {
+    it('resolves to an absolute path', () => {
+      expect(VAULT_CAMPAIGNS_ROOT.startsWith('/')).toBe(true);
+    });
+
+    it('is NOT under the project cwd by default (campaigns live outside the repo)', () => {
+      // The default is ~/.dnd-ai-master/vault/campaigns/ which sits under
+      // home, not under the project. If a developer's HOME is inexplicably
+      // the project root, this assertion is meaningless — skip in that case.
+      if (process.cwd() === process.env.HOME) return;
+      // Honour env override if set at test time (CI may stub VAULT_CAMPAIGNS_ROOT).
+      if (process.env.VAULT_CAMPAIGNS_ROOT) return;
+      expect(VAULT_CAMPAIGNS_ROOT.startsWith(process.cwd() + '/')).toBe(false);
+    });
+
+    it('is distinct from VAULT_ROOT', () => {
+      expect(VAULT_CAMPAIGNS_ROOT).not.toBe(VAULT_ROOT);
     });
   });
 });

@@ -1,13 +1,31 @@
 import { readFile, readdir, realpath } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { join, normalize, resolve } from 'node:path';
 
 /**
- * Single source of truth for the vault filesystem root.
+ * STATIC content root — handbook, lore, tool docs.
  *
- * Resolved once at module-load to a stable absolute path under the project's
- * working directory. All vault reads pass through this constant.
+ * Lives inside the project repo at `data/vault/`, committed to git. Same for
+ * every user/install. Resolved once at module-load to a stable absolute path.
+ * Phase 01 vault path reads exclusively from here.
  */
 export const VAULT_ROOT = resolve(process.cwd(), 'data/vault');
+
+/**
+ * DYNAMIC campaign data root — `events.md` + materialized views per campaign.
+ *
+ * REQ-007 mandates this lives OUTSIDE the codebase repo (PII, repo bloat,
+ * CI/CD coupling). Resolves in priority order:
+ *   1. `VAULT_CAMPAIGNS_ROOT` env var (operator override)
+ *   2. `~/.dnd-ai-master/vault/campaigns/` (home-based default)
+ *
+ * Not consumed in Phase 01 (vault is read-only for game state). Exported
+ * here as preparation: Phase 02's `apply_event` tool + EventsWriter mutex
+ * will resolve every per-campaign path under this root.
+ */
+export const VAULT_CAMPAIGNS_ROOT = process.env.VAULT_CAMPAIGNS_ROOT
+  ? resolve(process.env.VAULT_CAMPAIGNS_ROOT)
+  : join(homedir(), '.dnd-ai-master', 'vault', 'campaigns');
 
 /**
  * REQ-014 — Path sanitization for every vault read (validated by spike 001).
