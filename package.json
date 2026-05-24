@@ -28,6 +28,7 @@
     "db:restore": "tsx scripts/db-restore.ts",
     "build-local-models": "tsx scripts/build-local-models.ts",
     "build-rag-index": "tsx scripts/build-rag-index.ts",
+    "migrate-handbook-to-vault": "tsx scripts/migrate-handbook-to-vault.ts",
     "tunnel:proxy": "tsx scripts/tunnel-proxy.ts"
   },
   "dependencies": {
