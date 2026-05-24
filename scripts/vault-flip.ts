@@ -15,7 +15,7 @@
  * `.env.production.local` (no shell-level DATABASE_URL export needed).
  */
 import './_env-loader';
-import { eq, isNull, like, sql } from 'drizzle-orm';
+import { eq, isNull, sql } from 'drizzle-orm';
 import { db, pool } from '@/db/client';
 import { campaigns } from '@/db/schema';
 import { resolveMasterBackend, isMasterBackend, type MasterBackend } from '@/lib/preferences';
@@ -86,10 +86,14 @@ async function resolveCampaignId(prefix: string): Promise<string | null> {
     return row?.id ?? null;
   }
 
+  // Postgres LIKE doesn't accept uuid operands → cast to text. drizzle's
+  // `like(campaigns.id, ...)` would emit `id LIKE $1` which fails with
+  // "operator does not exist: uuid ~~ unknown" on a uuid column. The
+  // raw `sql` template lets us write the cast explicitly.
   const matches = await db
     .select({ id: campaigns.id, name: campaigns.name })
     .from(campaigns)
-    .where(like(campaigns.id, `${prefix}%`))
+    .where(sql`${campaigns.id}::text LIKE ${prefix + '%'}`)
     .limit(2);
 
   if (matches.length === 0) {
