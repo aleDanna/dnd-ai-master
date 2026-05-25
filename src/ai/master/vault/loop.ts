@@ -47,6 +47,13 @@ export interface VaultLoopInput {
   history: Message[];
   /** Overrides VAULT_ROOT for tests; production callers omit. */
   vaultRoot?: string;
+  /**
+   * Campaign UUID — required for `apply_event` (Phase 02). Forwarded into
+   * `dispatchVaultTool` as `ctx.campaignId`. When undefined, apply_event
+   * calls from the LLM return isError. Phase 01 read-only flows omit this
+   * and continue working.
+   */
+  campaignId?: string;
   /** Telemetry sink — receives every `provider.completeMessage` usage. */
   recordUsage?: (u: NormalizedUsage) => Promise<void>;
   /** SSE event sink — fires per `narrative_delta`, `tool_use_*`, etc. */
@@ -74,6 +81,7 @@ export async function runVaultToolLoop(input: VaultLoopInput): Promise<VaultLoop
     systemBlocks,
     history,
     vaultRoot,
+    campaignId,
     recordUsage,
     onEvent,
     sessionId,
@@ -140,7 +148,7 @@ export async function runVaultToolLoop(input: VaultLoopInput): Promise<VaultLoop
     // Terminator 2 — end_turn tool call (REQ-013 / REQ-010).
     const endTurnCall = toolUses.find((t) => t.name === 'end_turn');
     if (endTurnCall) {
-      const result = await dispatchVaultTool('end_turn', endTurnCall.input, { vaultRoot });
+      const result = await dispatchVaultTool('end_turn', endTurnCall.input, { vaultRoot, campaignId });
       finalText = result.endTurnResponse ?? finalText;
       emit({
         type: 'tool_use_start',
@@ -187,7 +195,7 @@ export async function runVaultToolLoop(input: VaultLoopInput): Promise<VaultLoop
     for (const tu of toolUses) {
       toolCallCount += 1;
       emit({ type: 'tool_use_start', toolUseId: tu.id, name: tu.name, input: tu.input });
-      const result = await dispatchVaultTool(tu.name, tu.input, { vaultRoot });
+      const result = await dispatchVaultTool(tu.name, tu.input, { vaultRoot, campaignId });
       emit({
         type: 'tool_use_end',
         toolUseId: tu.id,
