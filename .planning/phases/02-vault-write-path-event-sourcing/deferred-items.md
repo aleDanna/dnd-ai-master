@@ -16,6 +16,8 @@
 
 **Recommended owner:** the plan or hotfix that owns the RAG-block injection in the system prompt assembler. Likely an unfinished partial-commit on `main` (the RAG block is referenced in the test but not emitted by the assembler).
 
+**Re-confirmed during Plan 02-04 (projector):** still failing on `main` at commit `7cbfcb9`. Verified by `git stash -u` of the two new projector files, then `pnpm test tests/ai/master/system-prompt.mode.test.ts` — same 2/2 failures. Out-of-scope; logged for the eventual RAG-block owner.
+
 ### Pre-existing typecheck error in `src/lib/preferences.ts:367` — RESOLVED by Plan 02-05
 
 **Status:** RESOLVED. Plan 02-05 Task 2 (commit on `main` after `bd890c4`) extended `getCampaignSettings` to populate `vaultMutations: resolveVaultMutations(prefs)` in the `Required<CampaignSettings>` return, plus added `vaultMutations: false` to `DEFAULT_PREFERENCES`. `pnpm typecheck` is clean for `src/lib/preferences.ts`.
