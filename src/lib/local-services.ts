@@ -1,6 +1,7 @@
 import { isBakedModel, getBakedBaseModel, TIER_LABELS } from '@/ai/master/baked-models';
 import { pingEmbedder } from '@/ai/master/rag/embedder';
 import { ollamaHeaders } from './local-fetch';
+import { envPositiveInt } from './env';
 
 /**
  * True when the process can talk to a "local" provider stack. Two regimes:
@@ -32,7 +33,7 @@ export function isLocalEnvironment(): boolean {
  *  + funnel routing alone can burn 200-800ms, and cold starts add more.
  *  5s is the right balance — fail fast on real outages, tolerate the
  *  tunnel round-trip. Override via LOCAL_PROBE_TIMEOUT_MS. */
-const PROBE_TIMEOUT_MS = Number(process.env.LOCAL_PROBE_TIMEOUT_MS ?? '5000');
+const PROBE_TIMEOUT_MS = envPositiveInt('LOCAL_PROBE_TIMEOUT_MS', 5000);
 
 export async function pingService(baseUrl: string, path: string, headers?: Record<string, string>): Promise<boolean> {
   try {

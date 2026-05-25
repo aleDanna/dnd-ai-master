@@ -1,5 +1,6 @@
 import type { EmbedderConfig } from './types';
 import { ollamaHeaders } from '@/lib/local-fetch';
+import { envPositiveInt } from '@/lib/env';
 
 export const DEFAULT_EMBEDDER_CONFIG: EmbedderConfig = {
   baseUrl: process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434',
@@ -8,7 +9,7 @@ export const DEFAULT_EMBEDDER_CONFIG: EmbedderConfig = {
   // can take 10-20s to bring the embedder into memory (especially when a
   // 20B+ master model already holds most of the VRAM). 30s is the right
   // balance between "tolerate cold start" and "fail fast on real outage".
-  timeoutMs: Number(process.env.OLLAMA_EMBEDDER_TIMEOUT_MS ?? '30000'),
+  timeoutMs: envPositiveInt('OLLAMA_EMBEDDER_TIMEOUT_MS', 30000),
 };
 
 /**

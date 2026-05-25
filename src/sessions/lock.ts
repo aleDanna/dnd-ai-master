@@ -1,13 +1,14 @@
 import { eq, and, lt, or, isNull, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions } from '@/db/schema';
+import { envPositiveInt } from '@/lib/env';
 import { TURN_TIMEOUT_MS } from './types';
 
 // Lock TTL must outlive the worst-case turn duration, otherwise two turns can
 // run in parallel against the same session. We add a 30s buffer on top of the
 // turn timeout for the cleanup path (DB writes, lock release, controller
 // close). Env-overridable independently if needed.
-export const TURN_LOCK_TTL_MS = Number(process.env.TURN_LOCK_TTL_MS ?? String(TURN_TIMEOUT_MS + 30_000));
+export const TURN_LOCK_TTL_MS = envPositiveInt('TURN_LOCK_TTL_MS', TURN_TIMEOUT_MS + 30_000);
 
 /** Try to acquire the per-session turn lock. Returns true on success. */
 export async function acquireTurnLock(sessionId: string): Promise<{ acquired: boolean; holder: string }> {

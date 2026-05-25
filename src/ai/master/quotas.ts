@@ -1,9 +1,10 @@
 import { eq, and, gte, isNull, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { aiUsage, sessions } from '@/db/schema';
+import { envPositiveInt } from '@/lib/env';
 
-export const DAILY_TURN_CAP = Number(process.env.DAILY_TURN_CAP ?? '200');
-export const SESSION_COUNT_CAP = Number(process.env.SESSION_COUNT_CAP ?? '50');
+export const DAILY_TURN_CAP = envPositiveInt('DAILY_TURN_CAP', 200);
+export const SESSION_COUNT_CAP = envPositiveInt('SESSION_COUNT_CAP', 50);
 
 export type QuotaResult = { ok: true } | { ok: false; reason: 'daily_turn_cap' | 'session_count_cap' };
 

@@ -1,5 +1,6 @@
 import type { Mutation, ActionResult, EngineState } from '@/engine/types';
 import type { Character as CharacterDbRow } from '@/db/schema';
+import { envPositiveInt } from '@/lib/env';
 
 export interface TurnRequest {
   sessionId: string;
@@ -41,4 +42,4 @@ export const TURN_TOOL_CALL_CAP = 12;
 // calls multiple tools (e.g. add_item + generate_scene_image) needs 2-3
 // round-trips to also produce narration. 60s was too tight; default is now
 // 120s, env-overridable for testing or slow networks.
-export const TURN_TIMEOUT_MS = Number(process.env.TURN_TIMEOUT_MS ?? '120000');
+export const TURN_TIMEOUT_MS = envPositiveInt('TURN_TIMEOUT_MS', 120000);

@@ -20,6 +20,7 @@ import {
 import { recordUsage } from '@/ai/master/usage';
 import { isBakedModel, thinkingFlagFor } from '@/ai/master/baked-models';
 import { ollamaHeaders } from '@/lib/local-fetch';
+import { envPositiveInt } from '@/lib/env';
 
 const KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE ?? '5m';
 // Ollama defaults `num_ctx` to 2048 which truncates the master prompt
@@ -30,7 +31,7 @@ const KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE ?? '5m';
 // Both qwen3:30b-a3b and gpt-oss:20b support 128k context natively.
 // Cost: each extra 8k of num_ctx allocates ~2-4GB of KV cache RAM (model
 // dependent). User can lower via OLLAMA_NUM_CTX if RAM-bound.
-const NUM_CTX = Number(process.env.OLLAMA_NUM_CTX ?? '65536');
+const NUM_CTX = envPositiveInt('OLLAMA_NUM_CTX', 65536);
 
 /** Back-compat: legacy callers test "is this a thinking model?" as a
  *  boolean. The single source of truth (thinkingFlagFor) is now in
@@ -183,7 +184,7 @@ async function chat(
   // KEEP_ALIVE window (default 60m), the model unloads and the next
   // first-call pays this again. Tune via OLLAMA_FETCH_TIMEOUT_MS env
   // var if you have a slower machine or are baking even bigger models.
-  const fetchTimeoutMs = Number(process.env.OLLAMA_FETCH_TIMEOUT_MS ?? '900000');
+  const fetchTimeoutMs = envPositiveInt('OLLAMA_FETCH_TIMEOUT_MS', 900000);
   const isStream = (body as { stream?: boolean }).stream === true;
   const res = await fetch(`${baseUrl()}/api/chat`, {
     method: 'POST',

@@ -33,6 +33,7 @@
  */
 import * as http from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
+import { envPositiveInt } from '@/lib/env';
 
 const TOKEN = process.env.LOCAL_LLM_TOKEN;
 if (!TOKEN) {
@@ -41,7 +42,7 @@ if (!TOKEN) {
 }
 const EXPECTED_AUTH = `Bearer ${TOKEN}`;
 
-const LISTEN_PORT = Number(process.env.TUNNEL_PROXY_PORT ?? '11435');
+const LISTEN_PORT = envPositiveInt('TUNNEL_PROXY_PORT', 11435);
 
 interface Upstream {
   host: string;

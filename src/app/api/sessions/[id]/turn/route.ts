@@ -8,6 +8,7 @@ import { sessions, sessionMessages, campaigns, characters as charactersTable } f
 import { buildSnapshot } from '@/sessions/snapshot';
 import { applyMutations } from '@/sessions/applicator';
 import { acquireTurnLock, releaseTurnLock } from '@/sessions/lock';
+import { envPositiveInt } from '@/lib/env';
 import { buildSrdContext } from '@/ai/master/srd-context';
 import { getMasterHandbook, getMasterWorldLore } from '@/ai/master/handbook';
 import { buildMasterSystemPrompt } from '@/ai/master/system-prompt';
@@ -283,7 +284,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               { role: 'user', content: buildBeginUserMessage(campaign.premise, campaign.language) },
             ];
           } else {
-            const HISTORY_LIMIT = Number(process.env.MASTER_HISTORY_LIMIT ?? '10');
+            const HISTORY_LIMIT = envPositiveInt('MASTER_HISTORY_LIMIT', 10);
             const recentRaw = await db
               .select()
               .from(sessionMessages)
@@ -478,7 +479,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // turn (cover current scene); chapter digests cover history
           // older than the window once they form at ~40 messages
           // (CHAPTER_SIZE in extractor.ts).
-          const HISTORY_LIMIT = Number(process.env.MASTER_HISTORY_LIMIT ?? '10');
+          const HISTORY_LIMIT = envPositiveInt('MASTER_HISTORY_LIMIT', 10);
           const recentRaw = await db
             .select()
             .from(sessionMessages)
@@ -500,7 +501,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // We can't precisely estimate the SYSTEM baked size (Ollama
           // doesn't expose it), so we use a conservative fixed envelope.
           // Char/4 is the standard rough tokens estimate for mixed EN/IT.
-          const MASTER_PROMPT_BUDGET = Number(process.env.MASTER_PROMPT_BUDGET ?? '12500');
+          const MASTER_PROMPT_BUDGET = envPositiveInt('MASTER_PROMPT_BUDGET', 12500);
           const ESTIMATED_FIXED_COST = 7000 + 1500;  // baked SYSTEM + tools
           // We don't have the rendered dynamic prefix here yet (built below
           // in step 4). Estimate it conservatively from the flags we'll set:
