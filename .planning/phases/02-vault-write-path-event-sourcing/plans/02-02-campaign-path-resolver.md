@@ -214,3 +214,88 @@ Total: 6 describe blocks, ~25 `it` cases.
 ## Open questions
 
 None — the path resolution shape is defined by RESEARCH §4 Pattern 4. The slug + id8 suffix is locked by Decision 10. The UUID guard is mandated by T-02-04.
+
+---
+
+## Execution Summary
+
+**Status:** ✅ Complete
+**Executed:** 2026-05-25 (wave 1, parallel execution)
+**Duration:** ~7 minutes
+**Commits:** 2 (one per task, atomic, conventional `(phase-02)` scope)
+
+### Commits
+
+| Task | Commit | Type | Description |
+|---|---|---|---|
+| 1 | `31c46b0` | feat | Add per-campaign path resolver under VAULT_CAMPAIGNS_ROOT |
+| 2 | `945f6c5` | test | Cover campaign-paths UUID guard, slug, path-prefix invariant |
+
+### Artifacts shipped
+
+- **`src/ai/master/vault/campaign-paths.ts`** (215 LOC) — 6 exports:
+  - `UUID_REGEX` (RFC 4122 case-insensitive)
+  - `campaignDir(campaignId)` — fail-closed throw on non-UUID input (T-02-04)
+  - `eventsPath(campaignId)` — inherits UUID guard
+  - `slugifyCharacterName(name)` — NFD + diacritic strip + non-alnum collapse, `'unnamed'` fallback (T-02-05)
+  - `characterViewPath(campaignId, name, charId)` — double UUID guard + path-prefix invariant assertion (T-02-07)
+  - `assertSameVolumeForTempFiles()` — POSIX-only best-effort `stat().dev` compare; never throws; logs `console.warn` on mismatch (Pitfall 1, T-02-12 informational). Called once at module load.
+- **`tests/ai/master/vault/campaign-paths.test.ts`** (251 LOC) — 41 vitest cases across 6 describe blocks. Runs cleanly with `DATABASE_URL` unset.
+
+### Acceptance criteria — all green
+
+**Task 1:**
+- All 6 exports present
+- `grep -c "throw new Error"` = 3 (≥ 2)
+- `grep -c "VAULT_CAMPAIGNS_ROOT"` = 15 (≥ 2)
+- `pnpm typecheck` → exit 0
+- Runtime smoke: campaignDir/eventsPath/slug/characterViewPath behave per spec (including traversal defense via tsx -e direct verification)
+
+**Task 2:**
+- 41 / ~25 expected test cases pass
+- `grep -c "VALID_UUID"` = 20 (≥ 10)
+- `grep -c "toThrow"` = 5 (≥ 4)
+- `grep -c "stubEnv"` = 2 (≥ 1)
+- `grep -cE "@/db/|@/lib/preferences"` = 0
+- `env -u DATABASE_URL pnpm test ...` → exit 0
+
+**Plan-level:**
+- `pnpm test tests/ai/master/vault/campaign-paths.test.ts` → 41/41 green in 111ms
+- `pnpm typecheck` → clean
+- `grep -v '^ *\*' src/ai/master/vault/campaign-paths.ts | grep -c 'UUID_REGEX.test'` = 2 (≥ 2)
+
+### Implementation notes
+
+**NIT 5 enforcement (literal diacritic range).** First Write tool pass produced the regex with literal U+0300/U+036F bytes (the Write tool resolves `\uXXXX` escape sequences into actual Unicode characters). Detected via `od -c` post-write and corrected via `python3` byte-level edit (1 occurrence found / replaced). Final source contains the explicit 12-char ASCII sequence `̀-ͯ` inside the regex, satisfying the contract.
+
+**Decision 10 honored.** Character view filename is `<slug>-<id8>.md` where `id8 = characterId.slice(0, 8)`. Collision test case explicitly verifies "Ára"/"Ara" with different UUIDs produce distinct paths.
+
+**`assertSameVolumeForTempFiles` design choices:**
+- POSIX-only (skips Windows because `rename(2)` semantics differ).
+- Wrapped in outer try/catch (best-effort, never throws).
+- Inner try/catch on `statSync(VAULT_CAMPAIGNS_ROOT)` to handle the "first-run, dir not created yet" case (silent exit; verified by the dedicated test case that asserts `console.warn` is not called for a nonexistent path).
+- Called once at module load — single warning per process on misconfigured deployment.
+- Uses `require('node:fs')` / `require('node:os')` inside the function rather than top-level imports, so test seams that stub the modules don't bypass the safety check.
+
+**Path-prefix invariant (T-02-07).** Implemented as an explicit `if (!path.startsWith(charactersPrefix)) throw` check inside `characterViewPath`. The slug strip should make escape impossible, but the assertion documents the invariant and catches future regressions if the slug helper is ever weakened.
+
+### Out-of-scope observations (no action taken)
+
+During execution, other Wave 1 plans (02-05 `vault-mutations-flag`, 02-06 `tool-loop-cap-bump`) committed changes to:
+- `src/db/schema/users.ts` (UserPreferences.vaultMutations field — plan 02-05)
+- `src/lib/preferences.ts` (resolveVaultMutations + validator arm — plan 02-05)
+- `tests/lib/preferences-vault-mutations.test.ts` (plan 02-05 task 3)
+- `tests/sessions/turn-tool-call-cap.test.ts` (plan 02-06)
+- `.planning/phases/02-vault-write-path-event-sourcing/deferred-items.md`
+
+None of these are in this plan's scope (contract: NEW campaign-paths.ts + NEW campaign-paths.test.ts only). Per the parallel execution contract, this plan staged ONLY its own two files for each commit. Other plans' files were left untouched in the working tree.
+
+### Downstream consumers
+
+Plans 02-03, 02-04, 02-07 consume this module:
+- 02-03 (events-writer) uses `eventsPath(campaignId)` as the mutex key.
+- 02-04 (projector) uses `characterViewPath(...)` for view file location.
+- 02-07 (apply-event-tool) uses `campaignDir(...)` and the UUID guard at the dispatch boundary.
+
+The `UUID_REGEX` constant is also referenced by `scripts/vault-rebuild-views.ts` (per Phase 02 PATTERNS.md analog mapping).
+
