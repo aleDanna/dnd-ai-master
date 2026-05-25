@@ -59,12 +59,30 @@
 
 | Metric | Baseline (baked, `dnd-master-plus`) | Phase 01 (vault, `qwen3:30b-a3b-instruct-2507-q4_K_M`) |
 |---|---|---|
-| Warm wall-clock (M4) | 26.05s (spike 004) | **TBD — run `pnpm bench-vault-m4` on M4 and fill in** |
-| `prompt_eval_count` | ~8800 | **TBD by bench** |
+| Warm wall-clock (M4) | 26.05s (spike 004) | **Deferred** — see note below |
+| `prompt_eval_count` | ~8800 | **Deferred** |
 | `rag_chunk_count` | 0-3 | NULL (RAG not attempted on vault path) |
-| Quality (5-keyword check) | 4/5 (spike 004) | **TBD** (expected ≥4/5 per spike 014 narrative validation) |
+| Quality (5-keyword check) | 4/5 (spike 004) | **Deferred** (M5 Pro smoke verifies vault grounding; spike 014 covered narrative) |
 
-When the developer fills the TBD column on M4, the REQ-021 gate verdict is established.
+**Deferral rationale.** REQ-021 (`<10s warm on M4`) is hardware-specific and is
+**not a Phase 01 functional blocker** — Phase 01 ships the vault path **in
+coexistence mode** behind the `masterBackend` flag, with the baked path still
+the default. Zero regression risk for users still on baked. The decision-grade
+M4 number becomes relevant only when **Phase 03 retires the baked path** — at
+that point we MUST have the bench result to confirm production won't degrade.
+
+Until then:
+- The M5 Pro smoke (below) is sufficient evidence the vault path is functionally
+  green (tool calling works, lenient discovery works, the model grounds answers
+  in vault files).
+- The M4 number will be captured "naturally" the first time a real campaign is
+  played from production hardware — Vercel function logs + `ai_usage` rows give
+  us the wall-clock for free, no dedicated bench run needed.
+- If we want a controlled M4 bench before Phase 03, run `pnpm bench-vault-m4`
+  on the Mac Mini at that point with a fresh Clerk JWT and a vault-flagged
+  campaign owned by the bench user. (Friction observed during 2026-05-25
+  attempt: Clerk dev JWTs have a 60s TTL, and the bench-vault-m4 default port
+  is 3000 while pnpm dev may run on 3001 — pass `--host=http://localhost:3001`.)
 
 ### M5 Pro (dev) — interactive smoke test, 2026-05-25
 
