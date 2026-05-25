@@ -484,3 +484,105 @@ No DATABASE_URL required (uses the projector + tools directly).
 ## Open questions
 
 None — phase Decision 8 commits to single-write semantics for Phase 02; the checkpoint task confirms the banner UX choice. If the operator picks Option C (no banner), the UI work is zero and only plan 02-10's operator doc covers the caveat. hashVaultPrompt signature stays `(prompt: string)` (BLOCKER 3 Option A — natural hash divergence via the conditional prompt text).
+
+---
+
+# SUMMARY
+
+**Status:** Complete
+**Date:** 2026-05-25
+**Wave:** 3b (parallel with plan 02-09 — disjoint files preserved)
+
+## What shipped
+
+1. **`src/ai/master/vault/prompt-builder.ts`** — extended `VaultPromptInput` with optional `vaultMutations?: boolean`. When `true`, the builder bumps the advertised tool count to 4 and appends a brief `apply_event` mention to the protocol block. The mention explicitly clarifies that the `character` field is a **UUID** (not a name) — NIT 1 fix. A symmetric consistency assertion enforces the `(vaultMutations, toolCount)` pairing: `(true, 4)` or `(false|undefined, 3)`; any other combo throws at the entry point.
+2. **`hashVaultPrompt(prompt: string)` signature stays UNCHANGED** (BLOCKER 3 Option A). The conditional `applyEventMention` text in the prompt naturally produces hash divergence between read-only and read-write builds. JSDoc above the function documents this natural divergence.
+3. **`src/app/api/sessions/[id]/turn/route.ts`** — vault branch now reads `resolveVaultMutations(userPrefs)` once per turn. The resolved `vaultMutationsEnabled` boolean drives: (a) `buildVaultSystemPrompt` `toolCount` + `vaultMutations` inputs, (b) conditional `campaignId: campaign.id` spread into the `runVaultToolLoop` input. Belt-and-suspenders gating: prompt-level (3 vs 4 advertised) + dispatch-level (campaignId presence). Updated comment block documents the 4-quadrant matrix (baked vs vault × vaultMutations true vs false) plus Decision 8 single-write semantics.
+4. **`tests/sessions/vault-mutations-gate.test.ts`** — NEW. 19 cases covering the 4 quadrants of (masterBackend, vaultMutations), the env-override interaction (`MASTER_BACKEND=vault`), and the belt-and-suspenders dispatch surface invariant. Mirrors the unit-level pattern of Phase 01's `turn-route-branch.test.ts`.
+5. **`tests/sessions/vault-mutations-resume.test.ts`** — NEW. 8 cases covering the phase-gate invariant "Restart preserves state via events.md replay on session resume". Exercises the BLOCKER 1 ground-truth fixtures (freshly-created seed → fallback defaults; played-session seed → verbatim state; mixed seed → per-character independence) plus DR roundtrip (spike 013) and no-duplicate-state across simulated restart.
+6. **`src/lib/preferences.ts`** — exported `VAULT_MUTATIONS_STALE_UI_BANNER` constant locking the operator-approved Italian copy: **`"Vault attivo — ricarica per vedere lo stato più recente"`**. Plan 02-10's operator doc + future Settings UI panel reference this constant. Regression test added.
+7. **Phase-wide grep gate satisfied** — `grep -rn "toBe(3)\|toHaveLength(3)" tests/ ... | grep -iE "vault[_a-z]*tool|tool[_a-z]*surface|VAULT_TOOL" | wc -l` returns `0`. The legacy 3-tool assertion is gone phase-wide.
+8. **Companion update in `tests/sessions/turn-route-branch.test.ts`** — the legacy case that built a 4-tool prompt without `vaultMutations: true` now passes the flag explicitly (the builder's consistency assertion required the pair).
+
+## Checkpoint resolution
+
+**Task 5 (checkpoint:human-verify):** pre-resolved by the user before execution. Decision = **`approved-A`** with exact copy `"Vault attivo — ricarica per vedere lo stato più recente"`. The decision is locked in code as `VAULT_MUTATIONS_STALE_UI_BANNER` and regression-tested. The actual Settings-page UI rendering is part of plan 02-10 (operator doc + UI panel).
+
+## Acceptance criteria — all met
+
+- **Task 1 (prompt-builder):**
+  - `grep -c "vaultMutations" src/ai/master/vault/prompt-builder.ts` → 12 (≥ 3 ✓)
+  - `grep -c "apply_event" src/ai/master/vault/prompt-builder.ts` → 4 (≥ 1 ✓)
+  - `grep -cE "character UUID|character is a UUID|character uuid" src/ai/master/vault/prompt-builder.ts` → 2 (≥ 1 ✓; NIT 1 ✓)
+  - REQ-022 forbidden pattern scan → 0 violations ✓
+  - `hashVaultPrompt(prompt: string)` signature unchanged ✓
+  - Existing Phase 01 prompt-builder tests still green ✓
+  - Consistency assertion exercised in tests ✓
+  - Hash divergence asserted via `hashVaultPrompt(read-only) !== hashVaultPrompt(read-write)` ✓
+- **Task 2 (turn-route gate):**
+  - `grep -c "resolveVaultMutations" route.ts` → 2 (≥ 1 ✓)
+  - `grep -c "vaultMutationsEnabled" route.ts` → 5 (≥ 3 ✓)
+  - `grep -c "campaignId: campaign.id" route.ts` → 2 (≥ 1 ✓)
+  - `tests/sessions/turn-route-branch.test.ts` no longer asserts `toBe(3)`/`toHaveLength(3)` against the tool surface ✓
+  - Phase 01 turn-route-branch tests post-inversion still pass ✓
+  - `pnpm typecheck` exits 0 ✓
+- **Task 3 (gate test):**
+  - 19 cases pass (plan expected ~11 — exceeded) ✓
+  - "baked + vaultMutations:true → gate ignored" exercised ✓ (Pitfall 5)
+  - "vault + vaultMutations:undefined → default false" exercised ✓
+  - "vault + vaultMutations:true → campaignId forwarded" exercised ✓
+  - UUID-vs-name clarification exercised ✓ (NIT 1)
+  - `grep -c "vaultMutations" tests/sessions/vault-mutations-gate.test.ts` → 29 (≥ 10 ✓)
+- **Task 4 (resume test):**
+  - 8 cases pass ✓
+  - Freshly-created seed → hp_max fallback + empty spell_slots fallback ✓ (BLOCKER 1)
+  - Played-session seed → verbatim state ✓ (BLOCKER 1)
+  - Mixed seed → independent defaults ✓ (BLOCKER 1)
+  - View corruption → regenerate restores byte-exact ✓ (DR roundtrip — spike 013)
+  - No duplicate state across simulated restart ✓ (replay determinism)
+  - `grep -c "vi.resetModules" + "freshVaultModule"` → 9 (≥ 2 ✓)
+  - `grep -c "VaultSeedCharacter"` → 9 (≥ 1 ✓)
+  - `hp_current` presence + absence both exercised ✓
+  - Runs without `DATABASE_URL` ✓
+- **Task 5 (checkpoint pre-resolved):**
+  - Approved Option A, exact Italian copy locked in `VAULT_MUTATIONS_STALE_UI_BANNER` ✓
+  - Regression test in `preferences-vault-mutations.test.ts` ✓
+- **Plan-level verification:**
+  - `pnpm test tests/sessions/vault-mutations-gate.test.ts tests/sessions/vault-mutations-resume.test.ts` → 27/27 passing ✓
+  - `pnpm typecheck` → clean ✓
+  - Phase-wide grep gate (`toBe(3)|toHaveLength(3)` against tool surface) → 0 matches ✓
+  - Full vault test suite (`tests/ai/master/vault/`) → 282 passed, 2 skipped ✓
+  - Pre-existing `tests/sessions/applicator.test.ts` failure: unrelated to this plan (engine inventory test; verified on stashed pre-change tree).
+
+## Commits
+
+| # | Hash      | Scope        | Title |
+|---|-----------|--------------|-------|
+| 1 | `05ac258` | phase-02     | feat: extend vault prompt builder with vaultMutations gate |
+| 2 | `27d50e6` | turn-route   | feat: wire vaultMutations gate into the vault branch |
+| 3 | `2e33724` | phase-02     | test: branch coverage for vaultMutations gate at turn-route |
+| 4 | `eef81c9` | phase-02     | test: resume invariant — state survives via events.md replay |
+| 5 | `a493764` | phase-02     | feat: lock stale-UI banner copy (operator approved — Option A) |
+
+## Files touched
+
+| File | Action | LOC |
+|---|---|---|
+| `src/ai/master/vault/prompt-builder.ts` | EDIT | +50 -3 |
+| `src/app/api/sessions/[id]/turn/route.ts` | EDIT | +30 -16 |
+| `src/lib/preferences.ts` | EDIT | +15 |
+| `tests/ai/master/vault/prompt-builder.test.ts` | EDIT | +68 -2 |
+| `tests/sessions/turn-route-branch.test.ts` | EDIT | +2 -0 |
+| `tests/lib/preferences-vault-mutations.test.ts` | EDIT | +14 -0 |
+| `tests/sessions/vault-mutations-gate.test.ts` | NEW | +234 |
+| `tests/sessions/vault-mutations-resume.test.ts` | NEW | +311 |
+
+Total: ~720 LOC across 8 files (~120 source, ~600 tests). The test ratio reflects the BLOCKER 1 ground-truth fixtures (Task 4) and the 4-quadrant branch coverage (Task 3).
+
+## Deviations from plan
+
+None — Tasks 1-5 executed exactly as written. The pre-resolved Task 5 checkpoint shortened the planned UI banner-rendering step into a constant-export + regression test; plan 02-10 owns the actual Settings-page rendering. The route.ts comment block was updated to document the 4-quadrant matrix verbatim per the plan's Task 2 Change 6 specification.
+
+## Wave 3b coordination
+
+Plan 02-09 (concurrent-write-smoke) ran in parallel on disjoint files (`tests/ai/master/vault/events-writer-stress.test.ts` only). No file collisions. The Phase 02 dispatch surface (4 tools) was already in place from Wave 3a (plan 02-07), so the prompt-builder + turn-route extensions land cleanly without touching shared infrastructure.
