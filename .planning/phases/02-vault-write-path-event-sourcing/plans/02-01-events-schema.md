@@ -254,3 +254,62 @@ Structure: one top-level `describe('events-schema', ...)` block with these neste
 ## Open questions
 
 None — the discriminated union pattern is locked by Decision 1; the 7 mutation types + seed event are explicitly enumerated in RESEARCH §A5 and Decision 9. Seed-payload optional fields locked by the live Postgres schema (`characters.hpMax` always present, `session_state.hpCurrent` only after first session, `spellcasting` may be null).
+
+## Summary (execution outcome)
+
+**Status:** Complete — both tasks shipped, all acceptance criteria satisfied.
+
+### What was built
+
+| File | Lines | Purpose |
+|---|---|---|
+| `src/ai/master/vault/events-schema.ts` | 468 | `VaultEvent` discriminated union (8 members) + `validateEvent` runtime guard + `VaultEventEnvelope` + `VAULT_EVENT_TYPES` const tuple + `EVENT_SCHEMA_VERSION = 1` + `isVaultEventType` narrower + `VaultSeedCharacter` (Postgres-realistic optional fields) + `ValidateEventResult`. Zero imports — pure logic, importable from tests without `DATABASE_URL`. |
+| `tests/ai/master/vault/events-schema.test.ts` | 523 | 50 Vitest cases across 4 describes: 2 listing/narrowing cases (`VAULT_EVENT_TYPES` + `isVaultEventType`), 13 happy-path cases (1 per type, 4 `campaign_initialized` variants — minimum / hp_current present / full / empty), 34 rejection cases (every failure class enumerated in the plan), 1 envelope shape case (`EVENT_SCHEMA_VERSION` literal-type narrowing). |
+
+### Tests written
+
+- **50 tests, all green.** Run command: `unset DATABASE_URL && pnpm test tests/ai/master/vault/events-schema.test.ts` — `Tests 50 passed (50)` in ~100ms.
+- Coverage map (from plan acceptance criteria):
+  - All 8 happy paths present (`hp_change`, `condition_add`, `condition_remove`, `spell_slot_use`, `spell_slot_restore`, `inventory_add`, `inventory_remove`, `campaign_initialized` × 4 variants).
+  - All required rejection classes present (unknown type, missing field, wrong type, empty strings, NaN/Infinity, out-of-range integers, qty bounds, seed optional/required field violations, payload non-object/null/array).
+  - `EVENT_SCHEMA_VERSION` literal-type narrowing asserted.
+
+### Acceptance criteria gates
+
+| Gate | Target | Actual | Pass |
+|---|---|---|---|
+| `pnpm typecheck` | exit 0 | exit 0 | ✓ |
+| `pnpm test tests/ai/master/vault/events-schema.test.ts` (no `DATABASE_URL`) | exit 0 | 50/50 green | ✓ |
+| `grep -c "^import" src/ai/master/vault/events-schema.ts` | 0 | 0 | ✓ |
+| `grep -c "type: 'hp_change'" ...events-schema.ts` | ≥ 1 | 2 | ✓ |
+| `grep -c "type: 'campaign_initialized'" ...events-schema.ts` | ≥ 1 | 2 | ✓ |
+| `grep -c "validateEvent" ...events-schema.test.ts` | ≥ 30 | 50 | ✓ |
+| `grep -c "campaign_initialized" ...events-schema.test.ts` | ≥ 8 | 40 | ✓ |
+| `grep -c "@/db/" ...events-schema.test.ts` | 0 | 0 | ✓ |
+| `grep -c "@/lib/preferences" ...events-schema.test.ts` | 0 | 0 | ✓ |
+| Plan-level grep gate (`case '` count, comments stripped) | ≥ 8 | 8 | ✓ |
+| Smoke `tsx -e validateEvent` | prints `{"ok":true,"value":...}` | matches | ✓ |
+
+### Files touched
+
+- NEW `src/ai/master/vault/events-schema.ts` — task 1
+- NEW `tests/ai/master/vault/events-schema.test.ts` — task 2
+
+No other files in or out of scope were modified.
+
+### Commits
+
+- `2d0c89e` — `feat(phase-02): add vault events-schema with discriminated union + runtime guard` (Task 1, 468 LOC source). Authored by this executor.
+- `233b65f` — `feat(preferences): add resolveVaultMutations + validator arm + defaults` (cross-plan commit from the parallel plan 02-05 executor) — **inadvertently included** `tests/ai/master/vault/events-schema.test.ts` (523 LOC) **alongside its own files** (`src/db/schema/users.ts`, `src/lib/preferences.ts`, `src/lib/preferences.ts`). See "Deviation note" below.
+
+### Deviation note (Wave 1 cross-plan file capture)
+
+While preparing the Task 2 commit (`test(phase-02): cover events-schema validateEvent ...`), the parallel plan 02-05 executor staged and committed our Task 2 file `tests/ai/master/vault/events-schema.test.ts` inside its own `feat(preferences)` commit `233b65f`. The byte content of the committed file is identical to what this executor wrote (`git diff HEAD -- tests/ai/master/vault/events-schema.test.ts` is empty); only the commit message + co-commit grouping diverged from the contract's "one task = one commit" expectation.
+
+Root cause: the parallel agent presumably used `git add -A` or `git add .` instead of staging its declared files individually, sweeping up the untracked test file that this executor had not yet committed. Since cross-plan amend / revert / rewrite of a committed-by-another-agent commit is forbidden by the contract (`NO --amend`, `NO git push --force`), this executor left commit `233b65f` untouched.
+
+Functional impact: **zero**. The test file exists in HEAD, exercises the schema module, and all 50 cases pass against the schema committed under `2d0c89e`. Plan 02-04 (projector) and plan 02-07 (dispatcher) will consume `validateEvent` and the `VaultEvent` union identically regardless of which commit's grouping the test file landed in.
+
+Recommendation for Phase 02 wave orchestration: future parallel executors should stage files by exact name (no `git add -A` / `.`), and pre-commit hooks should optionally guard against staging files outside the agent's declared `files_modified` scope.
+
+## EXECUTION COMPLETE
