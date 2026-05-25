@@ -86,7 +86,7 @@ Create `src/ai/master/vault/campaign-paths.ts` with these exports:
 3. **`eventsPath(campaignId: string): string`:** `return join(campaignDir(campaignId), 'events.md');`. Inherits the UUID guard via `campaignDir`.
 
 4. **`slugifyCharacterName(name: string): string`:**
-   - Apply: `name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').replace(/-+/g, '-')`.
+   - Apply: `name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').replace(/-+/g, '-')`. The diacritic range MUST be written with explicit `\u0300-\u036f` escape codes (Unicode combining diacritic block) — never as a bare literal range, which round-trips unreliably through copy-paste and source-editor encodings.
    - The `normalize('NFD')` + diacritic strip handles "Ára" → "ara" (then `-id8` suffix from `characterViewPath` disambiguates from "Ara").
    - The `[^a-z0-9-]+` strip converts `../etc/passwd` → `etc-passwd` (path-traversal attempts collapse to a safe slug).
    - The trim + dedup steps produce clean filenames (no leading/trailing/repeated hyphens).

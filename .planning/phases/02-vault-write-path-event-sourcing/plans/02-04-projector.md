@@ -19,6 +19,8 @@ must_haves:
     - "regenerateCharacterView reads events.md, replays, and writes the materialized view atomically — view file matches the replayed state"
     - "serializeView produces a frontmatter+body markdown file the LLM can read via read_vault_multi"
     - "Round-trip property: parseView(serializeView(state)) === state (modulo whitespace) for any state derivable from the 8 event types"
+    - "INITIAL_CHARACTER_STATE defaults hp_current to hp_max when seed.hp_current is absent (handles freshly-created campaigns with no session_state row)"
+    - "INITIAL_CHARACTER_STATE defaults spell_slots to {} when seed.spell_slots is absent (handles non-caster PCs whose characters.spellcasting is null)"
   artifacts:
     - path: "src/ai/master/vault/projector.ts"
       provides: "applyEvent reducer, replayEvents, regenerateCharacterView, INITIAL_CHARACTER_STATE, serializeView, parseView (test seam)"
@@ -26,8 +28,8 @@ must_haves:
   key_links:
     - from: "src/ai/master/vault/projector.ts"
       to: "src/ai/master/vault/events-schema.ts"
-      via: "imports VaultEvent + VaultEventEnvelope; exhaustive switch over union members"
-      pattern: "VaultEvent|VaultEventEnvelope"
+      via: "imports VaultEvent + VaultEventEnvelope + VaultSeedCharacter; exhaustive switch over union members"
+      pattern: "VaultEvent|VaultEventEnvelope|VaultSeedCharacter"
     - from: "src/ai/master/vault/projector.ts"
       to: "src/ai/master/vault/campaign-paths.ts"
       via: "uses characterViewPath + eventsPath to locate disk artifacts"
@@ -69,7 +71,7 @@ interface CharacterState {
 }
 ```
 
-`INITIAL_CHARACTER_STATE` for a not-yet-seen character is bootstrapped from the `campaign_initialized` seed event payload. The projector's per-character state lives in a `Map<characterId, CharacterState>` during replay; lookup is by `event.payload.character` (which is the character's ID — the LLM passes the ID, not the name; the slug+id8 is the file naming choice).
+`INITIAL_CHARACTER_STATE` for a not-yet-seen character is bootstrapped from the `campaign_initialized` seed event payload (a `VaultSeedCharacter` per plan 02-01). Because the seed shape reflects the Postgres reality — `hp_current` is OPTIONAL (lives on `session_state.hpCurrent`, absent on freshly-created campaigns) and `spell_slots` is OPTIONAL (non-caster PCs have `characters.spellcasting: null`) — the factory MUST handle absence: default `hp_current` to `hp_max`, default `spell_slots` to `{}`. The projector's per-character state lives in a `Map<characterId, CharacterState>` during replay; lookup is by `event.payload.character` (which is the character's ID — the LLM passes the ID, not the name; the slug+id8 is the file naming choice).
 
 The serialized view format is a thin frontmatter+body markdown file:
 ```markdown
@@ -118,8 +120,10 @@ The `last_event_id` and `last_updated` come from the LAST event's envelope (id +
     - .planning/spikes/008-events-md-replay/README.md (lines 64-72 — required pieces for the real build; lines 73-80 — "Signal for the real build")
     - .claude/skills/spike-findings-dnd-ai-master/references/storage-and-mutation.md (lines 79-100 — canonical replay pattern; lines 116-145 — anti-patterns: never write views from outside)
     - .planning/phases/02-vault-write-path-event-sourcing/02-RESEARCH.md (§4 Pattern 2, §4 Pattern 3, Pitfall 6 — graceful degradation on unknown event types)
-    - src/ai/master/vault/events-schema.ts (plan 02-01 — the VaultEvent union the reducer consumes)
+    - src/ai/master/vault/events-schema.ts (plan 02-01 — the VaultEvent union the reducer consumes; VaultSeedCharacter shape with optional hp_current + spell_slots)
     - src/ai/master/vault/campaign-paths.ts (plan 02-02 — the path helpers)
+    - src/db/schema/characters.ts (informational — why VaultSeedCharacter.spell_slots is optional: characters.spellcasting may be null for non-casters)
+    - src/db/schema/session-state.ts (informational — why VaultSeedCharacter.hp_current is optional: it lives here, may not exist on freshly-created campaigns)
     - .planning/phases/02-vault-write-path-event-sourcing/PLAN.md (must_haves section for "Round-trip property" — parseView is a test seam)
   </read_first>
   <action>
@@ -140,15 +144,23 @@ Create `src/ai/master/vault/projector.ts` with these exports:
    }
    ```
 
-2. **`INITIAL_CHARACTER_STATE` factory:**
+2. **`INITIAL_CHARACTER_STATE` factory:** consumes the `VaultSeedCharacter` shape from `events-schema.ts` (plan 02-01). The shape is non-negotiable — `hp_current` and `spell_slots` are OPTIONAL because they reflect Postgres reality (session_state may not exist; spellcasting may be null):
    ```ts
-   export function INITIAL_CHARACTER_STATE(seed: { id: string; name: string; hp_max: number; hp_current?: number; spell_slots?: Record<string, { max: number; used: number }> }): CharacterState {
+   import type { VaultSeedCharacter } from './events-schema';
+
+   export function INITIAL_CHARACTER_STATE(seed: VaultSeedCharacter): CharacterState {
      return {
        id: seed.id,
        name: seed.name,
+       // hp_current is OPTIONAL on the seed (session_state may not exist on a
+       // freshly-created campaign — see VaultSeedCharacter JSDoc + 02-01).
+       // Fallback: hp_max (PC starts at full HP).
        hp_current: seed.hp_current ?? seed.hp_max,
        hp_max: seed.hp_max,
        conditions: [],
+       // spell_slots is OPTIONAL on the seed (non-caster PCs have
+       // characters.spellcasting: null in Postgres — see VaultSeedCharacter
+       // JSDoc + 02-01). Fallback: {} (no slots).
        spell_slots: seed.spell_slots ?? {},
        inventory: [],
      };
@@ -218,14 +230,14 @@ Create `src/ai/master/vault/projector.ts` with these exports:
 
    The `default` arm uses TypeScript's `never` type for compile-time exhaustiveness — if a new union member is added in events-schema.ts but NOT handled in this switch, tsc fails. This is the "type-system enforced contract" Decision 1 promises.
 
-4. **`replayEvents(envelopes: VaultEventEnvelope[]): Map<string, CharacterState>`:** pure function from event list to per-character state map.
+4. **`replayEvents(envelopes: VaultEventEnvelope[]): Map<string, CharacterState>`:** pure function from event list to per-character state map. Uses `VaultSeedCharacter` (imported from events-schema) so the OPTIONAL `hp_current` + `spell_slots` flow through `INITIAL_CHARACTER_STATE` correctly:
 
    ```ts
    export function replayEvents(envelopes: VaultEventEnvelope[]): Map<string, CharacterState> {
      const states = new Map<string, CharacterState>();
      for (const env of envelopes) {
        if (env.type === 'campaign_initialized') {
-         const payload = env.payload as { characters: Array<{ id: string; name: string; hp_max: number; hp_current?: number; spell_slots?: Record<string, { max: number; used: number }> }> };
+         const payload = env.payload as { characters: VaultSeedCharacter[] };
          for (const c of payload.characters) {
            states.set(c.id, INITIAL_CHARACTER_STATE(c));
          }
@@ -263,7 +275,7 @@ Create `src/ai/master/vault/projector.ts` with these exports:
    ```ts
    export async function regenerateAffectedViews(campaignId: string, event: VaultEventEnvelope): Promise<void> {
      if (event.type === 'campaign_initialized') {
-       const payload = event.payload as { characters: Array<{ id: string }> };
+       const payload = event.payload as { characters: VaultSeedCharacter[] };
        await Promise.all(payload.characters.map((c) => regenerateCharacterView(campaignId, c.id)));
        return;
      }
@@ -311,11 +323,11 @@ Create `src/ai/master/vault/projector.ts` with these exports:
     ```ts
     import { readFile, writeFile, mkdir } from 'node:fs/promises';
     import { dirname } from 'node:path';
-    import type { VaultEvent, VaultEventEnvelope } from './events-schema';
+    import type { VaultEvent, VaultEventEnvelope, VaultSeedCharacter } from './events-schema';
     import { eventsPath, characterViewPath } from './campaign-paths';
     ```
 
-11. Module-level JSDoc cites REQ-004, REQ-006, spike 008, RESEARCH §4 Pattern 2/3, Decision 2.
+11. Module-level JSDoc cites REQ-004, REQ-006, spike 008, RESEARCH §4 Pattern 2/3, Decision 2, Decision 9. Document explicitly that `INITIAL_CHARACTER_STATE` defaults `hp_current` to `hp_max` and `spell_slots` to `{}` to handle the Postgres-reality case where `session_state` has no row yet OR the PC is a non-caster.
   </action>
   <verify>
     <automated>pnpm test tests/ai/master/vault/projector.test.ts && pnpm typecheck</automated>
@@ -326,6 +338,9 @@ Create `src/ai/master/vault/projector.ts` with these exports:
     - `grep -c "structuredClone" src/ai/master/vault/projector.ts` returns ≥ 1 (immutability in reducer)
     - `grep -c "Date.now\\|Math.random\\|process.env" src/ai/master/vault/projector.ts` returns 0 (PURE reducer — no side effects)
     - `grep -c "_exhaustive: never" src/ai/master/vault/projector.ts` returns 1 (compile-time exhaustiveness check)
+    - `grep -c "VaultSeedCharacter" src/ai/master/vault/projector.ts` returns ≥ 2 (import + usage in INITIAL_CHARACTER_STATE / replayEvents)
+    - `grep -c "seed.hp_current ?? seed.hp_max" src/ai/master/vault/projector.ts` returns ≥ 1 (fallback documented in code)
+    - `grep -c "seed.spell_slots ?? {}" src/ai/master/vault/projector.ts` returns ≥ 1 (fallback documented in code)
     - `pnpm typecheck` exits 0 (compile-time exhaustiveness passes — no unhandled union members)
   </acceptance_criteria>
   <done>
@@ -348,7 +363,14 @@ Create `tests/ai/master/vault/projector.test.ts`. Pure unit tests + integration 
 
 Test structure — one top-level `describe('projector')` with these nested describes:
 
-1. **`describe('applyEvent — pure reducer per event type')`:** one `it` per event type, ~12 cases total:
+1. **`describe('INITIAL_CHARACTER_STATE — Postgres-reality fallbacks')`:**
+   - `it('uses hp_max when hp_current absent')` — `INITIAL_CHARACTER_STATE({id: 'u1', name: 'A', hp_max: 30})` returns state with `hp_current: 30` (the no-session-played-yet case).
+   - `it('uses provided hp_current when present')` — `INITIAL_CHARACTER_STATE({id: 'u1', name: 'A', hp_max: 30, hp_current: 12})` returns state with `hp_current: 12` (the session_state.hpCurrent case).
+   - `it('uses empty record when spell_slots absent')` — `INITIAL_CHARACTER_STATE({id: 'u1', name: 'A', hp_max: 30})` returns state with `spell_slots: {}` (the non-caster case).
+   - `it('uses provided spell_slots when present')` — `INITIAL_CHARACTER_STATE({id: 'u1', name: 'A', hp_max: 30, spell_slots: {'1': {max: 4, used: 2}}})` returns state with the seeded slots intact.
+   - `it('produces conditions: [] and inventory: [] by default')` — both defaults are empty arrays regardless of optional fields.
+
+2. **`describe('applyEvent — pure reducer per event type')`:** one `it` per event type, ~16 cases total:
    - hp_change positive delta: state hp_current goes up, clamped at hp_max
    - hp_change negative delta: hp_current goes down, clamped at 0
    - hp_change zero delta: no-op
@@ -358,6 +380,7 @@ Test structure — one top-level `describe('projector')` with these nested descr
    - condition_remove non-existent: no-op
    - spell_slot_use: slot.used += 1
    - spell_slot_use at max: no-op (used does not exceed max)
+   - spell_slot_use on missing slot key (state.spell_slots has no entry for that level): no-op (graceful — defends against seed-event omitting a level the LLM later targets)
    - spell_slot_restore: slot.used -= 1
    - spell_slot_restore at 0: no-op
    - inventory_add new item: appears with qty
@@ -366,24 +389,27 @@ Test structure — one top-level `describe('projector')` with these nested descr
    - inventory_remove full: item disappears from inventory
    - inventory_remove non-existent: no-op
 
-2. **`describe('applyEvent — purity')`:**
+3. **`describe('applyEvent — purity')`:**
    - `it('does not mutate input state')` → call applyEvent on a state; assert original state unchanged after the call (structuredClone invariant)
    - `it('returns same output for same input')` → call applyEvent twice with deeply-equal inputs; assert results are deeply equal
    - `it('contains no Date.now / Math.random references in source')` → static `readFileSync` + regex check; assert source matches none of these patterns
 
-3. **`describe('replayEvents — determinism')`:**
+4. **`describe('replayEvents — determinism + Postgres-reality seed shapes')`:**
    - `it('reproduces exact final state across multiple replays')` — generate 100 random events (seed RNG with a fixed value for repeatability), build envelopes, call `replayEvents` twice, assert the two result Maps are deeply equal
    - `it('order matters')` — the same 10 events in two different orders produce different states (e.g., add 5 HP then take 10 damage vs take 10 damage then add 5)
    - `it('processes campaign_initialized as the first event correctly')` — seed event with two characters; subsequent events for both; assert both final states match expected
+   - `it('campaign_initialized with hp_current absent → state.hp_current === hp_max')` — seed with `{id: 'u1', name: 'A', hp_max: 20}` (no hp_current); replay → final state has `hp_current: 20`. Documents the freshly-created-campaign case.
+   - `it('campaign_initialized with hp_current present → state.hp_current === seed value')` — seed with `{id: 'u1', name: 'A', hp_max: 20, hp_current: 7}`; replay → final state has `hp_current: 7`. Documents the session-already-played case.
+   - `it('campaign_initialized with spell_slots absent → state.spell_slots === {}')` — seed with no spell_slots; replay → final state has empty `spell_slots`. Documents the non-caster case.
    - `it('logs and skips events for unseeded characters')` — events without a preceding seed → check `console.warn` is called via `vi.spyOn`; state map does not contain the unseeded id
 
-4. **`describe('parseEventsFile — fail-fast on corruption (spike 008)')`:**
+5. **`describe('parseEventsFile — fail-fast on corruption (spike 008)')`:**
    - `it('parses a well-formed JSONL events.md')` — write a temp file with 5 valid JSON lines; assert parseEventsFile returns 5 envelopes
    - `it('returns empty array for empty file')` — write empty file; parseEventsFile returns `[]`
    - `it('returns empty array for missing file')` — point to non-existent path; parseEventsFile returns `[]` (spike 008 documented gracefully handling new-campaign-no-events case)
    - `it('throws on corrupt JSON line')` — write file with valid line + corrupt line + valid line; assert `await expect(parseEventsFile(path)).rejects.toThrow(/line 2/)` (the error message must include the offending line number — spike 008's fail-fast contract)
 
-5. **`describe('regenerateCharacterView — disk roundtrip')`:**
+6. **`describe('regenerateCharacterView — disk roundtrip')`:**
    - Stub `VAULT_CAMPAIGNS_ROOT` env to a tmpdir.
    - `it('reads events.md → writes view file with replayed state')`:
      - Write a synthetic events.md with seed + 3 hp_change events
@@ -398,30 +424,33 @@ Test structure — one top-level `describe('projector')` with these nested descr
      - Read the file; assert state B (no torn write between the two calls)
    - `it('creates parent directories if missing')` — call on a fresh tmpdir with no characters/ subdir; assert it's created
 
-6. **`describe('serializeView + parseView round trip')`:**
+7. **`describe('serializeView + parseView round trip')`:**
    - `it('round-trips a minimal state')` — create a state with all-default fields; serialize; parse; deeply equal
    - `it('round-trips a state with all event types applied')` — start from INITIAL, apply one of each event type; serialize; parse; assert deeply equal (modulo trailing whitespace)
    - `it('serializes empty arrays/maps deterministically')` — empty conditions, empty inventory, empty spell_slots → predictable output
    - `it('byte-stable for the same input')` — call serializeView twice; assert string-equal (spike 013 byte-exact restore depends on this)
 
-7. **`describe('regenerateAffectedViews — dispatcher hook')`:**
+8. **`describe('regenerateAffectedViews — dispatcher hook')`:**
    - `it('regenerates one view for a single-character event')` — synthetic events.md + apply hp_change → regenerateAffectedViews fires regenerateCharacterView for that one character; other characters' views untouched
    - `it('regenerates all character views for a campaign_initialized event')` — seed payload with 3 characters → regenerateAffectedViews fires 3 regenerations
 
-8. **`describe('graceful degradation on unknown event types (Pitfall 6)')`:**
+9. **`describe('graceful degradation on unknown event types (Pitfall 6)')`:**
    - Cast a fake event with type `'level_up'` (not in the union) to `VaultEvent` via `as any` and pass to `applyEvent`. Spy on `console.warn`. Assert: warn called, state returned unchanged. Documents that the projector won't throw on Phase 03+ event types it doesn't yet know about.
 
 Setup/teardown:
 - `beforeEach`: create tmpdir, `vi.stubEnv('VAULT_CAMPAIGNS_ROOT', tmpdir)`, dynamic re-import of campaign-paths.ts so its module-load reads the stub. Use a fixed test campaign UUID + character UUID.
 - `afterEach`: rmSync + `vi.unstubAllEnvs()`
 
-Total: 8 describe blocks, ~35 `it` cases.
+Total: 9 describe blocks, ~42 `it` cases.
   </action>
   <verify>
     <automated>pnpm test tests/ai/master/vault/projector.test.ts -- --reporter=verbose</automated>
   </verify>
   <acceptance_criteria>
-    - All ~35 cases pass
+    - All ~42 cases pass
+    - The "INITIAL_CHARACTER_STATE — Postgres-reality fallbacks" describe has 5 cases, all passing
+    - The "campaign_initialized with hp_current absent → hp_max" test passes (freshly-created-campaign invariant)
+    - The "campaign_initialized with spell_slots absent → {}" test passes (non-caster invariant)
     - The "throws on corrupt JSON line" test passes (spike 008 contract preserved)
     - The "byte-stable for the same input" test passes (spike 013 DR roundtrip depends on it)
     - The "graceful degradation on unknown event types" test passes (Pitfall 6)
@@ -443,4 +472,4 @@ Total: 8 describe blocks, ~35 `it` cases.
 
 ## Open questions
 
-None — replay determinism + corruption fail-fast + view byte-stability are locked by spike 008 + spike 013. The exhaustiveness pattern is canonical TypeScript.
+None — replay determinism + corruption fail-fast + view byte-stability are locked by spike 008 + spike 013. The exhaustiveness pattern is canonical TypeScript. The OPTIONAL hp_current + spell_slots fallbacks are locked by the live Postgres schema (session_state.hpCurrent + characters.spellcasting nullable).

@@ -18,7 +18,7 @@ must_haves:
     - "pnpm vault:backup --strategy=git initializes a git repo under VAULT_CAMPAIGNS_ROOT if missing, commits all events.md + view files, refuses to commit if events.md has non-append edits (T-02-06 defense)"
     - "pnpm vault:backup --strategy=tarball produces a timestamped tarball under ~/Backups/dnd-ai-master/ with rotation (keep last N)"
     - "pnpm vault:rebuild-views --campaign=<uuid> reads events.md and regenerates all materialized views — byte-for-byte match (spike 013 invariant)"
-    - "pnpm vault:flip --id=<uuid> --enable-mutations toggles vaultMutations on a campaign AND appends a campaign_initialized seed event (Decision 9) sourced from Postgres characters"
+    - "pnpm vault:flip --id=<uuid> --enable-mutations toggles vaultMutations on a campaign AND appends a campaign_initialized seed event (Decision 9) sourced from Postgres characters + session_state (most-recent active session) + spellcasting"
     - "docs/operators/vault-backup.md describes both strategies + recovery one-liner + single-write coexistence caveat"
     - "Running vault:backup with manually-edited events.md refuses with a clear error (T-02-06)"
   artifacts:
@@ -47,6 +47,10 @@ must_haves:
       to: "src/ai/master/vault/events-writer.ts"
       via: "appends the campaign_initialized seed event"
       pattern: "EventsWriter.applyEvent"
+    - from: "scripts/vault-flip.ts (seed assembly)"
+      to: "src/db/schema/session-state.ts + src/db/schema/characters.ts"
+      via: "LEFT JOIN sessions s ON s.campaign_id = $1 + LEFT JOIN session_state ss ON ss.session_id = s.id; merge characters.spellcasting.slotsMax with characters.spellSlotsUsed"
+      pattern: "session_state|spellcasting|spellSlotsUsed"
 ---
 
 # Plan 02-10: Backup Strategy + Recovery Tooling
@@ -54,7 +58,7 @@ must_haves:
 **Phase:** 02-vault-write-path-event-sourcing
 **Wave:** 3 (depends on plan 02-02 for paths + plan 02-04 for projector)
 **Status:** Pending
-**Estimated diff size:** ~180 LOC source + ~60 LOC tests + ~180 LOC docs / 6 files
+**Estimated diff size:** ~210 LOC source + ~60 LOC tests + ~180 LOC docs / 6 files
 **Autonomous:** **false** — contains one checkpoint:decision for the default backup strategy
 
 ## Goal
@@ -248,12 +252,14 @@ Create scripts/vault-rebuild-views.ts. Behavior:
   <files>scripts/vault-flip.ts</files>
   <read_first>
     - scripts/vault-flip.ts (existing — argv parsing; db.update pattern at the bottom of the file)
-    - src/db/schema/characters.ts (find this file — the drizzle characters table import path)
-    - src/db/schema/index.ts (confirm characters is exported)
+    - src/db/schema/characters.ts (THE source of seed-payload fields — `hpMax: integer (NOT NULL)`, `spellcasting: jsonb<{slotsMax: Record<string,number>; ...} | null>` (may be null), `spellSlotsUsed: jsonb<Record<string,number>> (default {})`, `campaignId: uuid`)
+    - src/db/schema/session-state.ts (THE source of `hp_current` — `sessionState.hpCurrent: integer (NOT NULL)`; lives per session, not per character — informs the LEFT JOIN below)
+    - src/db/schema/sessions.ts (the link table — `sessions.campaignId`, `sessions.status: 'active' | 'ended'`, `sessions.id` joins to `session_state.sessionId`)
+    - src/db/schema/index.ts (confirm characters + sessions + sessionState are exported)
     - src/ai/master/vault/events-writer.ts (plan 02-03 — EventsWriter.applyEvent)
     - src/ai/master/vault/projector.ts (plan 02-04 — regenerateAffectedViews)
     - src/ai/master/vault/campaign-paths.ts (plan 02-02 — eventsPath)
-    - src/ai/master/vault/events-schema.ts (plan 02-01 — VaultEventEnvelope shape; EVENT_SCHEMA_VERSION)
+    - src/ai/master/vault/events-schema.ts (plan 02-01 — VaultEventEnvelope shape; EVENT_SCHEMA_VERSION; VaultSeedCharacter — note hp_current + spell_slots are OPTIONAL)
     - .planning/phases/02-vault-write-path-event-sourcing/PLAN.md (Decision 9 — synthetic campaign_initialized seed event sourced from Postgres characters snapshot)
   </read_first>
   <action>
@@ -264,13 +270,104 @@ Add two boolean fields `enableMutations` and `disableMutations`. Update the argv
 
 **Change 2 — Implement the seed flow.** After the existing `db.update` that sets `masterBackend`, add a new conditional block that runs when `args.enableMutations` is true:
 
-1. Update settings: merge `{vaultMutations: true}` into `campaign.settings` and write back via `db.update`
-2. Query the characters table for this campaign: `db.select().from(characters).where(eq(characters.campaignId, campaign.id))`
-3. Build the payload: array of `{id, name, hp_max, hp_current, spell_slots}` from each row. CRITICAL — read src/db/schema/characters.ts FIRST to get the actual column names (drizzle uses camelCase identifiers like hpMax that may or may not map to hp_max in JSONB). Map them correctly into the snake_case payload shape that the projector expects.
-4. Construct the envelope: `{id: randomUUID(), version: EVENT_SCHEMA_VERSION, type: 'campaign_initialized', payload: {characters: ...}, timestamp: new Date().toISOString()}`
-5. Append via EventsWriter: `await EventsWriter.applyEvent(eventsPath(campaign.id), envelope)`
-6. Regenerate views: `await regenerateAffectedViews(campaign.id, envelope)`
-7. Log: `[vault-flip] seeded campaign with <n> characters; vault mutations enabled.`
+1. **Update settings:** merge `{vaultMutations: true}` into `campaign.settings` and write back via `db.update`.
+
+2. **Query characters with a LEFT JOIN onto session_state for current HP.** This is the load-bearing query because `hp_current` does NOT live on `characters` — it lives on `session_state.hpCurrent` (per-session, may be absent for a freshly-created campaign that has never been played). Construct the query using drizzle's `leftJoin`:
+
+   ```ts
+   import { eq, and, desc } from 'drizzle-orm';
+   import { characters, sessions, sessionState } from '@/db/schema';
+
+   // Strategy: for each character that is currently tied to this campaign
+   // (campaignId = campaign.id, templateId IS NOT NULL — i.e. it's a per-
+   // campaign instance, not a template), find the MOST-RECENT active session
+   // that uses this character, then LEFT JOIN session_state on that session.
+   //
+   // - If the character has at least one active session with state → use ss.hpCurrent.
+   // - If no active session has been played yet → session_state row is absent,
+   //   ss.hpCurrent is null, and we OMIT hp_current from the seed payload
+   //   (the projector's INITIAL_CHARACTER_STATE falls back to hp_max — see 02-04).
+   const rows = await db
+     .select({
+       id: characters.id,
+       name: characters.name,
+       hpMax: characters.hpMax,
+       spellcasting: characters.spellcasting,
+       spellSlotsUsed: characters.spellSlotsUsed,
+       hpCurrent: sessionState.hpCurrent,        // nullable via LEFT JOIN
+       sessionStatus: sessions.status,           // for the WHERE/ORDER tie-breaker
+     })
+     .from(characters)
+     .leftJoin(
+       sessions,
+       and(eq(sessions.characterId, characters.id), eq(sessions.campaignId, campaign.id))
+     )
+     .leftJoin(sessionState, eq(sessionState.sessionId, sessions.id))
+     .where(eq(characters.campaignId, campaign.id))
+     .orderBy(desc(sessions.updatedAt));         // most-recent first (single-active-session selector)
+   ```
+
+   **Active-session selector:** if a character has multiple session rows (rare — usually one active session per campaign per character), the `ORDER BY sessions.updatedAt DESC` plus a JS-side dedup (`Array.from(new Map(rows.map(r => [r.id, r])).values())` — `Map` keeps the FIRST row per id, which is the most-recent one because of the ORDER BY) keeps one row per character. Document the dedup step inline with a comment so future maintainers understand why the JS step is needed instead of a SQL `DISTINCT ON` (drizzle abstracts that away).
+
+3. **Build the payload.** For each deduplicated row, construct a `VaultSeedCharacter` (the OPTIONAL shape from plan 02-01). The OPTIONAL fields are OMITTED, not set to undefined, when the source data is absent — matches what the validator in 02-01 accepts:
+
+   ```ts
+   const dedupedRows = Array.from(new Map(rows.map((r) => [r.id, r])).values());
+
+   const payloadCharacters = dedupedRows.map((r) => {
+     const seed: { id: string; name: string; hp_max: number; hp_current?: number; spell_slots?: Record<string, { max: number; used: number }> } = {
+       id: r.id,
+       name: r.name,
+       hp_max: r.hpMax,
+     };
+
+     // hp_current: include ONLY when session_state row exists.
+     // Otherwise omit and let the projector default to hp_max.
+     // Clamp to [0, hp_max] defensively (T-02-03 mitigation parallel — guards
+     // against stale session_state.hpCurrent overshooting after a manual
+     // characters.hpMax decrease).
+     if (typeof r.hpCurrent === 'number' && Number.isInteger(r.hpCurrent)) {
+       seed.hp_current = Math.max(0, Math.min(r.hpMax, r.hpCurrent));
+     }
+
+     // spell_slots: assemble by merging spellcasting.slotsMax (cap, per-level)
+     // with spellSlotsUsed (counter, per-level). Skip entirely if:
+     //  - the character is a non-caster (spellcasting === null), OR
+     //  - the resulting merged record is empty.
+     // The OPTIONAL field on the seed lets the projector fall back to {}.
+     if (r.spellcasting && r.spellcasting.slotsMax) {
+       const slotsMax: Record<string, number> = r.spellcasting.slotsMax;
+       const slotsUsed: Record<string, number> = r.spellSlotsUsed ?? {};
+       const merged: Record<string, { max: number; used: number }> = {};
+       for (const level of Object.keys(slotsMax)) {
+         const max = slotsMax[level] ?? 0;
+         if (max <= 0) continue;
+         const used = Math.max(0, Math.min(max, slotsUsed[level] ?? 0));
+         merged[level] = { max, used };
+       }
+       if (Object.keys(merged).length > 0) {
+         seed.spell_slots = merged;
+       }
+     }
+
+     return seed;
+   });
+   ```
+
+4. **Construct the envelope:** `{id: randomUUID(), version: EVENT_SCHEMA_VERSION, type: 'campaign_initialized', payload: {characters: payloadCharacters}, timestamp: new Date().toISOString()}`.
+
+5. **Append via EventsWriter:** `await EventsWriter.applyEvent(eventsPath(campaign.id), envelope)`.
+
+6. **Regenerate views:** `await regenerateAffectedViews(campaign.id, envelope)`.
+
+7. **Log:** `[vault-flip] seeded campaign with <n> characters; vault mutations enabled.` Also log a per-character line for visibility:
+   ```ts
+   for (const c of payloadCharacters) {
+     const hpNote = c.hp_current !== undefined ? `hp_current=${c.hp_current}` : `hp_current=hp_max(${c.hp_max}) (no session_state row)`;
+     const slotsNote = c.spell_slots ? `${Object.keys(c.spell_slots).length} slot levels` : 'no spell slots';
+     console.log(`[vault-flip]  - ${c.name} (${c.id.slice(0, 8)}): ${hpNote}, ${slotsNote}`);
+   }
+   ```
 
 **Change 3 — Add Pitfall-5 warning.** If `args.enableMutations` is true AND `campaign.settings?.masterBackend !== 'vault'`, print a warning: "WARN: enabling vaultMutations on a baked campaign — flag has no effect until masterBackend is also set to vault (Pitfall 5)." Continue (do not exit) — the flag is still stored; it just has no runtime effect until the operator also sets masterBackend.
 
@@ -278,7 +375,8 @@ Add two boolean fields `enableMutations` and `disableMutations`. Update the argv
 
 **Imports to add at the top:**
 - `randomUUID` from node:crypto
-- `characters` from `@/db/schema`
+- `eq, and, desc` from drizzle-orm (extend existing drizzle imports — eq is already imported per the existing file)
+- `characters, sessions, sessionState` from `@/db/schema` (extend existing schema imports — campaigns is already imported per the existing file)
 - `EventsWriter` from `@/ai/master/vault/events-writer`
 - `regenerateAffectedViews` from `@/ai/master/vault/projector`
 - `eventsPath` from `@/ai/master/vault/campaign-paths`
@@ -293,8 +391,12 @@ Add two boolean fields `enableMutations` and `disableMutations`. Update the argv
     - `grep -c "EventsWriter.applyEvent" scripts/vault-flip.ts` returns ≥ 1
     - `grep -c "regenerateAffectedViews" scripts/vault-flip.ts` returns ≥ 1
     - `grep -c "Pitfall 5" scripts/vault-flip.ts` returns ≥ 1 (warning text)
+    - `grep -c "leftJoin\|sessionState\|sessions\\.campaignId" scripts/vault-flip.ts` returns ≥ 3 (the LEFT JOIN query is in place; hp_current is NOT sourced from characters.hp_current because that field does not exist)
+    - `grep -c "spellcasting\|spellSlotsUsed\|slotsMax" scripts/vault-flip.ts` returns ≥ 3 (the spell_slots merge is in place)
+    - `grep -c "characters.hp_current\|characters\\.hpCurrent" scripts/vault-flip.ts` returns 0 (BLOCKER 1 defense: the wrong column is NEVER referenced — hp_current does not live on characters)
     - pnpm typecheck exits 0
     - The script still works for the original use case (toggling masterBackend) — `pnpm vault:flip` (no args) lists campaigns; `pnpm vault:flip --id=<uuid> --to=vault` updates masterBackend
+    - **Manual end-to-end smoke (post-execution):** create a test campaign with 1 wizard PC + 1 fighter PC (no session played yet); run `pnpm vault:flip --id=<test-uuid> --to=vault --enable-mutations`; `cat $VAULT_CAMPAIGNS_ROOT/<id>/events.md` shows ONE campaign_initialized line whose payload has TWO characters; the wizard entry has `spell_slots: {...}`; the fighter entry has no spell_slots key; NEITHER entry has `hp_current` (because no session_state row exists yet) — projector defaults both to hp_max on next read.
   </acceptance_criteria>
   <done>
     Seed flow integrated. Plan 02-08's smoke test (manual) uses this.
@@ -455,7 +557,7 @@ Total: 3 describe blocks, ~7 `it` cases. Test runtime budget: ~30s on M5 Pro.
 - Command: `pnpm typecheck` → clean
 - Manual smoke:
   1. `pnpm vault:flip --id=<test-uuid> --to=vault --enable-mutations` → vault enabled + seed event landed
-  2. `cat $VAULT_CAMPAIGNS_ROOT/<id>/events.md` shows the campaign_initialized line
+  2. `cat $VAULT_CAMPAIGNS_ROOT/<id>/events.md` shows the campaign_initialized line — payload includes characters with `id`, `name`, `hp_max`; `hp_current` present ONLY when a session_state row existed; `spell_slots` present ONLY when the PC has `characters.spellcasting` non-null
   3. `pnpm vault:backup --strategy=git` (or tarball) → backup landed
   4. Corrupt a view file: `echo CORRUPT > $VAULT_CAMPAIGNS_ROOT/<id>/characters/<slug>.md`
   5. `pnpm vault:rebuild-views --campaign=<uuid>` → view file restored to byte-exact pre-corruption state
@@ -463,4 +565,4 @@ Total: 3 describe blocks, ~7 `it` cases. Test runtime budget: ~30s on M5 Pro.
 
 ## Open questions
 
-The default strategy is resolved by the Task 1 checkpoint. If the operator picks an alternative not listed (e.g., S3), Task 2 is re-scoped to add it — the runbook structure accommodates new strategies cleanly.
+The default strategy is resolved by the Task 1 checkpoint. If the operator picks an alternative not listed (e.g., S3), Task 2 is re-scoped to add it — the runbook structure accommodates new strategies cleanly. The seed-payload query (Task 4) is locked by the live Postgres schema: `hp_current` MUST be sourced from `session_state` (NOT `characters`) via LEFT JOIN; `spell_slots` MUST be assembled by merging `characters.spellcasting.slotsMax` + `characters.spellSlotsUsed`.

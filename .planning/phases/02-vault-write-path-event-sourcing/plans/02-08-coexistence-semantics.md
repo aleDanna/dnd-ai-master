@@ -20,6 +20,7 @@ must_haves:
     - "Existing Phase 01 campaigns (masterBackend:'vault', vaultMutations not set) continue using the 3-tool read-only surface; no regression"
     - "Server restart preserves state: a vault campaign with events on disk shows the post-replay state when next read via read_vault_multi"
     - "Operator-facing documentation describes the single-write semantics + stale-UI banner expectation"
+    - "The apply_event mention in the prompt explicitly states that `character` is a UUID (not a name) — prevents the LLM from passing character names which would fail downstream lookup"
   artifacts:
     - path: "src/app/api/sessions/[id]/turn/route.ts"
       provides: "Gates apply_event exposure on resolveVaultMutations() + forwards campaignId"
@@ -62,7 +63,7 @@ The implementation is a thin extension to Phase 01's vault branch (which lives a
 2. When passing inputs to `runVaultToolLoop`, conditionally include `campaignId: campaign.id` only when the gate is `true`.
 3. When calling `buildVaultSystemPrompt`, conditionally pass `vaultMutations: true` so the prompt mentions `apply_event` only when the LLM can actually call it.
 
-The prompt-builder (`src/ai/master/vault/prompt-builder.ts` from Phase 01 plan 02) needs a small extension: a new `vaultMutations?: boolean` input that, when true, bumps the `toolCount` reference from 3 to 4 in the prompt body and adds a one-line mention of `apply_event` to the tool catalog. The pure-function contract (REQ-022) is preserved — the input is a plain boolean, no side effects.
+The prompt-builder (`src/ai/master/vault/prompt-builder.ts` from Phase 01 plan 02) needs a small extension: a new `vaultMutations?: boolean` input that, when true, bumps the `toolCount` reference from 3 to 4 in the prompt body and adds a brief mention of `apply_event` to the tool catalog. The pure-function contract (REQ-022) is preserved — the input is a plain boolean, no side effects.
 
 ## Requirements satisfied
 
@@ -85,13 +86,13 @@ The prompt-builder (`src/ai/master/vault/prompt-builder.ts` from Phase 01 plan 0
   <name>Task 1: Extend buildVaultSystemPrompt to accept vaultMutations input</name>
   <files>src/ai/master/vault/prompt-builder.ts</files>
   <read_first>
-    - src/ai/master/vault/prompt-builder.ts (existing — Phase 01 implementation; the input shape; the toolCount substitution; REQ-022 purity contract)
+    - src/ai/master/vault/prompt-builder.ts (existing — Phase 01 implementation; the input shape `VaultPromptInput`; the toolCount substitution; the `hashVaultPrompt(prompt: string)` helper at lines 62-64; REQ-022 purity contract)
     - .planning/phases/01-vault-read-path/plans/02-vault-prompt-builder.md (style + REQ-022 enforcement)
   </read_first>
   <action>
 Edit `src/ai/master/vault/prompt-builder.ts` (preserve everything verbatim except the changes below; REQ-022 forbids any new env/random/timestamp source).
 
-**Change 1 — Extend the input interface.** Locate the input type (probably `BuildVaultSystemPromptInput` or similar). Add an optional field:
+**Change 1 — Extend the input interface.** Locate the `VaultPromptInput` interface. Add an optional field:
 
 ```ts
   /**
@@ -109,19 +110,39 @@ Edit `src/ai/master/vault/prompt-builder.ts` (preserve everything verbatim excep
 
 **Change 2 — Adjust toolCount substitution.** The existing prompt template references `input.toolCount` for the tool count. The CALLER (turn/route.ts) is responsible for passing the right `toolCount` (3 or 4) — but for safety, add an internal consistency assertion: if `vaultMutations === true` AND `toolCount !== 4`, throw `new Error('buildVaultSystemPrompt: vaultMutations:true requires toolCount:4 (got <n>)')`. This catches the consistency bug at the entry point. Similarly if `vaultMutations === false` (or undefined) AND `toolCount !== 3`, throw the symmetric error.
 
-**Change 3 — Append apply_event mention to the tool catalog when vaultMutations is true.** Locate the section of the prompt template that mentions the tools (or hints at the tool index). Append a conditional line:
+**Change 3 — Append apply_event mention to the tool catalog when vaultMutations is true.** Locate the section of the prompt template that mentions tool usage (the "Tool usage protocol" block in the existing builder). Define the conditional mention text and append it where the tool catalog hints live:
 
 ```ts
 const applyEventMention = input.vaultMutations === true
-  ? '\nWhen the player describes a game-state change (damage taken, spell cast, condition applied), call `apply_event` with the appropriate type and payload. One event per call; do not batch.\n'
+  ? 'When the player describes a game-state change (damage taken, spell cast, condition applied), call `apply_event` with the appropriate type and payload. The `character` field MUST be the character UUID (the value of `id` in the materialized view frontmatter — not the character name; names are not unique across campaigns and the dispatcher rejects non-UUID values). One event per call; do not batch.'
   : '';
 ```
 
-Insert `applyEventMention` into the prompt body in a sensible location (after the tool-listing section, before the campaign context block). The exact placement should mirror Phase 01's existing builder structure — read the file to identify the right insertion point.
+Insert `applyEventMention` (with a leading `''` separator line so the prompt stays readable when it's empty) into the prompt body in a sensible location (after the tool-listing section, before the campaign context block). The exact placement should mirror Phase 01's existing builder structure — read the file to identify the right insertion point.
 
-The mention is INTENTIONALLY brief — the LLM is supposed to read `/tools/apply_event.md` (or whatever the lazy tool-doc convention is) for the schema; the system prompt just signals the tool exists.
+The mention is INTENTIONALLY brief — the LLM is supposed to read `/tools/apply_event.md` (or whatever the lazy tool-doc convention is) for the full schema; the system prompt just signals the tool exists AND clarifies the most common LLM mistake (passing a character name instead of UUID).
 
-**Change 4 — Update hashVaultPrompt to include vaultMutations in the hash.** If `hashVaultPrompt` exists (Phase 01 sibling helper), make sure its input shape includes vaultMutations so prompts with different gating produce different hashes (prevents prefix-cache cross-contamination between read-only and read-write sessions). Implementation: just pass `vaultMutations: input.vaultMutations ?? false` into the hash input record.
+**Change 4 — Hash divergence is NATURAL (no separate signature change to `hashVaultPrompt`).** `hashVaultPrompt(prompt: string)` at lines 62-64 takes the FULL PROMPT TEXT, not a structured input. The conditional `applyEventMention` text in Change 3 already produces hash divergence: a prompt built with `vaultMutations: true` contains the apply_event sentence, a prompt built with `vaultMutations: false` does not — different bytes, different hash, no prefix-cache cross-contamination.
+
+Document this explicitly with a JSDoc comment ABOVE `hashVaultPrompt` (do NOT change its signature):
+
+```ts
+/**
+ * SHA256 hex digest of a built prompt. Used by:
+ *  - The stability test (1000 builds → 1 unique hash).
+ *  - Future runtime telemetry that wants to log prompt-cache identity
+ *    without storing the prompt itself.
+ *
+ * Phase 02 note: prompts built with vaultMutations:true vs false produce
+ * different bytes (the conditional applyEventMention text in
+ * buildVaultSystemPrompt diverges between modes). This means
+ * hashVaultPrompt(promptA_readonly) !== hashVaultPrompt(promptA_readwrite)
+ * naturally — no separate signature change is needed to keep prefix-cache
+ * identity isolated between the two surfaces.
+ */
+```
+
+NO new parameter is added to `hashVaultPrompt`; the previous iteration of this plan mentioned restructuring its signature, which was ambiguous. The signature stays `(prompt: string) => string`. The Task 1 prompt-builder test (Phase 01) gets a new case asserting `hashVaultPrompt(promptVaultMutations: true) !== hashVaultPrompt(promptVaultMutations: false)` (see acceptance criteria).
 
 **Change 5 — Preserve REQ-022 purity.** Run the existing forbidden-pattern check (Phase 01's `__forbidden-patterns.ts`) — the new code does NOT add any `Date.now()`, `Math.random`, `process.env`, `randomUUID`, `process.hrtime`, hostname reference. Pure boolean input.
   </action>
@@ -131,12 +152,15 @@ The mention is INTENTIONALLY brief — the LLM is supposed to read `/tools/apply
   <acceptance_criteria>
     - `grep -c "vaultMutations" src/ai/master/vault/prompt-builder.ts` returns ≥ 3
     - `grep -c "apply_event" src/ai/master/vault/prompt-builder.ts` returns ≥ 1
+    - `grep -c "character UUID\|character is a UUID\|character uuid" src/ai/master/vault/prompt-builder.ts` returns ≥ 1 (NIT 1 fix: the UUID-vs-name clarification is explicit in the prompt text)
     - `grep -cE "Date\\.now\\(|Math\\.random|process\\.env|randomUUID|process\\.hrtime" src/ai/master/vault/prompt-builder.ts` returns 0 (REQ-022 hygiene preserved)
+    - The signature of `hashVaultPrompt` is UNCHANGED — still `(prompt: string): string`. `grep -c "hashVaultPrompt(prompt: string)" src/ai/master/vault/prompt-builder.ts` returns ≥ 1
     - Phase 01's prompt-builder tests still pass (existing assertions about toolCount=3 are still valid for the read-only case)
     - The new consistency assertion (vaultMutations:true requires toolCount:4) is exercised by a test case
+    - A new test case asserts hash divergence: `hashVaultPrompt(buildVaultSystemPrompt({...base, vaultMutations: true, toolCount: 4})) !== hashVaultPrompt(buildVaultSystemPrompt({...base, vaultMutations: false, toolCount: 3}))` — confirms Change 4's "natural hash divergence" claim
   </acceptance_criteria>
   <done>
-    Prompt builder extended. Task 2 uses it from the turn route.
+    Prompt builder extended. Task 2 uses it from the turn route. hashVaultPrompt signature unchanged.
   </done>
 </task>
 
@@ -218,6 +242,8 @@ The pattern `...(condition && { key: value })` is a clean JS idiom for optional 
 //
 // See .planning/phases/02-vault-write-path-event-sourcing/PLAN.md.
 ```
+
+**Change 7 — Invert the legacy 3-tool surface assertion in turn-route-branch.test.ts (BLOCKER 2 mitigation).** Plan 02-07 Task 5 already inverts `tests/ai/master/vault/phase-smoke.test.ts`, but `tests/sessions/turn-route-branch.test.ts` ALSO contains a 3-tool assertion (lines ~88-112) that this plan's gate semantics will break unless updated together with the turn-route gate. The detailed edit set lives in plan 02-07 Task 8 (added in the same revision); this task only needs to reference it. The acceptance criteria below ensure the `toBe(3)` assertion is gone by the time this plan completes.
   </action>
   <verify>
     <automated>pnpm test tests/sessions/vault-mutations-gate.test.ts && pnpm test tests/sessions/turn-route-branch.test.ts</automated>
@@ -226,11 +252,13 @@ The pattern `...(condition && { key: value })` is a clean JS idiom for optional 
     - `grep -c "resolveVaultMutations" src/app/api/sessions/[id]/turn/route.ts` returns ≥ 1
     - `grep -c "vaultMutationsEnabled" src/app/api/sessions/[id]/turn/route.ts` returns ≥ 3 (declaration + prompt-builder arg + loop arg)
     - `grep -c "campaignId: campaign.id" src/app/api/sessions/[id]/turn/route.ts` returns ≥ 1
-    - Phase 01's `tests/sessions/turn-route-branch.test.ts` still passes (Phase 01 cases didn't set vaultMutations; the resolver returns false; behavior unchanged)
+    - `tests/sessions/turn-route-branch.test.ts` does NOT assert `.toHaveLength(3)` or `.toBe(3)` against `VAULT_TOOL_DEFINITIONS` / `VAULT_TOOL_COUNT` anymore (BLOCKER 2 — the inversion is performed in plan 02-07 Task 8, this plan depends on it landing)
+    - `grep -c "exposes exactly 3 tools" tests/sessions/turn-route-branch.test.ts` returns 0 (the legacy describe is renamed to "exactly 4 tools" by plan 02-07 Task 8)
+    - Phase 01's `tests/sessions/turn-route-branch.test.ts` post-inversion still passes
     - `pnpm typecheck` exits 0
   </acceptance_criteria>
   <done>
-    Turn-route gate wired. Tasks 3 + 4 verify the branches and the resume invariant.
+    Turn-route gate wired. Tasks 3 + 4 verify the branches and the resume invariant. Phase-wide grep gate (verification section below) confirms NO `toBe(3)` survives against the tool surface.
   </done>
 </task>
 
@@ -253,6 +281,7 @@ Test structure — one top-level `describe('turn route — vaultMutations gate')
 - Assert `runVaultToolLoop` called once with `{campaignId: <campaign.id>}` (the campaignId IS forwarded)
 - Assert the systemBlocks[0].text was built with toolCount: 4 (capture the buildVaultSystemPrompt call args via spy and assert)
 - Assert the prompt contains "apply_event" (the mention from Task 1's change 3)
+- Assert the prompt contains "character UUID" or equivalent UUID-vs-name clarification (NIT 1)
 
 **Quadrant 2: `describe('masterBackend=vault + vaultMutations=false → read-only vault path')`:**
 - Mock prefs `{masterBackend: 'vault', vaultMutations: false, ...}`
@@ -274,16 +303,17 @@ Test structure — one top-level `describe('turn route — vaultMutations gate')
 - `it('env MASTER_BACKEND=vault + no stored masterBackend + vaultMutations:true in settings → full vault write path')` — stub env, mock prefs without masterBackend; assert vault write path active.
 - `it('env MASTER_BACKEND=vault + masterBackend:baked stored → stored wins, vaultMutations has no effect')` — the stored explicit value overrides env.
 
-Total: 5 describe blocks, ~10 `it` cases (the 4 quadrants × 2-3 assertions each).
+Total: 5 describe blocks, ~11 `it` cases (the 4 quadrants × 2-3 assertions each + UUID-vs-name).
   </action>
   <verify>
     <automated>pnpm test tests/sessions/vault-mutations-gate.test.ts -- --reporter=verbose</automated>
   </verify>
   <acceptance_criteria>
-    - All ~10 cases pass
+    - All ~11 cases pass
     - The "baked + vaultMutations:true → gate ignored" test exists and passes (Pitfall 5 enforced at the route layer too)
     - The "vault + vaultMutations:undefined → default false" test exists and passes
     - The "vault + vaultMutations:true → campaignId forwarded" test exists and passes
+    - The UUID-vs-name clarification test exists and passes (NIT 1)
     - `grep -c "vaultMutations" tests/sessions/vault-mutations-gate.test.ts` returns ≥ 10
   </acceptance_criteria>
   <done>
@@ -295,19 +325,38 @@ Total: 5 describe blocks, ~10 `it` cases (the 4 quadrants × 2-3 assertions each
   <name>Task 4: Write tests/sessions/vault-mutations-resume.test.ts — state survives via replay</name>
   <files>tests/sessions/vault-mutations-resume.test.ts</files>
   <read_first>
-    - src/ai/master/vault/projector.ts (plan 02-04 — replayEvents, regenerateCharacterView)
+    - src/ai/master/vault/projector.ts (plan 02-04 — replayEvents, regenerateCharacterView, INITIAL_CHARACTER_STATE fallbacks)
+    - src/ai/master/vault/events-schema.ts (plan 02-01 — VaultSeedCharacter; hp_current + spell_slots are OPTIONAL)
+    - src/db/schema/characters.ts (informational — hpMax always present; spellcasting may be null)
+    - src/db/schema/session-state.ts (informational — hpCurrent lives per-session; may not exist)
     - tests/ai/master/vault/apply-event-integration.test.ts (plan 02-07 — restart simulation pattern via vi.resetModules)
     - .planning/phases/02-vault-write-path-event-sourcing/02-VALIDATION.md (Phase gate row: "Restart preserves state via events.md replay on session resume")
   </read_first>
   <action>
 Create `tests/sessions/vault-mutations-resume.test.ts`. Cover the Phase-gate invariant: "Restart of Next.js server preserves state via events.md replay on session resume" from the ROADMAP.
 
+**Seed fixture shape (mirrors plan 02-01 + plan 02-10 Task 4 schema reality):**
+
+The synthetic seed events written in this test file MUST match what the flip script actually produces. That means:
+- `id`, `name`, `hp_max` are REQUIRED (top-level required fields per validateEvent).
+- `hp_current` is OPTIONAL — include it ONLY in fixtures that simulate a campaign with a played session (session_state.hpCurrent existed); OMIT it in fixtures that simulate freshly-created campaigns (the projector defaults to hp_max).
+- `spell_slots` is OPTIONAL — include it ONLY for caster PCs (characters.spellcasting non-null in the simulated Postgres state); OMIT it for non-casters.
+
+This is the BLOCKER 1 mitigation at the test layer: the resume test must exercise the same OPTIONAL shape that the flip script actually emits, otherwise the test passes against a fictional event shape and the live system fails at runtime.
+
 Test structure — one top-level `describe('vault-mutations resume — replay-on-read invariant')`:
 
 1. **Setup helper** (top of file):
    ```ts
-   async function simulateSession(events: VaultEventEnvelope[]): Promise<CharacterState> {
-     // Stub env, write events to events.md, call replayEvents, return the character state.
+   import type { VaultEventEnvelope, VaultSeedCharacter } from '@/ai/master/vault/events-schema';
+
+   async function writeSeedEvent(
+     campaignId: string,
+     characters: VaultSeedCharacter[],
+   ): Promise<void> {
+     // Build a VaultEventEnvelope for campaign_initialized and append.
+     // Uses EventsWriter directly so the test owns the test process's
+     // module identity and can simulate restart via vi.resetModules.
    }
    ```
 
@@ -317,36 +366,53 @@ Test structure — one top-level `describe('vault-mutations resume — replay-on
    - Call `replayEvents(await parseEventsFile(eventsPath(uuid)))` → returns empty Map
    - This documents the new-campaign starting state.
 
-3. **`it('a campaign with seed event has the seeded character')`:**
-   - Write campaign_initialized event to events.md by hand
-   - Call replayEvents → state map contains the seeded character
-   - The state's hp_current equals the seed's hp_current value (or hp_max if hp_current not specified).
+3. **`it('freshly-created campaign seed (no hp_current, no spell_slots) → state.hp_current === hp_max, state.spell_slots === {}')`:**
+   - This is the BLOCKER 1 ground-truth fixture: simulates the most common case at flip time — operator runs `pnpm vault:flip --enable-mutations` on a campaign whose characters have never been in a session, so session_state is absent and (assuming a fighter PC) spellcasting is null.
+   - Seed: `[{id: 'char-uuid-1', name: 'Rogan the Fighter', hp_max: 25}]` (no hp_current, no spell_slots)
+   - `await writeSeedEvent(CAMPAIGN_UUID, seed)`
+   - Call `replayEvents(await parseEventsFile(eventsPath(CAMPAIGN_UUID)))`
+   - Assert state map has one entry for 'char-uuid-1' with `hp_current: 25` (fallback to hp_max), `spell_slots: {}` (fallback to empty), `hp_max: 25`.
+   - This proves the projector's `INITIAL_CHARACTER_STATE` defaults work end-to-end.
 
-4. **`it('a campaign with seed + 5 mutations has the post-mutation state')`:**
+4. **`it('played-session campaign seed (hp_current present, spell_slots present) → state matches seed verbatim')`:**
+   - Simulates the case after the operator has played a session before flipping: session_state.hpCurrent has a value (12 of 25 hp), the wizard PC has spell_slots populated.
+   - Seed: `[{id: 'char-uuid-2', name: 'Elara the Wizard', hp_max: 25, hp_current: 12, spell_slots: {'1': {max: 4, used: 2}, '2': {max: 2, used: 0}}}]`
+   - `await writeSeedEvent(CAMPAIGN_UUID, seed)`
+   - Call `replayEvents(...)`
+   - Assert: `hp_current: 12`, `spell_slots: {'1': {max: 4, used: 2}, '2': {max: 2, used: 0}}`, `hp_max: 25`.
+
+5. **`it('mixed seed (one fresh, one played) → each character defaults independently')`:**
+   - Seed: `[{id: 'a', name: 'A', hp_max: 20}, {id: 'b', name: 'B', hp_max: 30, hp_current: 15}]` (first no hp_current, second has it)
+   - Replay; assert state['a'].hp_current === 20 (fallback) and state['b'].hp_current === 15 (provided).
+
+6. **`it('a campaign with seed + 5 mutations has the post-mutation state')`:**
+   - Seed (use the played-session fixture): a wizard with hp_max:25, hp_current:25 (full hp), spell_slots present.
    - Write seed + 5 hp_change events
-   - Call replayEvents → state.hp_current is the expected aggregate.
+   - Call replayEvents → state.hp_current is the expected aggregate (25 + sum of deltas, clamped to [0, 25]).
 
-5. **`it('regenerateCharacterView produces the same view on first call and after simulated restart')`:**
-   - Write the events to events.md
+7. **`it('regenerateCharacterView produces the same view on first call and after simulated restart')`:**
+   - Write the events to events.md (use the freshly-created-campaign fixture — no hp_current/no spell_slots — to exercise the defaults path on both module loads).
    - Call regenerateCharacterView → snapshot view file content as `view_v1`
    - Simulate restart: `vi.resetModules()`; re-import the projector module
    - Call regenerateCharacterView again from the fresh module → snapshot as `view_v2`
    - Assert `view_v1 === view_v2` byte-for-byte (proves the replay is deterministic across module load boundaries; spike 008 + 013 invariant at the integration level)
 
-6. **`it('a view file corrupted post-restart can be restored via regenerate')`:**
-   - Setup with valid view in place
+8. **`it('a view file corrupted post-restart can be restored via regenerate')`:**
+   - Setup with valid view in place (use the played-session fixture so the view has non-default fields)
    - Corrupt the view file (overwrite with garbage)
    - Call regenerateCharacterView (simulating the recovery script from plan 02-10)
    - Read view file; assert it matches the original (DR roundtrip — spike 013 invariant)
 
-7. **`it('the dispatcher does not duplicate state across two apply_event calls separated by a simulated restart')`:**
-   - Call apply_event via dispatchVaultTool to add +5 HP (campaign + seed + hp_change=+5)
+9. **`it('the dispatcher does not duplicate state across two apply_event calls separated by a simulated restart')`:**
+   - Seed the campaign (use the freshly-created-campaign fixture so the wizard starts at hp_max).
+   - Wait, use a played-session fixture for this one: seed `[{id: 'c', name: 'Caster', hp_max: 20, hp_current: 20, spell_slots: {'1': {max: 3, used: 0}}}]`.
+   - Call apply_event via dispatchVaultTool to add +5 HP (which clamps to hp_max=20 — net delta 0; choose a -5 delta instead for clarity). Actually use: -5 hp delta (hp now 15).
    - Simulate restart: vi.resetModules
    - Re-import tools module
-   - Call apply_event via the fresh dispatcher to add -3 HP
-   - Read final view: hp_current = seed.hp_max + 5 - 3 (NOT seed.hp_max + 5 + 5 - 3; the second module's reducer correctly replays the first session's event before applying the second session's event)
+   - Call apply_event via the fresh dispatcher to add another -3 HP
+   - Read final view: hp_current = 20 - 5 - 3 = 12 (NOT 20 - 5 + (20 - 3) = 32; the second module's reducer correctly replays the first session's event before applying the second session's event).
 
-Total: 1 describe block, ~7 `it` cases.
+Total: 1 describe block, ~9 `it` cases (3 of them are the BLOCKER 1 ground-truth fixtures: freshly-created seed, played-session seed, mixed seed).
 
 No DATABASE_URL required (uses the projector + tools directly).
   </action>
@@ -354,14 +420,19 @@ No DATABASE_URL required (uses the projector + tools directly).
     <automated>pnpm test tests/sessions/vault-mutations-resume.test.ts -- --reporter=verbose</automated>
   </verify>
   <acceptance_criteria>
-    - All ~7 cases pass
+    - All ~9 cases pass
+    - The "freshly-created campaign seed → hp_max fallback + empty spell_slots fallback" test exists and passes (BLOCKER 1 — fresh-campaign ground truth)
+    - The "played-session seed → state matches seed verbatim" test exists and passes (BLOCKER 1 — played-session ground truth)
+    - The "mixed seed" test exists and passes (BLOCKER 1 — characters default independently)
     - The "view file corrupted post-restart can be restored via regenerate" test exists and passes (DR roundtrip)
     - The "no duplicate state across simulated restart" test exists and passes (replay determinism)
     - `grep -c "vi.resetModules" tests/sessions/vault-mutations-resume.test.ts` returns ≥ 2 (restart simulation pattern used)
+    - `grep -c "VaultSeedCharacter" tests/sessions/vault-mutations-resume.test.ts` returns ≥ 1 (types imported from events-schema, no ad-hoc shape)
+    - `grep -c "hp_current: undefined\|hp_current:" tests/sessions/vault-mutations-resume.test.ts` shows BOTH presence and absence of `hp_current` are exercised (the BLOCKER 1 ground truth)
     - `unset DATABASE_URL; pnpm test tests/sessions/vault-mutations-resume.test.ts` exits 0
   </acceptance_criteria>
   <done>
-    Phase gate (restart preserves state) is regression-tested.
+    Phase gate (restart preserves state) is regression-tested. The OPTIONAL hp_current + spell_slots seed shape (BLOCKER 1) is exercised end-to-end at the projector boundary.
   </done>
 </task>
 
@@ -401,6 +472,7 @@ No DATABASE_URL required (uses the projector + tools directly).
 - Command: `pnpm test tests/sessions/vault-mutations-gate.test.ts tests/sessions/vault-mutations-resume.test.ts` → all cases pass
 - Command: `pnpm test` (full suite) → still green
 - Command: `pnpm typecheck` → clean
+- Phase-wide grep gate (BLOCKER 2 — prevents regression of the 3-tool surface assertion): `grep -rn "toBe(3)\|toHaveLength(3)" tests/ --include="*.ts" | grep -iE "vault[_a-z]*tool|tool[_a-z]*surface|VAULT_TOOL" | wc -l` returns 0. Comment-only matches (lines starting with `//` or inside JSDoc) DO NOT count — use `grep -v "^\\s*\\(//\\|\\*\\)"` if needed.
 - Manual smoke (per PLAN.md validation step 5):
   1. `pnpm vault:flip --id=<test-uuid> --to=vault --enable-mutations`
   2. Send a combat turn via chat UI
@@ -411,4 +483,4 @@ No DATABASE_URL required (uses the projector + tools directly).
 
 ## Open questions
 
-None — phase Decision 8 commits to single-write semantics for Phase 02; the checkpoint task confirms the banner UX choice. If the operator picks Option C (no banner), the UI work is zero and only plan 02-10's operator doc covers the caveat.
+None — phase Decision 8 commits to single-write semantics for Phase 02; the checkpoint task confirms the banner UX choice. If the operator picks Option C (no banner), the UI work is zero and only plan 02-10's operator doc covers the caveat. hashVaultPrompt signature stays `(prompt: string)` (BLOCKER 3 Option A — natural hash divergence via the conditional prompt text).

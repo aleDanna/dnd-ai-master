@@ -11,6 +11,7 @@ files_modified:
   - tests/ai/master/vault/tools.test.ts
   - tests/ai/master/vault/loop.test.ts
   - tests/ai/master/vault/phase-smoke.test.ts
+  - tests/sessions/turn-route-branch.test.ts
   - tests/ai/master/vault/apply-event-integration.test.ts
 autonomous: true
 requirements: [REQ-005, REQ-010]
@@ -23,7 +24,9 @@ must_haves:
     - "VaultDispatchContext now accepts an optional campaignId field, passed through from the loop"
     - "runVaultToolLoop forwards ctx.campaignId from VaultLoopInput.campaignId into dispatchVaultTool calls"
     - "The phase-smoke test inverts the Phase 01 assertion: VAULT_TOOL_DEFINITIONS.length === 4 AND names include 'apply_event'"
+    - "tests/sessions/turn-route-branch.test.ts is inverted: the 3-tool describe block becomes a 4-tool describe block; .toBe(3) becomes .toBe(4); 'exposes the three Phase 01 tools' check is extended to include apply_event"
     - "The barrel export src/ai/master/vault/index.ts re-exports EventsWriter, validateEvent, applyEvent (from projector), eventsPath, characterViewPath, resolveVaultMutations"
+    - "The apply_event tool description (in VAULT_TOOL_DEFINITIONS) explicitly states `character` is a UUID, not a character name"
   artifacts:
     - path: "src/ai/master/vault/tools.ts"
       provides: "Extended VAULT_TOOL_DEFINITIONS (4 tools) + dispatchVaultTool apply_event branch"
@@ -33,6 +36,9 @@ must_haves:
       contains: "campaignId"
     - path: "tests/ai/master/vault/apply-event-integration.test.ts"
       provides: "End-to-end: tool call → events.md line → view file regeneration → DR roundtrip"
+    - path: "tests/sessions/turn-route-branch.test.ts"
+      provides: "Inverted from Phase 01's 3-tool assertion to Phase 02's 4-tool assertion"
+      contains: "apply_event"
   key_links:
     - from: "src/ai/master/vault/tools.ts (apply_event branch)"
       to: "src/ai/master/vault/events-writer.ts (plan 02-03)"
@@ -57,20 +63,21 @@ must_haves:
 **Phase:** 02-vault-write-path-event-sourcing
 **Wave:** 3 (depends on all Wave 1 + Wave 2 plans — this is the integration step that ties EventsWriter + projector + schema + campaign-paths + cap-bump together)
 **Status:** Pending
-**Estimated diff size:** ~180 LOC source + ~140 LOC tests / 7 files
+**Estimated diff size:** ~200 LOC source + ~165 LOC tests / 8 files
 
 ## Goal
 
 Extend the Phase 01 vault tool surface from 3 tools to 4 by adding `apply_event`. This is the LOAD-BEARING integration plan — every Wave 1 and Wave 2 plan exists to be consumed here.
 
 The `apply_event` tool:
-1. **Tool definition** added to `VAULT_TOOL_DEFINITIONS` array in `src/ai/master/vault/tools.ts`. Description wording from RESEARCH §6 (matches `.claude/skills/spike-findings-dnd-ai-master/references/tool-surface.md`).
+1. **Tool definition** added to `VAULT_TOOL_DEFINITIONS` array in `src/ai/master/vault/tools.ts`. Description wording from RESEARCH §6 (matches `.claude/skills/spike-findings-dnd-ai-master/references/tool-surface.md`), extended with an explicit "character is a UUID, not a name" clarification (NIT 1 — names are not unique across campaigns; the dispatcher rejects non-UUID character payloads at the validation step indirectly via downstream projector lookup, and the prompt mention in plan 02-08 reinforces this for the LLM).
 2. **Dispatch branch** added to `dispatchVaultTool` switch. Validates input via `validateEvent` (plan 02-01), constructs the canonical envelope `{id, version, type, payload, timestamp}`, calls `EventsWriter.applyEvent(eventsPath(ctx.campaignId), envelope)` (plan 02-03), then `regenerateAffectedViews(ctx.campaignId, envelope)` (plan 02-04). Returns `{content: JSON.stringify({ok: true, event_id: envelope.id}), isError: false}` per Decision 3.
 3. **VaultDispatchContext extension** — add optional `campaignId?: string` field. Without it, `apply_event` returns isError. (Phase 01's read-only tools don't need it — they continue working when ctx is `{vaultRoot}` alone.)
 4. **VaultLoopInput extension** — add optional `campaignId?: string` field. The loop forwards it into the dispatch context. The turn route (plan 02-08) passes `campaign.id` from the resolved snapshot.
 5. **Read path Decision 4 extension** — `dispatchVaultTool('read_vault_multi', …)` learns to route `/campaigns/<id>/…` paths to `VAULT_CAMPAIGNS_ROOT`. Phase 01's `safeVaultPath(input, root)` already accepts an optional root parameter; this plan promotes it from test seam to production use. The dispatcher inspects the incoming path: if it starts with `/campaigns/`, resolve under `VAULT_CAMPAIGNS_ROOT`; otherwise under `VAULT_ROOT`.
 6. **Barrel export** — `src/ai/master/vault/index.ts` re-exports the new modules (EventsWriter, validateEvent, applyEvent, eventsPath, characterViewPath, etc.) so the phase-smoke test passes.
 7. **Phase smoke test** — invert the Phase 01 assertion: `VAULT_TOOL_DEFINITIONS.length === 4` AND `names.includes('apply_event')`.
+8. **Turn-route branch test inversion (BLOCKER 2 mitigation)** — `tests/sessions/turn-route-branch.test.ts` lines ~88-112 contain a 3-tool-surface assertion that must be inverted in the same commit set, otherwise plan 02-07 lands with a failing pre-existing test. Task 8 below ships the explicit inversion.
 
 Per phase Decision 8 (single-write to events.md only — Postgres untouched for opted-in campaigns), the dispatch branch does NOT touch the Postgres `characters` table. Plan 02-08 handles the UI staleness banner; this plan stays focused on the vault-write-path proper.
 
@@ -89,6 +96,7 @@ Per phase Decision 8 (single-write to events.md only — Postgres untouched for 
 | `tests/ai/master/vault/tools.test.ts` | EDIT | Extend with apply_event dispatch cases. |
 | `tests/ai/master/vault/loop.test.ts` | EDIT | Add apply_event branch case. |
 | `tests/ai/master/vault/phase-smoke.test.ts` | EDIT | Invert "no apply_event" → "has apply_event"; bump count 3 → 4. |
+| `tests/sessions/turn-route-branch.test.ts` | EDIT | Invert the 3-tool describe block lines ~88-112 to the 4-tool form (BLOCKER 2). |
 | `tests/ai/master/vault/apply-event-integration.test.ts` | NEW | End-to-end: dispatch → events.md → view file + DR roundtrip + property test. |
 
 ## Tasks
@@ -135,7 +143,7 @@ import { VAULT_CAMPAIGNS_ROOT } from './path';
         },
         payload: {
           type: 'object',
-          description: 'Event-specific data. For hp_change: {character: string, delta: number}. For condition_add/remove: {character: string, condition: string}. For spell_slot_use/restore: {character: string, level: number}. For inventory_add/remove: {character: string, item: string, qty: number}. The `character` field is the character UUID.',
+          description: 'Event-specific data. The `character` field is the character UUID (the value of `id` in the materialized view frontmatter — NOT the character name; names are not unique across campaigns). For hp_change: {character: <uuid>, delta: number}. For condition_add/remove: {character: <uuid>, condition: string}. For spell_slot_use/restore: {character: <uuid>, level: number (1-9)}. For inventory_add/remove: {character: <uuid>, item: string, qty: positive integer < 1000}.',
         },
       },
       required: ['type', 'payload'],
@@ -255,12 +263,13 @@ Update the module-level JSDoc at the top of `tools.ts` to: "Phase 02 closed the 
     - `grep -c "validateEvent" src/ai/master/vault/tools.ts` returns exactly 1
     - `grep -c "campaignId" src/ai/master/vault/tools.ts` returns ≥ 5 (interface field + multiple usages in dispatch)
     - `grep -c "isCampaignPath" src/ai/master/vault/tools.ts` returns ≥ 2 (read_vault_multi + list_vault branches)
+    - `grep -c "character UUID\|NOT the character name" src/ai/master/vault/tools.ts` returns ≥ 1 (NIT 1: tool description clarifies UUID-vs-name)
     - The Phase 01 comment `// apply_event is Phase 02 — intentionally omitted` is GONE
     - `pnpm typecheck` exits 0
     - VAULT_TOOL_DEFINITIONS.length === 4 (verified by the smoke test in Task 5)
   </acceptance_criteria>
   <done>
-    apply_event lives in the tool surface and dispatches correctly. Tasks 2-7 add the loop wiring + tests + barrel export.
+    apply_event lives in the tool surface and dispatches correctly. Tasks 2-8 add the loop wiring + tests + barrel export + branch-test inversion.
   </done>
 </task>
 
@@ -394,11 +403,16 @@ Add a new top-level `describe('dispatchVaultTool — apply_event (Phase 02)')` b
      expect(apply.description).toMatch(/Append a game-state mutation event/);
      expect(apply.input_schema.required).toEqual(['type', 'payload']);
      ```
+   - `it('the apply_event tool description clarifies that character is a UUID (NIT 1)')`:
+     ```ts
+     const apply = VAULT_TOOL_DEFINITIONS.find(t => t.name === 'apply_event');
+     expect(apply.input_schema.properties.payload.description).toMatch(/character UUID|character.+UUID|NOT the character name/i);
+     ```
    - `it('lists all 4 tools by name in expected order')` → `expect(VAULT_TOOL_DEFINITIONS.map(t => t.name)).toEqual(['read_vault_multi', 'list_vault', 'end_turn', 'apply_event'])` (or whatever the Task 1 ordering produced — match the source verbatim)
 
 2. **`describe('apply_event happy path')`:**
    - Setup: `vi.stubEnv('VAULT_CAMPAIGNS_ROOT', tmpdir)`, dynamic re-import. Use `const CAMPAIGN_UUID = '11111111-2222-3333-4444-555555555555';` and `const CHAR_UUID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';`.
-   - First, seed the campaign with a `campaign_initialized` event so subsequent `hp_change` has a valid character state to apply to.
+   - First, seed the campaign with a `campaign_initialized` event so subsequent `hp_change` has a valid character state to apply to. Use the schema-reality shape: `{characters: [{id: CHAR_UUID, name: 'Aragorn', hp_max: 30, hp_current: 30}]}` (hp_current present; spell_slots omitted — non-caster fixture).
    - `it('appends one event to events.md and returns {ok, event_id}')`:
      ```ts
      const result = await dispatchVaultTool('apply_event', {
@@ -454,18 +468,19 @@ Add a new top-level `describe('dispatchVaultTool — apply_event (Phase 02)')` b
 6. **`describe('list_vault routes /campaigns/ similarly')`:**
    - `it('lists characters/ under VAULT_CAMPAIGNS_ROOT/<id>/')` — after seeding two view files, `dispatchVaultTool('list_vault', {directory: `/campaigns/${CAMPAIGN_UUID}/characters`})` returns the two filenames.
 
-Total: 6 describe blocks, ~18 new `it` cases (added to existing Phase 01 cases).
+Total: 6 describe blocks, ~19 new `it` cases (added to existing Phase 01 cases).
 
-The seed-event preparation can be factored into a helper `seedCampaign(campaignId, characters)` at the top of the new describe block.
+The seed-event preparation can be factored into a helper `seedCampaign(campaignId, characters)` at the top of the new describe block. Use the OPTIONAL-fields shape from plan 02-01 — `hp_current` and `spell_slots` may be omitted depending on the fixture.
   </action>
   <verify>
     <automated>pnpm test tests/ai/master/vault/tools.test.ts -- --reporter=verbose</automated>
   </verify>
   <acceptance_criteria>
     - All Phase 01 cases still pass (~25 from plan 01-03 stay green)
-    - All new Phase 02 cases pass (~18)
+    - All new Phase 02 cases pass (~19)
     - The "does NOT touch events.md when validation fails" test exists and passes
     - The "lists 4 tools in expected order" test exists and passes
+    - The "the apply_event tool description clarifies that character is a UUID (NIT 1)" test exists and passes
     - The Decision 4 root routing tests exist and pass
     - `grep -c "apply_event" tests/ai/master/vault/tools.test.ts` returns ≥ 15
     - `grep -c "VAULT_TOOL_DEFINITIONS" tests/ai/master/vault/tools.test.ts` returns ≥ 4 (Phase 01 cases + Phase 02 length + ordering)
@@ -611,7 +626,7 @@ Create `tests/ai/master/vault/apply-event-integration.test.ts`. This is the inte
 Test structure — one top-level `describe('apply_event end-to-end integration')` with these nested describes:
 
 1. **`describe('happy path — dispatch → events.md → view file')`:**
-   - Setup: stub VAULT_CAMPAIGNS_ROOT to tmpdir. Seed CAMPAIGN_UUID with a campaign_initialized event containing CHAR_UUID with name "Aragorn", hp_max:30, hp_current:30.
+   - Setup: stub VAULT_CAMPAIGNS_ROOT to tmpdir. Seed CAMPAIGN_UUID with a campaign_initialized event containing CHAR_UUID with name "Aragorn", hp_max:30, hp_current:30. (Optional fields present in this fixture since the test wants a specific starting state.)
    - `it('5 sequential apply_events produce 6 events.md lines (seed + 5) and a final view matching expected state')`:
      - Dispatch 5 hp_change events: -3, -2, +5, -10, -7 (final hp = 30 -3 -2 +5 -10 -7 = 13)
      - Read events.md: 6 lines total
@@ -625,7 +640,7 @@ Test structure — one top-level `describe('apply_event end-to-end integration')
    - This is the REQ-007 invariant.
 
 3. **`describe('REQ-006 — DR roundtrip (spike 013 byte-exact restore)')`:**
-   - Seed campaign + dispatch 10 mixed events (hp_change, condition_add, spell_slot_use, inventory_add, condition_remove).
+   - Seed campaign + dispatch 10 mixed events (hp_change, condition_add, spell_slot_use, inventory_add, condition_remove). Seed has spell_slots populated so spell_slot_use has a level to target.
    - Read view file content → call it `original_view`.
    - `cp events.md events.md.backup` (or store the content in memory).
    - **Corruption:** overwrite the view file with garbage (`writeFile(viewPath, 'CORRUPTED', 'utf8')`).
@@ -656,10 +671,14 @@ Test structure — one top-level `describe('apply_event end-to-end integration')
 
 Setup helpers shared across describes:
 ```ts
-async function seedCampaign(campaignId: string, characters: Array<{id: string; name: string; hp_max: number}>): Promise<void> {
+import type { VaultSeedCharacter } from '@/ai/master/vault/events-schema';
+
+async function seedCampaign(campaignId: string, characters: VaultSeedCharacter[]): Promise<void> {
+  // Note: pass through the OPTIONAL shape verbatim. Tests choose whether to
+  // include hp_current / spell_slots based on the fixture they're building.
   await dispatchVaultTool('apply_event', {
     type: 'campaign_initialized',
-    payload: { characters: characters.map(c => ({...c, hp_current: c.hp_max, spell_slots: {}})) },
+    payload: { characters },
   }, { campaignId });
 }
 ```
@@ -686,11 +705,104 @@ Total: 6 describe blocks, ~12 `it` cases.
   </done>
 </task>
 
+<task type="auto">
+  <name>Task 8: Invert tests/sessions/turn-route-branch.test.ts — 3-tool surface → 4-tool surface (BLOCKER 2)</name>
+  <files>tests/sessions/turn-route-branch.test.ts</files>
+  <read_first>
+    - tests/sessions/turn-route-branch.test.ts (existing — Phase 01 branch tests; the 3-tool describe block lives at lines ~88-112)
+    - src/ai/master/vault/tools.ts (Task 1 — VAULT_TOOL_DEFINITIONS now has 4 entries; VAULT_TOOL_COUNT is 4)
+  </read_first>
+  <action>
+Edit `tests/sessions/turn-route-branch.test.ts`. After plan 02-07 Task 1 lands, the legacy 3-tool assertions at lines ~88-112 will fail (`VAULT_TOOL_DEFINITIONS.length === 4`, `VAULT_TOOL_COUNT === 4`). This task ships the explicit inversion in the same plan that introduces the surface change, so the test suite stays green commit-by-commit.
+
+**Change 1 — Rename the describe block.** Locate the existing `describe('turn-route vault branch — tool surface (REQ-010, REQ-011)', () => {` (line ~88). Change the describe title to:
+```ts
+describe('turn-route vault branch — tool surface (REQ-010, REQ-011, Phase 02)', () => {
+```
+
+**Change 2 — Invert the count assertion.** The current `it('exposes exactly 3 tools (no apply_event in Phase 01)', ...)` block contains:
+```ts
+expect(VAULT_TOOL_DEFINITIONS).toHaveLength(3);
+expect(VAULT_TOOL_COUNT).toBe(3);
+```
+Rename to and replace with:
+```ts
+it('exposes exactly 4 tools (Phase 02 adds apply_event)', () => {
+  expect(VAULT_TOOL_DEFINITIONS).toHaveLength(4);
+  expect(VAULT_TOOL_COUNT).toBe(4);
+});
+```
+
+**Change 3 — Remove the negative apply_event assertion from the "does NOT expose engine state-mutation tools" case.** Locate:
+```ts
+it('does NOT expose engine state-mutation tools (Phase 01 is read-only)', () => {
+  const names = VAULT_TOOL_DEFINITIONS.map((t) => t.name);
+  expect(names).not.toContain('cast_spell');
+  expect(names).not.toContain('set_current_player');
+  expect(names).not.toContain('apply_damage');
+  expect(names).not.toContain('roll_initiative');
+  expect(names).not.toContain('apply_event'); // Phase 02
+});
+```
+Replace with:
+```ts
+it('does NOT expose engine state-mutation tools (vault path is engine-tool-free)', () => {
+  const names = VAULT_TOOL_DEFINITIONS.map((t) => t.name);
+  expect(names).not.toContain('cast_spell');
+  expect(names).not.toContain('set_current_player');
+  expect(names).not.toContain('apply_damage');
+  expect(names).not.toContain('roll_initiative');
+  // apply_event IS exposed in Phase 02 — see "exposes the four vault tools by name" case below
+});
+```
+
+**Change 4 — Extend the "exposes the three Phase 01 tools by name" case to include apply_event.** Locate:
+```ts
+it('exposes the three Phase 01 tools by name', () => {
+  const names = new Set(VAULT_TOOL_DEFINITIONS.map((t) => t.name));
+  expect(names).toEqual(new Set(['read_vault_multi', 'list_vault', 'end_turn']));
+});
+```
+Rename and replace with:
+```ts
+it('exposes the four vault tools by name (Phase 02 surface)', () => {
+  const names = new Set(VAULT_TOOL_DEFINITIONS.map((t) => t.name));
+  expect(names).toEqual(new Set(['read_vault_multi', 'list_vault', 'end_turn', 'apply_event']));
+});
+```
+
+**Change 5 — Preserve everything else verbatim.** The other describes in the file (resolveMasterBackend behaviour, system prompt contents, VAULT_ROOT resolution) are untouched.
+
+After this task lands:
+- `grep -c "toBe(3)" tests/sessions/turn-route-branch.test.ts` returns 0 against the tool surface (other unrelated `toBe(3)` references — e.g. assertion counts — are preserved if any exist; but the surface-specific ones MUST be gone).
+- `grep -c "toHaveLength(3)" tests/sessions/turn-route-branch.test.ts` returns 0.
+- `grep -c "exposes exactly 3 tools" tests/sessions/turn-route-branch.test.ts` returns 0.
+- `grep -c "exposes exactly 4 tools" tests/sessions/turn-route-branch.test.ts` returns 1.
+- The "exposes the four vault tools by name" case exists and asserts the 4-tool set.
+  </action>
+  <verify>
+    <automated>pnpm test tests/sessions/turn-route-branch.test.ts -- --reporter=verbose</automated>
+  </verify>
+  <acceptance_criteria>
+    - All cases in `tests/sessions/turn-route-branch.test.ts` pass post-inversion
+    - `grep -c "toHaveLength(3)" tests/sessions/turn-route-branch.test.ts` returns 0
+    - `grep -c "exposes exactly 3 tools" tests/sessions/turn-route-branch.test.ts` returns 0
+    - `grep -c "exposes exactly 4 tools" tests/sessions/turn-route-branch.test.ts` returns 1
+    - `grep -c "apply_event" tests/sessions/turn-route-branch.test.ts` returns ≥ 1 (positive assertion, was negative before)
+    - Phase-wide grep gate: `grep -rn "toBe(3)" tests/ --include="*.ts" | grep -iE "vault[_a-z]*tool|tool[_a-z]*surface|VAULT_TOOL" | wc -l` returns 0
+  </acceptance_criteria>
+  <done>
+    BLOCKER 2 closed at the source. The 3-tool surface assertion is fully inverted to 4-tool form, no stale references survive. Plan 02-08 Task 2 depends on this landing (the gate-test setup imports VAULT_TOOL_COUNT and expects 4).
+  </done>
+</task>
+
 ## Verification (plan-level)
 
-- Command: `pnpm test tests/ai/master/vault/` → all Phase 01 + Phase 02 cases pass (~280+ total)
+- Command: `pnpm test tests/ai/master/vault/` → all Phase 01 + Phase 02 cases pass (~285+ total)
+- Command: `pnpm test tests/sessions/turn-route-branch.test.ts` → all cases pass (post-inversion)
 - Command: `pnpm typecheck` → clean
 - Command: `pnpm test tests/ai/master/vault/phase-smoke.test.ts` → confirms 4-tool surface + all Phase 02 exports
+- Phase-wide grep gate (BLOCKER 2): `grep -rn "toBe(3)\|toHaveLength(3)" tests/ --include="*.ts" | grep -iE "vault[_a-z]*tool|tool[_a-z]*surface|VAULT_TOOL" | wc -l` returns 0. (Comment/JSDoc-only matches do not count — apply `grep -v "^\\s*\\(//\\|\\*\\)"` if needed.)
 - Manual smoke (per PLAN.md validation step 5):
   1. `pnpm vault:flip --id=<test-uuid> --to=vault --enable-mutations` (plan 02-10 adds --enable-mutations)
   2. Send turn "Aragorn takes 5 damage" via chat UI
@@ -699,4 +811,4 @@ Total: 6 describe blocks, ~12 `it` cases.
 
 ## Open questions
 
-None — every decision is locked by Phase 02 PLAN.md decisions 1-11.
+None — every decision is locked by Phase 02 PLAN.md decisions 1-11. The BLOCKER 2 inversion (Task 8) closes the surface-assertion drift introduced by Task 1.

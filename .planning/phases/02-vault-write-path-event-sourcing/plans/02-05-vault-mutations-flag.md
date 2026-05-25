@@ -73,6 +73,7 @@ Mirrors the parallel-shape pattern Phase 01 used for `masterBackend`: the field 
   <files>src/db/schema/campaigns.ts</files>
   <read_first>
     - src/db/schema/campaigns.ts (lines 28-73 — CampaignSettings interface; lines 65-72 — masterBackend field as the parallel-shape reference)
+    - src/db/schema/users.ts (lines 6-105 — UserPreferences interface; the parallel-shape counterpart that Task 2 also extends. Read this BEFORE making the campaigns.ts edit so the executor understands the two-place parallel-shape pattern up front; Task 2's Change 5 extends users.ts in the same commit set.)
     - .planning/phases/02-vault-write-path-event-sourcing/02-RESEARCH.md (Decision 5 — orthogonal vaultMutations field; Pitfall 5 — resolver-level enforcement)
     - .planning/phases/01-vault-read-path/plans/06-campaign-settings-flag.md (the masterBackend precedent — mirror exactly)
   </read_first>

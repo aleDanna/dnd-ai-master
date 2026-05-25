@@ -13,7 +13,7 @@ must_haves:
     - "N=1000 parallel dispatchVaultTool('apply_event', ...) calls produce N+1 events.md lines (seed + 1000), 0 lost, 0 duplicated, 0 corrupted"
     - "N=100 with mixed event types (hp_change, condition_add, spell_slot_use) produces a deterministic final view state regardless of dispatch order"
     - "A truncated-tail events.md (simulating a process crash mid-append) is parsed up to the last valid line; the final invalid line throws fail-fast (spike 008)"
-    - "Average per-event latency at N=100 is < 50ms on M5 Pro (spike 010 reference: 7ms total for 100 calls = 0.07ms avg via direct EventsWriter; through the dispatcher the overhead is the projector regen ~1-5ms per event)"
+    - "Wall-clock total for N=100 parallel dispatches divided by N is < 50ms on M5 Pro (computed as `(Date.now() - start) / N` after a single `await Promise.all(...)` — NOT a sum of per-event timings, which would be meaningless under mutex serialization; spike 010 reference: 7ms total for 100 calls = 0.07ms avg via direct EventsWriter; through the dispatcher the overhead is the projector regen ~1-5ms per event)"
     - "STRESS_N env override enables N=1000+ runs without needing a separate test file"
   artifacts:
     - path: "tests/ai/master/vault/events-writer-stress.test.ts"
@@ -109,8 +109,9 @@ const STRESS_N = parseInt(process.env.STRESS_N ?? String(DEFAULT_N), 10);
      - Assert all 100 results have `isError: false`.
      - Read all 5 view files. For each character, manually compute the expected hp_current via the deterministic projector. Assert the view file's frontmatter matches.
      - This is the strongest end-to-end guarantee: dispatcher + writer + projector under N=100 concurrent load produce consistent observable state.
-   - **`it('average per-event latency through the dispatcher is < 50ms at N=100')`:**
-     - Measure total wall-clock; divide by N. The spike-010 baseline is 0.07ms via direct writer; the dispatcher adds the projector regen (1-5ms typical per spike 008). The cap of 50ms/event leaves generous CI headroom; if it ever fails, Pitfall 3 has activated and the view regen has grown too expensive (Phase 03 trigger for snapshot+compact).
+   - **`it('wall-clock total for N=100 parallel dispatches divided by N is < 50ms')`:**
+     - Measure `wall_ms = Date.now() - start` AROUND the single `await Promise.all(...)`; then assert `wall_ms / N < 50`. The spike-010 baseline is 0.07ms via direct writer; the dispatcher adds the projector regen (1-5ms typical per spike 008). The 50ms/event cap leaves generous CI headroom; if it ever fails, Pitfall 3 has activated and the view regen has grown too expensive (Phase 03 trigger for snapshot+compact).
+     - **DO NOT** sum per-event `Date.now()` deltas — under the mutex they are serialized; summing per-event times would be ~N× wall-clock and meaningless. The wall-clock-divided-by-N form is the only correct interpretation.
 
 3. **`describe('Axis 3: truncated-tail recovery (spike 008 corruption fail-fast)')`:**
    - **`it('a truncated last line throws fail-fast with the line number')`:**
