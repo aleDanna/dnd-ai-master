@@ -272,3 +272,99 @@ Total: 5 describe blocks, ~13 `it` cases.
 ## Open questions
 
 None — spike 010 locked the implementation. The path-keyed mutex (vs campaign_id-keyed) is a deliberate choice documented in plan-level Goal section.
+
+## Execution Summary
+
+**Status:** ✅ Complete
+**Executed:** 2026-05-25 (Wave 2, parallel execution alongside plan 02-04 projector)
+**Duration:** ~5 minutes
+**Commits:** 2 (one per task, atomic, conventional `(phase-02)` scope)
+
+### Commits
+
+| Task | Commit    | Type | Description                                                                |
+| ---- | --------- | ---- | -------------------------------------------------------------------------- |
+| 1    | `4c96930` | feat | EventsWriter single-writer mutex per absolute path                         |
+| 2    | `87d6a82` | test | EventsWriter concurrency + isolation + error-path coverage                 |
+
+### Artifacts shipped
+
+- **`src/ai/master/vault/events-writer.ts`** (89 LOC) — near-verbatim lift from `.planning/spikes/010-events-md-concurrency/writer.ts`. Single class with 2 static methods + 1 private static field:
+  - `EventsWriter.queues: Map<absolutePath, Promise<void>>` — in-process mutex chain
+  - `EventsWriter.append(path, line)` — serialized appendFile with mkdir recursive parent + auto-newline + queue auto-clean on chain tail
+  - `EventsWriter.applyEvent(path, event)` — `JSON.stringify(event)` convenience wrapper
+  - Module-level JSDoc cites REQ-005, spike 010 validation, NON-REQ-001 single-process scope, and the mutex-key absolute-path contract.
+- **`tests/ai/master/vault/events-writer.test.ts`** (310 LOC) — 12 vitest cases (11 active + 1 skipped) across 5 describe blocks. Runs cleanly with `DATABASE_URL` unset.
+
+### Acceptance criteria — all green
+
+**Task 1:**
+
+- File exists and exports `EventsWriter` class ✓
+- `grep -c "static queues = new Map" src/ai/master/vault/events-writer.ts` = 1 ✓
+- `grep -c "appendFile" src/ai/master/vault/events-writer.ts` = 3 (≥ 1) ✓
+- `grep -c "mkdir" src/ai/master/vault/events-writer.ts` = 2 (≥ 1) ✓
+- `grep -c "queues.delete" src/ai/master/vault/events-writer.ts` = 1 ✓
+- `pnpm typecheck` exit 0 ✓
+- `grep -c "private static\|public static\|static " src/ai/master/vault/events-writer.ts` = 3 (≥ 3) ✓
+- Critical loop matches spike 010 byte-for-byte (`queues.get → set → try/await/finally release/delete`) ✓ verified by diff of inner method body against `.planning/spikes/010-events-md-concurrency/writer.ts`
+
+**Task 2:**
+
+- 11/11 active test cases pass + 1 skipped (env-overridable STRESS_N) ✓
+- "100 parallel applyEvent → 100 distinct events, 0 lost, 0 duplicated" exists and passes (8ms wall-clock) ✓
+- "filesystem error releases the mutex" exists and passes ✓
+- "rejected promise removes its entry from the queue Map" exists and passes ✓
+- `grep -c "Promise.all" tests/ai/master/vault/events-writer.test.ts` = 5 (≥ 2) ✓
+- `unset DATABASE_URL; pnpm test …` exits 0 ✓ (verified via `env -u DATABASE_URL pnpm test …`)
+- Test runtime: 113ms total (well under 5s budget; spike 010 baseline 7ms for 100 concurrent is here observed as 8ms in vitest) ✓
+
+**Plan-level:**
+
+- `pnpm test tests/ai/master/vault/events-writer.test.ts` → 11/11 green + 1 skip in 113ms ✓
+- `pnpm typecheck` → clean ✓
+- `STRESS_N=1000 pnpm test tests/ai/master/vault/events-writer.test.ts -t "1000 parallel"` → 1000 events landed, 0 lost, 65ms wall-clock ✓
+- `grep -c "queues.delete\|queues.set\|queues.get" src/ai/master/vault/events-writer.ts` = 5 (≥ 3) ✓
+
+### Implementation notes
+
+**Verbatim lift — algorithm preservation.** The inner mutex loop (`const previous = …queues.get(path) ?? Promise.resolve(); …queues.set(path, next); try { await previous; await mkdir(…); await appendFile(…) } finally { release(); if (queues.get(path) === next) queues.delete(path); }`) was copied character-for-character from `.planning/spikes/010-events-md-concurrency/writer.ts`. The only adornments are: (a) module-level JSDoc citing REQ-005 + spike 010 + multi-process scope notes, (b) per-method JSDoc explaining the mutex-key contract for `append` and the JSONL format choice for `applyEvent`. No behavioral changes from the spike.
+
+**No runtime path-canonicalization check.** The plan was explicit that runtime `isAbsolute()` checks are not introduced — the contract is "callers MUST pass `eventsPath()` canonical paths" and that's the design. The dedicated test case "the same absolute path canonicalizes to the same mutex slot" documents the contract via behavior, not via runtime enforcement.
+
+**Mutex-release-on-error invariant — observable assertion.** The `next` promise inside the chain only carries a resolve callback (no reject); when an `appendFile` throws, the outer `async` function rejects but the `finally` still calls `release()` on the inner mutex-chain promise. The test "a rejected promise removes its entry from the queue Map" exercises this: after a chmod-000 EACCES rejection, restoring permissions and re-invoking on the same path completes within 1s (asserted bound is generous; observed <2ms in practice). The Map cleanup line `queues.delete(path)` is therefore reached on both success and error paths.
+
+**chmod-based unwritable-dir setup — macOS APFS verified.** Pre-flight tested via inline `node -e` script that `chmod 000` on an existing directory produces `EACCES` on attempted child file creation on darwin (current platform). The test's afterEach walks the tmpdir tree and chmod-555-restores any encountered dir so `rmSync(recursive: true)` can succeed even when a test leaves a 000 dir behind (defensive — current tests always restore in-line, but the cleanup walk is belt-and-suspenders against future test additions).
+
+**STRESS_N env-overridable test.** The plan asked for a runtime-conditional `it.skip()` when `STRESS_N` is unset. Implemented as `it.skip / it` selection via `process.env.STRESS_N` parse at module load. When set (e.g., `STRESS_N=1000`), the test name in the verbose reporter reflects the actual N (`1000 parallel applyEvent via STRESS_N env`); when unset, the placeholder `<env-overridable>` appears and the case is skipped. Plan 02-09 owns the high-N stress with explicit per-call timing assertions.
+
+**TS strict-mode interaction with `readdirSync`.** First pass of the afterEach cleanup walk used `ReturnType<typeof readdirSync>` which TS resolved to a union including the `NonSharedBuffer[]` overload (when `withFileTypes` is not narrowed). Fixed by importing `Dirent` as a type and typing the local `entries: Dirent[]` explicitly + passing `encoding: 'utf8'` to `readdirSync` to lock the string-name overload.
+
+### Out-of-scope observations (no action taken)
+
+During execution, Wave 2's other plan (02-04 projector) committed `src/ai/master/vault/projector.ts` — surfaced as an untracked file in `git status` during my Task 2 commit. Per the parallel execution contract, this plan staged ONLY its own two files (one per commit). The projector file was left untouched in the working tree and is not part of either commit produced by this plan.
+
+### Downstream consumers
+
+- **Plan 02-07** (`apply-event-tool`) — dispatcher branch calls `EventsWriter.applyEvent(eventsPath(campaignId), envelope)` as the mutation primitive.
+- **Plan 02-09** (`stress-test`) — layers a higher-N (env-driven) stress harness with explicit per-call timing assertions on top of the same `EventsWriter` API.
+- **Plan 02-04** (`projector` — Wave 2 sibling) — does NOT depend on EventsWriter directly; it only consumes the events.md file format (one JSONL line per event) that `applyEvent` produces.
+
+### Threat-model traceability
+
+- **T-02-09** (in-process mutex insufficient under multi-process writes) — mitigated at the operational layer (NON-REQ-001 single-Next.js-server invariant + runbook in plan 02-10). EventsWriter itself documents the boundary in the module-level JSDoc ("Multi-process safety: OUT OF SCOPE").
+- **T-02-10** (event loss under contention) — primary mitigation. Validated by the "100 parallel applyEvent → 0 lost, 0 duplicated" test (and by STRESS_N=1000 on demand).
+- **T-02-11** (mutex deadlock on filesystem error) — mitigated via the `release()` call in the `finally` block. Validated by the "filesystem error releases the mutex" + "rejected promise removes its entry from the queue Map" tests.
+
+### Self-check
+
+- File `src/ai/master/vault/events-writer.ts` exists ✓
+- File `tests/ai/master/vault/events-writer.test.ts` exists ✓
+- Commit `4c96930` exists in git log ✓
+- Commit `87d6a82` exists in git log ✓
+- All acceptance criteria green ✓
+- No deletions in either commit ✓ (verified via `git diff --diff-filter=D --name-only HEAD~N HEAD~N+1`)
+
+**Self-Check: PASSED**
+
+
