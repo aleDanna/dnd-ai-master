@@ -473,3 +473,60 @@ Total: 9 describe blocks, ~42 `it` cases.
 ## Open questions
 
 None — replay determinism + corruption fail-fast + view byte-stability are locked by spike 008 + spike 013. The exhaustiveness pattern is canonical TypeScript. The OPTIONAL hp_current + spell_slots fallbacks are locked by the live Postgres schema (session_state.hpCurrent + characters.spellcasting nullable).
+
+---
+
+## Execution summary (Plan 02-04)
+
+**Status:** Complete — 2 tasks shipped, 53 tests green, typecheck clean, all acceptance criteria satisfied.
+
+**Commits:**
+- `c1e8b5a` — `feat(vault): add event projector with pure reducer and view regenerator` — Task 1 (src/ai/master/vault/projector.ts, +680 LOC)
+- `0a677bb` — `test(vault): regression suite for the event projector` — Task 2 (tests/ai/master/vault/projector.test.ts, +1124 LOC, 53 cases)
+- `0a25e1e` — `docs(phase-02): re-confirm pre-existing system-prompt RAG test failures during plan 02-04` — scope-boundary doc
+
+**Acceptance criteria results:**
+
+Task 1 (projector.ts):
+- `grep -c "case '"` → **14** (≥8 required)
+- `grep -c "structuredClone"` → **3** (≥1 required)
+- `grep -c "Date.now\|Math.random\|process.env"` → **0** ✓
+- `grep -c "_exhaustive: never"` → **1** ✓ (compile-time exhaustiveness sentinel)
+- `grep -c "VaultSeedCharacter"` → **7** (≥2 required)
+- `grep -c "seed.hp_current ?? seed.hp_max"` → **1** ✓ (freshly-created-campaign fallback documented in code)
+- `grep -c "seed.spell_slots ?? {}"` → **1** ✓ (non-caster fallback documented in code)
+- `pnpm typecheck` → **exit 0** ✓
+- 9 exports shipped: `applyEvent`, `replayEvents`, `regenerateCharacterView`, `regenerateAffectedViews`, `INITIAL_CHARACTER_STATE`, `serializeView`, `parseView`, `parseEventsFile`, `CharacterState`
+
+Task 2 (projector.test.ts):
+- **53/53 cases pass** (planned target was ~42)
+- INITIAL_CHARACTER_STATE Postgres-reality fallback describe: **6 cases** (target ≥5)
+- "campaign_initialized with hp_current absent → hp_max" ✓
+- "campaign_initialized with spell_slots absent → {}" ✓
+- "throws on corrupt JSON line" (spike 008 fail-fast) ✓
+- "byte-stable for the same input" (spike 013 DR invariant) ✓
+- "graceful degradation on unknown event types" (Pitfall 6) ✓
+- `grep -c "structuredClone\|deeply equal\|toEqual"` → **33** (≥10 required)
+- `unset DATABASE_URL; pnpm test tests/ai/master/vault/projector.test.ts` → **exit 0** ✓
+- Test runtime: **148ms** (cap < 10s)
+
+**Plan-level verification:**
+- `pnpm test tests/ai/master/vault/projector.test.ts` → 53 cases pass, 148ms
+- `pnpm typecheck` → clean, exit 0
+- Grep gate `grep -c "console.warn\|console.error" src/ai/master/vault/projector.ts` → **2** (≤2 required — Pitfall 6 unknown-type warn + unseeded-character warn, no debug logging)
+
+**Deviations from plan:**
+
+None of substance. Two minor implementation choices made within the plan's latitude:
+
+1. **parseView mode-state machine** (Task 1): the plan said "simple line-by-line parser" without prescribing internals. Implementation uses a 4-state mode tracker (`top` / `conditions` / `spell_slots` / `inventory`) so block-form vs inline-form lines parse correctly. Returns `null` on missing frontmatter delimiters as specified.
+2. **`inventory_remove` test added** beyond the plan's enumerated cases: "with qty larger than stored qty: clamps to 0 (item removed)" — defensive coverage on the `Math.max(0, …)` branch. Adds to the case count (53 vs target ~42) without changing scope.
+
+**Out-of-scope failures documented:**
+
+`tests/ai/master/system-prompt.mode.test.ts` has 2/2 pre-existing failures (RAG block injection / cache stability) on `main` at commit `7cbfcb9`. Verified by `git stash -u` + re-run before commit: not introduced by the projector. Logged in `.planning/phases/02-vault-write-path-event-sourcing/deferred-items.md` for the RAG-block-assembler owner.
+
+**Files changed:**
+- NEW: `src/ai/master/vault/projector.ts` (680 LOC)
+- NEW: `tests/ai/master/vault/projector.test.ts` (1124 LOC, 53 cases)
+- MODIFIED: `.planning/phases/02-vault-write-path-event-sourcing/deferred-items.md` (re-confirmation note for the pre-existing RAG failures)
