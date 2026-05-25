@@ -1,8 +1,14 @@
+import { randomUUID } from 'node:crypto';
 import type { ToolDef } from '@/ai/provider/types';
-import { listVaultDir, readVaultFile } from './path';
+import { listVaultDir, readVaultFile, VAULT_CAMPAIGNS_ROOT } from './path';
+import { validateEvent, EVENT_SCHEMA_VERSION, type VaultEventEnvelope } from './events-schema';
+import { EventsWriter } from './events-writer';
+import { regenerateAffectedViews } from './projector';
+import { eventsPath, UUID_REGEX } from './campaign-paths';
 
 /**
- * REQ-010 — Fixed 4-tool surface (3 of 4 in Phase 01; `apply_event` arrives in Phase 02).
+ * REQ-010 — Fixed 4-tool surface. Phase 02 closed the 4th tool — REQ-010 fully
+ *           satisfied (Phase 01 shipped 3; Phase 02 added `apply_event`).
  * REQ-011 — NEVER expose singular `read_vault(path)`. Only batched `read_vault_multi`.
  * REQ-013 — Server accepts both turn terminators (`end_turn` tool call AND
  *           `no_tool_calls + content`). This module defines the `end_turn` tool;
@@ -55,7 +61,27 @@ export const VAULT_TOOL_DEFINITIONS: ToolDef[] = [
       required: ['response'],
     },
   },
-  // apply_event is Phase 02 — intentionally omitted in Phase 01 (vault is read-only for game state).
+  {
+    name: 'apply_event',
+    description:
+      'Append a game-state mutation event (HP change, condition add, slot use, inventory change, etc.). Returns the new event_id on success. One event per call; do not batch.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        type: {
+          type: 'string',
+          description:
+            'Event type. One of: hp_change, condition_add, condition_remove, spell_slot_use, spell_slot_restore, inventory_add, inventory_remove.',
+        },
+        payload: {
+          type: 'object',
+          description:
+            'Event-specific data. The `character` field is the character UUID (the value of `id` in the materialized view frontmatter — NOT the character name; names are not unique across campaigns). For hp_change: {character: <uuid>, delta: number}. For condition_add/remove: {character: <uuid>, condition: string}. For spell_slot_use/restore: {character: <uuid>, level: number (1-9)}. For inventory_add/remove: {character: <uuid>, item: string, qty: positive integer < 1000}.',
+        },
+      },
+      required: ['type', 'payload'],
+    },
+  },
 ];
 
 export const VAULT_TOOL_COUNT = VAULT_TOOL_DEFINITIONS.length;
@@ -75,6 +101,19 @@ export function formatMultiReadResult(entries: { path: string; content: string }
 
 export interface VaultDispatchContext {
   vaultRoot?: string;
+  /**
+   * Campaign UUID — required for `apply_event` (the dispatch branch resolves
+   * paths under `VAULT_CAMPAIGNS_ROOT/<campaignId>/`). Phase 01 read-only
+   * tools (read_vault_multi, list_vault, end_turn) ignore this field, except
+   * for the Phase 02 Decision 4 extension: read_vault_multi and list_vault
+   * inspect path prefixes and route `/campaigns/...` reads to
+   * VAULT_CAMPAIGNS_ROOT transparently (no campaignId needed for read).
+   *
+   * Phase 02 — locked by REQ-007 (per-campaign storage outside repo) and
+   * T-02-01/T-02-07 mitigations (server-side-only campaignId; LLM cannot
+   * supply this).
+   */
+  campaignId?: string;
 }
 
 export interface VaultDispatchResult {
@@ -110,9 +149,19 @@ export async function dispatchVaultTool(
     const entries: { path: string; content: string }[] = [];
     for (const p of raw.paths) {
       const pathStr = typeof p === 'string' ? p : String(p);
+      // Decision 4 — root routing. Paths starting with `/campaigns/` are
+      // resolved under VAULT_CAMPAIGNS_ROOT (with the `/campaigns/` prefix
+      // stripped, because VAULT_CAMPAIGNS_ROOT IS the campaigns root); all
+      // other paths stay under VAULT_ROOT (or ctx.vaultRoot test override).
+      // The returned entry preserves the LLM's ORIGINAL path string for
+      // legibility in the `### <path>` heading.
+      const stripped = pathStr.replace(/^\/+/, '');
+      const isCampaignPath = stripped.startsWith('campaigns/');
+      const effectiveRoot = isCampaignPath ? VAULT_CAMPAIGNS_ROOT : vaultRoot;
+      const effectivePath = isCampaignPath ? '/' + stripped.slice('campaigns/'.length) : pathStr;
       // readVaultFile already returns inline error markers on bad paths /
       // missing files — per-file errors don't fail the batch (spike 009).
-      const content = await readVaultFile(pathStr, vaultRoot);
+      const content = await readVaultFile(effectivePath, effectiveRoot);
       entries.push({ path: pathStr, content });
     }
     return { content: formatMultiReadResult(entries), isError: false };
@@ -123,7 +172,14 @@ export async function dispatchVaultTool(
     if (typeof raw.directory !== 'string') {
       return { content: 'ERROR: list_vault requires a string `directory` argument', isError: true };
     }
-    const children = await listVaultDir(raw.directory, vaultRoot);
+    // Decision 4 — root routing (mirror of read_vault_multi). `/campaigns/...`
+    // listing routes to VAULT_CAMPAIGNS_ROOT; everything else stays under
+    // VAULT_ROOT.
+    const stripped = raw.directory.replace(/^\/+/, '');
+    const isCampaignPath = stripped.startsWith('campaigns/');
+    const effectiveRoot = isCampaignPath ? VAULT_CAMPAIGNS_ROOT : vaultRoot;
+    const effectivePath = isCampaignPath ? '/' + stripped.slice('campaigns/'.length) : raw.directory;
+    const children = await listVaultDir(effectivePath, effectiveRoot);
     if (children.length === 0) {
       return { content: '(no children or path not found)', isError: false };
     }
@@ -135,6 +191,55 @@ export async function dispatchVaultTool(
     const raw = (input ?? {}) as { response?: unknown };
     const response = typeof raw.response === 'string' ? raw.response : '';
     return { content: '', isError: false, endTurnResponse: response };
+  }
+
+  if (name === 'apply_event') {
+    const raw = (input ?? {}) as { type?: unknown; payload?: unknown };
+    if (typeof raw.type !== 'string' || typeof raw.payload !== 'object' || raw.payload === null) {
+      return { content: 'ERROR: apply_event requires {type: string, payload: object}', isError: true };
+    }
+    if (!ctx?.campaignId) {
+      return {
+        content: 'ERROR: apply_event requires campaignId in dispatch context (server-side; cannot be supplied by LLM)',
+        isError: true,
+      };
+    }
+    if (!UUID_REGEX.test(ctx.campaignId)) {
+      return {
+        content: `ERROR: apply_event campaignId is not a valid UUID: ${ctx.campaignId}`,
+        isError: true,
+      };
+    }
+
+    // Validate event shape (hand-rolled type guard, no zod — Decision 1).
+    const guarded = validateEvent({ type: raw.type, payload: raw.payload as Record<string, unknown> });
+    if (!guarded.ok) {
+      return { content: `ERROR: ${guarded.error}`, isError: true };
+    }
+
+    // Build the canonical event envelope. Timestamp is metadata only —
+    // the projector is PURE and does not consume it. The version field
+    // allows Phase 03+ schema migrations per spike 008.
+    const envelope: VaultEventEnvelope = {
+      id: randomUUID(),
+      version: EVENT_SCHEMA_VERSION,
+      type: guarded.value.type,
+      payload: guarded.value.payload,
+      timestamp: new Date().toISOString(),
+    };
+
+    try {
+      // Persist (mutex-serialized — spike 010 pattern).
+      await EventsWriter.applyEvent(eventsPath(ctx.campaignId), envelope);
+      // Regenerate the affected view synchronously (Decision 2 — cheap; <5ms typical).
+      await regenerateAffectedViews(ctx.campaignId, envelope);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { content: `ERROR: apply_event failed during persist: ${message}`, isError: true };
+    }
+
+    // Minimal success envelope (Decision 3 — preserves prefix-cache hygiene).
+    return { content: JSON.stringify({ ok: true, event_id: envelope.id }), isError: false };
   }
 
   return { content: 'ERROR: unknown vault tool: ' + name, isError: true };
