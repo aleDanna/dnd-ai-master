@@ -179,3 +179,62 @@ Total: 4 describe blocks, ~7 `it` cases. The CI run completes in < 60 seconds at
 ## Open questions
 
 None — the stress harness is locked by spike 010's pattern + Phase 02 Decision 6 (same Vitest harness as Phase 01).
+
+---
+
+## SUMMARY
+
+**Status:** COMPLETE
+**Commit:** `cd20a55` — `test(phase-02): concurrent-write stress suite (CI regression)`
+**Files created:**
+- `tests/ai/master/vault/events-writer-stress.test.ts` (572 LOC, 8 it-cases across 4 describe blocks)
+
+### Test results
+
+| Run | Result | Wall-clock |
+|---|---|---|
+| `pnpm test tests/ai/master/vault/events-writer-stress.test.ts` | 7 passed / 1 skipped | 363ms total |
+| `STRESS_N=10000 pnpm test ...` | 8 passed | 969ms total (N=10000 alone: 657ms) |
+| `unset DATABASE_URL && pnpm test ...` | exit 0 | 323ms total |
+| `pnpm test tests/ai/master/vault` (full vault) | 282 passed / 2 skipped | 448ms |
+
+### Per-axis timing (M5 Pro)
+
+| Axis | Test | Wall-clock |
+|---|---|---|
+| 1 | N=1000 direct writer | 100ms (cap 5000ms; spike-010 scaled 14×) |
+| 1 | STRESS_N=10000 (override only) | 657ms |
+| 2 | N=100 dispatchVaultTool, all views consistent | 45ms |
+| 2 | wall_ms / N < 50 (NIT 4) | 22ms wall → 0.22ms/event (cap 50ms/event) |
+| 3a | truncated-tail fail-fast | 3ms |
+| 3b | rollback recovery | 2ms |
+| 3c | mid-line corruption fail-fast | 1ms |
+| 4 | 5 campaigns × 100 events, 0 cross-contamination | 75ms |
+
+### Acceptance criteria — all met
+
+- ✅ All ~7 cases pass at default N=1000 (7 pass / 1 skip for STRESS_N)
+- ✅ N=1000 default test passes in 100ms (≪ 30s cap)
+- ✅ `STRESS_N=10000 pnpm test ...` passes (657ms)
+- ✅ Truncated last line fail-fast test passes (raises `/line 10/`)
+- ✅ 5 campaigns × 100 events isolation test passes (10 pairwise checks, 0 overlap)
+- ✅ `grep -c "Promise.all"` → 9 (cap: ≥ 4)
+- ✅ `grep -c "STRESS_N"` → 11 (cap: ≥ 2)
+- ✅ `unset DATABASE_URL` → exit 0
+- ✅ Spike-010 invariant grep → 5 occurrences of `0 lost / 0 duplicated / 0 corrupted`
+
+### Design notes
+
+- **Wall-clock measurement (NIT 4)** strictly uses `Date.now() - start` AROUND a single `await Promise.all(...)`. The per-event metric is `wall_ms / N`. No per-event timing summation.
+- **Dispatch-layer seam** uses the same `freshVaultModule(campaignsRoot)` + `vi.stubEnv` + `vi.resetModules` pattern as `apply-event-integration.test.ts` (consistent with the Phase 02 test fleet).
+- **STRESS_N override case** uses `it.skip` when STRESS_N is unset or equals default — keeps the CI run fast while preserving operator escape hatch (`STRESS_N=10000 pnpm test ...`).
+- **Truncated-tail recovery** documents the operator-facing recovery procedure (read raw → walk back to last fully-parseable line → rewrite prefix) inline in the test body so the runbook can cite the test as the canonical reference.
+- **Multi-campaign isolation** seeds + mutates 5 distinct campaign UUIDs in parallel, then runs 10 pairwise id-set intersection checks — strongest assertion that the per-path mutex pattern scales to per-campaign isolation.
+
+### Deviations
+
+None. Plan executed exactly as written; the NIT 4 wall-clock-divided-by-N form is explicit in the test code with a justifying inline comment that cites the plan rationale.
+
+### Notes on parallel-execution context (wave 3b)
+
+Plan 02-08 (coexistence-semantics) was running concurrently on disjoint files. On entry the working tree carried unstaged 02-08 changes on `src/app/api/sessions/[id]/turn/route.ts` + `tests/sessions/turn-route-branch.test.ts`; my commit `cd20a55` includes ONLY `tests/ai/master/vault/events-writer-stress.test.ts` and leaves 02-08's working-tree changes untouched.
