@@ -4,20 +4,22 @@ import { buildVaultSystemPrompt } from '@/ai/master/vault/prompt-builder';
 import { VAULT_TOOL_DEFINITIONS, VAULT_TOOL_COUNT } from '@/ai/master/vault/tools';
 
 /**
- * Branch-selection test for the turn-route vault path (Plan 07).
+ * Branch-selection test for the turn-route vault path.
  *
  * This is a focused unit test of the decision logic and the inputs the
  * vault branch passes to `runVaultToolLoop`. It does NOT exercise the
  * full POST handler (which would require Clerk auth, DB, lock, etc.) —
- * for end-to-end behaviour see the manual smoke checklist in Plan 07's
- * Verification section, and the bench-vault-m4 runner in Plan 08.
+ * for end-to-end behaviour see the manual smoke checklist in Phase 01
+ * Plan 07's Verification section, and the bench-vault-m4 runner in
+ * Plan 08.
  *
  * What we DO verify here:
  *  1. resolveMasterBackend honours stored value over env override
  *  2. The system prompt the vault branch would build contains the
  *     vault root, the campaign id, and the lenient discovery line
- *  3. The vault tool surface is exactly 3 tools (no apply_event, no
- *     engine tools) and does not contain a singular read_vault
+ *  3. The vault tool surface is exactly 4 tools (Phase 02 added
+ *     apply_event; the surface still excludes engine state-mutation
+ *     tools) and does not contain a singular read_vault
  */
 
 describe('turn-route vault branch — resolveMasterBackend behaviour', () => {
@@ -85,28 +87,28 @@ describe('turn-route vault branch — system prompt contents', () => {
   });
 });
 
-describe('turn-route vault branch — tool surface (REQ-010, REQ-011)', () => {
-  it('exposes exactly 3 tools (no apply_event in Phase 01)', () => {
-    expect(VAULT_TOOL_DEFINITIONS).toHaveLength(3);
-    expect(VAULT_TOOL_COUNT).toBe(3);
+describe('turn-route vault branch — tool surface (REQ-010, REQ-011, Phase 02)', () => {
+  it('exposes exactly 4 tools (Phase 02 adds apply_event)', () => {
+    expect(VAULT_TOOL_DEFINITIONS).toHaveLength(4);
+    expect(VAULT_TOOL_COUNT).toBe(4);
   });
 
   it('does NOT expose a singular read_vault tool (REQ-011)', () => {
     expect(VAULT_TOOL_DEFINITIONS.map((t) => t.name)).not.toContain('read_vault');
   });
 
-  it('does NOT expose engine state-mutation tools (Phase 01 is read-only)', () => {
+  it('does NOT expose engine state-mutation tools (vault path is engine-tool-free)', () => {
     const names = VAULT_TOOL_DEFINITIONS.map((t) => t.name);
     expect(names).not.toContain('cast_spell');
     expect(names).not.toContain('set_current_player');
     expect(names).not.toContain('apply_damage');
     expect(names).not.toContain('roll_initiative');
-    expect(names).not.toContain('apply_event'); // Phase 02
+    // apply_event IS exposed in Phase 02 — see "exposes the four vault tools by name" case below.
   });
 
-  it('exposes the three Phase 01 tools by name', () => {
+  it('exposes the four vault tools by name (Phase 02 surface)', () => {
     const names = new Set(VAULT_TOOL_DEFINITIONS.map((t) => t.name));
-    expect(names).toEqual(new Set(['read_vault_multi', 'list_vault', 'end_turn']));
+    expect(names).toEqual(new Set(['read_vault_multi', 'list_vault', 'end_turn', 'apply_event']));
   });
 });
 
