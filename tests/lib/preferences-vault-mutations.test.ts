@@ -22,6 +22,7 @@ import {
   resolveVaultMutations,
   validateSettingsPatch,
   getCampaignSettings,
+  VAULT_MUTATIONS_STALE_UI_BANNER,
 } from '@/lib/preferences';
 import type { MasterBackend } from '@/lib/preferences';
 
@@ -183,6 +184,19 @@ describe('vault-mutations flag (Phase 02 — Decision 5, Pitfall 5)', () => {
       await expect(
         getCampaignSettings('00000000-0000-0000-0000-000000000099'),
       ).rejects.toThrow(/not found/);
+    });
+  });
+
+  describe('VAULT_MUTATIONS_STALE_UI_BANNER — operator-approved copy', () => {
+    // Phase 02 plan 02-08 Task 5 (checkpoint:human-verify) — the operator
+    // approved Option A (Settings-page banner) with the Italian copy
+    // matching the One Piece campaign language. This test locks the exact
+    // string so future plans (02-10 operator doc, eventual UI panel) can
+    // reference it without re-checkpointing the wording.
+    it('exposes the locked Italian banner string', () => {
+      expect(VAULT_MUTATIONS_STALE_UI_BANNER).toBe(
+        'Vault attivo — ricarica per vedere lo stato più recente',
+      );
     });
   });
 });

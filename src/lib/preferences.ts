@@ -153,6 +153,21 @@ export function resolveVaultMutations(
   return settings.vaultMutations === true;
 }
 
+/**
+ * Phase 02 plan 02-08 — stale-UI banner copy (operator approved).
+ *
+ * Shown on the campaign Settings page (and elsewhere stale-data warnings
+ * surface) when the active campaign has vaultMutations enabled. The text
+ * informs the operator that the UI continues to reflect Postgres state
+ * until the next session refresh — single-write semantics from
+ * Phase 02 Decision 8.
+ *
+ * Locked verbatim — the campaign language (Italian, matches the One Piece
+ * preset). Phase 03 reconciles dual-write and will deprecate this banner.
+ */
+export const VAULT_MUTATIONS_STALE_UI_BANNER =
+  'Vault attivo — ricarica per vedere lo stato più recente';
+
 /** Per-provider env-overridable model default. Falls back to the static
  *  per-provider default if no env var is set. */
 function envDefaultTtsModel(provider: TtsProvider): string {
