@@ -566,3 +566,97 @@ Total: 3 describe blocks, ~7 `it` cases. Test runtime budget: ~30s on M5 Pro.
 ## Open questions
 
 The default strategy is resolved by the Task 1 checkpoint. If the operator picks an alternative not listed (e.g., S3), Task 2 is re-scoped to add it — the runbook structure accommodates new strategies cleanly. The seed-payload query (Task 4) is locked by the live Postgres schema: `hp_current` MUST be sourced from `session_state` (NOT `characters`) via LEFT JOIN; `spell_slots` MUST be assembled by merging `characters.spellcasting.slotsMax` + `characters.spellSlotsUsed`.
+
+---
+
+## Execution summary (Plan 02-10)
+
+**Status:** Complete — 7 tasks shipped (Task 1 decision pre-resolved by operator before this executor was spawned), 10 vault-backup CLI tests green, typecheck clean for Plan 02-10 scope, all acceptance criteria satisfied.
+
+**Task 1 — operator decision:** Pre-resolved by the user. Default backup strategy is **`git`** (separate repo). Hardcoded as `DEFAULT_STRATEGY: Strategy = 'git'` at the top of `scripts/vault-backup.ts`. Tarball remains supported as an explicit `--strategy=tarball` alternative.
+
+**Commits (Plan 02-10 scope only):**
+- `e40a9bb` — `feat(phase-02): add scripts/vault-backup.ts (git + tarball strategies)` — Task 2 (+313 LOC)
+- `e32772c` — `feat(phase-02): add scripts/vault-rebuild-views.ts (DR recovery)` — Task 3 (+146 LOC)
+- `dedd3b6` — `feat(phase-02): vault-flip --enable-mutations seeds campaign_initialized event` — Task 4 (+261/-17 LOC)
+- `29f032a` — `chore(phase-02): wire pnpm vault:backup and pnpm vault:rebuild-views` — Task 5 (+2 LOC)
+- `8af1c7a` — `docs(phase-02): add docs/operators/vault-backup.md operator runbook` — Task 6 (+253 LOC)
+- `764b9ab` — `test(phase-02): add CLI smoke tests for scripts/vault-backup.ts` — Task 7 (+276 LOC, 10 cases)
+- `e397a4e` — `fix(phase-02): remove unused imports in vault-backup.test.ts; log out-of-scope tsc error` — scope-boundary follow-up
+
+**Acceptance criteria results:**
+
+Task 2 (scripts/vault-backup.ts):
+- `grep -c "backupGit\|backupTarball" scripts/vault-backup.ts` → **4** (≥2 required) ✓
+- `grep -c "_env-loader" scripts/vault-backup.ts` → **1** (≥1 required) ✓
+- `grep -c "VAULT_CAMPAIGNS_ROOT" scripts/vault-backup.ts` → **17** (≥2 required) ✓
+- `grep -c "refuse" scripts/vault-backup.ts` → **7** (≥1 required, T-02-06 defense) ✓
+- `pnpm typecheck` → exit 0 ✓
+- Exits 1 with clear error when `VAULT_CAMPAIGNS_ROOT` does not exist ✓ (verified by test case)
+
+Task 3 (scripts/vault-rebuild-views.ts):
+- `grep -c "regenerateCharacterView" scripts/vault-rebuild-views.ts` → **3** (≥1 required) ✓
+- `grep -c "replayEvents\|parseEventsFile" scripts/vault-rebuild-views.ts` → **4** (≥2 required) ✓
+- `grep -c "UUID_REGEX" scripts/vault-rebuild-views.ts` → **6** (≥1 required) ✓
+- `pnpm typecheck` → exit 0 ✓
+
+Task 4 (scripts/vault-flip.ts):
+- `grep -c "enable-mutations\|enableMutations" scripts/vault-flip.ts` → **15** (≥3 required) ✓
+- `grep -c "campaign_initialized" scripts/vault-flip.ts` → **4** (≥1 required) ✓
+- `grep -c "EventsWriter.applyEvent" scripts/vault-flip.ts` → **1** (≥1 required) ✓
+- `grep -c "regenerateAffectedViews" scripts/vault-flip.ts` → **2** (≥1 required) ✓
+- `grep -c "Pitfall 5" scripts/vault-flip.ts` → **3** (≥1 required) ✓
+- `grep -c "leftJoin\|sessionState\|sessions\.campaignId" scripts/vault-flip.ts` → **7** (≥3 required) ✓
+- `grep -c "spellcasting\|spellSlotsUsed\|slotsMax" scripts/vault-flip.ts` → **13** (≥3 required) ✓
+- `grep -c "characters.hp_current\|characters\.hpCurrent" scripts/vault-flip.ts` → **0** ✓ **(BLOCKER 1 defense honored — hp_current is NEVER sourced from characters.*)**
+- `pnpm typecheck` → exit 0 ✓
+- Backward compat preserved: `pnpm vault:flip` (no args) still lists campaigns (with a new `mut` column for vaultMutations); `--id=<uuid> --to=vault` still flips masterBackend.
+
+Task 5 (package.json):
+- `grep -c "vault:backup" package.json` → **1** (exactly 1) ✓
+- `grep -c "vault:rebuild-views" package.json` → **1** (exactly 1) ✓
+- `grep -c "vault:flip" package.json` → **1** (preserved) ✓
+- `pnpm vault:backup --help` → invokes correctly, prints usage ✓
+- `pnpm vault:rebuild-views --help` → invokes correctly, prints usage ✓
+
+Task 6 (docs/operators/vault-backup.md):
+- `grep -c "vault:backup" docs/operators/vault-backup.md` → **12** (≥2 required) ✓
+- `grep -c "REQ-006\|REQ-007" docs/operators/vault-backup.md` → **2** (≥2 required) ✓
+- `grep -ci "single-write\|coexistence" docs/operators/vault-backup.md` → **3** (≥2 required) ✓
+- `grep -ci "compensating" docs/operators/vault-backup.md` → **2** (≥1 required) ✓
+- `wc -l docs/operators/vault-backup.md` → **253** (≥80 required, substantial runbook not a stub) ✓
+
+Task 7 (tests/scripts/vault-backup.test.ts):
+- **10/10 cases pass** in 1.96s (well under the 60s budget) ✓
+- T-02-06 hand-edit refusal test passes (load-bearing mitigation test) ✓
+- Git init on first invocation test passes ✓
+- Tarball rotation test passes ✓
+- `grep -c "T-02-06\|refuse\|non-append" tests/scripts/vault-backup.test.ts` → **6** (≥2 required) ✓
+
+**Plan-level verification:**
+- `pnpm test tests/scripts/vault-backup.test.ts` → 10/10 pass, 1.96s ✓
+- `pnpm typecheck` → Plan 02-10 scope is clean; one out-of-scope unused-var error in `tests/ai/master/vault/apply-event-integration.test.ts:237` (Plan 02-07's concurrent wave-3a executor — logged in `deferred-items.md`)
+- Manual smoke 1-5 from the plan-level checklist: REQUIRES a live VAULT_CAMPAIGNS_ROOT + Postgres campaign with a flipped UUID. Not executed by this autonomous run (Postgres + a test campaign UUID are operator-environment-specific). Tooling is in place for the operator to run.
+
+**Deviations from plan:**
+
+None of substance. Three minor implementation notes inside the plan's latitude:
+
+1. **Task 4 dedup ordering** (vault-flip.ts `enableMutations`): used `new Map([...rows].reverse().map(...)).values()` + `.reverse()` to pick the most-recent row per character. The plan's example used `new Map(rows.map(...))` directly relying on "Map keeps the FIRST row per id" — actually JS Maps overwrite on duplicate keys, so we explicitly reverse twice to keep the most-recent row (the desired semantics). Behavior matches the plan's stated intent; the implementation is more defensive.
+
+2. **Task 4 args validation**: added the `--enable-mutations` + `--disable-mutations` mutual-exclusion check up front (exit 2 with a clear error message). The plan called for this implicitly under Change 1 ("if both flags present, error out"); the implementation makes it explicit at parse time, before any DB query runs.
+
+3. **Task 7 test harness**: spawned `tsx scripts/vault-backup.ts` via `node_modules/.bin/tsx` directly (rather than `pnpm exec tsx ...`) to skip the pnpm wrapper overhead. Same isolation, ~200ms faster per spawn. All 10 cases run in 1.96s on M5 Pro (well under the 60s budget).
+
+**Out-of-scope failures documented:**
+
+`tests/ai/master/vault/apply-event-integration.test.ts:237` has a TS6133 unused-variable error introduced by Plan 02-07's concurrent wave-3a executor (commit `2f4fe25`). Logged in `.planning/phases/02-vault-write-path-event-sourcing/deferred-items.md` under "Discovered during Plan 02-10 (backup-strategy)" with the recommended owner (Plan 02-07 verifier) and a one-line fix.
+
+**Files changed:**
+- NEW: `scripts/vault-backup.ts` (+313 LOC) — operator-driven backup CLI (git default + tarball fallback)
+- NEW: `scripts/vault-rebuild-views.ts` (+146 LOC) — DR recovery: replay events.md → regenerate views
+- MODIFIED: `scripts/vault-flip.ts` (+261/-17 LOC) — `--enable-mutations` seeds the `campaign_initialized` event via LEFT JOIN on Postgres
+- MODIFIED: `package.json` (+2 LOC) — `vault:backup` and `vault:rebuild-views` pnpm scripts
+- NEW: `docs/operators/vault-backup.md` (+253 LOC) — operator runbook
+- NEW: `tests/scripts/vault-backup.test.ts` (+274 LOC after dead-import trim) — 10 CLI smoke cases
+- MODIFIED: `.planning/phases/02-vault-write-path-event-sourcing/deferred-items.md` — appended Plan 02-10 out-of-scope finding
