@@ -37,6 +37,21 @@ export interface SnapshotForModel {
 }
 
 export const TURN_TOOL_CALL_CAP = 12;
+/**
+ * Tool-call cap for Phase 02 vault-mutation turns (`runVaultToolLoop`).
+ *
+ * Higher than the baked-path cap (12) because combat turns on the vault
+ * path fire one `apply_event` per HP change / condition add / spell slot
+ * use. A representative combat turn: 5 HP changes + 3 condition adds +
+ * 2 spell slot uses + 2 read_vault_multi + 1 end_turn = 13 calls, leaving
+ * headroom for multi-character turns that easily reach 18-20.
+ *
+ * The baked loop (no apply_event tool) continues to use the smaller cap.
+ *
+ * Phase 02 — locked by Decision 11 (Pitfall 4 from RESEARCH.md). Re-tune
+ * after observing real combat sessions if needed.
+ */
+export const VAULT_TURN_TOOL_CALL_CAP = 20;
 // Wall-clock budget for the full tool loop (one turn = N model round-trips).
 // gpt-5 with reasoning routinely takes 20-40s per round-trip, and a turn that
 // calls multiple tools (e.g. add_item + generate_scene_image) needs 2-3
