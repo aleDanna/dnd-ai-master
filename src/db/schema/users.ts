@@ -102,6 +102,15 @@ export interface UserPreferences {
    * Never read directly by code; the campaign field is authoritative.
    */
   masterBackend?: MasterBackend;
+  /**
+   * Phase 02 vault-llm-wiki — parallel-shape with `CampaignSettings.vaultMutations`.
+   * Mirrors the masterBackend pattern: this field exists on UserPreferences
+   * purely for type compatibility with `getSessionMasterPreferences` /
+   * `getResolvedPreferences` (both return `Required<UserPreferences>`) —
+   * resolution is campaign-only by design (Decision 5 in 02-RESEARCH.md).
+   * Never read directly by code; the campaign field is authoritative.
+   */
+  vaultMutations?: boolean;
 }
 
 export type MasterGuidanceLevel = NonNullable<UserPreferences['masterGuidanceLevel']>;

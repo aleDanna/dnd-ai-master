@@ -129,6 +129,30 @@ export function resolveMasterBackend(stored: MasterBackend | undefined): MasterB
   return envDefaultMasterBackend();
 }
 
+/**
+ * Resolves the campaign's vault-mutations opt-in flag.
+ *
+ * Returns `true` ONLY when both conditions hold:
+ *  - `masterBackend === 'vault'` (vault path active for this campaign)
+ *  - `vaultMutations === true` (mutations explicitly enabled)
+ *
+ * Returns `false` in all other cases — including when `masterBackend ===
+ * 'baked'` but `vaultMutations: true` is stored (Pitfall 5: orthogonal
+ * flags, resolver-level enforcement so the stored value has no effect on
+ * a baked campaign). The vault-flip script warns when flipping
+ * `vaultMutations: true` on a baked campaign.
+ *
+ * Phase 02 — locked by Decision 5.
+ */
+export function resolveVaultMutations(
+  settings: { masterBackend?: MasterBackend; vaultMutations?: boolean } | undefined,
+): boolean {
+  if (!settings) return false;
+  const backend = resolveMasterBackend(settings.masterBackend);
+  if (backend !== 'vault') return false;
+  return settings.vaultMutations === true;
+}
+
 /** Per-provider env-overridable model default. Falls back to the static
  *  per-provider default if no env var is set. */
 function envDefaultTtsModel(provider: TtsProvider): string {
@@ -189,6 +213,9 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   // ignores this user-side value; campaign-side resolution is in
   // getCampaignSettings.
   masterBackend: 'baked',
+  // Phase 02 vault-llm-wiki — per-campaign opt-in for event-sourced
+  // mutations. Default false (off); orthogonal to masterBackend.
+  vaultMutations: false,
 };
 
 export async function getUserPreferences(userId: string): Promise<UserPreferences> {
@@ -260,6 +287,11 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
     useModeAwarePrompt,
     useRagRetrieval,
     masterBackend,
+    // Phase 02 vault-llm-wiki — user-side parallel-shape parity only;
+    // authoritative campaign-side resolution lives in `getCampaignSettings`
+    // via `resolveVaultMutations`. This branch is never the one consulted
+    // at runtime for the apply_event gate.
+    vaultMutations: prefs.vaultMutations ?? DEFAULT_PREFERENCES.vaultMutations,
   };
 }
 
@@ -383,6 +415,11 @@ export async function getCampaignSettings(
     useModeAwarePrompt,
     useRagRetrieval,
     masterBackend,
+    // Phase 02 vault-llm-wiki — authoritative campaign resolution.
+    // Pitfall 5: returns false when masterBackend !== 'vault' regardless
+    // of stored value, so flipping vaultMutations on a baked campaign is
+    // a no-op until masterBackend is also flipped to 'vault'.
+    vaultMutations: resolveVaultMutations(prefs),
   };
 }
 
@@ -567,6 +604,18 @@ export function validateSettingsPatch(
       return { ok: false, error: 'invalid-masterBackend' };
     } else {
       out.masterBackend = body.masterBackend;
+    }
+  }
+  // Phase 02 vault-llm-wiki — boolean opt-in stored alongside masterBackend.
+  // The validator only sanity-checks the shape; the runtime gate is in
+  // `resolveVaultMutations` (Pitfall 5: false when masterBackend !== 'vault').
+  if ('vaultMutations' in body) {
+    if (body.vaultMutations === undefined || body.vaultMutations === null) {
+      out.vaultMutations = undefined;
+    } else if (typeof body.vaultMutations !== 'boolean') {
+      return { ok: false, error: 'invalid-vaultMutations' };
+    } else {
+      out.vaultMutations = body.vaultMutations;
     }
   }
   return { ok: true, patch: out };
