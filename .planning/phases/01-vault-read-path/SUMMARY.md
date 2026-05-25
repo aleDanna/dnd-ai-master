@@ -55,6 +55,8 @@
 
 ## Performance baseline
 
+### M4 target hardware — REQ-021 decision-grade
+
 | Metric | Baseline (baked, `dnd-master-plus`) | Phase 01 (vault, `qwen3:30b-a3b-instruct-2507-q4_K_M`) |
 |---|---|---|
 | Warm wall-clock (M4) | 26.05s (spike 004) | **TBD — run `pnpm bench-vault-m4` on M4 and fill in** |
@@ -63,6 +65,25 @@
 | Quality (5-keyword check) | 4/5 (spike 004) | **TBD** (expected ≥4/5 per spike 014 narrative validation) |
 
 When the developer fills the TBD column on M4, the REQ-021 gate verdict is established.
+
+### M5 Pro (dev) — interactive smoke test, 2026-05-25
+
+Captured during the first end-to-end smoke test on the dev box. NOT the gate
+hardware (REQ-020 designates M4 production). Use these numbers to sanity-check
+the loop, not to evaluate REQ-021.
+
+| Metric | Observed | Notes |
+|---|---|---|
+| Wall-clock total (cold start) | **89s** | Dominated by 10.9s model load + 6 tool round-trips |
+| Tool round-trips | **6** | 3 "wrong path" exploration calls (REQ-013 lenient discovery), 2 corrective `list_vault` + `read_vault_multi`, 1 final response |
+| Cold model load | 10.9s | First call only; subsequent turns within keep-alive (30m) skip this |
+| Decode throughput | **27–29 tok/s** | Constant across all 6 round-trips — qwen3:30b-a3b MoE A3B routing on Apple silicon |
+| Prompt eval (final round) | 10,464 tok | Grows with accumulated tool_results history (8966 → 10464 across 6 rounds) |
+| Final response | 673 tok / 2260 char | Italian, cites "dieci pitfall comuni" — directly derived from `data/vault/handbook/craft/common-pitfalls.md` |
+| `mode` / `needsSpellcasting` / `ragChunkCount` in `ai_usage` | NULL / NULL / NULL | Vault-path signature confirmed (REQ spec) |
+| Quality (does the model consult the vault?) | ✅ YES | Verified: model emitted `read_vault_multi(["/handbook/craft/common-pitfalls.md"])` after navigating via `list_vault("/handbook")` + reading the index. Answer content traceable to the file on disk. |
+
+**Smoke verdict on M5 Pro**: functional path 100% green. REQ-010 (3-tool surface), REQ-012 (lenient discovery), REQ-013 (dual terminators — final round terminated with `tool_calls=0 + content`), all exercised. REQ-021 (`<10s`) is a hardware-specific target — not measurable on M5 Pro dense decode bandwidth; defer to M4 bench.
 
 ## Test totals (Phase 01 cumulative)
 
