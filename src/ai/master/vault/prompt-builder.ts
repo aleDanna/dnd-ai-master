@@ -19,6 +19,23 @@ export interface VaultPromptInput {
   campaignId: string;
   toolCount: number;
   language?: string;
+  /**
+   * Phase 02 — when true, the prompt advertises 4 tools (including
+   * apply_event) and mentions the mutation surface. When false or
+   * undefined, the prompt is the Phase-01-equivalent read-only form
+   * (3 tools, no apply_event mention).
+   *
+   * The campaign's `vaultMutations` setting (resolved via
+   * `resolveVaultMutations` in `src/lib/preferences.ts`) feeds this
+   * input. REQ-022 hygiene preserved (boolean input, no side effect).
+   *
+   * Consistency invariant (asserted at build time):
+   *   - vaultMutations === true  ⇒ toolCount must be 4
+   *   - vaultMutations !== true  ⇒ toolCount must be 3
+   * Any other combination throws — catches caller mistakes at the
+   * entry point rather than producing a silently-wrong prompt.
+   */
+  vaultMutations?: boolean;
 }
 
 /**
@@ -30,6 +47,34 @@ export interface VaultPromptInput {
  * silently changing the hash — explicit `\n` is paranoid but correct.
  */
 export function buildVaultSystemPrompt(input: VaultPromptInput): string {
+  // Consistency assertion — Phase 02. Catches the (vaultMutations,
+  // toolCount) mismatch at the boundary so a misconfigured caller cannot
+  // produce a prompt that advertises a tool the dispatcher refuses to
+  // dispatch (or vice versa). The assertion is symmetric.
+  if (input.vaultMutations === true && input.toolCount !== 4) {
+    throw new Error(
+      'buildVaultSystemPrompt: vaultMutations:true requires toolCount:4 (got ' + input.toolCount + ')',
+    );
+  }
+  if (input.vaultMutations !== true && input.toolCount !== 3) {
+    throw new Error(
+      'buildVaultSystemPrompt: vaultMutations:false (or undefined) requires toolCount:3 (got ' + input.toolCount + ')',
+    );
+  }
+
+  // Phase 02 — when vaultMutations is enabled, append a brief mention of
+  // the apply_event tool to the tool-usage protocol block. The body is
+  // intentionally short: the LLM reads `/tools/index.md` (and per-tool
+  // pages) for the full schema. This mention serves two purposes:
+  //   1. Signal the tool exists when the LLM would otherwise skip the
+  //      tool-doc lookup.
+  //   2. Clarify the most common LLM mistake — passing a character NAME
+  //      instead of the character UUID (names are not unique across
+  //      campaigns and the dispatcher rejects non-UUID values).
+  const applyEventMention = input.vaultMutations === true
+    ? 'When the player describes a game-state change (damage taken, spell cast, condition applied), call `apply_event` with the appropriate type and payload. The `character` field MUST be the character UUID (the value of `id` in the materialized view frontmatter — not the character name; names are not unique across campaigns and the dispatcher rejects non-UUID values). One event per call; do not batch.'
+    : '';
+
   const lines: string[] = [
     'You are an experienced D&D 5e Dungeon Master.',
     '',
@@ -45,6 +90,10 @@ export function buildVaultSystemPrompt(input: VaultPromptInput): string {
     'After that, use any of the ' + input.toolCount + ' listed tools directly.',
     '',
   ];
+  if (applyEventMention.length > 0) {
+    lines.push(applyEventMention);
+    lines.push('');
+  }
   if (typeof input.language === 'string' && input.language.length > 0) {
     lines.push('Respond in language: ' + input.language + '.');
     lines.push('');
@@ -58,6 +107,14 @@ export function buildVaultSystemPrompt(input: VaultPromptInput): string {
  *  - The stability test (1000 builds → 1 unique hash).
  *  - Future runtime telemetry that wants to log prompt-cache identity
  *    without storing the prompt itself.
+ *
+ * Phase 02 note: prompts built with vaultMutations:true vs false produce
+ * different bytes (the conditional applyEventMention text in
+ * buildVaultSystemPrompt diverges between modes). This means
+ * hashVaultPrompt(promptA_readonly) !== hashVaultPrompt(promptA_readwrite)
+ * naturally — no separate signature change is needed to keep prefix-cache
+ * identity isolated between the two surfaces. The signature stays
+ * `(prompt: string) => string`.
  */
 export function hashVaultPrompt(prompt: string): string {
   return createHash('sha256').update(prompt).digest('hex');

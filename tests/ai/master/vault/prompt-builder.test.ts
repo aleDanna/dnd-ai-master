@@ -31,9 +31,12 @@ describe('buildVaultSystemPrompt — sensitivity', () => {
     expect(a).not.toBe(b);
   });
 
-  it('different toolCount → different hash', () => {
-    const a = hashVaultPrompt(buildVaultSystemPrompt({ ...BASE_INPUT, toolCount: 3 }));
-    const b = hashVaultPrompt(buildVaultSystemPrompt({ ...BASE_INPUT, toolCount: 4 }));
+  it('different toolCount (with matching vaultMutations) → different hash', () => {
+    // Phase 02 — toolCount is now coupled to vaultMutations via the
+    // consistency assertion. We sweep the (vaultMutations, toolCount)
+    // pair together: read-only (false, 3) vs read-write (true, 4).
+    const a = hashVaultPrompt(buildVaultSystemPrompt({ ...BASE_INPUT, toolCount: 3, vaultMutations: false }));
+    const b = hashVaultPrompt(buildVaultSystemPrompt({ ...BASE_INPUT, toolCount: 4, vaultMutations: true }));
     expect(a).not.toBe(b);
   });
 
@@ -109,5 +112,65 @@ describe('hashVaultPrompt', () => {
   it('produces a 64-char hex SHA256', () => {
     const hash = hashVaultPrompt('test');
     expect(hash).toMatch(/^[a-f0-9]{64}$/);
+  });
+});
+
+describe('buildVaultSystemPrompt — Phase 02 vaultMutations gate', () => {
+  // The Phase 02 contract: vaultMutations:true ⇒ toolCount:4 (apply_event
+  // advertised); vaultMutations !== true ⇒ toolCount:3 (read-only). Pairs
+  // are validated by the consistency assertion at the top of the builder.
+  const READ_ONLY = { vaultRoot: 'data/vault', campaignId: 'test', toolCount: 3 };
+  const READ_WRITE = { vaultRoot: 'data/vault', campaignId: 'test', toolCount: 4, vaultMutations: true };
+
+  it('vaultMutations:true with toolCount:4 produces a prompt that mentions apply_event', () => {
+    const prompt = buildVaultSystemPrompt(READ_WRITE);
+    expect(prompt).toContain('apply_event');
+  });
+
+  it('vaultMutations:true mentions character UUID (NIT 1 — not character name)', () => {
+    const prompt = buildVaultSystemPrompt(READ_WRITE);
+    expect(prompt).toContain('character UUID');
+  });
+
+  it('vaultMutations:false (omitted) produces a prompt that does NOT mention apply_event', () => {
+    const prompt = buildVaultSystemPrompt(READ_ONLY);
+    expect(prompt).not.toContain('apply_event');
+  });
+
+  it('vaultMutations:false (explicit) produces a prompt that does NOT mention apply_event', () => {
+    const prompt = buildVaultSystemPrompt({ ...READ_ONLY, vaultMutations: false });
+    expect(prompt).not.toContain('apply_event');
+  });
+
+  it('consistency assertion — vaultMutations:true with toolCount:3 throws', () => {
+    expect(() =>
+      buildVaultSystemPrompt({ ...READ_ONLY, vaultMutations: true }),
+    ).toThrow(/vaultMutations:true requires toolCount:4/);
+  });
+
+  it('consistency assertion — vaultMutations:false with toolCount:4 throws', () => {
+    expect(() =>
+      buildVaultSystemPrompt({ vaultRoot: 'data/vault', campaignId: 'test', toolCount: 4, vaultMutations: false }),
+    ).toThrow(/requires toolCount:3/);
+  });
+
+  it('consistency assertion — toolCount:4 without vaultMutations (undefined) throws', () => {
+    expect(() =>
+      buildVaultSystemPrompt({ vaultRoot: 'data/vault', campaignId: 'test', toolCount: 4 }),
+    ).toThrow(/requires toolCount:3/);
+  });
+
+  it('natural hash divergence — read-only prompt vs read-write prompt produce different hashes (Change 4 claim)', () => {
+    const promptReadOnly = buildVaultSystemPrompt(READ_ONLY);
+    const promptReadWrite = buildVaultSystemPrompt(READ_WRITE);
+    expect(hashVaultPrompt(promptReadOnly)).not.toBe(hashVaultPrompt(promptReadWrite));
+  });
+
+  it('vaultMutations:true 1000 builds produce ONE unique SHA256 (stability preserved)', () => {
+    const hashes = new Set<string>();
+    for (let i = 0; i < 1000; i++) {
+      hashes.add(hashVaultPrompt(buildVaultSystemPrompt(READ_WRITE)));
+    }
+    expect(hashes.size).toBe(1);
   });
 });
