@@ -70,6 +70,29 @@ export interface CampaignSettings {
    * When 'vault', game-state mutation is unavailable (Phase 02 adds apply_event).
    */
   masterBackend?: MasterBackend;
+  /**
+   * Phase 02 vault-llm-wiki — per-campaign opt-in for event-sourced
+   * mutations. Orthogonal to `masterBackend` (Decision 5): `masterBackend`
+   * picks the LLM tool surface (vault vs baked); `vaultMutations` picks
+   * whether the vault path is read-only or read-write.
+   *
+   * Resolution semantics (per Pitfall 5): `vaultMutations` has no effect
+   * unless `masterBackend === 'vault'`. The resolver
+   * (`resolveVaultMutations` in `src/lib/preferences.ts`) returns `false`
+   * for baked campaigns regardless of the stored value, so flipping this
+   * on a baked campaign is a no-op until the campaign is also flipped to
+   * `masterBackend: 'vault'`.
+   *
+   *  - undefined (default) → vault is READ-ONLY for game state (Phase 01
+   *    behavior preserved)
+   *  - false              → same as undefined
+   *  - true               → vault path exposes `apply_event` tool;
+   *                         mutations land in events.md per spike 010
+   *
+   * Locked by REQ-004 (events.md source of truth) + REQ-007 (per-campaign
+   * dir under VAULT_CAMPAIGNS_ROOT).
+   */
+  vaultMutations?: boolean;
 }
 
 export const campaigns = pgTable(
