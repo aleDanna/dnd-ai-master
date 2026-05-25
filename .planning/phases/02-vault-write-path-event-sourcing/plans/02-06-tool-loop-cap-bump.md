@@ -222,3 +222,80 @@ Total: 3 describe blocks, ~7 `it` cases.
 ## Open questions
 
 None — the cap value 20 is locked by Decision 11. Future re-tuning after observing real combat sessions is tracked in plan 02-11's SUMMARY follow-ups, not in this plan.
+
+---
+
+# Execution SUMMARY (2026-05-25)
+
+**Status:** COMPLETE
+**Executor:** Claude Opus 4.7 (1M context) — gsd-executor wave-1
+**Commits:** 3 (one per task)
+
+## Task-by-task
+
+| # | Task | Commit | Result |
+|---|------|--------|--------|
+| 1 | Add `VAULT_TURN_TOOL_CALL_CAP=20` to `src/sessions/types.ts` | `efbf2f6` | Green. Constant exported with JSDoc; `TURN_TOOL_CALL_CAP=12` preserved verbatim. |
+| 2 | Switch `runVaultToolLoop` default to `VAULT_TURN_TOOL_CALL_CAP` | `a24d2d0` | Green. Import + default fallback updated; module JSDoc and field JSDoc reference the new cap. |
+| 3 | Write `tests/sessions/turn-tool-call-cap.test.ts` | `4eaf09a` | Green — all 7 cases pass on first run. |
+
+## Acceptance criteria — final status
+
+| Criterion | Status |
+|---|---|
+| `src/sessions/types.ts` exports `VAULT_TURN_TOOL_CALL_CAP = 20` distinct from `TURN_TOOL_CALL_CAP = 12` | OK — `grep -c` returns 1 each |
+| `runVaultToolLoop` reads `VAULT_TURN_TOOL_CALL_CAP` as default when `toolCallCap` not passed | OK — line 82: `input.toolCallCap ?? VAULT_TURN_TOOL_CALL_CAP` |
+| Baked loop (`src/ai/master/tool-loop.ts`) continues using `TURN_TOOL_CALL_CAP = 12` unchanged | OK — static assertion test verifies imports |
+| Vault turn with 20 calls does NOT trigger `truncated:true` | OK — `does not truncate at 20 tool calls` test green |
+| Vault turn with 21 calls DOES trigger `truncated:true` | OK — `truncates at 21 tool calls` test green |
+| `tests/sessions/turn-tool-call-cap.test.ts` — 7 cases pass | OK — 7/7 passed in 10ms |
+| `pnpm typecheck` clean | Pre-existing error in `src/lib/preferences.ts:367` (Plan 02-05 Task 1 partial), resolved later in same wave by Plan 02-05 Task 2 — not caused by Plan 02-06 |
+| `pnpm test` (full suite) green | 10 pre-existing failures, all out-of-scope (RAG/multiplayer/coalesce/applicator-inventory) — verified pre-Plan-02-06 by file-content analysis (none reference cap constants) |
+
+## Deviations
+
+### Rule 1 — planner assumption inaccurate (acceptance criteria Task 2)
+
+The plan claimed "Phase 01 tests pass `toolCallCap: 3` explicitly — no behavioral change". This is false: `tests/ai/master/vault/loop.test.ts` lines 109-121 — the existing `truncates when tool-call cap would be exceeded` test does NOT pass `toolCallCap` explicitly; it relies on the implicit default. Switching the default from 12 → 20 broke this test (queues 13 responses, but the loop now wants up to 21).
+
+**Fix applied (Task 2 commit `a24d2d0`):** updated the Phase 01 test to queue 21 responses and expect `toolCallCount === 20`, matching the new default. The test's intent ("truncate on overflow") is preserved verbatim; only the magnitudes shift.
+
+### Rule 1 — planner internal contradiction (Task 2 acceptance criteria)
+
+Plan Task 2 simultaneously requires:
+- "Add or extend the existing module-level JSDoc to note: '... `TURN_TOOL_CALL_CAP = 12` ...'" (literal text)
+- "`grep -E "(^|[^_])TURN_TOOL_CALL_CAP" src/ai/master/vault/loop.ts | wc -l` — expected output: 0"
+
+These are mutually exclusive — the JSDoc requirement introduces exactly one match. **Resolution:** satisfied the JSDoc requirement (operator-facing documentation has higher value than a regex artifact), and confirmed by stripping JSDoc lines that the **code-level** orphan count is 0:
+```
+grep -vE "^\s*\*" src/ai/master/vault/loop.ts | grep -E "(^|[^_])TURN_TOOL_CALL_CAP" | wc -l
+# → 0
+```
+The intent of the grep gate ("no real consumer of the smaller cap in vault code") is preserved.
+
+### Rule 3 (scope boundary) — pre-existing typecheck error logged
+
+Pre-existing typecheck failure in `src/lib/preferences.ts:367` (missing `vaultMutations` in `Required<CampaignSettings>` default) — introduced by Plan 02-05 Task 1, resolved later in the same wave by Plan 02-05 Task 2. Logged in `.planning/phases/02-vault-write-path-event-sourcing/deferred-items.md` for traceability (entry was further annotated by the parallel Plan 02-05 executor confirming resolution).
+
+### Rule 3 (scope boundary) — pre-existing RAG test failures logged
+
+Pre-existing failures in `tests/ai/master/system-prompt.mode.test.ts` (RAG block injection) — verified reproducible on bare main without Plan 02-06's `tests/sessions/turn-tool-call-cap.test.ts`. Logged in `deferred-items.md`. Not caused by the cap rename.
+
+## Stubs / unwired data sources
+
+None — this plan is pure constant-rename + regression test. No UI or data paths touched.
+
+## Threat flags
+
+None — the cap separation is a pure correctness fix for an existing trust boundary (turn truncation under high tool-call counts). No new network endpoints, file paths, or auth surfaces.
+
+## Self-check
+
+| Claim | Verification |
+|---|---|
+| `src/sessions/types.ts` has `VAULT_TURN_TOOL_CALL_CAP = 20` | `grep -c "VAULT_TURN_TOOL_CALL_CAP = 20" src/sessions/types.ts` → 1 |
+| `src/ai/master/vault/loop.ts` imports `VAULT_TURN_TOOL_CALL_CAP` | `grep -c "VAULT_TURN_TOOL_CALL_CAP" src/ai/master/vault/loop.ts` → 4 (import + default + 2 JSDoc) |
+| `tests/sessions/turn-tool-call-cap.test.ts` exists with 7 cases | `wc -l tests/sessions/turn-tool-call-cap.test.ts` → 196 lines |
+| Commits `efbf2f6`, `a24d2d0`, `4eaf09a` exist in history | `git log --oneline | grep` confirms all three |
+
+## Self-Check: PASSED
