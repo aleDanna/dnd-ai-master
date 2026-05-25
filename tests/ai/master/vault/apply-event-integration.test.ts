@@ -234,7 +234,7 @@ describe('apply_event end-to-end integration', () => {
   describe('concurrent writes through the dispatch path', () => {
     it('50 parallel apply_event calls all land; events.md is well-formed with 51 lines and 50 unique event_ids', async () => {
       await seedAragorn(mod, 1000, 1000); // Give plenty of HP so clamps don't bottom out.
-      const fires = Array.from({ length: 50 }, (_, i) =>
+      const fires = Array.from({ length: 50 }, () =>
         mod.dispatchVaultTool(
           'apply_event',
           { type: 'hp_change', payload: { character: CHAR_UUID, delta: -1 } },
