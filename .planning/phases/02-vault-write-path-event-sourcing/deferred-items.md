@@ -43,3 +43,19 @@ tests/ai/master/vault/events-schema.test.ts(235,32): error TS2339: Property 'cha
 ```
 
 **Cross-plan note:** Plan 02-05 Task 2 commit `233b65f` accidentally included the then-untracked `tests/ai/master/vault/events-schema.test.ts` file in its diff. The file was not part of Plan 02-05's `files_modified` scope; root cause is unclear (possibly a Claude Code worktree sync race during parallel Wave 1 execution). The downstream effect is benign — the file landed in the tree one commit earlier than the owning plan would have committed it, and the owning plan's subsequent commit (`945f6c5`) ships the test file that is internally consistent with the source. Documented here for the worktree-rejoin audit; no remediation needed.
+
+## Discovered during Plan 02-10 (backup-strategy)
+
+### Pre-existing typecheck error in `tests/ai/master/vault/apply-event-integration.test.ts:237`
+
+**Status:** OUT-OF-SCOPE for Plan 02-10. The file is owned by Plan 02-07 (apply-event-tool), which ran concurrently in Wave 3a. The error:
+
+```
+tests/ai/master/vault/apply-event-integration.test.ts(237,52): error TS6133: 'i' is declared but its value is never read.
+```
+
+**Source:** Commit `2f4fe25` (test(phase-02): add end-to-end apply_event integration suite) from the concurrent wave-3a executor.
+
+**Recommended owner:** Plan 02-07 verifier OR a follow-up that owns the integration suite. Fix is trivial: rename `(_, i)` to `(_)` in the `Array.from({ length: 50 }, (_, i) => ...)` callback at line 237.
+
+**Verification at commit time (`pnpm typecheck`):** the only typecheck failure on the tree is the one above; Plan 02-10's own files (scripts/, package.json, docs/operators/, tests/scripts/) are clean.
