@@ -25,10 +25,10 @@ import { buildToolDefinitions } from '@/engine';
 import { getProviderByName } from '@/ai/provider';
 import { recordUsage } from '@/ai/master/usage';
 import { checkQuotas } from '@/ai/master/quotas';
-import { getSessionMasterPreferences, resolveMasterBackend, type MasterBackend } from '@/lib/preferences';
+import { getSessionMasterPreferences, resolveMasterBackend, resolveVaultMutations, type MasterBackend } from '@/lib/preferences';
 import { runVaultToolLoop } from '@/ai/master/vault/loop';
 import { buildVaultSystemPrompt } from '@/ai/master/vault/prompt-builder';
-import { VAULT_TOOL_COUNT, VAULT_TOOL_DEFINITIONS } from '@/ai/master/vault/tools';
+import { VAULT_TOOL_DEFINITIONS } from '@/ai/master/vault/tools';
 import { VAULT_ROOT } from '@/ai/master/vault/path';
 import { loadMemoryContext } from '@/sessions/memory/context';
 import { extractMemory } from '@/sessions/memory/extractor';
@@ -245,34 +245,52 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // `compactPrompt` is on (defaults true for local, false for cloud),
         // load the trimmed variants — fits qwen3:14b's context window without
         // losing the rules + rewards mandate.
-        // ── Vault path (Phase 01 feature flag) ────────────────────────────────
+        // ── Vault path (Phase 01 read-only + Phase 02 conditional write) ──────
         //
-        // When the campaign opted into `masterBackend: 'vault'` (or env override
-        // MASTER_BACKEND=vault is set and campaign has no explicit value), bypass
-        // the baked/SRD/handbook/RAG/meta-tools stack entirely. The vault path is
-        // a parallel implementation that:
-        //   - reads static knowledge from data/vault/handbook/**.md via tool calls
-        //     (read_vault_multi / list_vault), instead of injecting full handbook
-        //     into the system prompt;
-        //   - exposes ONLY 3 tools (read_vault_multi, list_vault, end_turn) — NO
-        //     engine tools (cast_spell, set_current_player, etc.). Vault-flagged
-        //     campaigns in Phase 01 are READ-ONLY for game state. Phase 02 will
-        //     add apply_event and re-introduce mutation through events.md.
-        //   - passes the user's chosen model BASE slug straight through (the
-        //     baked-variant detection is intentionally skipped — vault path never
-        //     wants dnd-master-* models).
+        // Phase 02 adds the vaultMutations opt-in. Resolution:
+        //   - masterBackend === 'baked' → not vault at all (handled by the
+        //     non-vault branch below); vaultMutations has no effect.
+        //   - masterBackend === 'vault' + vaultMutations === false (default)
+        //     → Phase 01 read-only mode: 3 tools advertised in the prompt,
+        //     no campaignId forwarded to the loop, LLM-hallucinated
+        //     apply_event calls return isError (dispatcher safety check).
+        //   - masterBackend === 'vault' + vaultMutations === true
+        //     → Phase 02 read-write mode: 4 tools advertised, campaignId
+        //     forwarded, apply_event writes to events.md + regenerates view.
+        //
+        // Coexistence semantics (Decision 8): single-write to events.md only.
+        // Postgres `characters` table is NOT touched for opted-in campaigns.
+        // UI continues reading from Postgres — operator sees a stale-state
+        // banner ("Vault attivo — ricarica per vedere lo stato più recente").
+        // Phase 03 implements dual-write + reconciliation.
+        //
+        // Belt-and-suspenders: tool definitions in the loop ALWAYS include
+        // all 4 entries (VAULT_TOOL_DEFINITIONS is shared with the dispatch
+        // layer), but the prompt only mentions apply_event when the gate is
+        // true. A misbehaving model that hallucinates apply_event against a
+        // non-opted-in campaign sees a clean isError from the dispatcher
+        // (campaignId presence is the runtime gate; cf. tools.ts).
         //
         // After plan 06's parallel-shape fix, `userPrefs.masterBackend` is directly typed.
-        // See .planning/phases/01-vault-read-path/PLAN.md.
+        // See .planning/phases/02-vault-write-path-event-sourcing/PLAN.md.
         const masterBackend: MasterBackend = resolveMasterBackend(userPrefs.masterBackend);
         if (masterBackend === 'vault') {
+          // Phase 02 gate — resolved once per turn; consumed by the prompt
+          // builder (toolCount + apply_event mention) and the loop input
+          // (conditional campaignId forwarding).
+          const vaultMutationsEnabled = resolveVaultMutations(userPrefs);
+          // eslint-disable-next-line no-console
+          console.log('[turn]', sessionId, 'vault path: vaultMutations=', vaultMutationsEnabled);
+
           // 4v. Build minimal system prompt — no SRD, no handbook, no world lore,
           // no scene card, no codex, no ROLL_TRIGGERS, no REWARDS_MANDATE,
-          // no meta-tools instructions.
+          // no meta-tools instructions. The toolCount + vaultMutations pair
+          // is enforced by the builder's consistency assertion.
           const vaultSys = buildVaultSystemPrompt({
             vaultRoot: VAULT_ROOT,
             campaignId: campaign.id,
-            toolCount: VAULT_TOOL_COUNT,
+            toolCount: vaultMutationsEnabled ? 4 : 3,
+            vaultMutations: vaultMutationsEnabled,
             language: campaign.language ?? snap.language ?? undefined,
           });
 
@@ -316,6 +334,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             history: vaultHistory,
             sessionId,
             campaignLanguage: campaign.language ?? snap.language ?? undefined,
+            // Phase 02 — only forward campaignId when the vaultMutations gate
+            // is true. Without it, dispatchVaultTool('apply_event', ...) returns
+            // isError on any LLM hallucination, preserving Phase 01 read-only
+            // semantics for non-opted-in vault campaigns.
+            ...(vaultMutationsEnabled && { campaignId: campaign.id }),
             recordUsage: async (usage) => {
               await recordUsage({
                 userId,

@@ -50,10 +50,12 @@ describe('turn-route vault branch — resolveMasterBackend behaviour', () => {
 
 describe('turn-route vault branch — system prompt contents', () => {
   it('built prompt references the vault root path', () => {
+    // Phase 02 — vaultMutations:true ⇒ toolCount:4 (VAULT_TOOL_COUNT === 4).
     const sys = buildVaultSystemPrompt({
       vaultRoot: '/abs/data/vault',
       campaignId: 'test-campaign-uuid',
       toolCount: VAULT_TOOL_COUNT,
+      vaultMutations: true,
     });
     expect(sys).toContain('/abs/data/vault');
   });
