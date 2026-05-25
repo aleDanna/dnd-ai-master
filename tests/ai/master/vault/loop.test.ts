@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
+import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { runVaultToolLoop } from '@/ai/master/vault/loop';
@@ -250,5 +251,200 @@ describe('runVaultToolLoop — engine decoupling sanity', () => {
       recordUsage: async () => { calls += 1; },
     });
     expect(calls).toBe(2);
+  });
+});
+
+/* -------------------------------------------------------------------------- *
+ *  Phase 02 — apply_event integration in the loop (Task 6 of plan 02-07).    *
+ *                                                                            *
+ *  These tests confirm that runVaultToolLoop's `campaignId` field is         *
+ *  threaded into dispatchVaultTool's ctx and that the apply_event tool       *
+ *  participates in the loop the same way the Phase 01 tools do (cap         *
+ *  accounting, error surface, terminator handling).                          *
+ * -------------------------------------------------------------------------- */
+
+const APPLY_CAMPAIGN_UUID = '11111111-2222-3333-4444-555555555555';
+const APPLY_CHAR_UUID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+
+async function seedCampaignFile(campaignsRoot: string): Promise<string> {
+  vi.stubEnv('VAULT_CAMPAIGNS_ROOT', campaignsRoot);
+  vi.resetModules();
+  const { dispatchVaultTool } = await import('@/ai/master/vault/tools');
+  const { eventsPath } = await import('@/ai/master/vault/campaign-paths');
+  const seed = await dispatchVaultTool(
+    'apply_event',
+    {
+      type: 'campaign_initialized',
+      payload: {
+        characters: [
+          { id: APPLY_CHAR_UUID, name: 'Aragorn', hp_max: 30, hp_current: 30 },
+        ],
+      },
+    },
+    { campaignId: APPLY_CAMPAIGN_UUID },
+  );
+  if (seed.isError) {
+    throw new Error('seed failed: ' + seed.content);
+  }
+  return eventsPath(APPLY_CAMPAIGN_UUID);
+}
+
+describe('runVaultToolLoop — apply_event integration (Phase 02)', () => {
+  let campaignsRoot: string;
+  let eventsFile: string;
+  // Loop must be re-imported AFTER the env stub so transitive references to
+  // the (re-evaluated) tools module pick up the new VAULT_CAMPAIGNS_ROOT.
+  let loop: typeof import('@/ai/master/vault/loop').runVaultToolLoop;
+
+  beforeEach(async () => {
+    campaignsRoot = mkdtempSync(join(tmpdir(), 'gsd-loop-apply-event-'));
+    eventsFile = await seedCampaignFile(campaignsRoot);
+    loop = (await import('@/ai/master/vault/loop')).runVaultToolLoop;
+  });
+
+  afterEach(() => {
+    rmSync(campaignsRoot, { recursive: true, force: true });
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it('forwards campaignId from VaultLoopInput to dispatchVaultTool ctx (events.md gains a line)', async () => {
+    const linesBefore = (await readFile(eventsFile, 'utf8')).trim().split('\n').length;
+    const provider = scriptedProvider([
+      {
+        contentBlocks: [
+          {
+            type: 'tool_use',
+            id: 'tu_apply',
+            name: 'apply_event',
+            input: { type: 'hp_change', payload: { character: APPLY_CHAR_UUID, delta: -5 } },
+          },
+        ],
+      },
+      {
+        contentBlocks: [
+          { type: 'tool_use', id: 'tu_end', name: 'end_turn', input: { response: 'Took 5 damage.' } },
+        ],
+      },
+    ]);
+    const result = await loop({
+      provider,
+      campaignId: APPLY_CAMPAIGN_UUID,
+      ...BASE_INPUT,
+    });
+    expect(result.finalText).toBe('Took 5 damage.');
+    const linesAfter = (await readFile(eventsFile, 'utf8')).trim().split('\n').length;
+    expect(linesAfter).toBe(linesBefore + 1);
+  });
+
+  it('apply_event tool result is surfaced as a regular tool_result (not end_turn)', async () => {
+    const provider = scriptedProvider([
+      {
+        contentBlocks: [
+          {
+            type: 'tool_use',
+            id: 'tu_apply',
+            name: 'apply_event',
+            input: { type: 'hp_change', payload: { character: APPLY_CHAR_UUID, delta: -2 } },
+          },
+        ],
+      },
+      {
+        contentBlocks: [
+          { type: 'tool_use', id: 'tu_end', name: 'end_turn', input: { response: 'Done.' } },
+        ],
+      },
+    ]);
+    const result = await loop({
+      provider,
+      campaignId: APPLY_CAMPAIGN_UUID,
+      ...BASE_INPUT,
+    });
+    // Loop should have run 2 rounds (apply_event + end_turn). The final text
+    // comes from end_turn, NOT from the apply_event JSON return.
+    expect(result.finalText).toBe('Done.');
+    expect(result.toolCallCount).toBe(1); // end_turn does not count
+    const applyStart = result.events.find(
+      (e) => e.type === 'tool_use_start' && 'name' in e && e.name === 'apply_event',
+    );
+    expect(applyStart).toBeDefined();
+    const applyEnd = result.events.find(
+      (e) => e.type === 'tool_use_end' && 'toolUseId' in e && e.toolUseId === 'tu_apply',
+    );
+    expect(applyEnd).toBeDefined();
+    if (applyEnd && applyEnd.type === 'tool_use_end') {
+      expect(applyEnd.ok).toBe(true);
+    }
+  });
+
+  it('apply_event failure (malformed payload) surfaces as isError tool_result; loop continues to end_turn', async () => {
+    const provider = scriptedProvider([
+      {
+        contentBlocks: [
+          {
+            type: 'tool_use',
+            id: 'tu_bad',
+            name: 'apply_event',
+            // delta is a string — validateEvent rejects.
+            input: { type: 'hp_change', payload: { character: APPLY_CHAR_UUID, delta: 'five' } },
+          },
+        ],
+      },
+      {
+        contentBlocks: [
+          { type: 'tool_use', id: 'tu_end', name: 'end_turn', input: { response: 'Recovered.' } },
+        ],
+      },
+    ]);
+    const result = await loop({
+      provider,
+      campaignId: APPLY_CAMPAIGN_UUID,
+      ...BASE_INPUT,
+    });
+    expect(result.finalText).toBe('Recovered.');
+    const errorEvt = result.events.find(
+      (e) => e.type === 'tool_use_end' && 'toolUseId' in e && e.toolUseId === 'tu_bad',
+    );
+    expect(errorEvt).toBeDefined();
+    if (errorEvt && errorEvt.type === 'tool_use_end') {
+      expect(errorEvt.ok).toBe(false);
+      expect(errorEvt.error).toMatch(/hp_change/);
+    }
+  });
+
+  it('omitting campaignId in loop input → apply_event returns isError; events.md unchanged', async () => {
+    const linesBefore = (await readFile(eventsFile, 'utf8')).trim().split('\n').length;
+    const provider = scriptedProvider([
+      {
+        contentBlocks: [
+          {
+            type: 'tool_use',
+            id: 'tu_apply',
+            name: 'apply_event',
+            input: { type: 'hp_change', payload: { character: APPLY_CHAR_UUID, delta: -5 } },
+          },
+        ],
+      },
+      {
+        contentBlocks: [
+          { type: 'tool_use', id: 'tu_end', name: 'end_turn', input: { response: 'No campaign.' } },
+        ],
+      },
+    ]);
+    // NOTE: NO campaignId passed.
+    const result = await loop({ provider, ...BASE_INPUT });
+    expect(result.finalText).toBe('No campaign.');
+    const errorEvt = result.events.find(
+      (e) => e.type === 'tool_use_end' && 'toolUseId' in e && e.toolUseId === 'tu_apply',
+    );
+    expect(errorEvt).toBeDefined();
+    if (errorEvt && errorEvt.type === 'tool_use_end') {
+      expect(errorEvt.ok).toBe(false);
+      expect(errorEvt.error).toMatch(/campaignId/);
+    }
+    // No write occurred — events.md still has just the seed line.
+    expect(existsSync(eventsFile)).toBe(true);
+    const linesAfter = (await readFile(eventsFile, 'utf8')).trim().split('\n').length;
+    expect(linesAfter).toBe(linesBefore);
   });
 });
