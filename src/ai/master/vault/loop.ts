@@ -5,7 +5,7 @@ import type {
   SystemBlock,
 } from '@/ai/provider/types';
 import {
-  TURN_TOOL_CALL_CAP,
+  VAULT_TURN_TOOL_CALL_CAP,
   TURN_TIMEOUT_MS,
   type TurnEvent,
 } from '@/sessions/types';
@@ -34,6 +34,10 @@ import { VAULT_TOOL_DEFINITIONS, dispatchVaultTool } from './tools';
  * It KEEPS streaming, usage telemetry, the tool-call cap, timeout
  * budgeting, dual terminator handling, and the TurnEvent shape so SSE
  * subscribers (`notifySession`) keep working unchanged.
+ *
+ * Default tool-call cap is `VAULT_TURN_TOOL_CALL_CAP = 20` (higher than
+ * the baked loop's `TURN_TOOL_CALL_CAP = 12`) to accommodate combat turns
+ * with many `apply_event` calls — see RESEARCH Pitfall 4.
  */
 
 export interface VaultLoopInput {
@@ -49,7 +53,7 @@ export interface VaultLoopInput {
   onEvent?: (e: TurnEvent) => void;
   sessionId?: string;
   campaignLanguage?: string;
-  /** Test override; production omits and uses `TURN_TOOL_CALL_CAP`. */
+  /** Test override; production omits and uses `VAULT_TURN_TOOL_CALL_CAP`. */
   toolCallCap?: number;
   /** Test override; production omits and uses `TURN_TIMEOUT_MS`. */
   turnTimeoutMs?: number;
@@ -75,7 +79,7 @@ export async function runVaultToolLoop(input: VaultLoopInput): Promise<VaultLoop
     sessionId,
     campaignLanguage,
   } = input;
-  const toolCallCap = input.toolCallCap ?? TURN_TOOL_CALL_CAP;
+  const toolCallCap = input.toolCallCap ?? VAULT_TURN_TOOL_CALL_CAP;
   const turnTimeoutMs = input.turnTimeoutMs ?? TURN_TIMEOUT_MS;
 
   const events: TurnEvent[] = [];

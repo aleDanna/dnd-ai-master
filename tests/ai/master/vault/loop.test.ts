@@ -107,8 +107,11 @@ describe('runVaultToolLoop — terminators (REQ-013)', () => {
 
 describe('runVaultToolLoop — caps + timeouts', () => {
   it('truncates when tool-call cap would be exceeded', async () => {
-    // 13 calls (cap = 12 by default, so the 13th overflows and triggers truncation).
-    const responses = Array.from({ length: 13 }, (_, i) => ({
+    // 21 calls (cap = VAULT_TURN_TOOL_CALL_CAP = 20 by default for the vault
+    // path, so the 21st overflows and triggers truncation). Phase 02 raised
+    // the cap from 12 → 20 to accommodate combat turns with many apply_event
+    // mutations (see RESEARCH.md Pitfall 4).
+    const responses = Array.from({ length: 21 }, (_, i) => ({
       contentBlocks: [
         { type: 'tool_use' as const, id: `tu_${i}`, name: 'list_vault', input: { directory: '/handbook' } },
       ],
@@ -116,7 +119,7 @@ describe('runVaultToolLoop — caps + timeouts', () => {
     const provider = scriptedProvider(responses);
     const result = await runVaultToolLoop({ provider, ...BASE_INPUT });
     expect(result.truncated).toBe(true);
-    expect(result.toolCallCount).toBe(12);
+    expect(result.toolCallCount).toBe(20);
     expect(result.events.some((e) => e.type === 'turn_error' && e.reason === 'tool_call_cap')).toBe(true);
   });
 
