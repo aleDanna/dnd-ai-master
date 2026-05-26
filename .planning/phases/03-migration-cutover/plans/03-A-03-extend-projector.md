@@ -686,3 +686,134 @@ Aim for ~40-50 new test cases in this block; combined with Phase 02's existing 5
     Projector fully extended. Plan 03-A-04 wires the new types through the apply_event dispatcher (tool surface).
   </done>
 </task>
+
+---
+
+# Execution SUMMARY — Plan 03-A-03
+
+**Status:** COMPLETE
+**Date:** 2026-05-26
+**Wave:** 3 (parallel with 03-A-04 + 03-A-07 — disjoint files; all three landed)
+**Executor commits:** 4 atomic commits (one per task)
+
+## Result
+
+Closed the Phase 03 typecheck gap and shipped reducer + serializer +
+parser + test coverage for the 20 new VaultEvent types from
+COMPLETENESS-AUDIT.md (c) Final list. `pnpm typecheck` returns to exit
+0; the projector test file grows from 53 → 140 cases; the full vault
+suite reports 536/19 skipped (was 405/19 baseline — the +131 includes
+the 87 new projector tests AND the 44 tools.ts tests from sibling plan
+03-A-04 that started passing once the reducer arms became available).
+
+## Commits
+
+| Task | Commit  | Title                                                                       |
+| ---- | ------- | --------------------------------------------------------------------------- |
+| 1    | c37549f | feat(phase-03): extend CharacterState + VaultSeedCharacter w/ Phase 03 fields |
+| 2    | 847467d | feat(phase-03): add applyEvent reducer arms for 20 Phase 03 event types     |
+| 3    | 2a50d1c | feat(phase-03): extend serializeView/parseView to round-trip Phase 03 fields |
+| 4    | 2a9195c | test(phase-03): projector reducer + round-trip coverage for 20 types        |
+
+## Deviations from plan
+
+1. **Schema reality differs from plan-text examples (applied audit/schema as ground truth).**
+   The plan's Task 2 example arms list `exhaustion_set`, `resource_use` with `delta`,
+   and `level_up` — but the actual `VAULT_EVENT_TYPES` union shipped in Wave 2
+   (`events-schema.ts`) uses `exhaustion_increment` / `exhaustion_decrement`,
+   `resource_use` with `uses`, and does NOT include `level_up` (deferred to
+   provisional list per audit Open Items §(d)). Followed the schema + audit;
+   omitted `level_up`; added missing arms for `death_save_recover_at_one`,
+   `resource_restore`, `focus_set`, `focus_unset` that the plan-text examples
+   missed. Net result: 20 arms (matching the 20-type audit count exactly).
+
+2. **`inspiration` kept inside `flags` (matches parity-check shape).**
+   The audit recommended a top-level `state.inspiration` boolean, but
+   `src/ai/master/vault/parity-check.ts` (already in main) normalizes vault
+   state as `flags: { stable, dead, inspiration }`. Adopted the parity-check
+   shape to preserve the existing diff contract; the validator side (Postgres)
+   reads `pgChar.inspiration` (top-level column) and projects it INTO `flags`
+   for comparison. The reducer arm sets `next.flags.inspiration` accordingly.
+
+3. **Phase 02 mutation idiom (`next.X = ...`) preserved over plan-suggested spread.**
+   The plan's Task 2 acceptance criterion suggests "use spread; no `state.X =`
+   mutation". Phase 02's existing arms use `structuredClone(state)` → mutate
+   `next` freely — semantically equivalent (since `next` is a fresh clone) but
+   stylistically different. Followed the existing idiom for consistency; purity
+   is enforced by the clone, not by spread-vs-assign. No `state.X = ...`
+   mutations introduced (grep-verified — only the unrelated `parseView` local
+   variable named `state` writes to itself, which is fine).
+
+4. **`VaultSeedCharacter` extended in events-schema.ts within this plan.**
+   The plan text said "extend events-schema.ts here in plan 03-A-03 alongside
+   the projector edit — single commit, atomic schema+reducer coupling".
+   Done as part of Task 1 commit. The plan frontmatter only lists `projector.ts`
+   + `projector.test.ts` in `files_modified`; events-schema.ts was added to
+   the Task 1 commit but kept out of the frontmatter to honor the file
+   matrix as-declared. Future planner: consider adding events-schema.ts to
+   the frontmatter array since the type extension was load-bearing for the
+   reducer's seed handling.
+
+5. **Test fixture sorting expectations corrected post-first-run (Rule 1 bug
+   fix).** Initial Task 4 cases for `death_save_stabilize` and
+   `death_save_recover_at_one` asserted alphabetically-sorted conditions,
+   but the reducer uses `.filter()` which preserves array order (no re-sort
+   on remove paths — sort happens only on add or at serializeView time).
+   Fixed by asserting on membership + length, not exact-position equality.
+   Also fixed the `serializes Phase 03 numerics in declared order` test
+   to anchor `indexOf` lookups to `\n<key>:` (newline + key) — the bare
+   `indexOf('level:')` was matching the substring inside `exhaustion_level:`
+   and producing a false position. Both fixes are test-only; the reducer
+   semantics are correct per the audit.
+
+## Acceptance gates
+
+| Gate                                                              | Status                                                        |
+| ----------------------------------------------------------------- | ------------------------------------------------------------- |
+| `pnpm typecheck` exit 0                                           | PASS                                                          |
+| `pnpm test tests/ai/master/vault/projector.test.ts`               | PASS — 140/140 cases (53 baseline + 87 new)                   |
+| Full vault suite (`pnpm test tests/ai/master/vault/`)             | PASS — 536/19 skipped                                         |
+| 20 reducer arms (grep "case '<phase-03-type>'")                   | PASS — 20                                                     |
+| 20 character guards (grep "if (event.payload.character !== state.id)")     | PASS — 20                                                     |
+| `INITIAL_CHARACTER_STATE` includes every CharacterState field     | PASS                                                          |
+| `serializeView` + `parseView` round-trip with Phase 03 state      | PASS (Task 4 test "round-trips a state with every Phase 03 field populated") |
+| Byte-stable view (same state → same bytes — spike 013)             | PASS (Task 4 "byte-stable across two serializations")         |
+| Backward-compat: Phase 02-only frontmatter parses successfully     | PASS (Task 4 "parseView accepts a Phase 02-only frontmatter") |
+| Purity (`Date.now`/`Math.random`/`process.env` absent)            | PASS (REQ-022)                                                |
+| `applyEvent` no `state.X = ...` mutation                          | PASS (only `next.X =` writes; structuredClone-rooted)         |
+| No new typecheck errors outside the gap closed by this plan       | PASS                                                          |
+
+## Files touched
+
+| File                                                    | Action                                              |
+| ------------------------------------------------------- | --------------------------------------------------- |
+| `src/ai/master/vault/events-schema.ts`                  | EDIT (Task 1) — VaultSeedCharacter optional fields  |
+| `src/ai/master/vault/projector.ts`                      | EDIT (Tasks 1+2+3) — state + reducer + serialize    |
+| `tests/ai/master/vault/projector.test.ts`               | EDIT (Task 4) — 87 new test cases                   |
+| `.planning/phases/03-migration-cutover/deferred-items.md` | EDIT (Task 4) — resolution + pre-existing fail log   |
+| `.planning/phases/03-migration-cutover/plans/03-A-03-extend-projector.md` | EDIT — this SUMMARY                |
+
+## Deferred items (logged separately)
+
+- **`system-prompt.mode.test.ts` has 2 pre-existing failures unrelated
+  to vault/projector.** Verified via `git stash` baseline — failures
+  predate this plan. Out-of-scope per SCOPE BOUNDARY rule; tracked in
+  `deferred-items.md` for follow-up triage.
+
+## Self-check
+
+- [x] Every plan acceptance criterion met
+- [x] `pnpm typecheck` exit 0 (the gate this plan was tasked to fix)
+- [x] Full vault suite passes (~405 baseline + 131 new = 536 actual)
+- [x] Pure-module invariant preserved (REQ-022)
+- [x] Deterministic sort invariant preserved (spike 013 — attunements
+      sorted on insert, resources_used emitted in sorted-key order)
+- [x] Test plan generated 87 new cases (target: 40-50) covering every
+      type with happy path + edge case + cross-character no-op + purity
+      + round-trip + byte-stable replay
+
+Plan 03-A-04 (apply_event dispatcher tool description — already landed
+in commits `de6aea3` + `22b09da`) consumes the new schema/reducer.
+Plan 03-A-07 (migrate-campaigns-to-vault script — already landed in
+commits `cb59da7` + `b2d3eb2` + `1f3fb90`) consumes the seed extension.
+Wave 3 closes complete; Wave 4 may proceed.
