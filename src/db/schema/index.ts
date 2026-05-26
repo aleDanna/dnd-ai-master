@@ -17,6 +17,7 @@ export * from './sessions';
 export * from './session-state';
 export * from './session-messages';
 export * from './dice-log';
+export * from './dual-write-divergences';
 export * from './combat-actors';
 export * from './ai-usage';
 export * from './tts-cache';
