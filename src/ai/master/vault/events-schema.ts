@@ -46,6 +46,41 @@
  *   still produce a valid seed event without the flip script having to
  *   fabricate placeholder data.
  *
+ * Phase 03 extension — Decision 10 (Completeness Audit):
+ *   Phase 03-A-01 audited every `TOOL_HANDLERS` entry in
+ *   `src/engine/tools/handlers.ts` and identified additional mutation
+ *   patterns that have no Phase 02 event-type coverage (Pitfall 1 —
+ *   without these, dual-write divergence rate is ~100% on combat turns).
+ *   The (c) Final list from `.planning/phases/03-migration-cutover/COMPLETENESS-AUDIT.md`
+ *   is shipped as additive union members + validator cases here. The
+ *   projector's reducer arms (`applyEvent` in plan 03-A-03) consume the
+ *   new types. EVENT_SCHEMA_VERSION stays at 1 — additions are NOT
+ *   breaking (in-flight events.md files retain the Phase 02 graceful-
+ *   degradation default arm for unknown types).
+ *
+ *   The 20 new types are (in audit order):
+ *     1. temp_hp_set                — tempHp absorption / long-rest reset
+ *     2. death_save_success         — single success roll
+ *     3. death_save_fail            — single failure roll (critical: 2x)
+ *     4. death_save_stabilize       — manual stabilize, preserves unconscious
+ *     5. death_save_recover_at_one  — nat20 atomic recovery (HP=1, drop saves)
+ *     6. concentration_set          — spell with concentration tag cast
+ *     7. concentration_break        — save fail / killed / incapacitated
+ *     8. exhaustion_increment       — forced march / starvation / dehydration
+ *     9. exhaustion_decrement       — long-rest tick / direct remove
+ *    10. hit_dice_use               — short-rest die spend
+ *    11. hit_dice_restore           — long-rest restore (level/2 dice)
+ *    12. resource_use               — generic per-feature counter (rage, surge,
+ *                                     channel divinity, bardic, lay-on-hands)
+ *    13. resource_restore           — short/long-rest resource refresh
+ *    14. inspiration_grant          — DM grants the inspiration token
+ *    15. inspiration_spend          — PC spends inspiration (check/save/attack)
+ *    16. attune                     — magic item attunement
+ *    17. unattune                   — magic item de-attunement
+ *    18. focus_set                  — arcane/druidic/holy/instrument focus
+ *    19. focus_unset                — clear equipped focus
+ *    20. xp_award                   — DM awards XP (reason metadata)
+ *
  * Envelope — spike 008 §"Decision-grade implications":
  *   Every event has `{id, version, type, payload, timestamp}`. `version`
  *   defaults to `EVENT_SCHEMA_VERSION = 1`; Phase 03 can bump and add
@@ -74,6 +109,7 @@ export const EVENT_SCHEMA_VERSION = 1 as const;
  * dispatcher's switch arms (plan 02-07). Do NOT reorder casually.
  */
 export const VAULT_EVENT_TYPES = [
+  // Phase 02 (unchanged — 8 types)
   'hp_change',
   'condition_add',
   'condition_remove',
@@ -82,6 +118,27 @@ export const VAULT_EVENT_TYPES = [
   'inventory_add',
   'inventory_remove',
   'campaign_initialized',
+  // Phase 03 (new — from COMPLETENESS-AUDIT.md (c) Final list, in audit order)
+  'temp_hp_set',
+  'death_save_success',
+  'death_save_fail',
+  'death_save_stabilize',
+  'death_save_recover_at_one',
+  'concentration_set',
+  'concentration_break',
+  'exhaustion_increment',
+  'exhaustion_decrement',
+  'hit_dice_use',
+  'hit_dice_restore',
+  'resource_use',
+  'resource_restore',
+  'inspiration_grant',
+  'inspiration_spend',
+  'attune',
+  'unattune',
+  'focus_set',
+  'focus_unset',
+  'xp_award',
 ] as const;
 
 export type VaultEventType = (typeof VAULT_EVENT_TYPES)[number];
@@ -147,6 +204,7 @@ export type VaultSeedCharacter = {
  * Run-time exhaustiveness: see `validateEvent` below.
  */
 export type VaultEvent =
+  // Phase 02 (unchanged)
   | { type: 'hp_change'; payload: { character: string; delta: number } }
   | { type: 'condition_add'; payload: { character: string; condition: string } }
   | { type: 'condition_remove'; payload: { character: string; condition: string } }
@@ -154,7 +212,46 @@ export type VaultEvent =
   | { type: 'spell_slot_restore'; payload: { character: string; level: number } }
   | { type: 'inventory_add'; payload: { character: string; item: string; qty: number } }
   | { type: 'inventory_remove'; payload: { character: string; item: string; qty: number } }
-  | { type: 'campaign_initialized'; payload: { characters: VaultSeedCharacter[] } };
+  | { type: 'campaign_initialized'; payload: { characters: VaultSeedCharacter[] } }
+  // Phase 03 (new — see COMPLETENESS-AUDIT.md §"(c) Detailed event-type specifications")
+  | { type: 'temp_hp_set'; payload: { character: string; tempHp: number } }
+  | { type: 'death_save_success'; payload: { character: string } }
+  | { type: 'death_save_fail'; payload: { character: string; critical?: boolean } }
+  | { type: 'death_save_stabilize'; payload: { character: string } }
+  | { type: 'death_save_recover_at_one'; payload: { character: string } }
+  | {
+      type: 'concentration_set';
+      payload: {
+        character: string;
+        spellSlug: string;
+        slotLevel: number;
+        startedRound: number;
+      };
+    }
+  | {
+      type: 'concentration_break';
+      payload: { character: string; reason: 'damage' | 'killed' | 'incapacitated' };
+    }
+  | { type: 'exhaustion_increment'; payload: { character: string; source: string } }
+  | { type: 'exhaustion_decrement'; payload: { character: string } }
+  | { type: 'hit_dice_use'; payload: { character: string; count: number } }
+  | { type: 'hit_dice_restore'; payload: { character: string; count: number } }
+  | { type: 'resource_use'; payload: { character: string; resourceKey: string; uses: number } }
+  | { type: 'resource_restore'; payload: { character: string; resourceKey: string; uses: number } }
+  | { type: 'inspiration_grant'; payload: { character: string } }
+  | { type: 'inspiration_spend'; payload: { character: string } }
+  | { type: 'attune'; payload: { character: string; itemSlug: string } }
+  | { type: 'unattune'; payload: { character: string; itemSlug: string } }
+  | {
+      type: 'focus_set';
+      payload: {
+        character: string;
+        kind: 'arcane' | 'druidic' | 'holy' | 'instrument';
+        itemSlug: string;
+      };
+    }
+  | { type: 'focus_unset'; payload: { character: string } }
+  | { type: 'xp_award'; payload: { character: string; amount: number; reason?: string } };
 
 /**
  * On-disk envelope persisted to `events.md` (one JSON-line per event).
@@ -452,6 +549,366 @@ export function validateEvent(input: { type: string; payload: unknown }): Valida
       return {
         ok: true,
         value: { type: 'campaign_initialized', payload: { characters: seed } },
+      };
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 03 additions — see COMPLETENESS-AUDIT.md §"(c) Detailed event-type
+    // specifications" for the authoritative payload + validator rules. Each
+    // arm mirrors the audit row 1:1.
+    // -----------------------------------------------------------------------
+
+    case 'temp_hp_set': {
+      if (typeof p.character !== 'string' || p.character.length === 0) {
+        return { ok: false, error: 'temp_hp_set requires {character: non-empty string, tempHp: integer in [0, 1000)}' };
+      }
+      if (
+        typeof p.tempHp !== 'number' ||
+        !Number.isInteger(p.tempHp) ||
+        p.tempHp < 0 ||
+        p.tempHp >= 1000
+      ) {
+        return { ok: false, error: 'temp_hp_set requires {character: non-empty string, tempHp: integer in [0, 1000)}' };
+      }
+      return {
+        ok: true,
+        value: { type: 'temp_hp_set', payload: { character: p.character, tempHp: p.tempHp } },
+      };
+    }
+
+    case 'death_save_success': {
+      if (typeof p.character !== 'string' || p.character.length === 0) {
+        return { ok: false, error: 'death_save_success requires {character: non-empty string}' };
+      }
+      return {
+        ok: true,
+        value: { type: 'death_save_success', payload: { character: p.character } },
+      };
+    }
+
+    case 'death_save_fail': {
+      if (typeof p.character !== 'string' || p.character.length === 0) {
+        return { ok: false, error: 'death_save_fail requires {character: non-empty string, critical?: boolean}' };
+      }
+      const critical = p.critical;
+      if (critical !== undefined && typeof critical !== 'boolean') {
+        return { ok: false, error: 'death_save_fail.critical must be a boolean when provided' };
+      }
+      return {
+        ok: true,
+        value: {
+          type: 'death_save_fail',
+          payload: {
+            character: p.character,
+            ...(critical !== undefined ? { critical } : {}),
+          },
+        },
+      };
+    }
+
+    case 'death_save_stabilize': {
+      if (typeof p.character !== 'string' || p.character.length === 0) {
+        return { ok: false, error: 'death_save_stabilize requires {character: non-empty string}' };
+      }
+      return {
+        ok: true,
+        value: { type: 'death_save_stabilize', payload: { character: p.character } },
+      };
+    }
+
+    case 'death_save_recover_at_one': {
+      if (typeof p.character !== 'string' || p.character.length === 0) {
+        return { ok: false, error: 'death_save_recover_at_one requires {character: non-empty string}' };
+      }
+      return {
+        ok: true,
+        value: { type: 'death_save_recover_at_one', payload: { character: p.character } },
+      };
+    }
+
+    case 'concentration_set': {
+      if (typeof p.character !== 'string' || p.character.length === 0) {
+        return { ok: false, error: 'concentration_set requires {character: non-empty string, spellSlug: non-empty string, slotLevel: integer in [0, 9], startedRound: non-negative integer}' };
+      }
+      if (typeof p.spellSlug !== 'string' || p.spellSlug.length === 0) {
+        return { ok: false, error: 'concentration_set requires {character: non-empty string, spellSlug: non-empty string, slotLevel: integer in [0, 9], startedRound: non-negative integer}' };
+      }
+      if (
+        typeof p.slotLevel !== 'number' ||
+        !Number.isInteger(p.slotLevel) ||
+        p.slotLevel < 0 ||
+        p.slotLevel > 9
+      ) {
+        return { ok: false, error: 'concentration_set requires {character: non-empty string, spellSlug: non-empty string, slotLevel: integer in [0, 9], startedRound: non-negative integer}' };
+      }
+      if (
+        typeof p.startedRound !== 'number' ||
+        !Number.isInteger(p.startedRound) ||
+        p.startedRound < 0
+      ) {
+        return { ok: false, error: 'concentration_set requires {character: non-empty string, spellSlug: non-empty string, slotLevel: integer in [0, 9], startedRound: non-negative integer}' };
+      }
+      return {
+        ok: true,
+        value: {
+          type: 'concentration_set',
+          payload: {
+            character: p.character,
+            spellSlug: p.spellSlug,
+            slotLevel: p.slotLevel,
+            startedRound: p.startedRound,
+          },
+        },
+      };
+    }
+
+    case 'concentration_break': {
+      if (typeof p.character !== 'string' || p.character.length === 0) {
+        return { ok: false, error: "concentration_break requires {character: non-empty string, reason: 'damage' | 'killed' | 'incapacitated'}" };
+      }
+      if (
+        p.reason !== 'damage' &&
+        p.reason !== 'killed' &&
+        p.reason !== 'incapacitated'
+      ) {
+        return { ok: false, error: "concentration_break requires {character: non-empty string, reason: 'damage' | 'killed' | 'incapacitated'}" };
+      }
+      return {
+        ok: true,
+        value: {
+          type: 'concentration_break',
+          payload: { character: p.character, reason: p.reason },
+        },
+      };
+    }
+
+    case 'exhaustion_increment': {
+      if (typeof p.character !== 'string' || p.character.length === 0) {
+        return { ok: false, error: 'exhaustion_increment requires {character: non-empty string, source: non-empty string}' };
+      }
+      if (typeof p.source !== 'string' || p.source.length === 0) {
+        return { ok: false, error: 'exhaustion_increment requires {character: non-empty string, source: non-empty string}' };
+      }
+      return {
+        ok: true,
+        value: {
+          type: 'exhaustion_increment',
+          payload: { character: p.character, source: p.source },
+        },
+      };
+    }
+
+    case 'exhaustion_decrement': {
+      if (typeof p.character !== 'string' || p.character.length === 0) {
+        return { ok: false, error: 'exhaustion_decrement requires {character: non-empty string}' };
+      }
+      return {
+        ok: true,
+        value: { type: 'exhaustion_decrement', payload: { character: p.character } },
+      };
+    }
+
+    case 'hit_dice_use': {
+      if (typeof p.character !== 'string' || p.character.length === 0) {
+        return { ok: false, error: 'hit_dice_use requires {character: non-empty string, count: integer in [1, 20]}' };
+      }
+      if (
+        typeof p.count !== 'number' ||
+        !Number.isInteger(p.count) ||
+        p.count <= 0 ||
+        p.count > 20
+      ) {
+        return { ok: false, error: 'hit_dice_use requires {character: non-empty string, count: integer in [1, 20]}' };
+      }
+      return {
+        ok: true,
+        value: { type: 'hit_dice_use', payload: { character: p.character, count: p.count } },
+      };
+    }
+
+    case 'hit_dice_restore': {
+      if (typeof p.character !== 'string' || p.character.length === 0) {
+        return { ok: false, error: 'hit_dice_restore requires {character: non-empty string, count: integer in [1, 20]}' };
+      }
+      if (
+        typeof p.count !== 'number' ||
+        !Number.isInteger(p.count) ||
+        p.count <= 0 ||
+        p.count > 20
+      ) {
+        return { ok: false, error: 'hit_dice_restore requires {character: non-empty string, count: integer in [1, 20]}' };
+      }
+      return {
+        ok: true,
+        value: { type: 'hit_dice_restore', payload: { character: p.character, count: p.count } },
+      };
+    }
+
+    case 'resource_use': {
+      if (typeof p.character !== 'string' || p.character.length === 0) {
+        return { ok: false, error: 'resource_use requires {character: non-empty string, resourceKey: non-empty string, uses: integer in [1, 50]}' };
+      }
+      if (typeof p.resourceKey !== 'string' || p.resourceKey.length === 0) {
+        return { ok: false, error: 'resource_use requires {character: non-empty string, resourceKey: non-empty string, uses: integer in [1, 50]}' };
+      }
+      if (
+        typeof p.uses !== 'number' ||
+        !Number.isInteger(p.uses) ||
+        p.uses <= 0 ||
+        p.uses > 50
+      ) {
+        return { ok: false, error: 'resource_use requires {character: non-empty string, resourceKey: non-empty string, uses: integer in [1, 50]}' };
+      }
+      return {
+        ok: true,
+        value: {
+          type: 'resource_use',
+          payload: { character: p.character, resourceKey: p.resourceKey, uses: p.uses },
+        },
+      };
+    }
+
+    case 'resource_restore': {
+      if (typeof p.character !== 'string' || p.character.length === 0) {
+        return { ok: false, error: 'resource_restore requires {character: non-empty string, resourceKey: non-empty string, uses: integer in [1, 50]}' };
+      }
+      if (typeof p.resourceKey !== 'string' || p.resourceKey.length === 0) {
+        return { ok: false, error: 'resource_restore requires {character: non-empty string, resourceKey: non-empty string, uses: integer in [1, 50]}' };
+      }
+      if (
+        typeof p.uses !== 'number' ||
+        !Number.isInteger(p.uses) ||
+        p.uses <= 0 ||
+        p.uses > 50
+      ) {
+        return { ok: false, error: 'resource_restore requires {character: non-empty string, resourceKey: non-empty string, uses: integer in [1, 50]}' };
+      }
+      return {
+        ok: true,
+        value: {
+          type: 'resource_restore',
+          payload: { character: p.character, resourceKey: p.resourceKey, uses: p.uses },
+        },
+      };
+    }
+
+    case 'inspiration_grant': {
+      if (typeof p.character !== 'string' || p.character.length === 0) {
+        return { ok: false, error: 'inspiration_grant requires {character: non-empty string}' };
+      }
+      return {
+        ok: true,
+        value: { type: 'inspiration_grant', payload: { character: p.character } },
+      };
+    }
+
+    case 'inspiration_spend': {
+      if (typeof p.character !== 'string' || p.character.length === 0) {
+        return { ok: false, error: 'inspiration_spend requires {character: non-empty string}' };
+      }
+      return {
+        ok: true,
+        value: { type: 'inspiration_spend', payload: { character: p.character } },
+      };
+    }
+
+    case 'attune': {
+      if (typeof p.character !== 'string' || p.character.length === 0) {
+        return { ok: false, error: 'attune requires {character: non-empty string, itemSlug: non-empty string of length <= 64}' };
+      }
+      if (
+        typeof p.itemSlug !== 'string' ||
+        p.itemSlug.length === 0 ||
+        p.itemSlug.length > 64
+      ) {
+        return { ok: false, error: 'attune requires {character: non-empty string, itemSlug: non-empty string of length <= 64}' };
+      }
+      return {
+        ok: true,
+        value: { type: 'attune', payload: { character: p.character, itemSlug: p.itemSlug } },
+      };
+    }
+
+    case 'unattune': {
+      if (typeof p.character !== 'string' || p.character.length === 0) {
+        return { ok: false, error: 'unattune requires {character: non-empty string, itemSlug: non-empty string of length <= 64}' };
+      }
+      if (
+        typeof p.itemSlug !== 'string' ||
+        p.itemSlug.length === 0 ||
+        p.itemSlug.length > 64
+      ) {
+        return { ok: false, error: 'unattune requires {character: non-empty string, itemSlug: non-empty string of length <= 64}' };
+      }
+      return {
+        ok: true,
+        value: { type: 'unattune', payload: { character: p.character, itemSlug: p.itemSlug } },
+      };
+    }
+
+    case 'focus_set': {
+      if (typeof p.character !== 'string' || p.character.length === 0) {
+        return { ok: false, error: "focus_set requires {character: non-empty string, kind: 'arcane' | 'druidic' | 'holy' | 'instrument', itemSlug: non-empty string}" };
+      }
+      if (
+        p.kind !== 'arcane' &&
+        p.kind !== 'druidic' &&
+        p.kind !== 'holy' &&
+        p.kind !== 'instrument'
+      ) {
+        return { ok: false, error: "focus_set requires {character: non-empty string, kind: 'arcane' | 'druidic' | 'holy' | 'instrument', itemSlug: non-empty string}" };
+      }
+      if (typeof p.itemSlug !== 'string' || p.itemSlug.length === 0) {
+        return { ok: false, error: "focus_set requires {character: non-empty string, kind: 'arcane' | 'druidic' | 'holy' | 'instrument', itemSlug: non-empty string}" };
+      }
+      return {
+        ok: true,
+        value: {
+          type: 'focus_set',
+          payload: { character: p.character, kind: p.kind, itemSlug: p.itemSlug },
+        },
+      };
+    }
+
+    case 'focus_unset': {
+      if (typeof p.character !== 'string' || p.character.length === 0) {
+        return { ok: false, error: 'focus_unset requires {character: non-empty string}' };
+      }
+      return {
+        ok: true,
+        value: { type: 'focus_unset', payload: { character: p.character } },
+      };
+    }
+
+    case 'xp_award': {
+      if (typeof p.character !== 'string' || p.character.length === 0) {
+        return { ok: false, error: 'xp_award requires {character: non-empty string, amount: integer in (0, 1000000), reason?: string of length <= 256}' };
+      }
+      if (
+        typeof p.amount !== 'number' ||
+        !Number.isFinite(p.amount) ||
+        !Number.isInteger(p.amount) ||
+        p.amount <= 0 ||
+        p.amount >= 1_000_000
+      ) {
+        return { ok: false, error: 'xp_award requires {character: non-empty string, amount: integer in (0, 1000000), reason?: string of length <= 256}' };
+      }
+      const reason = p.reason;
+      if (reason !== undefined) {
+        if (typeof reason !== 'string' || reason.length > 256) {
+          return { ok: false, error: 'xp_award.reason must be a string of length <= 256 when provided' };
+        }
+      }
+      return {
+        ok: true,
+        value: {
+          type: 'xp_award',
+          payload: {
+            character: p.character,
+            amount: p.amount,
+            ...(typeof reason === 'string' ? { reason } : {}),
+          },
+        },
       };
     }
 
