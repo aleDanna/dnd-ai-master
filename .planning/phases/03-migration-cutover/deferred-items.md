@@ -117,3 +117,25 @@ expected ordering is stale (RAG block now placed elsewhere) or the
 master system-prompt builder regressed during a merge. The
 verification path is `git log --follow src/ai/master/system-prompt.ts`
 to find the offending commit.
+
+### 2026-05-27 — Pre-existing test failure in applicator.test.ts (discovered during 03-A-10)
+
+`pnpm test tests/sessions/applicator.test.ts` fails 1/98 in
+"add_inventory + remove_inventory + set_equipped persist to
+characters.inventory" with `qty: 60` expected vs `qty: 50` actual on
+the `gp` slug. The failure is **pre-existing** — `git log` on
+applicator.ts shows last touch was 7ad8533
+("fix(multiplayer): per-character slot/resource storage so long_rest
+restores every PG") which predates this plan. Plan 03-A-10 modifies
+ZERO files involved in this test (turn-route, vault tools.ts, vault
+loop.ts, sessions/event-to-engine-mutation.ts, tests/sessions/
+turn-route-dual-write.test.ts).
+
+The owned scope of 03-A-10 tests passes cleanly: 4/4 dual-write
+turn-route + 14/14 turn-route-branch + 19/19 vault-mutations-gate +
+8/8 dual-writer + 19/19 divergence-record + parity-check.
+
+**Recommended fix:** triage in a follow-up. The `gp` currency case
+likely hits the cross-denomination payCurrency special-case in
+`src/sessions/currency.ts` which may have evolved without the test
+expectation being updated. SCOPE BOUNDARY says don't auto-fix.
