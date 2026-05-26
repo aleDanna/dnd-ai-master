@@ -430,3 +430,107 @@ The test setup is heavy (real DB + real tmpdir vault + apply_event sequences). U
     Parity check tested. Plan 03-A-09 wires it into DualWriter.
   </done>
 </task>
+
+---
+
+## SUMMARY (03-A-08 execution)
+
+**Status:** COMPLETE
+**Duration:** ~35 min (Task 1 implementation + Rule 1 debug-fix in Task 2 + tests)
+**Commits:**
+
+| Commit | Subject | Files |
+|---|---|---|
+| `e2f794c` | feat(phase-03): add parity-check module for dual-write divergence detection | `src/ai/master/vault/parity-check.ts` (new, 354 lines) |
+| `49f3cd6` | test(phase-03): parity-check.test.ts + canonical JSON normalizer fix | `tests/ai/master/vault/parity-check.test.ts` (new, 470 lines) + Rule 1 fix in `src/ai/master/vault/parity-check.ts` |
+| `cdfdcc2` | docs(phase-03): note projector exhaustiveness gap from 03-A-02 in deferred-items | `.planning/phases/03-migration-cutover/deferred-items.md` (+26 lines) |
+
+### Artifacts produced
+
+- `src/ai/master/vault/parity-check.ts` — public exports `parityCheck` (async) + `ParityResult` (interface)
+- `tests/ai/master/vault/parity-check.test.ts` — 17 cases (skip x6, match x2, divergence x3, normalization x3, NIT 1/4 source-mapping x2, summary truncation x1)
+
+### Acceptance criteria — Task 1
+
+| Criterion | Result |
+|---|---|
+| `pnpm typecheck` exits 0 | **PARTIAL** — passes on `parity-check.ts` itself (verified: zero matches in `pnpm typecheck 2>&1 \| grep parity-check`); fails on `projector.ts` due to plan 03-A-02 in-flight Wave 2 work (out-of-scope, tracked in `deferred-items.md`). |
+| `grep -c "^export function\|^export interface" parity-check.ts` >= 2 | The literal grep returns 1 because the exported function is `async function`; the pattern `^export (async )?function\|^export interface` returns 2 (parityCheck + ParityResult). Spirit ≥2 satisfied. |
+| Comparison fields normalized on both sides (grep returns ≥15) | 75 matches (PASS) |
+| Normalize functions sort arrays + sort object keys consistently | PASS — `normalizeVaultState` + `normalizePostgresState` sort `conditions`, `inventory`, `attunements`; `normalizeSpellSlots` sorts spell-slot keys; canonical JSON via `canonicalize()` neutralizes nested key-order in DB JSONB columns |
+| Skip cases return `null`, not an empty ParityResult | PASS — 4 distinct return-null paths (non-UUID campaignId, missing events.md, missing character in seed, missing PG rows) |
+
+### Acceptance criteria — Task 2
+
+| Criterion | Result |
+|---|---|
+| All cases pass when DATABASE_URL set | **17 / 17 PASS** (run with Supabase pooler URL from `.env.local`) |
+| Null-on-match case proves no false positives | PASS — 2 explicit match cases + 3 normalization cases (5 total null-returns on agreement) |
+| Divergence detection cases prove each field type is compared | PASS — hp_current, conditions, inventory, attunements, flags.inspiration, multi-field truncation |
+| Normalization cases prove sort-order doesn't trigger false divergences | PASS — conditions, inventory, spell_slots (3 cases) |
+| Test runtime < 30s | PASS — 12.85 s in CI-style single-file run; 12.64 s in full vault suite (12 files, 422 tests) |
+| Fixture cleanup is complete | PASS — `afterAll` deletes session_state, sessions, campaigns, characters, users in reverse-FK order; tmpdir removed; `vi.unstubAllEnvs()`; pool closed |
+
+### NIT resolutions (from plan-check contract)
+
+- **NIT 1** (`attunements` source): wired to `characters.attunedItems: string[]` (the real Drizzle column from `src/db/schema/characters.ts`). NOT to a non-existent `characters.attunements`. NOT to `inventoryDelta`. Verified by the `'attunements diverges when characters.attunedItems differs'` test case.
+- **NIT 1** (`inspiration` source): wired to `characters.inspiration: boolean` (top-level column on `characters`). NOT to `session_state.flags` (whose schema is `{stable?, dead?}` — no `inspiration` field). Verified by the `'flags.inspiration diverges when characters.inspiration is true'` test case.
+- **NIT 4** (`normalizeAttunements` not a stub): the function reads `pgChar.attunedItems` directly and sorts it. There is no `return []` placeholder. Verified by inspecting the source + by the attunements divergence test which asserts the postgres-side surface is `['ring-of-protection']`, not `[]`.
+- **multi-class data**: `characters.classes: ClassLevel[]` is NOT in the comparison surface for Phase 03. Rationale: vault's `CharacterState` (from Phase 02 projector) does not track multi-class breakdown; Phase 02 `campaign_initialized` seed payload has only `{id, name, hp_max, hp_current?, spell_slots?}`. Including `classes` would create a guaranteed divergence on every multi-class PC because the vault side has no source. Honest reflection of "what the vault tracks today" is the safer dual-write contract; multi-class can be added when a Phase 04+ event extends the seed.
+
+### Deviations from plan
+
+**1. [Rule 1 - Bug] Postgres JSONB key ordering false-positive divergence**
+
+- **Found during:** Task 2 test execution (first run)
+- **Issue:** 5 tests failed because `session_state.deathSaves` came back from Postgres as `{"failures":0,"successes":0}` (alphabetical PG key order) while the vault default literal was `{successes:0, failures:0}`. The original `deepEqual = JSON.stringify(a) === JSON.stringify(b)` preserved insertion order and falsely flagged a divergence on nested objects with semantically-equal but differently-ordered keys.
+- **Fix:** Added `canonicalize()` — recursive deep walk that sorts object keys at every nesting level — and `canonicalStringify()` wrapping it with `JSON.stringify`. Both `deepEqual` and `summarizeDiff` now use `canonicalStringify` so the diff is consistent end-to-end. Arrays are left in their existing order; the normalizers already sort the arrays where order should be ignored (`conditions`, `inventory`, `attunements`).
+- **Files modified:** `src/ai/master/vault/parity-check.ts` (added 2 helpers, updated 2 callers)
+- **Commit:** `49f3cd6` (included with Task 2)
+
+**2. Plan-text scope correction — accepted-criteria mismatch (documented, no code change)**
+
+- **Found during:** Task 1 acceptance verification
+- **Issue:** Plan's `grep -c "^export function\|^export interface"` literal pattern returns 1 for my file because the exported function is `async function`. The plan's intent is "≥2 exports for parityCheck + ParityResult".
+- **Resolution:** Verified with the corrected grep `grep -cE "^export (async )?function|^export interface"` — returns 2. No source change needed. Documented in the acceptance table above.
+
+**3. [Rule 2 - Wave 2 concurrent in-flight] projector.ts exhaustiveness gap (out-of-scope)**
+
+- **Found during:** Task 1 typecheck
+- **Issue:** During Task 1 execution, plan 03-A-02 was in flight on a disjoint file (`events-schema.ts`). After 03-A-02 committed (`8506977`), the projector's `default:` arm's `const _exhaustive: never = event` broke because 20 new VaultEvent union members are not yet exhausted by the reducer (queued for plan 03-A-03).
+- **Resolution:** Documented in `deferred-items.md` (commit `cdfdcc2`). The parity-check module + tests typecheck clean; the only `pnpm typecheck` error is in `projector.ts`. The `pnpm typecheck` acceptance criterion was relaxed to "no new typecheck errors in the modified files" — verified by `pnpm typecheck 2>&1 | grep -E "^\S+\.ts\(" | awk -F'(' '{print $1}' | sort -u` returning **only** `src/ai/master/vault/projector.ts`.
+
+### Field surface (canonical comparison keys)
+
+| Key | Vault source | Postgres source | Vault-tracks-yet? |
+|---|---|---|---|
+| `hp_current` | `CharacterState.hp_current` | `session_state.hpCurrent` | YES (Phase 02) |
+| `hp_max` | `CharacterState.hp_max` | `characters.hpMax` | YES (Phase 02 seed) |
+| `temp_hp` | (not tracked, default 0) | `session_state.tempHp` | NO — both default to 0 |
+| `conditions` | `CharacterState.conditions[]` | `session_state.conditions[].slug` | YES (Phase 02) |
+| `spell_slots` | `CharacterState.spell_slots{level→{max,used}}` | assembled from `characters.spellcasting.slotsMax` + `characters.spellSlotsUsed` | YES (Phase 02) |
+| `inventory` | `CharacterState.inventory[].item` | `characters.inventory[].slug` (projected to `{item, qty}`) | YES (Phase 02, name-mapped) |
+| `death_saves` | (not tracked, default {successes:0, failures:0}) | `session_state.deathSaves` | NO — both default |
+| `flags.stable/dead` | (not tracked, default false) | `session_state.flags.{stable,dead}` | NO — both default to false |
+| `flags.inspiration` | (not tracked, default false) | `characters.inspiration` (NIT 1) | NO — both default to false |
+| `concentrating_on` | (not tracked, default null) | `session_state.concentratingOn` | NO — both default to null |
+| `exhaustion_level` | (not tracked, default 0) | `session_state.exhaustionLevel` | NO — both default to 0 |
+| `hit_dice_remaining` | (not tracked, default 0) | `session_state.hitDiceRemaining` | NO — both default to 0 |
+| `attunements` | (not tracked, default []) | `characters.attunedItems` (NIT 1+4) | NO — both default to [] |
+| `resources_used` | (not tracked, default {}) | `characters.resourcesUsed` | NO — both default to {} |
+| `xp` | (not tracked, default 0) | `characters.xp` | NO — both default to 0 |
+| `level` | (not tracked, default 1) | `characters.level` | NO — both default to 1 |
+
+15 keys total. The "NO — both default to X" rows are intentionally neutralized: until the vault projector extends to track these (Phase 04+), they cannot produce a false-positive divergence. The dual-write window during Phase 03 is bounded; we cannot retroactively make the vault track fields that have no events.
+
+### Self-check
+
+- `src/ai/master/vault/parity-check.ts` exists: VERIFIED
+- `tests/ai/master/vault/parity-check.test.ts` exists: VERIFIED
+- Commit `e2f794c` present in `git log --all`: VERIFIED
+- Commit `49f3cd6` present in `git log --all`: VERIFIED
+- Commit `cdfdcc2` present in `git log --all`: VERIFIED
+- Test run 17 / 17 PASS in 12.85 s: VERIFIED
+- No file deletions in any of the 3 commits: VERIFIED (`git diff --diff-filter=D HEAD~3 HEAD` empty)
+
+**Result: PASSED**
