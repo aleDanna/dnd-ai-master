@@ -220,6 +220,8 @@ export function INITIAL_CHARACTER_STATE(seed: VaultSeedCharacter): CharacterStat
  *
  * Per-event-type semantics:
  *
+ *   PHASE 02 (unchanged):
+ *
  *   - `hp_change` — clamp `state.hp_current + delta` to `[0, state.hp_max]`.
  *                  T-02-03 mitigation: even a hostile `delta: -999999`
  *                  bottoms out at 0 (no negative HP); a hostile
@@ -244,6 +246,53 @@ export function INITIAL_CHARACTER_STATE(seed: VaultSeedCharacter): CharacterStat
  *                             populates the state Map BEFORE reducer
  *                             dispatch (see `replayEvents`); applying it
  *                             again to an existing state is meaningless.
+ *
+ *   PHASE 03 ADDITIONS (plan 03-A-03 — see COMPLETENESS-AUDIT.md (c) list):
+ *
+ *   - `temp_hp_set`             — overwrite `temp_hp` (clamped to ≥ 0).
+ *   - `death_save_success`      — increment successes; at 3 → reset to
+ *                                 {0,0}, set flags.stable, ensure
+ *                                 `unconscious` in conditions (per PHB §3.18
+ *                                 mirror of applicator.ts:574-589).
+ *   - `death_save_fail`         — increment failures by 1 (or 2 if
+ *                                 `critical`); at 3 → set flags.dead and
+ *                                 leave death_saves at {0, 3} (preserved
+ *                                 for traceability — applicator.ts:601-608).
+ *   - `death_save_stabilize`    — reset death_saves to {0,0}, set
+ *                                 flags.stable. Does NOT touch `conditions`
+ *                                 (PHB §3.19: stable but still unconscious).
+ *   - `death_save_recover_at_one` — PHB §3.18 nat-20 atomic recovery:
+ *                                 reset death_saves, hp_current = 1, remove
+ *                                 `unconscious` condition, clear stable/dead.
+ *   - `concentration_set`       — overwrite `concentrating_on`.
+ *   - `concentration_break`     — `concentrating_on = null` (reducer ignores
+ *                                 `reason` — it's metadata for audit/log).
+ *   - `exhaustion_increment`    — clamp +1 to [0, 6]; at 6 → flags.dead.
+ *                                 Append `exhaustion` to conditions iff
+ *                                 absent (idempotent — exhaustion appears
+ *                                 once; the level tracks intensity).
+ *   - `exhaustion_decrement`    — clamp -1 to [0, 6]; at 0 → remove
+ *                                 `exhaustion` from conditions.
+ *   - `hit_dice_use`            — `max(0, remaining - count)`.
+ *   - `hit_dice_restore`        — `min(hit_dice_max, remaining + count)`.
+ *   - `resource_use`            — `resources_used[key] = (cur ?? 0) + uses`.
+ *   - `resource_restore`        — decrement uses, delete key when reaches 0.
+ *   - `inspiration_grant`       — `flags.inspiration = true`.
+ *   - `inspiration_spend`       — `flags.inspiration = false`.
+ *   - `attune`                  — append slug iff absent, sort (DR
+ *                                 byte-stability, same idiom as conditions).
+ *   - `unattune`                — filter out slug (no-op if absent).
+ *   - `focus_set`               — overwrite `equipped_focus`.
+ *   - `focus_unset`             — `equipped_focus = null`.
+ *   - `xp_award`                — `xp += amount` (validator already bounds
+ *                                 `amount` to integer in (0, 1_000_000)).
+ *
+ *   Every Phase 03 arm guards on `event.payload.character !== state.id` and
+ *   returns the cloned state unchanged in that case — the reducer is
+ *   called per-character with a single state; events for OTHER characters
+ *   in the same campaign are no-ops at this layer. (`replayEvents` already
+ *   routes events to the correct state by UUID, so this guard is defensive
+ *   against a manually-corrupted events.md that mis-targets a character.)
  *
  * The `default:` arm holds a `never`-typed exhaustiveness sentinel — if a new
  * `VaultEvent` union member is added without a corresponding `case`,
@@ -327,6 +376,229 @@ export function applyEvent(state: CharacterState, event: VaultEvent): CharacterS
       // BEFORE reducer dispatch). Applying a seed event to an existing
       // state is meaningless — return the cloned state untouched.
       return next;
+
+    // ---------------------------------------------------------------------
+    // Phase 03 arms — see COMPLETENESS-AUDIT.md §"(c) Detailed event-type
+    // specifications" for the authoritative spec. Every arm mirrors the
+    // applicator's `applyOne` mutation semantics for the matching `op` so
+    // dual-write parity holds at replay time.
+    //
+    // Cross-character guard: every Phase 03 arm checks
+    // `event.payload.character === state.id` — if the event targets another
+    // character, return the cloned state unchanged. `replayEvents`
+    // pre-routes events by UUID, so the guard is defensive against
+    // operator-edited events.md.
+    // ---------------------------------------------------------------------
+
+    case 'temp_hp_set': {
+      if (event.payload.character !== state.id) return next;
+      next.temp_hp = Math.max(0, event.payload.tempHp);
+      return next;
+    }
+
+    case 'death_save_success': {
+      if (event.payload.character !== state.id) return next;
+      const successes = state.death_saves.successes + 1;
+      if (successes >= 3) {
+        // PHB §3.18 — 3 successes ⇒ stable. Reset the counter; set
+        // `flags.stable`; ensure `unconscious` stays in conditions
+        // (matches applicator.ts:574-589 — stabilizing does NOT wake
+        // the PC, it only halts the dying clock).
+        next.death_saves = { successes: 0, failures: 0 };
+        next.flags = { ...next.flags, stable: true };
+        if (!next.conditions.includes('unconscious')) {
+          next.conditions.push('unconscious');
+          next.conditions.sort();
+        }
+        return next;
+      }
+      next.death_saves = { successes, failures: state.death_saves.failures };
+      return next;
+    }
+
+    case 'death_save_fail': {
+      if (event.payload.character !== state.id) return next;
+      const incrementBy = event.payload.critical ? 2 : 1;
+      const failures = Math.min(3, state.death_saves.failures + incrementBy);
+      if (failures >= 3) {
+        // PHB §3.18 — 3 failures ⇒ dead. Preserve `failures: 3` in the
+        // record for traceability (applicator.ts:601-608) — diagnostic
+        // information for the operator audit trail.
+        next.death_saves = { successes: 0, failures: 3 };
+        next.flags = { ...next.flags, dead: true };
+        return next;
+      }
+      next.death_saves = { successes: state.death_saves.successes, failures };
+      return next;
+    }
+
+    case 'death_save_stabilize': {
+      if (event.payload.character !== state.id) return next;
+      next.death_saves = { successes: 0, failures: 0 };
+      next.flags = { ...next.flags, stable: true };
+      // PHB §3.19: stabilized but still unconscious — DO NOT modify
+      // `conditions` here. The PC remains unconscious until healed or
+      // until the natural 1-HP recovery from the nat-20 death-save case.
+      return next;
+    }
+
+    case 'death_save_recover_at_one': {
+      if (event.payload.character !== state.id) return next;
+      // PHB §3.18 nat-20 atomic recovery: reset all death-save state,
+      // restore 1 HP, drop unconscious. Single event so replay never
+      // observes an intermediate state where (e.g.) HP=1 but the PC is
+      // still marked dead (which would be a one-step-too-old snapshot).
+      next.death_saves = { successes: 0, failures: 0 };
+      next.hp_current = 1;
+      next.conditions = next.conditions.filter((c) => c !== 'unconscious');
+      next.flags = { ...next.flags, stable: false, dead: false };
+      return next;
+    }
+
+    case 'concentration_set': {
+      if (event.payload.character !== state.id) return next;
+      next.concentrating_on = {
+        spellSlug: event.payload.spellSlug,
+        slotLevel: event.payload.slotLevel,
+        startedRound: event.payload.startedRound,
+      };
+      return next;
+    }
+
+    case 'concentration_break': {
+      if (event.payload.character !== state.id) return next;
+      // The validator already accepted `reason` ('damage' | 'killed' |
+      // 'incapacitated'). The reducer ignores it — `reason` is operator
+      // audit metadata, not part of the reducible state. (Recoverable
+      // from the events.md log when needed.)
+      next.concentrating_on = null;
+      return next;
+    }
+
+    case 'exhaustion_increment': {
+      if (event.payload.character !== state.id) return next;
+      // PHB §4.1 caps exhaustion at level 6. The applicator marks the PC
+      // dead on reaching 6 (applicator.ts:217) — mirror that side effect
+      // here so post-replay flags.dead correctly reflects the cumulative
+      // exhaustion damage.
+      next.exhaustion_level = Math.min(6, state.exhaustion_level + 1);
+      if (next.exhaustion_level >= 6) {
+        next.flags = { ...next.flags, dead: true };
+      }
+      // The `exhaustion` condition string is appended ONCE (idempotent).
+      // The level integer (not the array entry count) tracks intensity —
+      // matches the applicator's unique handling for exhaustion stacking.
+      if (!next.conditions.includes('exhaustion')) {
+        next.conditions.push('exhaustion');
+        next.conditions.sort();
+      }
+      return next;
+    }
+
+    case 'exhaustion_decrement': {
+      if (event.payload.character !== state.id) return next;
+      if (state.exhaustion_level <= 0) return next;
+      next.exhaustion_level = state.exhaustion_level - 1;
+      if (next.exhaustion_level === 0) {
+        // Reaching level 0 removes the `exhaustion` array entry to keep
+        // `conditions` semantically clean.
+        next.conditions = next.conditions.filter((c) => c !== 'exhaustion');
+      }
+      return next;
+    }
+
+    case 'hit_dice_use': {
+      if (event.payload.character !== state.id) return next;
+      next.hit_dice_remaining = Math.max(
+        0,
+        state.hit_dice_remaining - event.payload.count,
+      );
+      return next;
+    }
+
+    case 'hit_dice_restore': {
+      if (event.payload.character !== state.id) return next;
+      next.hit_dice_remaining = Math.min(
+        state.hit_dice_max,
+        state.hit_dice_remaining + event.payload.count,
+      );
+      return next;
+    }
+
+    case 'resource_use': {
+      if (event.payload.character !== state.id) return next;
+      const cur = state.resources_used[event.payload.resourceKey] ?? 0;
+      next.resources_used = {
+        ...state.resources_used,
+        [event.payload.resourceKey]: cur + event.payload.uses,
+      };
+      return next;
+    }
+
+    case 'resource_restore': {
+      if (event.payload.character !== state.id) return next;
+      const cur = state.resources_used[event.payload.resourceKey] ?? 0;
+      const remaining = Math.max(0, cur - event.payload.uses);
+      const cloned = { ...state.resources_used };
+      if (remaining === 0) {
+        delete cloned[event.payload.resourceKey];
+      } else {
+        cloned[event.payload.resourceKey] = remaining;
+      }
+      next.resources_used = cloned;
+      return next;
+    }
+
+    case 'inspiration_grant': {
+      if (event.payload.character !== state.id) return next;
+      next.flags = { ...next.flags, inspiration: true };
+      return next;
+    }
+
+    case 'inspiration_spend': {
+      if (event.payload.character !== state.id) return next;
+      next.flags = { ...next.flags, inspiration: false };
+      return next;
+    }
+
+    case 'attune': {
+      if (event.payload.character !== state.id) return next;
+      if (next.attunements.includes(event.payload.itemSlug)) return next;
+      next.attunements.push(event.payload.itemSlug);
+      // Sort for byte-stable view (spike 013 DR invariant — same idiom
+      // as the `conditions` reducer arm).
+      next.attunements.sort();
+      return next;
+    }
+
+    case 'unattune': {
+      if (event.payload.character !== state.id) return next;
+      next.attunements = next.attunements.filter((s) => s !== event.payload.itemSlug);
+      return next;
+    }
+
+    case 'focus_set': {
+      if (event.payload.character !== state.id) return next;
+      next.equipped_focus = {
+        kind: event.payload.kind,
+        itemSlug: event.payload.itemSlug,
+      };
+      return next;
+    }
+
+    case 'focus_unset': {
+      if (event.payload.character !== state.id) return next;
+      next.equipped_focus = null;
+      return next;
+    }
+
+    case 'xp_award': {
+      if (event.payload.character !== state.id) return next;
+      // Validator (events-schema.ts) already bounds `amount` to a
+      // positive integer < 1_000_000; no defensive clamp needed.
+      next.xp = state.xp + event.payload.amount;
+      return next;
+    }
 
     default: {
       // Compile-time exhaustiveness check (Decision 1). Adding a new
