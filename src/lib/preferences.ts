@@ -130,6 +130,53 @@ export function resolveMasterBackend(stored: MasterBackend | undefined): MasterB
 }
 
 /**
+ * Phase 03-B vault-llm-wiki — cutover semantics (Decision 4). Parallel-shape
+ * with `MasterBackend` (Phase 01) and `resolveVaultMutations` (Phase 02).
+ *
+ * Selects which store is authoritative for snapshot READS:
+ *  - 'postgres' (default) → buildClientSnapshot reads session_state + characters
+ *  - 'vault'              → buildClientSnapshot materializes from events.md replay
+ *
+ * The resolver does NOT enforce preconditions (masterBackend === 'vault' AND
+ * vaultMutations === true). Plan 03-B-02's `scripts/vault-cutover.ts` does,
+ * with a clear operator error before flipping.
+ */
+export type SourceOfTruth = 'postgres' | 'vault';
+
+export function isSourceOfTruth(v: unknown): v is SourceOfTruth {
+  return v === 'postgres' || v === 'vault';
+}
+
+/**
+ * Env override `MASTER_SOURCE_OF_TRUTH` for ops / CI smoke testing without
+ * touching DB rows. A stored campaign value always wins. Defaults to
+ * 'postgres' (Phase 02 behavior — backward compatible until cutover).
+ */
+function envDefaultSourceOfTruth(): SourceOfTruth {
+  const raw = (process.env.MASTER_SOURCE_OF_TRUTH ?? '').trim().toLowerCase();
+  return raw === 'vault' ? 'vault' : 'postgres';
+}
+
+export function resolveSourceOfTruth(stored: SourceOfTruth | undefined): SourceOfTruth {
+  if (stored === 'postgres' || stored === 'vault') return stored;
+  return envDefaultSourceOfTruth();
+}
+
+/**
+ * Phase 03-A vault-llm-wiki — dual-write coexistence (Decision 2). Returns
+ * true ONLY when `settings.dualWrite === true`. No env override — dual-write
+ * is operator-set per campaign only; an env-wide default would risk
+ * accidental global enablement of the Promise.all([vault, postgres]) fan-out.
+ *
+ * Orthogonal to `sourceOfTruth` (Decision 4): both flags can be true in
+ * any combination. Consumed by plan 03-A-10 dispatch gate.
+ */
+export function resolveDualWrite(settings: { dualWrite?: boolean } | undefined): boolean {
+  if (!settings) return false;
+  return settings.dualWrite === true;
+}
+
+/**
  * Resolves the campaign's vault-mutations opt-in flag.
  *
  * Returns `true` ONLY when both conditions hold:
@@ -231,6 +278,19 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   // Phase 02 vault-llm-wiki — per-campaign opt-in for event-sourced
   // mutations. Default false (off); orthogonal to masterBackend.
   vaultMutations: false,
+  // Phase 03-B vault-llm-wiki — cutover flag; default 'postgres' so existing
+  // campaigns keep reading from Postgres until the operator runs
+  // scripts/vault-cutover.ts (plan 03-B-02). User-side parallel-shape only;
+  // authoritative campaign-side resolution lives in getCampaignSettings via
+  // resolveSourceOfTruth.
+  sourceOfTruth: 'postgres',
+  // Phase 03-A vault-llm-wiki — dual-write coexistence; default false (single
+  // write to vault, Phase 02 behavior). Flipped per campaign by the migration
+  // script (plan 03-A-07) once dual-write is ready to validate parity.
+  dualWrite: false,
+  // Phase 03-B audit — empty by default. Set by scripts/vault-cutover.ts
+  // (plan 03-B-02) to the ISO timestamp of the most recent flip to 'vault'.
+  cutoverAt: '',
 };
 
 export async function getUserPreferences(userId: string): Promise<UserPreferences> {
@@ -307,6 +367,17 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
     // via `resolveVaultMutations`. This branch is never the one consulted
     // at runtime for the apply_event gate.
     vaultMutations: prefs.vaultMutations ?? DEFAULT_PREFERENCES.vaultMutations,
+    // Phase 03-B vault-llm-wiki — user-side parallel-shape only; the
+    // authoritative campaign-side resolution lives in `getCampaignSettings`
+    // via `resolveSourceOfTruth`. Never consulted by snapshot-reader.
+    sourceOfTruth: resolveSourceOfTruth(prefs.sourceOfTruth),
+    // Phase 03-A vault-llm-wiki — user-side parallel-shape only; the
+    // authoritative campaign-side resolution lives in `getCampaignSettings`
+    // via `resolveDualWrite`. Never consulted by the dual-write dispatch.
+    dualWrite: resolveDualWrite(prefs),
+    // Phase 03-B audit — user-side parallel-shape only; always empty on
+    // user rows. The cutover script only writes campaign settings.
+    cutoverAt: prefs.cutoverAt ?? DEFAULT_PREFERENCES.cutoverAt,
   };
 }
 
@@ -435,6 +506,22 @@ export async function getCampaignSettings(
     // of stored value, so flipping vaultMutations on a baked campaign is
     // a no-op until masterBackend is also flipped to 'vault'.
     vaultMutations: resolveVaultMutations(prefs),
+    // Phase 03-B vault-llm-wiki — authoritative campaign resolution
+    // (Decision 4). Defaults to 'postgres' until the operator runs the
+    // cutover script (plan 03-B-02). Read by buildClientSnapshot (plan
+    // 03-B-07) to decide whether to materialize from events.md or from
+    // session_state + characters.
+    sourceOfTruth: resolveSourceOfTruth(prefs.sourceOfTruth),
+    // Phase 03-A vault-llm-wiki — authoritative campaign resolution
+    // (Decision 2). Defaults to false (Phase 02 single-write path). Read
+    // by the turn route (plan 03-A-10) to gate the DualWriter fan-out.
+    // Orthogonal to sourceOfTruth — operator-set per campaign only.
+    dualWrite: resolveDualWrite(prefs),
+    // Phase 03-B audit — ISO timestamp of the most recent flip to 'vault',
+    // set by scripts/vault-cutover.ts (plan 03-B-02). Falls through as the
+    // stored value (empty string when never flipped) — read by the
+    // cutover script's rollback-window check.
+    cutoverAt: prefs.cutoverAt ?? DEFAULT_PREFERENCES.cutoverAt,
   };
 }
 
@@ -631,6 +718,41 @@ export function validateSettingsPatch(
       return { ok: false, error: 'invalid-vaultMutations' };
     } else {
       out.vaultMutations = body.vaultMutations;
+    }
+  }
+  // Phase 03-B vault-llm-wiki — cutover semantics (Decision 4). Shape check
+  // only; the cutover precondition (masterBackend === 'vault' AND
+  // vaultMutations === true) is enforced by scripts/vault-cutover.ts.
+  if ('sourceOfTruth' in body) {
+    if (body.sourceOfTruth === undefined || body.sourceOfTruth === null) {
+      out.sourceOfTruth = undefined;
+    } else if (!isSourceOfTruth(body.sourceOfTruth)) {
+      return { ok: false, error: 'invalid-sourceOfTruth' };
+    } else {
+      out.sourceOfTruth = body.sourceOfTruth;
+    }
+  }
+  // Phase 03-A vault-llm-wiki — boolean dual-write opt-in. Shape check only;
+  // the runtime gate is in `resolveDualWrite`.
+  if ('dualWrite' in body) {
+    if (body.dualWrite === undefined || body.dualWrite === null) {
+      out.dualWrite = undefined;
+    } else if (typeof body.dualWrite !== 'boolean') {
+      return { ok: false, error: 'invalid-dualWrite' };
+    } else {
+      out.dualWrite = body.dualWrite;
+    }
+  }
+  // Phase 03-B audit — ISO timestamp set by scripts/vault-cutover.ts. The
+  // validator rejects non-ISO strings so the cutover script gets a clean
+  // input contract. Date.parse handles the full ISO-8601 set.
+  if ('cutoverAt' in body) {
+    if (body.cutoverAt === undefined || body.cutoverAt === null) {
+      out.cutoverAt = undefined;
+    } else if (typeof body.cutoverAt !== 'string' || isNaN(Date.parse(body.cutoverAt))) {
+      return { ok: false, error: 'invalid-cutoverAt' };
+    } else {
+      out.cutoverAt = body.cutoverAt;
     }
   }
   return { ok: true, patch: out };

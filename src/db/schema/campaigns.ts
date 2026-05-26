@@ -93,6 +93,48 @@ export interface CampaignSettings {
    * dir under VAULT_CAMPAIGNS_ROOT).
    */
   vaultMutations?: boolean;
+  /**
+   * Phase 03-B vault-llm-wiki — cutover semantics (Decision 4). Selects
+   * which store is the SOURCE OF TRUTH for snapshot reads.
+   *  - 'postgres' (default) → buildClientSnapshot reads session_state + characters
+   *  - 'vault'              → buildClientSnapshot materializes from events.md replay
+   *
+   * Preconditions (enforced by scripts/vault-cutover.ts, NOT the resolver):
+   *   - masterBackend === 'vault'
+   *   - vaultMutations === true
+   *
+   * State machine (Phase 03):
+   *   Pre-migration:    sourceOfTruth=postgres, dualWrite=false
+   *   03-A migration:   sourceOfTruth=postgres, dualWrite=true  (writes converge)
+   *   03-B cutover:     sourceOfTruth=vault,    dualWrite=true  (reads pivot)
+   *   Post-rollback:    sourceOfTruth=vault,    dualWrite=false (Phase 04)
+   *
+   * Consumed by plan 03-B-07 snapshot read pivot via resolveSourceOfTruth
+   * (`src/lib/preferences.ts`). Flipped by plan 03-B-02 cutover script.
+   */
+  sourceOfTruth?: 'postgres' | 'vault';
+  /**
+   * Phase 03-A vault-llm-wiki — dual-write coexistence (Decision 2). When
+   * true, every apply_event tool call writes to BOTH events.md AND the
+   * Postgres engine state, then runs a synchronous parity-check. Used
+   * during the coexistence window to validate convergence before cutover.
+   *
+   * Orthogonal to sourceOfTruth — can be true with either value:
+   *  - sourceOfTruth=postgres, dualWrite=true → writes converge, reads stay PG
+   *  - sourceOfTruth=vault,    dualWrite=true → writes converge, reads from vault (rollback safety net)
+   *
+   * Defaults to false (Phase 02 single-write path). Consumed by plan
+   * 03-A-10 dual-write dispatch gate via resolveDualWrite
+   * (`src/lib/preferences.ts`).
+   */
+  dualWrite?: boolean;
+  /**
+   * Phase 03-B audit — ISO timestamp of the most recent sourceOfTruth flip
+   * to 'vault'. Used by scripts/vault-cutover.ts (plan 03-B-02) to enforce
+   * the CUTOVER_ROLLBACK_HOURS reversibility window. Read-only outside the
+   * cutover script.
+   */
+  cutoverAt?: string;
 }
 
 export const campaigns = pgTable(

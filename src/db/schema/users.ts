@@ -111,6 +111,33 @@ export interface UserPreferences {
    * Never read directly by code; the campaign field is authoritative.
    */
   vaultMutations?: boolean;
+  /**
+   * Phase 03-B vault-llm-wiki — parallel-shape with `CampaignSettings.sourceOfTruth`.
+   * Mirrors the masterBackend / vaultMutations pattern: this field exists on
+   * UserPreferences purely for type compatibility with
+   * `getSessionMasterPreferences` / `getResolvedPreferences` (both return
+   * `Required<UserPreferences>`) — resolution is campaign-only by design
+   * (Decision 4 in 03-RESEARCH.md). Never read directly by code; the
+   * campaign field is authoritative.
+   */
+  sourceOfTruth?: 'postgres' | 'vault';
+  /**
+   * Phase 03-A vault-llm-wiki — parallel-shape with `CampaignSettings.dualWrite`.
+   * Mirrors the masterBackend / vaultMutations pattern: this field exists on
+   * UserPreferences purely for type compatibility with
+   * `getSessionMasterPreferences` / `getResolvedPreferences` (both return
+   * `Required<UserPreferences>`) — resolution is campaign-only by design
+   * (Decision 2 in 03-RESEARCH.md). Never read directly by code; the
+   * campaign field is authoritative.
+   */
+  dualWrite?: boolean;
+  /**
+   * Phase 03-B vault-llm-wiki — parallel-shape with `CampaignSettings.cutoverAt`.
+   * ISO timestamp set by the cutover script (plan 03-B-02). Exists on
+   * UserPreferences purely for type compatibility with
+   * `Required<UserPreferences>`. Never set on user rows.
+   */
+  cutoverAt?: string;
 }
 
 export type MasterGuidanceLevel = NonNullable<UserPreferences['masterGuidanceLevel']>;
