@@ -54,16 +54,55 @@ export interface VaultLoopInput {
    * and continue working.
    */
   campaignId?: string;
+  /**
+   * Phase 03-A — when `true`, every `apply_event` tool call fans out
+   * through `dualWriteApplyEvent` (parallel vault + Postgres write +
+   * parity-check). Forwarded into `dispatchVaultTool` as `ctx.dualWrite`.
+   * Resolved by the turn-route from `campaign.settings.dualWrite` via
+   * `resolveDualWrite` (plan 03-B-01). Default false (Phase 02 single-write).
+   */
+  dualWrite?: boolean;
   /** Telemetry sink — receives every `provider.completeMessage` usage. */
   recordUsage?: (u: NormalizedUsage) => Promise<void>;
   /** SSE event sink — fires per `narrative_delta`, `tool_use_*`, etc. */
   onEvent?: (e: TurnEvent) => void;
+  /**
+   * Phase 03-A — sessionId is now a dual-purpose field:
+   *  1. Telemetry / language detection plumbing (Phase 01/02 use).
+   *  2. Forwarded into `dispatchVaultTool` as `ctx.sessionId` so the
+   *     dual-write dispatcher can address the Postgres parity-check target
+   *     (`session_state` is keyed on sessionId, NOT campaignId).
+   */
   sessionId?: string;
   campaignLanguage?: string;
   /** Test override; production omits and uses `VAULT_TURN_TOOL_CALL_CAP`. */
   toolCallCap?: number;
   /** Test override; production omits and uses `TURN_TIMEOUT_MS`. */
   turnTimeoutMs?: number;
+}
+
+/**
+ * Phase 03-A — pull the character UUID out of an `apply_event` tool input
+ * for forwarding into the dispatch context's `characterId` field. Returns
+ * `null` for any tool other than `apply_event`, and for `apply_event` with
+ * an absent/malformed `payload.character` (the dispatcher's NIT 1 guard
+ * will then ERROR the call inside `dispatchVaultTool` — the loop does not
+ * need to pre-validate).
+ *
+ * For `apply_event` with the `campaign_initialized` seed type, the payload
+ * carries `characters[]` instead of `character` — returns null so the
+ * dispatcher's dual-writer skips the parity-check (which is per-character).
+ */
+function extractCharacterIdFromToolInput(
+  name: string,
+  input: Record<string, unknown>,
+): string | null {
+  if (name !== 'apply_event') return null;
+  const payload = input.payload;
+  if (typeof payload !== 'object' || payload === null) return null;
+  const character = (payload as { character?: unknown }).character;
+  if (typeof character !== 'string' || character.length === 0) return null;
+  return character;
 }
 
 export interface VaultLoopResult {
@@ -82,6 +121,7 @@ export async function runVaultToolLoop(input: VaultLoopInput): Promise<VaultLoop
     history,
     vaultRoot,
     campaignId,
+    dualWrite,
     recordUsage,
     onEvent,
     sessionId,
@@ -148,7 +188,16 @@ export async function runVaultToolLoop(input: VaultLoopInput): Promise<VaultLoop
     // Terminator 2 — end_turn tool call (REQ-013 / REQ-010).
     const endTurnCall = toolUses.find((t) => t.name === 'end_turn');
     if (endTurnCall) {
-      const result = await dispatchVaultTool('end_turn', endTurnCall.input, { vaultRoot, campaignId });
+      // end_turn does not consult dualWrite / sessionId / characterId in the
+      // dispatcher, but we forward them for consistency so a future tool
+      // that wants per-call audit metadata has them available.
+      const result = await dispatchVaultTool('end_turn', endTurnCall.input, {
+        vaultRoot,
+        campaignId,
+        dualWrite,
+        sessionId,
+        characterId: extractCharacterIdFromToolInput('end_turn', endTurnCall.input),
+      });
       finalText = result.endTurnResponse ?? finalText;
       emit({
         type: 'tool_use_start',
@@ -195,7 +244,18 @@ export async function runVaultToolLoop(input: VaultLoopInput): Promise<VaultLoop
     for (const tu of toolUses) {
       toolCallCount += 1;
       emit({ type: 'tool_use_start', toolUseId: tu.id, name: tu.name, input: tu.input });
-      const result = await dispatchVaultTool(tu.name, tu.input, { vaultRoot, campaignId });
+      // Phase 03-A — extract the per-event character UUID at dispatch time
+      // and forward dualWrite + sessionId so the apply_event branch can
+      // decide whether to fan-out. Tools other than apply_event are
+      // unaffected (the dispatcher only consults these fields inside the
+      // apply_event branch).
+      const result = await dispatchVaultTool(tu.name, tu.input, {
+        vaultRoot,
+        campaignId,
+        dualWrite,
+        sessionId,
+        characterId: extractCharacterIdFromToolInput(tu.name, tu.input),
+      });
       emit({
         type: 'tool_use_end',
         toolUseId: tu.id,

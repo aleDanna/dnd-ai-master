@@ -25,7 +25,7 @@ import { buildToolDefinitions } from '@/engine';
 import { getProviderByName } from '@/ai/provider';
 import { recordUsage } from '@/ai/master/usage';
 import { checkQuotas } from '@/ai/master/quotas';
-import { getSessionMasterPreferences, resolveMasterBackend, resolveVaultMutations, type MasterBackend } from '@/lib/preferences';
+import { getSessionMasterPreferences, resolveMasterBackend, resolveVaultMutations, resolveDualWrite, type MasterBackend } from '@/lib/preferences';
 import { runVaultToolLoop } from '@/ai/master/vault/loop';
 import { buildVaultSystemPrompt } from '@/ai/master/vault/prompt-builder';
 import { VAULT_TOOL_DEFINITIONS } from '@/ai/master/vault/tools';
@@ -279,8 +279,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // builder (toolCount + apply_event mention) and the loop input
           // (conditional campaignId forwarding).
           const vaultMutationsEnabled = resolveVaultMutations(userPrefs);
+          // Phase 03-A dual-write coexistence gate — operator-set per campaign
+          // via campaign.settings.dualWrite. Orthogonal to vaultMutations in
+          // theory (resolveDualWrite has no env override and doesn't gate on
+          // masterBackend), but semantically meaningful ONLY when
+          // vaultMutationsEnabled is true: without mutations, apply_event is
+          // never invoked and the dispatcher dualWrite branch is never
+          // reached. We gate on BOTH so the dispatcher sees the consistent
+          // (vaultMutations true ⇒ apply_event reachable ⇒ dual-write
+          // potentially active) coupling at the route boundary.
+          const dualWriteEnabled = vaultMutationsEnabled && resolveDualWrite(userPrefs);
           // eslint-disable-next-line no-console
-          console.log('[turn]', sessionId, 'vault path: vaultMutations=', vaultMutationsEnabled);
+          console.log('[turn]', sessionId, 'vault path: vaultMutations=', vaultMutationsEnabled, 'dualWrite=', dualWriteEnabled);
 
           // 4v. Build minimal system prompt — no SRD, no handbook, no world lore,
           // no scene card, no codex, no ROLL_TRIGGERS, no REWARDS_MANDATE,
@@ -346,6 +356,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             // isError on any LLM hallucination, preserving Phase 01 read-only
             // semantics for non-opted-in vault campaigns.
             ...(vaultMutationsEnabled && { campaignId: campaign.id }),
+            // Phase 03-A — forward the dual-write flag only when the coupled
+            // (vaultMutations && dualWrite) gate is true. The dispatcher then
+            // routes apply_event through dualWriteApplyEvent (parallel vault +
+            // Postgres + parity-check); otherwise the dispatcher preserves
+            // Phase 02 single-write semantics.
+            ...(dualWriteEnabled && { dualWrite: true }),
             recordUsage: async (usage) => {
               await recordUsage({
                 userId,
