@@ -136,6 +136,39 @@ export interface VaultDispatchContext {
    * supply this).
    */
   campaignId?: string;
+  /**
+   * Phase 03-A — when `true`, the apply_event dispatcher fans the write out
+   * via `dualWriteApplyEvent` (parallel write to vault + Postgres + sync
+   * parity-check + fire-and-forget divergence record). When `false`/absent
+   * (default), Phase 02 single-write behavior is preserved (vault-only).
+   *
+   * Resolved server-side from `campaign.settings.dualWrite` via
+   * `resolveDualWrite` (plan 03-B-01). NEVER LLM-supplied — the LLM has no
+   * visibility into the flag; the toggle is operator-only via the campaign
+   * settings JSONB. Plan 03-A-10 forwards this through `VaultLoopInput`.
+   */
+  dualWrite?: boolean;
+  /**
+   * Phase 03-A — sessionId for the parity-check audit context. REQUIRED
+   * when `dualWrite === true` (the audit row in `dual_write_divergences`
+   * references the session FK; parityCheck reads `session_state` keyed on
+   * sessionId). Defensive fallthrough: when `dualWrite === true` but
+   * `sessionId` is absent, the dispatcher falls back to Phase 02
+   * single-write (the gate fails closed, no fan-out attempted).
+   *
+   * Server-side from the validated Clerk session row — never LLM-supplied.
+   */
+  sessionId?: string;
+  /**
+   * Phase 03-A — character UUID for the parity-check target. The
+   * dispatcher extracts this from the validated event payload at
+   * dispatch time (`payload.character` is the UUID the LLM provides;
+   * NIT 1 already enforces UUID shape). Pass `null` for events that
+   * don't target a single character (e.g., a hypothetical session-level
+   * event — none exist today). When null, `dualWriteApplyEvent` skips
+   * the parity-check and returns `{ divergence: false }`.
+   */
+  characterId?: string | null;
 }
 
 export interface VaultDispatchResult {
@@ -268,6 +301,71 @@ export async function dispatchVaultTool(
       timestamp: new Date().toISOString(),
     };
 
+    // Phase 03-A — dual-write gate. When the campaign opted into dual-write
+    // (operator-set via campaign.settings.dualWrite; resolved by the route
+    // and forwarded through VaultDispatchContext), fan the write out via
+    // `dualWriteApplyEvent`: parallel vault append + Postgres mutation,
+    // synchronous parity-check, fire-and-forget divergence record. The
+    // sessionId guard is belt-and-suspenders — without sessionId the parity-
+    // check cannot key its DB lookup, so we fail closed back to the Phase 02
+    // path rather than attempt a half-configured dual-write.
+    if (ctx.dualWrite === true && typeof ctx.sessionId === 'string' && ctx.sessionId.length > 0) {
+      // Dynamic import so the Phase 01/02 read-only path doesn't pay the
+      // module-load cost for the Postgres dual-writer (which transitively
+      // pulls in drizzle + the DB client). Keeps the test fixture surface
+      // for read-only vault tests minimal.
+      const { dualWriteApplyEvent } = await import('@/sessions/dual-writer');
+      const { invokeEnginePathwayFromEvent } = await import('@/sessions/event-to-engine-mutation');
+
+      // Extract the character UUID from the event payload. NIT 1 already
+      // narrowed this to a UUID string for every non-campaign_initialized
+      // event. campaign_initialized has no character payload — pass null
+      // and dualWriteApplyEvent skips the parity-check.
+      const characterId: string | null = ctx.characterId
+        ?? (guarded.value.type === 'campaign_initialized'
+          ? null
+          : (guarded.value.payload as { character: string }).character);
+
+      // The Postgres-leg callback. dualWriteApplyEvent dispatches this in
+      // parallel with the vault append via Promise.all — failures of
+      // EITHER leg reject and propagate as `isError: true` to the LLM.
+      const applyEngineMutation = async (): Promise<void> => {
+        await invokeEnginePathwayFromEvent(envelope, ctx.sessionId!, characterId);
+      };
+
+      try {
+        const result = await dualWriteApplyEvent(
+          envelope,
+          applyEngineMutation,
+          {
+            campaignId: ctx.campaignId,
+            sessionId: ctx.sessionId,
+            characterId,
+          },
+        );
+        return {
+          // Carry the divergence reason back to the LLM in the success
+          // envelope (only when divergence detected). The LLM does NOT
+          // self-remediate — the field is informational so a curious
+          // model can mention the issue in narration if it chooses; the
+          // operator-side audit row in dual_write_divergences is the
+          // authoritative record.
+          content: JSON.stringify({
+            ok: true,
+            event_id: envelope.id,
+            ...(result.divergence && result.reason ? { divergence: result.reason } : {}),
+          }),
+          isError: false,
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { content: `ERROR: apply_event dual-write failed: ${message}`, isError: true };
+      }
+    }
+
+    // Phase 02 single-write path — preserved verbatim for non-dual-write
+    // campaigns (and as the fail-closed fallback when dualWrite is true
+    // but sessionId is absent — see the gate above).
     try {
       // Persist (mutex-serialized — spike 010 pattern).
       await EventsWriter.applyEvent(eventsPath(ctx.campaignId), envelope);
