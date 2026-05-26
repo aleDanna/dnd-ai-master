@@ -48,6 +48,21 @@ export const sessionState = pgTable('session_state', {
    * travel context.
    */
   travel: jsonb('travel').$type<TravelState | null>().default(null),
+  /**
+   * Phase 03-B vault-llm-wiki — persisted per-turn summarization block
+   * (REQ-023). When the cumulative prompt exceeds the summarizer trigger,
+   * maybeCondense generates a ~200-word summary of the older turns and
+   * stores it here as `summaryBlock`. On Next.js restart, the loop reads
+   * this block and skips re-summarization unless the threshold is crossed
+   * AGAIN with new turns.
+   *
+   * Shape: {text: string; generatedAt: ISO timestamp; tokensBefore: int}
+   * (extensible — Phase 04+ may add summaryModel, condensedFromTurns).
+   *
+   * Default: null (no summarization yet for this session). Backward-compat
+   * with rows created before Phase 03.
+   */
+  summaryBlock: jsonb('summary_block').$type<{ text: string; generatedAt: string; tokensBefore: number } | null>().default(null),
 });
 
 export type SessionState = typeof sessionState.$inferSelect;
