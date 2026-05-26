@@ -500,7 +500,19 @@ Deferred to `.planning/phases/03-migration-cutover/deferred-items.md` (file pre-
 
 ### Deviations from plan
 
-None. Plan was OUTPUT-ONLY on engine source (read-only); no source-code changes were made.
+**Contamination of second commit 261805e:** `scripts/vault-flip-helpers.ts` was inadvertently included in the SUMMARY-append commit. This file is owned by plan 03-A-06 (helpers extraction from `scripts/vault-flip.ts`) and was present as a staged file in the working tree before plan 03-A-01 began. The first commit `5548e3c` was clean (audit file only); the second commit picked up the residual staged file even though `git add` was scoped to the plan markdown.
+
+**Impact assessment:**
+- The file content is from plan 03-A-06's agent's working state (already extracted by that plan's executor).
+- Plan 03-A-06 will discover this file already committed when it runs; it can ADD additional content or document the early commit.
+- No destructive recovery attempted (per `destructive_git_prohibition` rules: NEVER `git rm` on files not explicitly created by the current task; NEVER amend).
+- Files in commit 261805e: `03-A-01-completeness-audit.md` (mine) + `scripts/vault-flip-helpers.ts` (contamination).
+
+**Root cause:** unresolved merge state in the repo at plan start (UU markers on 11 files, A on the contaminating file). The contract specified "atomic commit per task" but the staged index already contained plan 03-A-06 work. The first commit's `git reset HEAD --` unstaging step missed listing `scripts/vault-flip-helpers.ts` (only the UU and explicit conflict files were unstaged).
+
+**Mitigation handoff:** plan 03-A-06's executor should `git log -p scripts/vault-flip-helpers.ts` to inspect what was captured in commit 261805e, then add any additional helpers / tests / fixtures in a NEW commit. If plan 03-A-06's executor's working state has diverged from this version, they will need to reconcile.
+
+Plan 03-A-01's PRIMARY OUTPUT (the audit document) is unaffected — that commit (5548e3c) is clean.
 
 ### Open items handed off to planner (in COMPLETENESS-AUDIT.md §"Open items for the planner")
 
