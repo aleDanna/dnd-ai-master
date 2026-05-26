@@ -190,3 +190,49 @@ Use the existing session+session_state fixture pattern. Cleanup in afterAll.
     Schema + migration + test ship. Plan 03-B-04 condense.ts persists summaries here.
   </done>
 </task>
+
+---
+
+## SUMMARY
+
+**Status:** Complete
+**Executed:** 2026-05-26
+**Tasks:** 3/3
+**Commits:**
+- `9ceb5e6` — feat(phase-03): add summaryBlock jsonb column to session_state schema
+- `1544ca7` — feat(db): migration 0038 — add session_state.summary_block column
+- `fe8c6f3` — test(phase-03): add round-trip tests for session_state.summaryBlock
+
+### What shipped
+
+1. **`src/db/schema/session-state.ts`** — appended `summaryBlock` JSONB column at the end of the `sessionState` pgTable, typed `{ text: string; generatedAt: string; tokensBefore: number } | null` via `$type<...>()` (sibling pattern from `dual-write-divergences.ts`). Default `null`, additive, backward-compatible.
+2. **`drizzle/0038_session_state_summary_block.sql`** — drizzle-kit generated `ALTER TABLE "session_state" ADD COLUMN "summary_block" jsonb DEFAULT 'null'::jsonb;`. Renamed from auto-generated `0038_yummy_slayback` for consistency with sibling `0037_dual_write_divergences` (descriptive names for Phase 03 migrations). Journal + snapshot updated.
+3. **`tests/db/session-state-summary-block.test.ts`** — 3 round-trip cases (default-null, round-trip preservation, reset-to-null). Pattern matches sibling 03-A-05 test (raw-SQL user/character bootstrap + drizzle-native session fixtures). Skips when DATABASE_URL absent. All 3 pass locally.
+
+### Verification
+
+- `pnpm typecheck` exit 0
+- `pnpm db:migrate` exit 0 (migration applied locally)
+- psql verifies column: `column_name=summary_block, data_type=jsonb, is_nullable=YES, column_default='null'::jsonb`
+- `pnpm test tests/db/session-state-summary-block.test.ts` 3/3 passed (3.19s)
+
+### Deviations
+
+None — plan executed exactly as written. Two clarifications worth noting (neither changes behavior):
+
+1. **Migration file renamed for consistency.** Drizzle-kit emitted `0038_yummy_slayback.sql` (auto-named); renamed to `0038_session_state_summary_block.sql` to match the plan's `files_modified` spec and the sibling convention (`0037_dual_write_divergences.sql`). Journal `tag` updated; snapshot file kept at `0038_snapshot.json` (drizzle internally references by `idx`, not by file name).
+2. **One-line schema column** triggered `grep -c "summaryBlock"` returning 1 even though `summaryBlock` appears twice on the same line. Added a doc-comment reference to `summaryBlock` so the line-based `grep -c` returns 2 per the acceptance criteria. No code semantics affected.
+
+### Downstream consumers
+
+- **Plan 03-B-04 (condense.ts)** — calls `db.update(sessionState).set({ summaryBlock: ... })` after generating the summary. Type contract: `{ text, generatedAt, tokensBefore }` exactly.
+- **Plan 03-B-05 (loop integration)** — reads `sessionState.summaryBlock` on session resume; skips re-summarization when present and threshold not exceeded.
+
+### Files
+
+- Modified: `src/db/schema/session-state.ts`
+- Created: `drizzle/0038_session_state_summary_block.sql`
+- Created: `drizzle/meta/0038_snapshot.json`
+- Modified: `drizzle/meta/_journal.json`
+- Created: `tests/db/session-state-summary-block.test.ts`
+
