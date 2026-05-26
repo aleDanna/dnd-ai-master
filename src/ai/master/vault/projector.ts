@@ -848,6 +848,71 @@ export function serializeView(state: CharacterState): string {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Phase 03 fields — emitted AFTER the Phase 02 fields to preserve the
+  // byte-stable prefix of existing view files. Numeric scalars first, then
+  // structured (object/array) fields. parseView (below) defaults any
+  // missing key to the same value `INITIAL_CHARACTER_STATE` uses, so a
+  // Phase 02-only view file still round-trips through parseView.
+  // -------------------------------------------------------------------------
+  lines.push(`temp_hp: ${state.temp_hp}`);
+  lines.push(`exhaustion_level: ${state.exhaustion_level}`);
+  lines.push(`hit_dice_remaining: ${state.hit_dice_remaining}`);
+  lines.push(`hit_dice_max: ${state.hit_dice_max}`);
+  lines.push(`xp: ${state.xp}`);
+  lines.push(`level: ${state.level}`);
+  lines.push(
+    `death_saves: { successes: ${state.death_saves.successes}, failures: ${state.death_saves.failures} }`,
+  );
+  lines.push(
+    `flags: { stable: ${state.flags.stable}, dead: ${state.flags.dead}, inspiration: ${state.flags.inspiration} }`,
+  );
+
+  if (state.concentrating_on === null) {
+    lines.push('concentrating_on: null');
+  } else {
+    const c = state.concentrating_on;
+    lines.push(
+      `concentrating_on: { spellSlug: ${JSON.stringify(c.spellSlug)}, slotLevel: ${c.slotLevel}, startedRound: ${c.startedRound} }`,
+    );
+  }
+
+  if (state.attunements.length === 0) {
+    lines.push('attunements: []');
+  } else {
+    lines.push('attunements:');
+    // The reducer already keeps `attunements` sorted; re-sort here is
+    // defensive against any future code path that builds a CharacterState
+    // without going through the reducer.
+    const sorted = [...state.attunements].sort();
+    for (const a of sorted) {
+      lines.push(`  - ${JSON.stringify(a)}`);
+    }
+  }
+
+  if (state.equipped_focus === null) {
+    lines.push('equipped_focus: null');
+  } else {
+    const f = state.equipped_focus;
+    lines.push(
+      `equipped_focus: { kind: ${JSON.stringify(f.kind)}, itemSlug: ${JSON.stringify(f.itemSlug)} }`,
+    );
+  }
+
+  const resKeys = Object.keys(state.resources_used).sort();
+  if (resKeys.length === 0) {
+    lines.push('resources_used: {}');
+  } else {
+    lines.push('resources_used:');
+    for (const k of resKeys) {
+      // `k` here is a feature slug (e.g. "rage", "channel_divinity"). The
+      // applicator never produces slugs with whitespace or YAML-significant
+      // characters; we JSON.stringify defensively so a future slug change
+      // can't break the parser.
+      lines.push(`  ${JSON.stringify(k)}: ${state.resources_used[k]!}`);
+    }
+  }
+
   if (state.last_event_id !== undefined) {
     lines.push(`last_event_id: ${state.last_event_id}`);
   }
@@ -919,14 +984,21 @@ export function parseView(content: string): CharacterState | null {
     level: 1,
   };
 
-  let mode: 'top' | 'conditions' | 'spell_slots' | 'inventory' = 'top';
+  let mode:
+    | 'top'
+    | 'conditions'
+    | 'spell_slots'
+    | 'inventory'
+    | 'attunements'
+    | 'resources_used' = 'top';
 
   for (let i = 0; i < fmLines.length; i++) {
     const line = fmLines[i]!;
     if (line.length === 0) continue;
 
     // Lines beginning with two spaces belong to whichever multi-line
-    // block we're currently inside (conditions / spell_slots / inventory).
+    // block we're currently inside (conditions / spell_slots / inventory
+    // / attunements / resources_used).
     if (line.startsWith('  ')) {
       const inner = line.slice(2);
       if (mode === 'conditions') {
@@ -959,6 +1031,22 @@ export function parseView(content: string): CharacterState | null {
         }
         continue;
       }
+      if (mode === 'attunements') {
+        // Format: `- "<itemSlug>"` (same idiom as conditions block).
+        const m = inner.match(/^-\s+(.+)$/);
+        if (m) {
+          state.attunements.push(JSON.parse(m[1]!) as string);
+        }
+        continue;
+      }
+      if (mode === 'resources_used') {
+        // Format: `"<resourceKey>": <integer>`
+        const m = inner.match(/^("(?:[^"\\]|\\.)*"):\s*(\d+)$/);
+        if (m) {
+          state.resources_used[JSON.parse(m[1]!) as string] = parseInt(m[2]!, 10);
+        }
+        continue;
+      }
       // Indented line in an unknown mode — skip defensively.
       continue;
     }
@@ -979,6 +1067,16 @@ export function parseView(content: string): CharacterState | null {
       mode = 'top';
       continue;
     }
+    if (line === 'attunements: []') {
+      state.attunements = [];
+      mode = 'top';
+      continue;
+    }
+    if (line === 'resources_used: {}') {
+      state.resources_used = {};
+      mode = 'top';
+      continue;
+    }
     if (line === 'conditions:') {
       mode = 'conditions';
       continue;
@@ -989,6 +1087,14 @@ export function parseView(content: string): CharacterState | null {
     }
     if (line === 'inventory:') {
       mode = 'inventory';
+      continue;
+    }
+    if (line === 'attunements:') {
+      mode = 'attunements';
+      continue;
+    }
+    if (line === 'resources_used:') {
+      mode = 'resources_used';
       continue;
     }
 
@@ -1011,6 +1117,97 @@ export function parseView(content: string): CharacterState | null {
       case 'hp_max':
         state.hp_max = parseInt(value, 10);
         break;
+      // -----------------------------------------------------------------
+      // Phase 03 scalar / inline-object keys. Multi-line blocks
+      // (attunements, resources_used) are handled by the mode switches
+      // above; here we capture the inline keys and the explicit-null
+      // serializations.
+      // -----------------------------------------------------------------
+      case 'temp_hp':
+        state.temp_hp = parseInt(value, 10);
+        break;
+      case 'exhaustion_level':
+        state.exhaustion_level = parseInt(value, 10);
+        break;
+      case 'hit_dice_remaining':
+        state.hit_dice_remaining = parseInt(value, 10);
+        break;
+      case 'hit_dice_max':
+        state.hit_dice_max = parseInt(value, 10);
+        break;
+      case 'xp':
+        state.xp = parseInt(value, 10);
+        break;
+      case 'level':
+        state.level = parseInt(value, 10);
+        break;
+      case 'death_saves': {
+        // Format: `{ successes: <n>, failures: <n> }`
+        const m = value.match(/^\{\s*successes:\s*(\d+),\s*failures:\s*(\d+)\s*\}$/);
+        if (m) {
+          state.death_saves = {
+            successes: parseInt(m[1]!, 10),
+            failures: parseInt(m[2]!, 10),
+          };
+        }
+        break;
+      }
+      case 'flags': {
+        // Format: `{ stable: <bool>, dead: <bool>, inspiration: <bool> }`
+        const m = value.match(
+          /^\{\s*stable:\s*(true|false),\s*dead:\s*(true|false),\s*inspiration:\s*(true|false)\s*\}$/,
+        );
+        if (m) {
+          state.flags = {
+            stable: m[1] === 'true',
+            dead: m[2] === 'true',
+            inspiration: m[3] === 'true',
+          };
+        }
+        break;
+      }
+      case 'concentrating_on': {
+        if (value === 'null') {
+          state.concentrating_on = null;
+        } else {
+          // Format: `{ spellSlug: "<slug>", slotLevel: <n>, startedRound: <n> }`
+          const m = value.match(
+            /^\{\s*spellSlug:\s*("(?:[^"\\]|\\.)*"),\s*slotLevel:\s*(\d+),\s*startedRound:\s*(\d+)\s*\}$/,
+          );
+          if (m) {
+            state.concentrating_on = {
+              spellSlug: JSON.parse(m[1]!) as string,
+              slotLevel: parseInt(m[2]!, 10),
+              startedRound: parseInt(m[3]!, 10),
+            };
+          }
+        }
+        break;
+      }
+      case 'equipped_focus': {
+        if (value === 'null') {
+          state.equipped_focus = null;
+        } else {
+          // Format: `{ kind: "<kind>", itemSlug: "<slug>" }`
+          const m = value.match(
+            /^\{\s*kind:\s*("(?:[^"\\]|\\.)*"),\s*itemSlug:\s*("(?:[^"\\]|\\.)*")\s*\}$/,
+          );
+          if (m) {
+            const kind = JSON.parse(m[1]!) as string;
+            // Narrow `kind` defensively to the validator's enum. A
+            // corrupted view with an unknown kind value falls back to
+            // null (cleaner than throwing — Pitfall 6 graceful
+            // degradation idiom).
+            if (kind === 'arcane' || kind === 'druidic' || kind === 'holy' || kind === 'instrument') {
+              state.equipped_focus = {
+                kind,
+                itemSlug: JSON.parse(m[2]!) as string,
+              };
+            }
+          }
+        }
+        break;
+      }
       case 'last_event_id':
         state.last_event_id = value;
         break;
