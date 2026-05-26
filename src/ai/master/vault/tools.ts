@@ -19,6 +19,28 @@ import { eventsPath, UUID_REGEX } from './campaign-paths';
  * already translates this to Ollama's `{type:'function', function:{...}}`
  * envelope — reusing the existing shape means the vault path inherits the
  * provider plumbing for free.
+ *
+ * Phase 03 extension — Decision 10 (Completeness Audit):
+ *   The `apply_event` tool description (this module) and the
+ *   `VAULT_EVENT_TYPES` union (events-schema.ts) were extended in plan
+ *   03-A-04 / 03-A-02 to cover the 20 additional event types enumerated
+ *   in `.planning/phases/03-migration-cutover/COMPLETENESS-AUDIT.md`
+ *   §"(c) Final list". The dispatcher itself does NOT need code changes —
+ *   `validateEvent` (extended in plan 03-A-02) absorbs the new union
+ *   members transparently, and the NIT 1 UUID guard below already applies
+ *   to every non-`campaign_initialized` event (see comment block on the
+ *   `apply_event` branch). The tool surface count stays at 4 (REQ-010
+ *   unchanged).
+ *
+ *   Prompt-size tradeoff (plan 03-A-04 NIT 8): the Phase 03 description
+ *   adds ~1.2KB of payload-shape hints to every turn's system-prompt
+ *   tool surface. If `prompt_eval_count` becomes a bottleneck for local
+ *   inference, future work can extract the per-type table into a
+ *   one-time vault doc (`/tools/index.md`) referenced from a terse tool
+ *   description. For Phase 03 the explicit-in-description form is
+ *   retained — it puts the payload contract in front of the LLM on
+ *   every turn, matching the spike 009 "explicit beats implicit"
+ *   principle.
  */
 export const VAULT_TOOL_DEFINITIONS: ToolDef[] = [
   {
@@ -64,19 +86,19 @@ export const VAULT_TOOL_DEFINITIONS: ToolDef[] = [
   {
     name: 'apply_event',
     description:
-      'Append a game-state mutation event (HP change, condition add, slot use, inventory change, etc.). Returns the new event_id on success. One event per call; do not batch.',
+      'Append a game-state mutation event (HP, conditions, slots, inventory, temp HP, death saves, concentration, exhaustion, hit dice, resources, inspiration, attunement, focus, XP). Returns {ok, event_id} on success. One event per call; do not batch.',
     input_schema: {
       type: 'object',
       properties: {
         type: {
           type: 'string',
           description:
-            'Event type. One of: hp_change, condition_add, condition_remove, spell_slot_use, spell_slot_restore, inventory_add, inventory_remove.',
+            'Event type. One of: hp_change, condition_add, condition_remove, spell_slot_use, spell_slot_restore, inventory_add, inventory_remove, temp_hp_set, death_save_success, death_save_fail, death_save_stabilize, death_save_recover_at_one, concentration_set, concentration_break, exhaustion_increment, exhaustion_decrement, hit_dice_use, hit_dice_restore, resource_use, resource_restore, inspiration_grant, inspiration_spend, attune, unattune, focus_set, focus_unset, xp_award.',
         },
         payload: {
           type: 'object',
           description:
-            'Event-specific data. The `character` field is the character UUID (the value of `id` in the materialized view frontmatter — NOT the character name; names are not unique across campaigns). For hp_change: {character: <uuid>, delta: number}. For condition_add/remove: {character: <uuid>, condition: string}. For spell_slot_use/restore: {character: <uuid>, level: number (1-9)}. For inventory_add/remove: {character: <uuid>, item: string, qty: positive integer < 1000}.',
+            'Event-specific data. The `character` field is the character UUID (the value of `id` in the materialized view frontmatter — NOT the character name; names are not unique across campaigns). Per-type shapes — Phase 02: hp_change {character, delta:number}; condition_add/remove {character, condition:string}; spell_slot_use/restore {character, level:1-9}; inventory_add/remove {character, item:string, qty:1-999}. Phase 03: temp_hp_set {character, tempHp:0-999}; death_save_success/stabilize/recover_at_one {character}; death_save_fail {character, critical?:boolean}; concentration_set {character, spellSlug:string, slotLevel:0-9, startedRound:int>=0}; concentration_break {character, reason:"damage"|"killed"|"incapacitated"}; exhaustion_increment {character, source:string}; exhaustion_decrement {character}; hit_dice_use/restore {character, count:1-20}; resource_use/restore {character, resourceKey:string, uses:1-50}; inspiration_grant/spend {character}; attune/unattune {character, itemSlug:string<=64}; focus_set {character, kind:"arcane"|"druidic"|"holy"|"instrument", itemSlug:string}; focus_unset {character}; xp_award {character, amount:1-999999, reason?:string<=256}.',
         },
       },
       required: ['type', 'payload'],
