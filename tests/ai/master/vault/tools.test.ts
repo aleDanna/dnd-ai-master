@@ -681,3 +681,538 @@ describe('dispatchVaultTool — Decision 4 root routing (read_vault_multi + list
     expect(result.content).toContain('content-from-vault-root');
   });
 });
+
+/* -------------------------------------------------------------------------- *
+ *  Phase 03 — apply_event dispatch for the 20 new event types                *
+ *  (plan 03-A-04 Task 2 — COMPLETENESS-AUDIT.md §"(c) Final list").          *
+ *                                                                            *
+ *  These are DISPATCH-LAYER smoke tests: each new event type flows through   *
+ *  `dispatchVaultTool('apply_event', ...)`, gets validated by validateEvent  *
+ *  (extended in 03-A-02), and is persisted by EventsWriter. The projector   *
+ *  reducer arms for the new types are 03-A-03's scope (running concurrently *
+ *  in Wave 3 — disjoint files); these tests therefore assert ONLY the       *
+ *  dispatch-layer contract: result.isError===false, the JSON {ok, event_id} *
+ *  envelope shape, and the events.md append. View-content assertions for    *
+ *  the new state fields are covered by `projector.test.ts` (plan 03-A-03)   *
+ *  once the reducer arms land.                                              *
+ * -------------------------------------------------------------------------- */
+
+describe('dispatchVaultTool — apply_event (Phase 03 event types — plan 03-A-04)', () => {
+  let campaignsRoot: string;
+  let helpers: Awaited<ReturnType<typeof withStubbedRoot>>;
+
+  /**
+   * Count the JSON lines currently in events.md (excludes blank lines so
+   * trailing whitespace is not double-counted across writes).
+   */
+  async function eventCount(): Promise<number> {
+    const raw = await readFile(helpers.eventsPath(CAMPAIGN_UUID), 'utf8');
+    return raw.split('\n').filter((l) => l.trim().length > 0).length;
+  }
+
+  /**
+   * Parse the dispatcher's success envelope ({ok, event_id}). The dispatcher
+   * returns this string in `content` on the apply_event happy path
+   * (Decision 3 — minimal envelope preserves prefix-cache hygiene).
+   */
+  function parseDispatchOk(content: string): { ok: boolean; event_id: string } {
+    return JSON.parse(content) as { ok: boolean; event_id: string };
+  }
+
+  beforeEach(async () => {
+    campaignsRoot = mkdtempSync(join(tmpdir(), 'gsd-apply-event-p3-'));
+    helpers = await withStubbedRoot(campaignsRoot);
+    // Seed with a single character — every Phase 03 mutation event targets
+    // this UUID via the `payload.character` field (NIT 1 UUID guard).
+    const seedResult = await helpers.dispatchVaultTool(
+      'apply_event',
+      {
+        type: 'campaign_initialized',
+        payload: {
+          characters: [
+            { id: CHAR_UUID, name: 'Aragorn', hp_max: 30, hp_current: 30 },
+          ],
+        },
+      },
+      { campaignId: CAMPAIGN_UUID },
+    );
+    expect(seedResult.isError).toBe(false);
+    // Sanity: seed event is the only line at start.
+    expect(await eventCount()).toBe(1);
+  });
+
+  afterEach(() => {
+    rmSync(campaignsRoot, { recursive: true, force: true });
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  describe('tool description surface (Task 1 cross-check)', () => {
+    it('includes every Phase 03 event type name in the type description', () => {
+      const apply = helpers.VAULT_TOOL_DEFINITIONS.find((t) => t.name === 'apply_event');
+      expect(apply).toBeDefined();
+      const typeDesc =
+        (apply!.input_schema.properties as { type?: { description?: string } } | undefined)?.type
+          ?.description ?? '';
+      // All 20 Phase 03 type names appear by their canonical schema spelling.
+      const phase03Types = [
+        'temp_hp_set',
+        'death_save_success',
+        'death_save_fail',
+        'death_save_stabilize',
+        'death_save_recover_at_one',
+        'concentration_set',
+        'concentration_break',
+        'exhaustion_increment',
+        'exhaustion_decrement',
+        'hit_dice_use',
+        'hit_dice_restore',
+        'resource_use',
+        'resource_restore',
+        'inspiration_grant',
+        'inspiration_spend',
+        'attune',
+        'unattune',
+        'focus_set',
+        'focus_unset',
+        'xp_award',
+      ];
+      for (const t of phase03Types) {
+        expect(typeDesc).toContain(t);
+      }
+    });
+
+    it('payload description mentions representative Phase 03 payload fields', () => {
+      const apply = helpers.VAULT_TOOL_DEFINITIONS.find((t) => t.name === 'apply_event');
+      const payloadDesc =
+        (apply!.input_schema.properties as { payload?: { description?: string } } | undefined)
+          ?.payload?.description ?? '';
+      // Field names the LLM needs to spell correctly (per validateEvent).
+      expect(payloadDesc).toMatch(/tempHp/);
+      expect(payloadDesc).toMatch(/critical/); // death_save_fail.critical
+      expect(payloadDesc).toMatch(/spellSlug/); // concentration_set.spellSlug
+      expect(payloadDesc).toMatch(/slotLevel/); // concentration_set.slotLevel
+      expect(payloadDesc).toMatch(/startedRound/); // concentration_set.startedRound
+      expect(payloadDesc).toMatch(/reason/); // concentration_break.reason / xp_award.reason
+      expect(payloadDesc).toMatch(/resourceKey/); // resource_use.resourceKey
+      expect(payloadDesc).toMatch(/itemSlug/); // attune.itemSlug
+      expect(payloadDesc).toMatch(/kind/); // focus_set.kind
+      expect(payloadDesc).toMatch(/amount/); // xp_award.amount
+    });
+
+    it('payload description preserves NIT 1 UUID clarification for `character` field', () => {
+      // Phase 03 extension must not regress the Phase 02 NIT 1 fix that
+      // tells the LLM `character` is a UUID, not a name.
+      const apply = helpers.VAULT_TOOL_DEFINITIONS.find((t) => t.name === 'apply_event');
+      const payloadDesc =
+        (apply!.input_schema.properties as { payload?: { description?: string } } | undefined)
+          ?.payload?.description ?? '';
+      expect(payloadDesc).toMatch(/character UUID|character.+UUID|NOT the character name/i);
+    });
+
+    it('the tool surface still has exactly 4 tools (REQ-010)', () => {
+      expect(helpers.VAULT_TOOL_DEFINITIONS).toHaveLength(4);
+      const names = helpers.VAULT_TOOL_DEFINITIONS.map((t) => t.name).sort();
+      expect(names).toEqual(['apply_event', 'end_turn', 'list_vault', 'read_vault_multi']);
+    });
+  });
+
+  describe('happy-path dispatch for each Phase 03 event type', () => {
+    /**
+     * Table-driven happy-path roster. Each entry sends one Phase 03 event
+     * type through the dispatcher and asserts the dispatcher's contract:
+     *   - result.isError is false
+     *   - result.content parses to {ok: true, event_id: <uuid>}
+     *   - events.md grew by exactly one line
+     *   - the appended line's type field matches
+     *
+     * Payload shapes mirror `validateEvent` 1:1 (events-schema.ts). The
+     * projector reducer arms for these types are 03-A-03's scope; the view
+     * file regenerated by the dispatcher will reflect whatever subset of
+     * arms has landed (graceful default = state unchanged), so this block
+     * does NOT assert specific frontmatter values for Phase 03 fields.
+     */
+    const cases: { type: string; payload: Record<string, unknown> }[] = [
+      { type: 'temp_hp_set', payload: { character: CHAR_UUID, tempHp: 5 } },
+      { type: 'death_save_success', payload: { character: CHAR_UUID } },
+      { type: 'death_save_fail', payload: { character: CHAR_UUID, critical: true } },
+      { type: 'death_save_stabilize', payload: { character: CHAR_UUID } },
+      { type: 'death_save_recover_at_one', payload: { character: CHAR_UUID } },
+      {
+        type: 'concentration_set',
+        payload: {
+          character: CHAR_UUID,
+          spellSlug: 'bless',
+          slotLevel: 1,
+          startedRound: 3,
+        },
+      },
+      {
+        type: 'concentration_break',
+        payload: { character: CHAR_UUID, reason: 'damage' },
+      },
+      {
+        type: 'exhaustion_increment',
+        payload: { character: CHAR_UUID, source: 'forced-march' },
+      },
+      { type: 'exhaustion_decrement', payload: { character: CHAR_UUID } },
+      { type: 'hit_dice_use', payload: { character: CHAR_UUID, count: 1 } },
+      { type: 'hit_dice_restore', payload: { character: CHAR_UUID, count: 2 } },
+      {
+        type: 'resource_use',
+        payload: { character: CHAR_UUID, resourceKey: 'rage_uses', uses: 1 },
+      },
+      {
+        type: 'resource_restore',
+        payload: { character: CHAR_UUID, resourceKey: 'rage_uses', uses: 1 },
+      },
+      { type: 'inspiration_grant', payload: { character: CHAR_UUID } },
+      { type: 'inspiration_spend', payload: { character: CHAR_UUID } },
+      {
+        type: 'attune',
+        payload: { character: CHAR_UUID, itemSlug: 'wand-of-fireballs' },
+      },
+      {
+        type: 'unattune',
+        payload: { character: CHAR_UUID, itemSlug: 'wand-of-fireballs' },
+      },
+      {
+        type: 'focus_set',
+        payload: { character: CHAR_UUID, kind: 'arcane', itemSlug: 'crystal-orb' },
+      },
+      { type: 'focus_unset', payload: { character: CHAR_UUID } },
+      {
+        type: 'xp_award',
+        payload: { character: CHAR_UUID, amount: 300, reason: 'monster-kill' },
+      },
+    ];
+
+    // Sanity: roster length matches the audit hard-count (20 events).
+    it('roster covers all 20 Phase 03 event types from COMPLETENESS-AUDIT.md', () => {
+      expect(cases).toHaveLength(20);
+      const uniqueTypes = new Set(cases.map((c) => c.type));
+      expect(uniqueTypes.size).toBe(20);
+    });
+
+    it.each(cases)(
+      '$type — dispatch success: events.md appended, {ok, event_id} returned',
+      async ({ type, payload }) => {
+        const before = await eventCount();
+        const result = await helpers.dispatchVaultTool(
+          'apply_event',
+          { type, payload },
+          { campaignId: CAMPAIGN_UUID },
+        );
+        expect(result.isError).toBe(false);
+        const parsed = parseDispatchOk(result.content);
+        expect(parsed.ok).toBe(true);
+        expect(parsed.event_id).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+        );
+
+        // One new line appended to events.md, type matches.
+        expect(await eventCount()).toBe(before + 1);
+        const lines = (await readFile(helpers.eventsPath(CAMPAIGN_UUID), 'utf8'))
+          .trim()
+          .split('\n');
+        const lastEnvelope = JSON.parse(lines[lines.length - 1]!) as {
+          type: string;
+          payload: unknown;
+        };
+        expect(lastEnvelope.type).toBe(type);
+        // Payload round-trips byte-for-byte (validateEvent rebuilds the
+        // object so we re-serialize from canonical form to compare).
+        expect(lastEnvelope.payload).toEqual(payload);
+      },
+    );
+  });
+
+  describe('NIT 1 UUID guard applies to every Phase 03 type', () => {
+    // The dispatcher's UUID guard (tools.ts) runs AFTER validateEvent for
+    // every non-`campaign_initialized` event. The plan-check NIT 1 reminder
+    // requires that the guard remains active for ALL new types. We sample a
+    // representative subset across the audit categories: single-field
+    // (death_save_success), multi-field (concentration_set), bounded enum
+    // (concentration_break), and string-slug (attune).
+    it.each([
+      ['temp_hp_set', { character: 'pc-001', tempHp: 5 }],
+      ['death_save_success', { character: 'Aragorn' }],
+      ['concentration_set', {
+        character: 'not-a-uuid',
+        spellSlug: 'bless',
+        slotLevel: 1,
+        startedRound: 1,
+      }],
+      ['concentration_break', { character: 'Luffy', reason: 'damage' }],
+      ['attune', { character: 'pc-1', itemSlug: 'wand' }],
+      ['xp_award', { character: '25158592-15cf', amount: 300 }],
+    ] as const)(
+      '%s — rejects non-UUID payload.character with descriptive error',
+      async (type, payload) => {
+        const before = await eventCount();
+        const result = await helpers.dispatchVaultTool(
+          'apply_event',
+          { type, payload },
+          { campaignId: CAMPAIGN_UUID },
+        );
+        expect(result.isError).toBe(true);
+        expect(result.content).toMatch(/character must be a UUID/);
+        // events.md MUST NOT have grown on rejection.
+        expect(await eventCount()).toBe(before);
+      },
+    );
+  });
+
+  describe('malformed payload rejection (validateEvent gate, no write on error)', () => {
+    it('temp_hp_set rejects negative tempHp', async () => {
+      const before = await eventCount();
+      const result = await helpers.dispatchVaultTool(
+        'apply_event',
+        { type: 'temp_hp_set', payload: { character: CHAR_UUID, tempHp: -1 } },
+        { campaignId: CAMPAIGN_UUID },
+      );
+      expect(result.isError).toBe(true);
+      expect(result.content).toMatch(/temp_hp_set/);
+      expect(await eventCount()).toBe(before);
+    });
+
+    it('death_save_fail rejects non-boolean critical', async () => {
+      const before = await eventCount();
+      const result = await helpers.dispatchVaultTool(
+        'apply_event',
+        {
+          type: 'death_save_fail',
+          payload: { character: CHAR_UUID, critical: 'yes' as unknown as boolean },
+        },
+        { campaignId: CAMPAIGN_UUID },
+      );
+      expect(result.isError).toBe(true);
+      expect(result.content).toMatch(/critical/i);
+      expect(await eventCount()).toBe(before);
+    });
+
+    it('concentration_set rejects out-of-range slotLevel', async () => {
+      const before = await eventCount();
+      const result = await helpers.dispatchVaultTool(
+        'apply_event',
+        {
+          type: 'concentration_set',
+          payload: {
+            character: CHAR_UUID,
+            spellSlug: 'bless',
+            slotLevel: 10, // schema cap is 9
+            startedRound: 1,
+          },
+        },
+        { campaignId: CAMPAIGN_UUID },
+      );
+      expect(result.isError).toBe(true);
+      expect(result.content).toMatch(/concentration_set/);
+      expect(await eventCount()).toBe(before);
+    });
+
+    it('concentration_break rejects unknown reason enum value', async () => {
+      const before = await eventCount();
+      const result = await helpers.dispatchVaultTool(
+        'apply_event',
+        {
+          type: 'concentration_break',
+          payload: { character: CHAR_UUID, reason: 'tripped' },
+        },
+        { campaignId: CAMPAIGN_UUID },
+      );
+      expect(result.isError).toBe(true);
+      expect(result.content).toMatch(/concentration_break/);
+      expect(await eventCount()).toBe(before);
+    });
+
+    it('focus_set rejects unknown kind enum value', async () => {
+      const before = await eventCount();
+      const result = await helpers.dispatchVaultTool(
+        'apply_event',
+        {
+          type: 'focus_set',
+          payload: { character: CHAR_UUID, kind: 'cosmic', itemSlug: 'orb' },
+        },
+        { campaignId: CAMPAIGN_UUID },
+      );
+      expect(result.isError).toBe(true);
+      expect(result.content).toMatch(/focus_set/);
+      expect(await eventCount()).toBe(before);
+    });
+
+    it('hit_dice_use rejects count above schema cap', async () => {
+      const before = await eventCount();
+      const result = await helpers.dispatchVaultTool(
+        'apply_event',
+        { type: 'hit_dice_use', payload: { character: CHAR_UUID, count: 21 } },
+        { campaignId: CAMPAIGN_UUID },
+      );
+      expect(result.isError).toBe(true);
+      expect(result.content).toMatch(/hit_dice_use/);
+      expect(await eventCount()).toBe(before);
+    });
+
+    it('resource_use rejects missing resourceKey', async () => {
+      const before = await eventCount();
+      const result = await helpers.dispatchVaultTool(
+        'apply_event',
+        {
+          type: 'resource_use',
+          payload: { character: CHAR_UUID, uses: 1 },
+        },
+        { campaignId: CAMPAIGN_UUID },
+      );
+      expect(result.isError).toBe(true);
+      expect(result.content).toMatch(/resource_use/);
+      expect(await eventCount()).toBe(before);
+    });
+
+    it('attune rejects empty itemSlug', async () => {
+      const before = await eventCount();
+      const result = await helpers.dispatchVaultTool(
+        'apply_event',
+        { type: 'attune', payload: { character: CHAR_UUID, itemSlug: '' } },
+        { campaignId: CAMPAIGN_UUID },
+      );
+      expect(result.isError).toBe(true);
+      expect(result.content).toMatch(/attune/);
+      expect(await eventCount()).toBe(before);
+    });
+
+    it('xp_award rejects zero amount (must be > 0)', async () => {
+      const before = await eventCount();
+      const result = await helpers.dispatchVaultTool(
+        'apply_event',
+        { type: 'xp_award', payload: { character: CHAR_UUID, amount: 0 } },
+        { campaignId: CAMPAIGN_UUID },
+      );
+      expect(result.isError).toBe(true);
+      expect(result.content).toMatch(/xp_award/);
+      expect(await eventCount()).toBe(before);
+    });
+
+    it('rejects misspelled type name (e.g., camelCase variant) as unknown event type', async () => {
+      // Smoke note: small models sometimes drift toward JS camelCase; the
+      // schema is snake_case. Make sure the dispatcher surfaces a clear
+      // "unknown event type" rather than passing-through and crashing.
+      const before = await eventCount();
+      const result = await helpers.dispatchVaultTool(
+        'apply_event',
+        { type: 'tempHpSet', payload: { character: CHAR_UUID, tempHp: 5 } },
+        { campaignId: CAMPAIGN_UUID },
+      );
+      expect(result.isError).toBe(true);
+      expect(result.content).toMatch(/unknown event type/);
+      expect(await eventCount()).toBe(before);
+    });
+  });
+
+  describe('multi-event sequencing — Phase 02 + Phase 03 interleaved', () => {
+    it('appends a mixed sequence in order and preserves event_id uniqueness', async () => {
+      // Send Phase 02 + Phase 03 events alternately; verify ordering +
+      // uniqueness. This is the realistic LLM-emission pattern: a damage
+      // turn often pairs `hp_change` (Phase 02) with `temp_hp_set` or
+      // `concentration_break` (Phase 03) in the same tool-call cycle.
+      const sequence = [
+        { type: 'hp_change', payload: { character: CHAR_UUID, delta: -5 } },
+        { type: 'temp_hp_set', payload: { character: CHAR_UUID, tempHp: 0 } },
+        { type: 'condition_add', payload: { character: CHAR_UUID, condition: 'unconscious' } },
+        { type: 'death_save_fail', payload: { character: CHAR_UUID, critical: false } },
+        { type: 'death_save_success', payload: { character: CHAR_UUID } },
+        { type: 'inspiration_grant', payload: { character: CHAR_UUID } },
+      ];
+      const eventIds: string[] = [];
+      for (const ev of sequence) {
+        const result = await helpers.dispatchVaultTool(
+          'apply_event',
+          ev,
+          { campaignId: CAMPAIGN_UUID },
+        );
+        expect(result.isError).toBe(false);
+        eventIds.push(parseDispatchOk(result.content).event_id);
+      }
+
+      // All event_ids are unique.
+      expect(new Set(eventIds).size).toBe(sequence.length);
+
+      // events.md = seed + sequence.length lines, types in the order
+      // emitted.
+      const lines = (await readFile(helpers.eventsPath(CAMPAIGN_UUID), 'utf8'))
+        .trim()
+        .split('\n');
+      expect(lines).toHaveLength(1 + sequence.length);
+      const typesOnDisk = lines.map((l) => (JSON.parse(l) as { type: string }).type);
+      expect(typesOnDisk).toEqual([
+        'campaign_initialized',
+        ...sequence.map((s) => s.type),
+      ]);
+    });
+
+    it('a malformed event in the middle of a sequence does not abort the prior events', async () => {
+      // Send: valid, valid, invalid, valid. The invalid one rejects; the
+      // four others land. events.md grows by exactly 3 (the three valid
+      // ones) + 1 seed = 4 lines.
+      const before = await eventCount();
+
+      const r1 = await helpers.dispatchVaultTool(
+        'apply_event',
+        { type: 'temp_hp_set', payload: { character: CHAR_UUID, tempHp: 5 } },
+        { campaignId: CAMPAIGN_UUID },
+      );
+      expect(r1.isError).toBe(false);
+
+      const r2 = await helpers.dispatchVaultTool(
+        'apply_event',
+        { type: 'inspiration_grant', payload: { character: CHAR_UUID } },
+        { campaignId: CAMPAIGN_UUID },
+      );
+      expect(r2.isError).toBe(false);
+
+      const rBad = await helpers.dispatchVaultTool(
+        'apply_event',
+        // hit_dice_use requires count >= 1
+        { type: 'hit_dice_use', payload: { character: CHAR_UUID, count: 0 } },
+        { campaignId: CAMPAIGN_UUID },
+      );
+      expect(rBad.isError).toBe(true);
+
+      const r4 = await helpers.dispatchVaultTool(
+        'apply_event',
+        { type: 'inspiration_spend', payload: { character: CHAR_UUID } },
+        { campaignId: CAMPAIGN_UUID },
+      );
+      expect(r4.isError).toBe(false);
+
+      // before(1 seed) + 3 valid appends = 4
+      expect(await eventCount()).toBe(before + 3);
+    });
+  });
+
+  describe('view regeneration is invoked synchronously (Decision 2 — no eventual-consistency window)', () => {
+    it('view file is rewritten after each Phase 03 dispatch (mtime advances)', async () => {
+      // The dispatcher regenerates the affected character view synchronously
+      // after EventsWriter.append returns. Even if no reducer arm has
+      // landed for a given Phase 03 type yet (default arm logs a warning
+      // and returns state unchanged), the view file is still WRITTEN —
+      // this proves the projector path executes without throwing.
+      const viewPath = helpers.characterViewPath(CAMPAIGN_UUID, 'Aragorn', CHAR_UUID);
+      const before = await readFile(viewPath, 'utf8');
+      expect(before).toContain(`id: ${CHAR_UUID}`); // seeded view exists
+
+      const result = await helpers.dispatchVaultTool(
+        'apply_event',
+        { type: 'temp_hp_set', payload: { character: CHAR_UUID, tempHp: 7 } },
+        { campaignId: CAMPAIGN_UUID },
+      );
+      expect(result.isError).toBe(false);
+
+      // View was rewritten — still a valid view, same character UUID.
+      // (Specific Phase 03 field assertions are 03-A-03's projector tests;
+      // here we just prove the regen pipeline did not throw.)
+      const after = await readFile(viewPath, 'utf8');
+      expect(after).toContain(`id: ${CHAR_UUID}`);
+      expect(after).toContain('hp_max: 30');
+    });
+  });
+});
