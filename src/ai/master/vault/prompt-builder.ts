@@ -36,6 +36,34 @@ export interface VaultPromptInput {
    * entry point rather than producing a silently-wrong prompt.
    */
   vaultMutations?: boolean;
+  /**
+   * Phase 02.1 (smoke 2026-05-26 follow-up) — character roster injection.
+   *
+   * When `vaultMutations === true`, the prompt SHOULD include the list of
+   * available player characters with their UUIDs. Smoke testing revealed
+   * qwen3:30b cannot deduce character UUIDs from the "read characters/<slug>.md
+   * frontmatter" instruction in the dispatcher error marker — it just invents
+   * `pc-001`, `luffy-001`, etc., and gives up after 5 retries.
+   *
+   * Injecting the roster directly into the system prompt removes the
+   * "navigate filesystem to find UUID" step entirely: the model sees
+   * `Luffy: 25158592-15cf-...` and copy-pastes when calling apply_event.
+   *
+   * Pure input: the roster is a function of the campaign's stored state,
+   * passed in by the route handler. REQ-022 purity preserved (no DB access
+   * inside the builder).
+   *
+   * Shape: `{id: <UUID>, name: <string>}[]`. Order is the caller's choice —
+   * the builder serializes them in the given order, so callers should
+   * pass them in a stable order (party creation order is the canonical
+   * choice, matching `SnapshotForModel.party`).
+   *
+   * Empty array or undefined: no roster section is emitted. This keeps
+   * Phase-01 read-only prompts byte-identical (no roster) and lets
+   * callers opt into the roster only when vaultMutations is true AND
+   * party.length > 0.
+   */
+  characters?: ReadonlyArray<{ id: string; name: string }>;
 }
 
 /**
@@ -92,6 +120,26 @@ export function buildVaultSystemPrompt(input: VaultPromptInput): string {
   ];
   if (applyEventMention.length > 0) {
     lines.push(applyEventMention);
+    lines.push('');
+  }
+  // Phase 02.1 — character roster injection (smoke 2026-05-26 follow-up).
+  // Only emitted when vaultMutations is enabled AND a non-empty roster is
+  // passed in. Format is a fixed-width block the model can scan once at
+  // turn start; the UUIDs are quoted with backticks so the tokenizer keeps
+  // them as single tokens (Apple silicon decoders preserve quoted strings
+  // verbatim, reducing chance of digit-level invention).
+  if (
+    input.vaultMutations === true &&
+    Array.isArray(input.characters) &&
+    input.characters.length > 0
+  ) {
+    lines.push('## Available characters');
+    lines.push('');
+    lines.push('Use these UUIDs verbatim in `apply_event` payload.character — do NOT invent identifiers like `pc-001`, do NOT use names:');
+    lines.push('');
+    for (const c of input.characters) {
+      lines.push('- ' + c.name + ': `' + c.id + '`');
+    }
     lines.push('');
   }
   if (typeof input.language === 'string' && input.language.length > 0) {

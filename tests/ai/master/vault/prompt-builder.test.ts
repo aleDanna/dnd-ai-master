@@ -174,3 +174,82 @@ describe('buildVaultSystemPrompt — Phase 02 vaultMutations gate', () => {
     expect(hashes.size).toBe(1);
   });
 });
+
+// Phase 02.1 — character roster injection (smoke 2026-05-26 follow-up).
+// Smoke testing revealed qwen3:30b cannot deduce character UUIDs from the
+// dispatcher error marker; it just invents ids. Injecting the roster
+// directly into the system prompt closes the gap.
+describe('buildVaultSystemPrompt — Phase 02.1 character roster injection', () => {
+  const baseRW = {
+    vaultRoot: 'data/vault',
+    campaignId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+    toolCount: 4,
+    vaultMutations: true as const,
+  };
+  const ROSTER = [
+    { id: '25158592-15cf-41c8-99b2-44dde5f73702', name: 'Luffy' },
+    { id: '84185b08-8032-4cb7-a30c-9212a16dfb05', name: 'Usopp' },
+  ];
+
+  it('includes the "Available characters" header when vaultMutations:true and characters[] is non-empty', () => {
+    const out = buildVaultSystemPrompt({ ...baseRW, characters: ROSTER });
+    expect(out).toContain('## Available characters');
+  });
+
+  it('lists every character with its UUID in backticks', () => {
+    const out = buildVaultSystemPrompt({ ...baseRW, characters: ROSTER });
+    expect(out).toContain('Luffy: `25158592-15cf-41c8-99b2-44dde5f73702`');
+    expect(out).toContain('Usopp: `84185b08-8032-4cb7-a30c-9212a16dfb05`');
+  });
+
+  it('warns the model NOT to invent identifiers like pc-001', () => {
+    const out = buildVaultSystemPrompt({ ...baseRW, characters: ROSTER });
+    expect(out).toMatch(/do NOT invent.*pc-001/i);
+  });
+
+  it('skips the roster section when characters is undefined', () => {
+    const out = buildVaultSystemPrompt({ ...baseRW });
+    expect(out).not.toContain('## Available characters');
+  });
+
+  it('skips the roster section when characters is empty array', () => {
+    const out = buildVaultSystemPrompt({ ...baseRW, characters: [] });
+    expect(out).not.toContain('## Available characters');
+  });
+
+  it('does NOT inject roster when vaultMutations is false (Phase 01 read-only prompts stay clean)', () => {
+    const out = buildVaultSystemPrompt({
+      ...baseRW,
+      toolCount: 3,
+      vaultMutations: false,
+      characters: ROSTER,
+    });
+    expect(out).not.toContain('## Available characters');
+  });
+
+  it('roster order is preserved (caller controls order)', () => {
+    const out1 = buildVaultSystemPrompt({ ...baseRW, characters: ROSTER });
+    const reversed = [ROSTER[1]!, ROSTER[0]!];
+    const out2 = buildVaultSystemPrompt({ ...baseRW, characters: reversed });
+    const idxLuffyOut1 = out1.indexOf('Luffy');
+    const idxUsoppOut1 = out1.indexOf('Usopp');
+    const idxLuffyOut2 = out2.indexOf('Luffy');
+    const idxUsoppOut2 = out2.indexOf('Usopp');
+    expect(idxLuffyOut1).toBeLessThan(idxUsoppOut1);
+    expect(idxUsoppOut2).toBeLessThan(idxLuffyOut2);
+  });
+
+  it('roster injection produces a different hash than no-roster (deterministic divergence)', () => {
+    const noRoster = buildVaultSystemPrompt({ ...baseRW });
+    const withRoster = buildVaultSystemPrompt({ ...baseRW, characters: ROSTER });
+    expect(hashVaultPrompt(noRoster)).not.toBe(hashVaultPrompt(withRoster));
+  });
+
+  it('1000 builds with the same roster produce ONE unique hash (stability preserved)', () => {
+    const hashes = new Set<string>();
+    for (let i = 0; i < 1000; i++) {
+      hashes.add(hashVaultPrompt(buildVaultSystemPrompt({ ...baseRW, characters: ROSTER })));
+    }
+    expect(hashes.size).toBe(1);
+  });
+});

@@ -292,6 +292,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             toolCount: vaultMutationsEnabled ? 4 : 3,
             vaultMutations: vaultMutationsEnabled,
             language: campaign.language ?? snap.language ?? undefined,
+            // Phase 02.1 (smoke 2026-05-26 follow-up) — inject the character
+            // roster only when mutations are enabled, so read-only Phase 01
+            // prompts stay byte-identical. The builder skips the section
+            // when the array is empty.
+            characters: vaultMutationsEnabled
+              ? snap.party.map((c) => ({ id: c.id, name: c.name }))
+              : undefined,
           });
 
           // 5v. Build history — simpler than baked (no budget truncation needed,
