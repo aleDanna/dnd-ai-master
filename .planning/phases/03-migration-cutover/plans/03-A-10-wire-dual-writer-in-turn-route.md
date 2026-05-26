@@ -7,6 +7,7 @@ depends_on: [03-A-09, 03-B-01]
 files_modified:
   - src/app/api/sessions/[id]/turn/route.ts
   - src/ai/master/vault/tools.ts
+  - src/sessions/event-to-engine-mutation.ts  # NEW (NIT-3 from plan-check)
   - tests/sessions/turn-route-dual-write.test.ts
 autonomous: true
 requirements: [REQ-006]

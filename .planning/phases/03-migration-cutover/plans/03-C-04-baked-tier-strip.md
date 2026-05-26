@@ -3,7 +3,11 @@ phase: 03
 plan: C-04
 type: execute
 wave: 7
-depends_on: []
+depends_on: [03-D-01]
+# NIT-2 (plan-check): encode Pitfall 7 in the dependency graph — M4 sweep
+# (03-D-01, wave 6) MUST run BEFORE baked tier strip (03-C-04, wave 7) so
+# the dnd-master-plus baseline still exists for the A/B narrative
+# comparison. Wave ordering already enforces this; depends_on locks it in.
 files_modified:
   - src/ai/master/baked-models.ts
   - scripts/build-local-models.ts
