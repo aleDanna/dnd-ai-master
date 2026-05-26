@@ -267,6 +267,13 @@
       "when": 1779828751139,
       "tag": "0037_dual_write_divergences",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1779829795728,
+      "tag": "0038_session_state_summary_block",
+      "breakpoints": true
     }
   ]
 }

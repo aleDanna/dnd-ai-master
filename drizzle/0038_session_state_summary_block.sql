@@ -1,0 +1,1 @@
+ALTER TABLE "session_state" ADD COLUMN "summary_block" jsonb DEFAULT 'null'::jsonb;
