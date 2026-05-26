@@ -104,6 +104,27 @@ import { eventsPath, characterViewPath } from './campaign-paths';
  *                                       of these fields — they help
  *                                       debugging + give the LLM a
  *                                       freshness signal.
+ *
+ * Phase 03 additions (plan 03-A-03 — COMPLETENESS-AUDIT.md (c) list):
+ *   - `temp_hp`            — session_state.temp_hp absorbing damage layer
+ *   - `death_saves`        — successes/failures counter (PHB §3.18)
+ *   - `flags`              — `{stable, dead, inspiration}` merged session+char flags
+ *   - `concentrating_on`   — spell concentration slot (PHB §10.4); null when none
+ *   - `exhaustion_level`   — stacking counter 0..6 (PHB §4.1)
+ *   - `hit_dice_remaining` / `hit_dice_max` — short-rest pool (PHB §5.1)
+ *   - `attunements`        — magic-item attuned slugs (PHB §10.1)
+ *   - `equipped_focus`     — currently equipped spellcasting focus (PHB §8.4)
+ *   - `resources_used`     — per-feature counter (rage, action surge, etc.)
+ *   - `xp`                 — characters.xp
+ *   - `level`              — characters.level
+ *
+ * Field ordering policy: Phase 02 fields keep their original positions for
+ * historical readability; Phase 03 fields appended at the end of the
+ * interface declaration. Serialization (`serializeView`) writes Phase 02
+ * keys first, Phase 03 keys after — preserving byte-stability with
+ * existing on-disk views that lack Phase 03 keys (parseView defaults
+ * missing keys to the same values `INITIAL_CHARACTER_STATE` uses, so old
+ * views still round-trip).
  */
 export interface CharacterState {
   id: string;
@@ -113,6 +134,19 @@ export interface CharacterState {
   conditions: string[];
   spell_slots: Record<string, { max: number; used: number }>;
   inventory: { item: string; qty: number }[];
+  // Phase 03 additions
+  temp_hp: number;
+  death_saves: { successes: number; failures: number };
+  flags: { stable: boolean; dead: boolean; inspiration: boolean };
+  concentrating_on: { spellSlug: string; slotLevel: number; startedRound: number } | null;
+  exhaustion_level: number;
+  hit_dice_remaining: number;
+  hit_dice_max: number;
+  attunements: string[];
+  equipped_focus: { kind: 'arcane' | 'druidic' | 'holy' | 'instrument'; itemSlug: string } | null;
+  resources_used: Record<string, number>;
+  xp: number;
+  level: number;
   last_event_id?: string;
   last_updated?: string;
 }
@@ -121,13 +155,20 @@ export interface CharacterState {
  * Factory: build an INITIAL_CHARACTER_STATE from a `VaultSeedCharacter`
  * entry inside a `campaign_initialized` event payload.
  *
- * Postgres-reality fallbacks (Decision 9 — LOCKED):
+ * Postgres-reality fallbacks (Decision 9 — LOCKED, Phase 02 baseline):
  *   - `seed.hp_current` is OPTIONAL — when absent (no `session_state` row
  *     for the most-recent active session), default to `seed.hp_max` so a
  *     freshly-created campaign starts at full HP.
  *   - `seed.spell_slots` is OPTIONAL — when absent (the PC has
  *     `characters.spellcasting: null` — non-caster), default to `{}` so
  *     no slot-related operations crash on a missing record.
+ *
+ * Phase 03 fallback policy (plan 03-A-03): every new field is OPTIONAL on
+ * the seed and falls back to a neutral default that matches the Postgres
+ * column default. This preserves backward compatibility — seeds emitted
+ * by the Phase 02 `vault-flip` (which knows nothing about the Phase 03
+ * fields) still produce a valid Phase 03 `CharacterState` with zero risk
+ * of `undefined` propagating into the reducer.
  *
  * The returned state has empty `conditions: []` and `inventory: []`
  * unconditionally — the seed event does not carry these fields; they are
@@ -146,6 +187,25 @@ export function INITIAL_CHARACTER_STATE(seed: VaultSeedCharacter): CharacterStat
     // non-caster PCs — see VaultSeedCharacter JSDoc.
     spell_slots: seed.spell_slots ?? {},
     inventory: [],
+    // Phase 03 defaults — all match the Postgres column defaults so a
+    // brand-new campaign (no Phase 03 seed extension) seeds identically
+    // to what the parity-check expects for never-mutated PCs.
+    temp_hp: seed.temp_hp ?? 0,
+    death_saves: seed.death_saves ?? { successes: 0, failures: 0 },
+    flags: {
+      stable: seed.flags?.stable ?? false,
+      dead: seed.flags?.dead ?? false,
+      inspiration: seed.flags?.inspiration ?? false,
+    },
+    concentrating_on: seed.concentrating_on ?? null,
+    exhaustion_level: seed.exhaustion_level ?? 0,
+    hit_dice_remaining: seed.hit_dice_remaining ?? 0,
+    hit_dice_max: seed.hit_dice_max ?? 0,
+    attunements: seed.attunements ? [...seed.attunements].sort() : [],
+    equipped_focus: seed.equipped_focus ?? null,
+    resources_used: seed.resources_used ?? {},
+    xp: seed.xp ?? 0,
+    level: seed.level ?? 1,
   };
 }
 
@@ -562,6 +622,9 @@ export function parseView(content: string): CharacterState | null {
 
   // Skeleton with the mandatory fields. Optional fields default to
   // empty / undefined; the loop below populates them as it scans.
+  // Phase 03 fields default to the same values `INITIAL_CHARACTER_STATE`
+  // uses — so a Phase 02-only frontmatter (no Phase 03 keys) still
+  // parses to a valid Phase 03 `CharacterState`.
   const state: CharacterState = {
     id: '',
     name: '',
@@ -570,6 +633,18 @@ export function parseView(content: string): CharacterState | null {
     conditions: [],
     spell_slots: {},
     inventory: [],
+    temp_hp: 0,
+    death_saves: { successes: 0, failures: 0 },
+    flags: { stable: false, dead: false, inspiration: false },
+    concentrating_on: null,
+    exhaustion_level: 0,
+    hit_dice_remaining: 0,
+    hit_dice_max: 0,
+    attunements: [],
+    equipped_focus: null,
+    resources_used: {},
+    xp: 0,
+    level: 1,
   };
 
   let mode: 'top' | 'conditions' | 'spell_slots' | 'inventory' = 'top';

@@ -168,9 +168,27 @@ export function isVaultEventType(value: unknown): value is VaultEventType {
  * exist for brand-new campaigns or non-caster PCs (see module-level
  * JSDoc for the full rationale).
  *
- * The projector's `INITIAL_CHARACTER_STATE` defaults:
- *   - `hp_current` absent → set to `hp_max`
- *   - `spell_slots` absent → set to `{}`
+ * Phase 02 fields:
+ *   - `hp_current` absent → projector defaults to `hp_max`
+ *   - `spell_slots` absent → projector defaults to `{}`
+ *
+ * Phase 03 additions (plan 03-A-03 — all OPTIONAL):
+ *   - `temp_hp`            ← session_state.temp_hp (defaults to 0)
+ *   - `hit_dice_remaining` ← session_state.hit_dice_remaining (defaults to 0)
+ *   - `hit_dice_max`       ← characters.hit_dice_max (1 die per level; defaults to 0)
+ *   - `exhaustion_level`   ← session_state.exhaustion_level (defaults to 0)
+ *   - `death_saves`        ← session_state.death_saves (defaults to {s:0, f:0})
+ *   - `flags`              ← session_state.flags + characters.inspiration merged
+ *   - `concentrating_on`   ← session_state.concentrating_on (defaults to null)
+ *   - `attunements`        ← characters.attuned_items (defaults to [])
+ *   - `equipped_focus`     ← characters.equipped_focus (defaults to null)
+ *   - `resources_used`     ← characters.resources_used (defaults to {})
+ *   - `xp`                 ← characters.xp (defaults to 0)
+ *   - `level`              ← characters.level (defaults to 1)
+ *
+ * All optional — vault-flip's LEFT JOIN may omit them. The projector
+ * falls back to sane defaults so brand-new campaigns and never-played
+ * sessions still produce a valid seed state.
  */
 export type VaultSeedCharacter = {
   id: string;
@@ -192,6 +210,34 @@ export type VaultSeedCharacter = {
    * to `{}`.
    */
   spell_slots?: Record<string, { max: number; used: number }>;
+  /** Optional — session_state.temp_hp. Defaults to 0. */
+  temp_hp?: number;
+  /** Optional — session_state.hit_dice_remaining. Defaults to 0. */
+  hit_dice_remaining?: number;
+  /** Optional — characters.hit_dice_max. Defaults to 0. */
+  hit_dice_max?: number;
+  /** Optional — session_state.exhaustion_level. Defaults to 0. */
+  exhaustion_level?: number;
+  /** Optional — session_state.death_saves. Defaults to {successes:0, failures:0}. */
+  death_saves?: { successes: number; failures: number };
+  /**
+   * Optional — merged from `session_state.flags` (`stable`, `dead`) and
+   * `characters.inspiration` (top-level boolean). All three default to
+   * `false` when absent.
+   */
+  flags?: { stable?: boolean; dead?: boolean; inspiration?: boolean };
+  /** Optional — session_state.concentrating_on. Defaults to null. */
+  concentrating_on?: { spellSlug: string; slotLevel: number; startedRound: number } | null;
+  /** Optional — characters.attuned_items. Defaults to []. */
+  attunements?: string[];
+  /** Optional — characters.equipped_focus. Defaults to null. */
+  equipped_focus?: { kind: 'arcane' | 'druidic' | 'holy' | 'instrument'; itemSlug: string } | null;
+  /** Optional — characters.resources_used. Defaults to {}. */
+  resources_used?: Record<string, number>;
+  /** Optional — characters.xp. Defaults to 0. */
+  xp?: number;
+  /** Optional — characters.level. Defaults to 1. */
+  level?: number;
 };
 
 /**
