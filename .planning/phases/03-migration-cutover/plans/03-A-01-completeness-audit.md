@@ -512,7 +512,23 @@ Deferred to `.planning/phases/03-migration-cutover/deferred-items.md` (file pre-
 
 **Mitigation handoff:** plan 03-A-06's executor should `git log -p scripts/vault-flip-helpers.ts` to inspect what was captured in commit 261805e, then add any additional helpers / tests / fixtures in a NEW commit. If plan 03-A-06's executor's working state has diverged from this version, they will need to reconcile.
 
-Plan 03-A-01's PRIMARY OUTPUT (the audit document) is unaffected — that commit (5548e3c) is clean.
+**Second contamination — commit b3a313a:** when committing this very SUMMARY append (which documents the FIRST contamination), `tests/scripts/vault-flip-helpers.test.ts` (also plan 03-A-06's territory) was inadvertently staged and committed alongside. Same root cause: pre-existing index state from parallel Wave-1 agents executing concurrently on the same working tree. Plan 03-A-06's executor's commit `ea845d5 refactor(scripts): collapse vault-flip main() ...` ran BETWEEN my second and third commits — strongly suggesting the parallel agent's `git add` operations are leaking state into my index.
+
+**Net effect on Phase 03 Wave 1:** my commits captured TWO of plan 03-A-06's output files (`scripts/vault-flip-helpers.ts` and `tests/scripts/vault-flip-helpers.test.ts`). Plan 03-A-06's executor should still discover these via `git log --name-only` and decide whether its own commits cover the same content or need updates.
+
+**Plan 03-A-01's PRIMARY OUTPUT (the audit document) is unaffected — that commit (5548e3c) is clean.** The two SUMMARY-tracking commits (261805e and b3a313a) have contamination but do not invalidate the audit.
+
+**Going forward:** I am stopping here without further commits to avoid pulling in additional plan 03-A-06 work. The remaining state (UU files, untracked `.planning/STATE.md`, etc.) belongs to other Wave-1 plans or to the operator's pre-existing repo state — out of scope for plan 03-A-01.
+
+### Commits produced by plan 03-A-01
+
+| Commit | Subject | Files | Clean? |
+|---|---|---|---|
+| `5548e3c` | docs(phase-03): COMPLETENESS-AUDIT for engine mutation events (plan 03-A-01) | COMPLETENESS-AUDIT.md | YES |
+| `261805e` | docs(phase-03): append 03-A-01 execution SUMMARY to plan file | 03-A-01-...md + `scripts/vault-flip-helpers.ts` (contamination) | NO — contaminated |
+| `b3a313a` | docs(phase-03): document 03-A-01 commit contamination (vault-flip-helpers.ts) | 03-A-01-...md + `tests/scripts/vault-flip-helpers.test.ts` (contamination) | NO — contaminated |
+
+The audit deliverable is on disk at the expected path; the contamination is in COMMIT BODIES but the FILE CONTENTS captured belong to plan 03-A-06 (whose agent was actively building them in parallel). No work was destroyed.
 
 ### Open items handed off to planner (in COMPLETENESS-AUDIT.md §"Open items for the planner")
 
