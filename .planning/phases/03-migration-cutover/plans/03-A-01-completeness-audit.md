@@ -455,3 +455,67 @@ The deliverable is the FULL audit document with EVERY handler classified — not
     Audit complete. Plans 03-A-02 (events-schema extension) and 03-A-03 (projector extension) consume the (c) list directly.
   </done>
 </task>
+
+---
+
+## SUMMARY (03-A-01 execution)
+
+**Status:** COMPLETE
+**Commit:** `5548e3c` — `docs(phase-03): COMPLETENESS-AUDIT for engine mutation events (plan 03-A-01)`
+**Duration:** ~9 min (audit research + write + verify)
+**Output artifact:** `.planning/phases/03-migration-cutover/COMPLETENESS-AUDIT.md` (729 lines, 56 KB)
+
+### Acceptance criteria — all PASS
+
+| Criterion | Result |
+|---|---|
+| File `.planning/phases/03-migration-cutover/COMPLETENESS-AUDIT.md` exists | PASS |
+| Handler row count >= 50 | 83 rows (PASS) |
+| All 3 classes (a)/(b)/(c) documented | 6 hits (PASS) |
+| `## (c) Final list` header exactly 1 | 1 (PASS) |
+| 6-20 numbered event types in `(c) Final list` | 20 (PASS — at upper bound) |
+| Every (c) entry has payload + persisted field + projector arm + validator | 22 detailed specs covering all entries (PASS) |
+| Handler count matches source (61 TOOL_HANDLERS in handlers.ts) | audit covers all 61 + 7 TOOL_HANDLERS_DB (PASS) |
+| No PLACEHOLDER rows | 0 hits (PASS) |
+
+### Findings summary
+
+- **(a) Already covered:** 18 handlers (full or partial overlap with Phase 02's 7 mutation event types)
+- **(b) Stateless / out-of-vault-scope:** 11 handlers
+- **(c) Needs new event type:** 47 handlers → **20 hard new event types** required for parity (numbered roster in COMPLETENESS-AUDIT.md §"(c) Final list")
+- **Recommended additions for multi-class support:** `level_up` + `class_level_add` (total 22)
+- **Provisional / planner-decision events:** up to 6 more (`tonal_frame_set`, `engagement_profile_set`, `npc_beats_update`, `long_rest_stamp`, `ac_recompute`, `senses_set`) — see Open Items §(d)/§(f)/§(j) in the audit
+
+The audit EXCEEDS RESEARCH Assumption A2's 8-15 budget by 5-13 events. Rationale documented (death-save variants, exhaustion stacking, per-feature resources, multi-class, focus/attunement/inspiration subsystems Phase 02 did not enumerate).
+
+### Critical blocker flagged for Phase 03 Wave 2
+
+**`src/engine/tools/handlers.ts` contains UNRESOLVED Git merge conflict markers** at lines 942, 2277, 3186, 3196, 3213, 3375, 3379 (`<<<<<<< Updated upstream` / `=======` / `>>>>>>> Stashed changes`). This was in the repo state BEFORE plan 03-A-01 started (NOT caused by this plan). The audit was authored over BOTH conflict-block sides as a union.
+
+- **Impact on 03-A-01:** none (audit is OUTPUT-ONLY on engine files)
+- **Impact on 03-A-02:** BLOCKING — cannot extend `events-schema.ts` while `tsc` cannot compile `handlers.ts`
+- **Required action before Wave 2:** operator resolves the merge conflict (choose `Updated upstream` / `Stashed changes` / hand-merge)
+
+Deferred to `.planning/phases/03-migration-cutover/deferred-items.md` (file pre-exists; appending advisable but out of scope per contract).
+
+### Deviations from plan
+
+None. Plan was OUTPUT-ONLY on engine source (read-only); no source-code changes were made.
+
+### Open items handed off to planner (in COMPLETENESS-AUDIT.md §"Open items for the planner")
+
+- **§(d)** Campaign-level / NPC-level / session-level events — Option A (extend VaultEvent), Option B (extend seed + new event types), or Option C (Phase 03 acceptable divergence). Audit recommends **Option B**.
+- **§(e)** Cross-character side effects — no new infrastructure needed (already handled by per-event dispatch).
+- **§(f)** `recompute_ac` classification — (c) `ac_recompute` event vs (b) post-replay derivation. Audit recommends **(b) + derivation step**.
+- **§(g)** `consume_ammo` — reuse `inventory_remove` (no new event needed).
+- **§(h)** Long-rest condition cleanup — dual-write layer must translate `remove_condition('exhaustion')` → `exhaustion_decrement` vault event.
+- **§(i)** Cross-turn `add_inventory` dedup — intentional divergence between Postgres (deduped) and vault (literal). Plan 03-A-09 must honor the applicator's `cross_turn_suppressed` warning as a vault-no-emit signal.
+
+### Self-check
+
+- COMPLETENESS-AUDIT.md exists at expected path: VERIFIED via `git ls-tree HEAD`
+- Commit `5548e3c` present in `git log --all`: VERIFIED
+- 1 file changed (+729 lines), zero deletions: VERIFIED via `git diff --diff-filter=D HEAD~1 HEAD` (empty)
+- All 8 acceptance criteria PASS (re-run via Bash above): VERIFIED
+
+**Result: PASSED**
