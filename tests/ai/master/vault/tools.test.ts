@@ -400,6 +400,47 @@ describe('dispatchVaultTool — apply_event (Phase 02)', () => {
       expect(result.content).toMatch(/UUID/);
     });
 
+    // Smoke 2026-05-26 — qwen3:30b emitted character: "pc-001" in the wild.
+    // Without this guard the event lands and the projector silently drops it
+    // (no character matches "pc-001"), producing zombie state. The guard
+    // forces the model to read the materialized view frontmatter and use
+    // the real UUID; the error marker is descriptive enough to enable
+    // lenient self-correction.
+    // Note: empty string is rejected EARLIER by validateEvent ("requires
+    // {character: non-empty string, ...}"), not by the UUID guard. That's
+    // the correct behavior — empty is caught by shape validation; only
+    // syntactically-plausible-but-not-UUID strings reach the UUID guard.
+    it.each([
+      ['pc-001', 'invented-id pattern (qwen3 wildcard observed in smoke)'],
+      ['Luffy', 'character name instead of id'],
+      ['pc-1', 'short alias'],
+      ['25158592', 'short-prefix uuid (8-char)'],
+      ['25158592-15cf', 'truncated uuid'],
+    ])('rejects non-UUID payload.character (%s — %s)', async (character) => {
+      const result = await helpers.dispatchVaultTool(
+        'apply_event',
+        { type: 'hp_change', payload: { character, delta: -5 } },
+        { campaignId: CAMPAIGN_UUID },
+      );
+      expect(result.isError).toBe(true);
+      expect(result.content).toMatch(/character must be a UUID/);
+      // After rejection, events.md must NOT have grown beyond the seed.
+      const lines = (await readFile(helpers.eventsPath(CAMPAIGN_UUID), 'utf8'))
+        .trim()
+        .split('\n');
+      expect(lines.length).toBe(1); // just the seed
+    });
+
+    it('rejects non-UUID payload.character on condition_add too (not just hp_change)', async () => {
+      const result = await helpers.dispatchVaultTool(
+        'apply_event',
+        { type: 'condition_add', payload: { character: 'pc-001', condition: 'poisoned' } },
+        { campaignId: CAMPAIGN_UUID },
+      );
+      expect(result.isError).toBe(true);
+      expect(result.content).toMatch(/character must be a UUID/);
+    });
+
     it('rejects non-string type', async () => {
       const result = await helpers.dispatchVaultTool(
         'apply_event',

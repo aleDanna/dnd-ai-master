@@ -217,6 +217,24 @@ export async function dispatchVaultTool(
       return { content: `ERROR: ${guarded.error}`, isError: true };
     }
 
+    // NIT 1 enforcement (Phase 02 smoke 2026-05-26): the `character` field
+    // in mutation event payloads MUST be a UUID matching a character in the
+    // materialized view frontmatter. Without this guard the model invents
+    // identifiers like "pc-001" or "luffy" — events land but the projector
+    // can't match them to any character, producing zombie state. The type
+    // schema declares `character: string`, not `character: UUID`, so the
+    // check belongs here at the dispatch boundary, not inside validateEvent.
+    // `campaign_initialized` (seed event) has no `character` field — skip it.
+    if (guarded.value.type !== 'campaign_initialized') {
+      const characterId = (guarded.value.payload as { character?: unknown }).character;
+      if (typeof characterId !== 'string' || !UUID_REGEX.test(characterId)) {
+        return {
+          content: `ERROR: apply_event payload.character must be a UUID matching a character in the campaign (got: ${JSON.stringify(characterId)}). Read the characters/<slug>.md materialized view frontmatter and copy the value of the 'id' field.`,
+          isError: true,
+        };
+      }
+    }
+
     // Build the canonical event envelope. Timestamp is metadata only —
     // the projector is PURE and does not consume it. The version field
     // allows Phase 03+ schema migrations per spike 008.
