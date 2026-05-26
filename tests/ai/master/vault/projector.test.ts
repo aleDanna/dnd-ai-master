@@ -1113,12 +1113,1445 @@ describe('projector', () => {
       // Cast a fake event to bypass the discriminated-union type check —
       // simulates a Phase 03+ event type appearing in older code's
       // events.md (the forward-compat scenario Pitfall 6 documents).
+      // `level_up` is intentionally NOT in VAULT_EVENT_TYPES (audit
+      // "provisional" list; see COMPLETENESS-AUDIT.md §"Open Items §(d)").
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = projector.applyEvent(state, { type: 'level_up', payload: { character: CHAR_A_UUID } } as any);
       expect(warnSpy).toHaveBeenCalled();
       // State is structurally identical (modulo identity — applyEvent
       // returns a clone, not the input).
       expect(JSON.parse(JSON.stringify(result))).toEqual(snapshot);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 10. applyEvent — Phase 03 reducer arms (plan 03-A-03 Task 4)
+  //
+  // Coverage map per the 20 Phase 03 event types from
+  // COMPLETENESS-AUDIT.md §"(c) Final list":
+  //
+  //   1. temp_hp_set
+  //   2. death_save_success
+  //   3. death_save_fail
+  //   4. death_save_stabilize
+  //   5. death_save_recover_at_one
+  //   6. concentration_set
+  //   7. concentration_break
+  //   8. exhaustion_increment
+  //   9. exhaustion_decrement
+  //  10. hit_dice_use
+  //  11. hit_dice_restore
+  //  12. resource_use
+  //  13. resource_restore
+  //  14. inspiration_grant
+  //  15. inspiration_spend
+  //  16. attune
+  //  17. unattune
+  //  18. focus_set
+  //  19. focus_unset
+  //  20. xp_award
+  //
+  // Plus byte-stability regression (spike 013) covering mixed
+  // Phase 02 + Phase 03 events.
+  // -------------------------------------------------------------------------
+
+  describe('applyEvent — Phase 03 reducer arms', () => {
+    /**
+     * Helper: produce a fresh CharacterState with optional Phase 02 / 03
+     * overrides. Defaults match INITIAL_CHARACTER_STATE for Aragorn @
+     * id=CHAR_A_UUID, hp_max=30.
+     */
+    async function freshState(
+      overrides: Partial<{
+        hp_current: number;
+        hp_max: number;
+        conditions: string[];
+        spell_slots: Record<string, { max: number; used: number }>;
+        inventory: { item: string; qty: number }[];
+        temp_hp: number;
+        death_saves: { successes: number; failures: number };
+        flags: { stable: boolean; dead: boolean; inspiration: boolean };
+        concentrating_on:
+          | { spellSlug: string; slotLevel: number; startedRound: number }
+          | null;
+        exhaustion_level: number;
+        hit_dice_remaining: number;
+        hit_dice_max: number;
+        attunements: string[];
+        equipped_focus: { kind: 'arcane' | 'druidic' | 'holy' | 'instrument'; itemSlug: string } | null;
+        resources_used: Record<string, number>;
+        xp: number;
+        level: number;
+      }> = {},
+    ): Promise<import('@/ai/master/vault/projector').CharacterState> {
+      const { projector } = await importWithRoot(testRoot);
+      const base = projector.INITIAL_CHARACTER_STATE({
+        id: CHAR_A_UUID,
+        name: 'Aragorn',
+        hp_max: overrides.hp_max ?? 30,
+      });
+      return {
+        ...base,
+        hp_current: overrides.hp_current ?? base.hp_current,
+        hp_max: overrides.hp_max ?? base.hp_max,
+        conditions: overrides.conditions ?? base.conditions,
+        spell_slots: overrides.spell_slots ?? base.spell_slots,
+        inventory: overrides.inventory ?? base.inventory,
+        temp_hp: overrides.temp_hp ?? base.temp_hp,
+        death_saves: overrides.death_saves ?? base.death_saves,
+        flags: overrides.flags ?? base.flags,
+        concentrating_on:
+          overrides.concentrating_on === undefined ? base.concentrating_on : overrides.concentrating_on,
+        exhaustion_level: overrides.exhaustion_level ?? base.exhaustion_level,
+        hit_dice_remaining: overrides.hit_dice_remaining ?? base.hit_dice_remaining,
+        hit_dice_max: overrides.hit_dice_max ?? base.hit_dice_max,
+        attunements: overrides.attunements ?? base.attunements,
+        equipped_focus:
+          overrides.equipped_focus === undefined ? base.equipped_focus : overrides.equipped_focus,
+        resources_used: overrides.resources_used ?? base.resources_used,
+        xp: overrides.xp ?? base.xp,
+        level: overrides.level ?? base.level,
+      };
+    }
+
+    // -----------------------------------------------------------------------
+    // INITIAL_CHARACTER_STATE — Phase 03 default-value coverage
+    // -----------------------------------------------------------------------
+
+    describe('INITIAL_CHARACTER_STATE — Phase 03 defaults', () => {
+      it('produces neutral defaults for every new field when seed lacks them', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = projector.INITIAL_CHARACTER_STATE({
+          id: CHAR_A_UUID,
+          name: 'Aragorn',
+          hp_max: 30,
+        });
+        expect(s.temp_hp).toBe(0);
+        expect(s.death_saves).toEqual({ successes: 0, failures: 0 });
+        expect(s.flags).toEqual({ stable: false, dead: false, inspiration: false });
+        expect(s.concentrating_on).toBeNull();
+        expect(s.exhaustion_level).toBe(0);
+        expect(s.hit_dice_remaining).toBe(0);
+        expect(s.hit_dice_max).toBe(0);
+        expect(s.attunements).toEqual([]);
+        expect(s.equipped_focus).toBeNull();
+        expect(s.resources_used).toEqual({});
+        expect(s.xp).toBe(0);
+        expect(s.level).toBe(1);
+      });
+
+      it('honors seed values when present', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = projector.INITIAL_CHARACTER_STATE({
+          id: CHAR_A_UUID,
+          name: 'Aragorn',
+          hp_max: 30,
+          temp_hp: 5,
+          hit_dice_remaining: 3,
+          hit_dice_max: 5,
+          exhaustion_level: 2,
+          death_saves: { successes: 1, failures: 2 },
+          flags: { stable: true, inspiration: true },
+          concentrating_on: { spellSlug: 'bless', slotLevel: 1, startedRound: 3 },
+          attunements: ['wand', 'amulet'],
+          equipped_focus: { kind: 'arcane', itemSlug: 'staff' },
+          resources_used: { rage: 1 },
+          xp: 1500,
+          level: 5,
+        });
+        expect(s.temp_hp).toBe(5);
+        expect(s.hit_dice_remaining).toBe(3);
+        expect(s.hit_dice_max).toBe(5);
+        expect(s.exhaustion_level).toBe(2);
+        expect(s.death_saves).toEqual({ successes: 1, failures: 2 });
+        expect(s.flags).toEqual({ stable: true, dead: false, inspiration: true });
+        expect(s.concentrating_on).toEqual({
+          spellSlug: 'bless',
+          slotLevel: 1,
+          startedRound: 3,
+        });
+        // attunements are sorted on intake (DR byte-stability)
+        expect(s.attunements).toEqual(['amulet', 'wand']);
+        expect(s.equipped_focus).toEqual({ kind: 'arcane', itemSlug: 'staff' });
+        expect(s.resources_used).toEqual({ rage: 1 });
+        expect(s.xp).toBe(1500);
+        expect(s.level).toBe(5);
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 1. temp_hp_set
+    // -----------------------------------------------------------------------
+
+    describe('temp_hp_set', () => {
+      it('overwrites temp_hp with the payload value', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'temp_hp_set',
+          payload: { character: CHAR_A_UUID, tempHp: 7 },
+        });
+        expect(next.temp_hp).toBe(7);
+      });
+
+      it('clamps to 0 on a 0 payload (validator already rejects negatives)', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ temp_hp: 9 });
+        const next = projector.applyEvent(s, {
+          type: 'temp_hp_set',
+          payload: { character: CHAR_A_UUID, tempHp: 0 },
+        });
+        expect(next.temp_hp).toBe(0);
+      });
+
+      it('no-op for event targeting another character', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ temp_hp: 5 });
+        const next = projector.applyEvent(s, {
+          type: 'temp_hp_set',
+          payload: { character: CHAR_B_UUID, tempHp: 99 },
+        });
+        expect(next.temp_hp).toBe(5);
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 2. death_save_success
+    // -----------------------------------------------------------------------
+
+    describe('death_save_success', () => {
+      it('increments successes from 0 to 1', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'death_save_success',
+          payload: { character: CHAR_A_UUID },
+        });
+        expect(next.death_saves).toEqual({ successes: 1, failures: 0 });
+      });
+
+      it('3 successes resets counter AND sets flags.stable + ensures unconscious in conditions', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        let s = await freshState({ death_saves: { successes: 2, failures: 1 } });
+        s = projector.applyEvent(s, {
+          type: 'death_save_success',
+          payload: { character: CHAR_A_UUID },
+        });
+        expect(s.death_saves).toEqual({ successes: 0, failures: 0 });
+        expect(s.flags.stable).toBe(true);
+        // PHB §3.18 — stabilized PCs stay unconscious. Mirror applicator
+        // semantics: insert `unconscious` if absent.
+        expect(s.conditions).toContain('unconscious');
+      });
+
+      it('preserves existing failures when incrementing', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ death_saves: { successes: 1, failures: 2 } });
+        const next = projector.applyEvent(s, {
+          type: 'death_save_success',
+          payload: { character: CHAR_A_UUID },
+        });
+        expect(next.death_saves).toEqual({ successes: 2, failures: 2 });
+      });
+
+      it('does not duplicate `unconscious` when already present', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        let s = await freshState({
+          conditions: ['poisoned', 'unconscious'],
+          death_saves: { successes: 2, failures: 0 },
+        });
+        s = projector.applyEvent(s, {
+          type: 'death_save_success',
+          payload: { character: CHAR_A_UUID },
+        });
+        // Single 'unconscious' entry — idempotent insert (matches the
+        // `condition_add` arm pattern Phase 02 ships).
+        expect(s.conditions.filter((c) => c === 'unconscious')).toHaveLength(1);
+        // Other conditions preserved.
+        expect(s.conditions).toContain('poisoned');
+      });
+
+      it('no-op for event targeting another character', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'death_save_success',
+          payload: { character: CHAR_B_UUID },
+        });
+        expect(next.death_saves).toEqual({ successes: 0, failures: 0 });
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 3. death_save_fail
+    // -----------------------------------------------------------------------
+
+    describe('death_save_fail', () => {
+      it('increments failures by 1 (non-critical)', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'death_save_fail',
+          payload: { character: CHAR_A_UUID },
+        });
+        expect(next.death_saves).toEqual({ successes: 0, failures: 1 });
+      });
+
+      it('increments failures by 2 when critical=true', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'death_save_fail',
+          payload: { character: CHAR_A_UUID, critical: true },
+        });
+        expect(next.death_saves).toEqual({ successes: 0, failures: 2 });
+      });
+
+      it('3 failures sets flags.dead AND preserves failures:3 for traceability', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        let s = await freshState({ death_saves: { successes: 1, failures: 2 } });
+        s = projector.applyEvent(s, {
+          type: 'death_save_fail',
+          payload: { character: CHAR_A_UUID },
+        });
+        // applicator.ts:601-608 — failures stay at 3 (not reset) for the
+        // operator audit trail. successes reset to 0.
+        expect(s.death_saves).toEqual({ successes: 0, failures: 3 });
+        expect(s.flags.dead).toBe(true);
+      });
+
+      it('critical=true crossing 3 still caps at 3 failures', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        let s = await freshState({ death_saves: { successes: 0, failures: 2 } });
+        s = projector.applyEvent(s, {
+          type: 'death_save_fail',
+          payload: { character: CHAR_A_UUID, critical: true },
+        });
+        // 2 + 2 = 4 would overflow; cap at 3, set dead.
+        expect(s.death_saves.failures).toBe(3);
+        expect(s.flags.dead).toBe(true);
+      });
+
+      it('no-op for event targeting another character', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'death_save_fail',
+          payload: { character: CHAR_B_UUID, critical: true },
+        });
+        expect(next.death_saves).toEqual({ successes: 0, failures: 0 });
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 4. death_save_stabilize
+    // -----------------------------------------------------------------------
+
+    describe('death_save_stabilize', () => {
+      it('resets death_saves AND sets flags.stable', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        let s = await freshState({ death_saves: { successes: 1, failures: 2 } });
+        s = projector.applyEvent(s, {
+          type: 'death_save_stabilize',
+          payload: { character: CHAR_A_UUID },
+        });
+        expect(s.death_saves).toEqual({ successes: 0, failures: 0 });
+        expect(s.flags.stable).toBe(true);
+      });
+
+      it('does NOT touch conditions (PHB §3.19 stable but unconscious)', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const initialConditions = ['unconscious', 'poisoned'];
+        let s = await freshState({
+          conditions: initialConditions,
+          death_saves: { successes: 0, failures: 2 },
+        });
+        s = projector.applyEvent(s, {
+          type: 'death_save_stabilize',
+          payload: { character: CHAR_A_UUID },
+        });
+        // Order is preserved (the arm does NOT re-sort; it does not touch
+        // conditions at all). Assert by membership + length to be
+        // order-agnostic vs. the input.
+        expect(s.conditions).toHaveLength(initialConditions.length);
+        expect(s.conditions).toEqual(expect.arrayContaining(initialConditions));
+      });
+
+      it('no-op for event targeting another character', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ death_saves: { successes: 0, failures: 2 } });
+        const next = projector.applyEvent(s, {
+          type: 'death_save_stabilize',
+          payload: { character: CHAR_B_UUID },
+        });
+        expect(next.death_saves).toEqual({ successes: 0, failures: 2 });
+        expect(next.flags.stable).toBe(false);
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 5. death_save_recover_at_one
+    // -----------------------------------------------------------------------
+
+    describe('death_save_recover_at_one', () => {
+      it('atomic recovery: reset deathsaves + hp_current=1 + remove unconscious + clear stable/dead', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        let s = await freshState({
+          hp_current: 0,
+          hp_max: 30,
+          conditions: ['unconscious'],
+          death_saves: { successes: 1, failures: 2 },
+          flags: { stable: true, dead: false, inspiration: false },
+        });
+        s = projector.applyEvent(s, {
+          type: 'death_save_recover_at_one',
+          payload: { character: CHAR_A_UUID },
+        });
+        expect(s.death_saves).toEqual({ successes: 0, failures: 0 });
+        expect(s.hp_current).toBe(1);
+        expect(s.conditions).not.toContain('unconscious');
+        expect(s.flags.stable).toBe(false);
+        expect(s.flags.dead).toBe(false);
+        // inspiration is unrelated — preserved
+        expect(s.flags.inspiration).toBe(false);
+      });
+
+      it('preserves other conditions while removing unconscious', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        let s = await freshState({
+          hp_current: 0,
+          conditions: ['poisoned', 'unconscious', 'frightened'],
+        });
+        s = projector.applyEvent(s, {
+          type: 'death_save_recover_at_one',
+          payload: { character: CHAR_A_UUID },
+        });
+        // The arm uses `.filter()` which preserves array order; it does
+        // NOT re-sort (the byte-stability sort happens at serializeView
+        // emit time for the conditions block).
+        expect(s.conditions).not.toContain('unconscious');
+        expect(s.conditions).toContain('poisoned');
+        expect(s.conditions).toContain('frightened');
+        expect(s.conditions).toHaveLength(2);
+      });
+
+      it('no-op for event targeting another character', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({
+          hp_current: 0,
+          conditions: ['unconscious'],
+          death_saves: { successes: 2, failures: 1 },
+        });
+        const next = projector.applyEvent(s, {
+          type: 'death_save_recover_at_one',
+          payload: { character: CHAR_B_UUID },
+        });
+        expect(next.hp_current).toBe(0);
+        expect(next.conditions).toEqual(['unconscious']);
+        expect(next.death_saves).toEqual({ successes: 2, failures: 1 });
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 6. concentration_set
+    // -----------------------------------------------------------------------
+
+    describe('concentration_set', () => {
+      it('sets concentrating_on with payload fields', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'concentration_set',
+          payload: { character: CHAR_A_UUID, spellSlug: 'bless', slotLevel: 1, startedRound: 3 },
+        });
+        expect(next.concentrating_on).toEqual({
+          spellSlug: 'bless',
+          slotLevel: 1,
+          startedRound: 3,
+        });
+      });
+
+      it('overwrites pre-existing concentration target', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        let s = await freshState({
+          concentrating_on: { spellSlug: 'shield-of-faith', slotLevel: 1, startedRound: 1 },
+        });
+        s = projector.applyEvent(s, {
+          type: 'concentration_set',
+          payload: { character: CHAR_A_UUID, spellSlug: 'haste', slotLevel: 3, startedRound: 5 },
+        });
+        expect(s.concentrating_on).toEqual({
+          spellSlug: 'haste',
+          slotLevel: 3,
+          startedRound: 5,
+        });
+      });
+
+      it('no-op for event targeting another character', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'concentration_set',
+          payload: { character: CHAR_B_UUID, spellSlug: 'bless', slotLevel: 1, startedRound: 1 },
+        });
+        expect(next.concentrating_on).toBeNull();
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 7. concentration_break
+    // -----------------------------------------------------------------------
+
+    describe('concentration_break', () => {
+      it('clears concentrating_on regardless of reason', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        let s = await freshState({
+          concentrating_on: { spellSlug: 'bless', slotLevel: 1, startedRound: 3 },
+        });
+        s = projector.applyEvent(s, {
+          type: 'concentration_break',
+          payload: { character: CHAR_A_UUID, reason: 'damage' },
+        });
+        expect(s.concentrating_on).toBeNull();
+      });
+
+      it('reason "killed" produces the same null state', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        let s = await freshState({
+          concentrating_on: { spellSlug: 'haste', slotLevel: 3, startedRound: 5 },
+        });
+        s = projector.applyEvent(s, {
+          type: 'concentration_break',
+          payload: { character: CHAR_A_UUID, reason: 'killed' },
+        });
+        expect(s.concentrating_on).toBeNull();
+      });
+
+      it('reason "incapacitated" also yields null', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        let s = await freshState({
+          concentrating_on: { spellSlug: 'fly', slotLevel: 3, startedRound: 2 },
+        });
+        s = projector.applyEvent(s, {
+          type: 'concentration_break',
+          payload: { character: CHAR_A_UUID, reason: 'incapacitated' },
+        });
+        expect(s.concentrating_on).toBeNull();
+      });
+
+      it('idempotent when concentrating_on was already null', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'concentration_break',
+          payload: { character: CHAR_A_UUID, reason: 'damage' },
+        });
+        expect(next.concentrating_on).toBeNull();
+      });
+
+      it('no-op for event targeting another character', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({
+          concentrating_on: { spellSlug: 'bless', slotLevel: 1, startedRound: 1 },
+        });
+        const next = projector.applyEvent(s, {
+          type: 'concentration_break',
+          payload: { character: CHAR_B_UUID, reason: 'damage' },
+        });
+        expect(next.concentrating_on).toEqual({
+          spellSlug: 'bless',
+          slotLevel: 1,
+          startedRound: 1,
+        });
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 8. exhaustion_increment
+    // -----------------------------------------------------------------------
+
+    describe('exhaustion_increment', () => {
+      it('increments exhaustion_level from 0 to 1 AND appends `exhaustion` to conditions', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'exhaustion_increment',
+          payload: { character: CHAR_A_UUID, source: 'forced_march' },
+        });
+        expect(next.exhaustion_level).toBe(1);
+        expect(next.conditions).toContain('exhaustion');
+      });
+
+      it('caps at level 6 AND sets flags.dead at the cap (PHB §4.1)', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        let s = await freshState({ exhaustion_level: 5, conditions: ['exhaustion'] });
+        s = projector.applyEvent(s, {
+          type: 'exhaustion_increment',
+          payload: { character: CHAR_A_UUID, source: 'starvation' },
+        });
+        expect(s.exhaustion_level).toBe(6);
+        expect(s.flags.dead).toBe(true);
+      });
+
+      it('further increments past level 6 stay capped (no overflow)', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        let s = await freshState({
+          exhaustion_level: 6,
+          conditions: ['exhaustion'],
+          flags: { stable: false, dead: true, inspiration: false },
+        });
+        s = projector.applyEvent(s, {
+          type: 'exhaustion_increment',
+          payload: { character: CHAR_A_UUID, source: 'magical' },
+        });
+        expect(s.exhaustion_level).toBe(6);
+      });
+
+      it('does not duplicate `exhaustion` in conditions on repeated increments', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        let s = await freshState();
+        s = projector.applyEvent(s, {
+          type: 'exhaustion_increment',
+          payload: { character: CHAR_A_UUID, source: 'forced_march' },
+        });
+        s = projector.applyEvent(s, {
+          type: 'exhaustion_increment',
+          payload: { character: CHAR_A_UUID, source: 'dehydration' },
+        });
+        const occurrences = s.conditions.filter((c) => c === 'exhaustion').length;
+        expect(occurrences).toBe(1);
+        expect(s.exhaustion_level).toBe(2);
+      });
+
+      it('no-op for event targeting another character', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'exhaustion_increment',
+          payload: { character: CHAR_B_UUID, source: 'forced_march' },
+        });
+        expect(next.exhaustion_level).toBe(0);
+        expect(next.conditions).not.toContain('exhaustion');
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 9. exhaustion_decrement
+    // -----------------------------------------------------------------------
+
+    describe('exhaustion_decrement', () => {
+      it('decrements exhaustion_level by 1', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ exhaustion_level: 3, conditions: ['exhaustion'] });
+        const next = projector.applyEvent(s, {
+          type: 'exhaustion_decrement',
+          payload: { character: CHAR_A_UUID },
+        });
+        expect(next.exhaustion_level).toBe(2);
+        // Still > 0 → `exhaustion` stays in conditions
+        expect(next.conditions).toContain('exhaustion');
+      });
+
+      it('reaching 0 removes `exhaustion` from conditions', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        let s = await freshState({
+          exhaustion_level: 1,
+          conditions: ['exhaustion', 'poisoned'],
+        });
+        s = projector.applyEvent(s, {
+          type: 'exhaustion_decrement',
+          payload: { character: CHAR_A_UUID },
+        });
+        expect(s.exhaustion_level).toBe(0);
+        expect(s.conditions).not.toContain('exhaustion');
+        // Other conditions preserved
+        expect(s.conditions).toContain('poisoned');
+      });
+
+      it('no-op at level 0 (no underflow)', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'exhaustion_decrement',
+          payload: { character: CHAR_A_UUID },
+        });
+        expect(next.exhaustion_level).toBe(0);
+      });
+
+      it('no-op for event targeting another character', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ exhaustion_level: 3, conditions: ['exhaustion'] });
+        const next = projector.applyEvent(s, {
+          type: 'exhaustion_decrement',
+          payload: { character: CHAR_B_UUID },
+        });
+        expect(next.exhaustion_level).toBe(3);
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 10. hit_dice_use
+    // -----------------------------------------------------------------------
+
+    describe('hit_dice_use', () => {
+      it('decrements hit_dice_remaining by count', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ hit_dice_max: 5, hit_dice_remaining: 5 });
+        const next = projector.applyEvent(s, {
+          type: 'hit_dice_use',
+          payload: { character: CHAR_A_UUID, count: 2 },
+        });
+        expect(next.hit_dice_remaining).toBe(3);
+      });
+
+      it('clamps to 0 when count exceeds remaining', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ hit_dice_max: 5, hit_dice_remaining: 1 });
+        const next = projector.applyEvent(s, {
+          type: 'hit_dice_use',
+          payload: { character: CHAR_A_UUID, count: 10 },
+        });
+        expect(next.hit_dice_remaining).toBe(0);
+      });
+
+      it('no-op for event targeting another character', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ hit_dice_max: 5, hit_dice_remaining: 5 });
+        const next = projector.applyEvent(s, {
+          type: 'hit_dice_use',
+          payload: { character: CHAR_B_UUID, count: 2 },
+        });
+        expect(next.hit_dice_remaining).toBe(5);
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 11. hit_dice_restore
+    // -----------------------------------------------------------------------
+
+    describe('hit_dice_restore', () => {
+      it('increments hit_dice_remaining by count', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ hit_dice_max: 5, hit_dice_remaining: 2 });
+        const next = projector.applyEvent(s, {
+          type: 'hit_dice_restore',
+          payload: { character: CHAR_A_UUID, count: 1 },
+        });
+        expect(next.hit_dice_remaining).toBe(3);
+      });
+
+      it('caps at hit_dice_max', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ hit_dice_max: 5, hit_dice_remaining: 3 });
+        const next = projector.applyEvent(s, {
+          type: 'hit_dice_restore',
+          payload: { character: CHAR_A_UUID, count: 99 },
+        });
+        expect(next.hit_dice_remaining).toBe(5);
+      });
+
+      it('no-op for event targeting another character', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ hit_dice_max: 5, hit_dice_remaining: 2 });
+        const next = projector.applyEvent(s, {
+          type: 'hit_dice_restore',
+          payload: { character: CHAR_B_UUID, count: 1 },
+        });
+        expect(next.hit_dice_remaining).toBe(2);
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 12. resource_use
+    // -----------------------------------------------------------------------
+
+    describe('resource_use', () => {
+      it('creates a new resource counter when key absent', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'resource_use',
+          payload: { character: CHAR_A_UUID, resourceKey: 'rage', uses: 1 },
+        });
+        expect(next.resources_used).toEqual({ rage: 1 });
+      });
+
+      it('adds to an existing resource counter', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ resources_used: { rage: 1, surge: 0 } });
+        const next = projector.applyEvent(s, {
+          type: 'resource_use',
+          payload: { character: CHAR_A_UUID, resourceKey: 'rage', uses: 2 },
+        });
+        expect(next.resources_used).toEqual({ rage: 3, surge: 0 });
+      });
+
+      it('no-op for event targeting another character', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ resources_used: { rage: 1 } });
+        const next = projector.applyEvent(s, {
+          type: 'resource_use',
+          payload: { character: CHAR_B_UUID, resourceKey: 'rage', uses: 5 },
+        });
+        expect(next.resources_used).toEqual({ rage: 1 });
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 13. resource_restore
+    // -----------------------------------------------------------------------
+
+    describe('resource_restore', () => {
+      it('decrements a resource counter', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ resources_used: { rage: 3 } });
+        const next = projector.applyEvent(s, {
+          type: 'resource_restore',
+          payload: { character: CHAR_A_UUID, resourceKey: 'rage', uses: 1 },
+        });
+        expect(next.resources_used).toEqual({ rage: 2 });
+      });
+
+      it('deletes the key when count reaches 0', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ resources_used: { rage: 2, surge: 1 } });
+        const next = projector.applyEvent(s, {
+          type: 'resource_restore',
+          payload: { character: CHAR_A_UUID, resourceKey: 'rage', uses: 2 },
+        });
+        expect(next.resources_used).toEqual({ surge: 1 });
+      });
+
+      it('clamps at 0 when restoring more than available', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ resources_used: { rage: 1 } });
+        const next = projector.applyEvent(s, {
+          type: 'resource_restore',
+          payload: { character: CHAR_A_UUID, resourceKey: 'rage', uses: 99 },
+        });
+        // Underflow → reaches 0 → key deleted.
+        expect(next.resources_used).toEqual({});
+      });
+
+      it('no-op for absent key (still bottoms out to deleted)', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'resource_restore',
+          payload: { character: CHAR_A_UUID, resourceKey: 'rage', uses: 1 },
+        });
+        expect(next.resources_used).toEqual({});
+      });
+
+      it('no-op for event targeting another character', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ resources_used: { rage: 2 } });
+        const next = projector.applyEvent(s, {
+          type: 'resource_restore',
+          payload: { character: CHAR_B_UUID, resourceKey: 'rage', uses: 1 },
+        });
+        expect(next.resources_used).toEqual({ rage: 2 });
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 14. inspiration_grant
+    // -----------------------------------------------------------------------
+
+    describe('inspiration_grant', () => {
+      it('sets flags.inspiration = true', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'inspiration_grant',
+          payload: { character: CHAR_A_UUID },
+        });
+        expect(next.flags.inspiration).toBe(true);
+      });
+
+      it('idempotent — granting again leaves it true', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        let s = await freshState({
+          flags: { stable: false, dead: false, inspiration: true },
+        });
+        s = projector.applyEvent(s, {
+          type: 'inspiration_grant',
+          payload: { character: CHAR_A_UUID },
+        });
+        expect(s.flags.inspiration).toBe(true);
+      });
+
+      it('preserves other flag fields', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({
+          flags: { stable: true, dead: false, inspiration: false },
+        });
+        const next = projector.applyEvent(s, {
+          type: 'inspiration_grant',
+          payload: { character: CHAR_A_UUID },
+        });
+        expect(next.flags).toEqual({ stable: true, dead: false, inspiration: true });
+      });
+
+      it('no-op for event targeting another character', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'inspiration_grant',
+          payload: { character: CHAR_B_UUID },
+        });
+        expect(next.flags.inspiration).toBe(false);
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 15. inspiration_spend
+    // -----------------------------------------------------------------------
+
+    describe('inspiration_spend', () => {
+      it('sets flags.inspiration = false', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({
+          flags: { stable: false, dead: false, inspiration: true },
+        });
+        const next = projector.applyEvent(s, {
+          type: 'inspiration_spend',
+          payload: { character: CHAR_A_UUID },
+        });
+        expect(next.flags.inspiration).toBe(false);
+      });
+
+      it('idempotent on already-false flag', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'inspiration_spend',
+          payload: { character: CHAR_A_UUID },
+        });
+        expect(next.flags.inspiration).toBe(false);
+      });
+
+      it('no-op for event targeting another character', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({
+          flags: { stable: false, dead: false, inspiration: true },
+        });
+        const next = projector.applyEvent(s, {
+          type: 'inspiration_spend',
+          payload: { character: CHAR_B_UUID },
+        });
+        expect(next.flags.inspiration).toBe(true);
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 16. attune
+    // -----------------------------------------------------------------------
+
+    describe('attune', () => {
+      it('appends a new attunement slug', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'attune',
+          payload: { character: CHAR_A_UUID, itemSlug: 'wand-of-fireballs' },
+        });
+        expect(next.attunements).toEqual(['wand-of-fireballs']);
+      });
+
+      it('keeps attunements sorted for byte-stable output', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        let s = await freshState();
+        s = projector.applyEvent(s, {
+          type: 'attune',
+          payload: { character: CHAR_A_UUID, itemSlug: 'wand' },
+        });
+        s = projector.applyEvent(s, {
+          type: 'attune',
+          payload: { character: CHAR_A_UUID, itemSlug: 'amulet' },
+        });
+        expect(s.attunements).toEqual(['amulet', 'wand']);
+      });
+
+      it('idempotent on already-attuned slug', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        let s = await freshState();
+        s = projector.applyEvent(s, {
+          type: 'attune',
+          payload: { character: CHAR_A_UUID, itemSlug: 'wand' },
+        });
+        s = projector.applyEvent(s, {
+          type: 'attune',
+          payload: { character: CHAR_A_UUID, itemSlug: 'wand' },
+        });
+        expect(s.attunements).toEqual(['wand']);
+      });
+
+      it('no-op for event targeting another character', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'attune',
+          payload: { character: CHAR_B_UUID, itemSlug: 'wand' },
+        });
+        expect(next.attunements).toEqual([]);
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 17. unattune
+    // -----------------------------------------------------------------------
+
+    describe('unattune', () => {
+      it('removes the slug from attunements', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ attunements: ['amulet', 'wand'] });
+        const next = projector.applyEvent(s, {
+          type: 'unattune',
+          payload: { character: CHAR_A_UUID, itemSlug: 'wand' },
+        });
+        expect(next.attunements).toEqual(['amulet']);
+      });
+
+      it('idempotent on absent slug', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ attunements: ['amulet'] });
+        const next = projector.applyEvent(s, {
+          type: 'unattune',
+          payload: { character: CHAR_A_UUID, itemSlug: 'never-attuned' },
+        });
+        expect(next.attunements).toEqual(['amulet']);
+      });
+
+      it('no-op for event targeting another character', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ attunements: ['wand'] });
+        const next = projector.applyEvent(s, {
+          type: 'unattune',
+          payload: { character: CHAR_B_UUID, itemSlug: 'wand' },
+        });
+        expect(next.attunements).toEqual(['wand']);
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 18. focus_set
+    // -----------------------------------------------------------------------
+
+    describe('focus_set', () => {
+      it('sets equipped_focus with kind + itemSlug', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'focus_set',
+          payload: { character: CHAR_A_UUID, kind: 'arcane', itemSlug: 'wand-of-the-warmage' },
+        });
+        expect(next.equipped_focus).toEqual({
+          kind: 'arcane',
+          itemSlug: 'wand-of-the-warmage',
+        });
+      });
+
+      it('overwrites existing focus', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        let s = await freshState({
+          equipped_focus: { kind: 'arcane', itemSlug: 'crystal' },
+        });
+        s = projector.applyEvent(s, {
+          type: 'focus_set',
+          payload: { character: CHAR_A_UUID, kind: 'druidic', itemSlug: 'mistletoe' },
+        });
+        expect(s.equipped_focus).toEqual({ kind: 'druidic', itemSlug: 'mistletoe' });
+      });
+
+      it('supports all four PHB focus kinds', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        for (const kind of ['arcane', 'druidic', 'holy', 'instrument'] as const) {
+          const next = projector.applyEvent(await freshState(), {
+            type: 'focus_set',
+            payload: { character: CHAR_A_UUID, kind, itemSlug: 'foo' },
+          });
+          expect(next.equipped_focus?.kind).toBe(kind);
+        }
+      });
+
+      it('no-op for event targeting another character', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'focus_set',
+          payload: { character: CHAR_B_UUID, kind: 'arcane', itemSlug: 'wand' },
+        });
+        expect(next.equipped_focus).toBeNull();
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 19. focus_unset
+    // -----------------------------------------------------------------------
+
+    describe('focus_unset', () => {
+      it('clears equipped_focus to null', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        let s = await freshState({
+          equipped_focus: { kind: 'holy', itemSlug: 'amulet-of-light' },
+        });
+        s = projector.applyEvent(s, {
+          type: 'focus_unset',
+          payload: { character: CHAR_A_UUID },
+        });
+        expect(s.equipped_focus).toBeNull();
+      });
+
+      it('idempotent when already null', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'focus_unset',
+          payload: { character: CHAR_A_UUID },
+        });
+        expect(next.equipped_focus).toBeNull();
+      });
+
+      it('no-op for event targeting another character', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({
+          equipped_focus: { kind: 'arcane', itemSlug: 'wand' },
+        });
+        const next = projector.applyEvent(s, {
+          type: 'focus_unset',
+          payload: { character: CHAR_B_UUID },
+        });
+        expect(next.equipped_focus).toEqual({ kind: 'arcane', itemSlug: 'wand' });
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 20. xp_award
+    // -----------------------------------------------------------------------
+
+    describe('xp_award', () => {
+      it('adds amount to xp', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'xp_award',
+          payload: { character: CHAR_A_UUID, amount: 250 },
+        });
+        expect(next.xp).toBe(250);
+      });
+
+      it('accumulates across multiple awards', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        let s = await freshState({ xp: 1500 });
+        s = projector.applyEvent(s, {
+          type: 'xp_award',
+          payload: { character: CHAR_A_UUID, amount: 500 },
+        });
+        s = projector.applyEvent(s, {
+          type: 'xp_award',
+          payload: { character: CHAR_A_UUID, amount: 250, reason: 'monster' },
+        });
+        expect(s.xp).toBe(2250);
+      });
+
+      it('ignores reason metadata (audit log only)', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const next = projector.applyEvent(s, {
+          type: 'xp_award',
+          payload: { character: CHAR_A_UUID, amount: 100, reason: 'side quest' },
+        });
+        expect(next.xp).toBe(100);
+      });
+
+      it('no-op for event targeting another character', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ xp: 500 });
+        const next = projector.applyEvent(s, {
+          type: 'xp_award',
+          payload: { character: CHAR_B_UUID, amount: 100 },
+        });
+        expect(next.xp).toBe(500);
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // Purity: Phase 03 arms do not mutate the input state
+    // -----------------------------------------------------------------------
+
+    describe('Phase 03 arms preserve purity (no input mutation)', () => {
+      it('temp_hp_set does not mutate input state', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ temp_hp: 3 });
+        const snapshot = JSON.parse(JSON.stringify(s));
+        projector.applyEvent(s, {
+          type: 'temp_hp_set',
+          payload: { character: CHAR_A_UUID, tempHp: 99 },
+        });
+        expect(JSON.parse(JSON.stringify(s))).toEqual(snapshot);
+      });
+
+      it('attune does not mutate the source attunements array', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ attunements: ['existing'] });
+        const sourceArrayRef = s.attunements;
+        projector.applyEvent(s, {
+          type: 'attune',
+          payload: { character: CHAR_A_UUID, itemSlug: 'new-item' },
+        });
+        // The source array is not the modified one — applyEvent returns a
+        // structuredClone-rooted new state.
+        expect(sourceArrayRef).toEqual(['existing']);
+      });
+
+      it('resource_use does not mutate the source resources_used object', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ resources_used: { rage: 1 } });
+        const snapshot = JSON.parse(JSON.stringify(s.resources_used));
+        projector.applyEvent(s, {
+          type: 'resource_use',
+          payload: { character: CHAR_A_UUID, resourceKey: 'rage', uses: 2 },
+        });
+        expect(JSON.parse(JSON.stringify(s.resources_used))).toEqual(snapshot);
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // serializeView + parseView round-trip with Phase 03 fields
+    // -----------------------------------------------------------------------
+
+    describe('serializeView + parseView round-trip — Phase 03 state', () => {
+      it('round-trips a state with every Phase 03 field populated', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        let s = await freshState({
+          hp_current: 12,
+          hp_max: 30,
+          conditions: ['unconscious', 'poisoned'].sort(),
+          spell_slots: { '1': { max: 4, used: 2 }, '2': { max: 3, used: 0 } },
+          inventory: [{ item: 'rope', qty: 1 }],
+          temp_hp: 5,
+          death_saves: { successes: 1, failures: 2 },
+          flags: { stable: false, dead: false, inspiration: true },
+          concentrating_on: { spellSlug: 'bless', slotLevel: 1, startedRound: 3 },
+          exhaustion_level: 2,
+          hit_dice_remaining: 3,
+          hit_dice_max: 5,
+          attunements: ['amulet', 'wand'],
+          equipped_focus: { kind: 'arcane', itemSlug: 'crystal' },
+          resources_used: { rage: 1, surge: 0 },
+          xp: 2500,
+          level: 4,
+        });
+        const serialized = projector.serializeView(s);
+        const parsed = projector.parseView(serialized);
+        expect(parsed).toEqual(s);
+      });
+
+      it('round-trips a state with null concentrating_on and equipped_focus', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({ temp_hp: 7 });
+        const serialized = projector.serializeView(s);
+        const parsed = projector.parseView(serialized);
+        expect(parsed?.concentrating_on).toBeNull();
+        expect(parsed?.equipped_focus).toBeNull();
+        expect(parsed?.temp_hp).toBe(7);
+      });
+
+      it('serializes empty Phase 03 collections inline', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const out = projector.serializeView(s);
+        expect(out).toContain('attunements: []');
+        expect(out).toContain('resources_used: {}');
+        expect(out).toContain('concentrating_on: null');
+        expect(out).toContain('equipped_focus: null');
+      });
+
+      it('serializes Phase 03 numerics in declared order (byte-stable layout)', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState();
+        const out = projector.serializeView(s);
+        // The Phase 03 numeric block follows the Phase 02 inventory line and
+        // appears in this exact order — anchor the regression to the layout.
+        // Anchor each match to the start-of-line ("\n" + key) so substring
+        // collisions (e.g. `level:` inside `exhaustion_level:`) cannot
+        // produce a false-positive index.
+        const tempIdx = out.indexOf('\ntemp_hp:');
+        const exhIdx = out.indexOf('\nexhaustion_level:');
+        const hdRem = out.indexOf('\nhit_dice_remaining:');
+        const hdMax = out.indexOf('\nhit_dice_max:');
+        const xpIdx = out.indexOf('\nxp:');
+        const lvlIdx = out.indexOf('\nlevel:');
+        expect(tempIdx).toBeGreaterThan(0);
+        expect(tempIdx).toBeLessThan(exhIdx);
+        expect(exhIdx).toBeLessThan(hdRem);
+        expect(hdRem).toBeLessThan(hdMax);
+        expect(hdMax).toBeLessThan(xpIdx);
+        expect(xpIdx).toBeLessThan(lvlIdx);
+      });
+
+      it('parseView accepts a Phase 02-only frontmatter and fills Phase 03 defaults', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const phase02Only = [
+          '---',
+          'id: aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+          'name: "Aragorn"',
+          'hp_current: 15',
+          'hp_max: 30',
+          'conditions: []',
+          'spell_slots: {}',
+          'inventory: []',
+          '---',
+          '',
+          '# Aragorn',
+          '',
+        ].join('\n');
+        const parsed = projector.parseView(phase02Only);
+        expect(parsed).not.toBeNull();
+        // Phase 03 fields default to neutral values matching
+        // INITIAL_CHARACTER_STATE — preserves backward compat with views
+        // generated before this plan landed.
+        expect(parsed!.temp_hp).toBe(0);
+        expect(parsed!.death_saves).toEqual({ successes: 0, failures: 0 });
+        expect(parsed!.flags).toEqual({ stable: false, dead: false, inspiration: false });
+        expect(parsed!.concentrating_on).toBeNull();
+        expect(parsed!.exhaustion_level).toBe(0);
+        expect(parsed!.attunements).toEqual([]);
+        expect(parsed!.equipped_focus).toBeNull();
+        expect(parsed!.resources_used).toEqual({});
+        expect(parsed!.xp).toBe(0);
+        expect(parsed!.level).toBe(1);
+      });
+
+      it('byte-stable across two serializations of the same state', async () => {
+        const { projector } = await importWithRoot(testRoot);
+        const s = await freshState({
+          temp_hp: 5,
+          attunements: ['wand', 'amulet'],
+          resources_used: { surge: 1, rage: 2 },
+          concentrating_on: { spellSlug: 'bless', slotLevel: 1, startedRound: 3 },
+          equipped_focus: { kind: 'arcane', itemSlug: 'staff' },
+        });
+        const a = projector.serializeView(s);
+        const b = projector.serializeView(s);
+        expect(a).toBe(b);
+        // Sorting invariants (spike 013 DR):
+        // - attunements emitted alphabetically
+        expect(a.indexOf('"amulet"')).toBeLessThan(a.indexOf('"wand"'));
+        // - resources_used keys emitted alphabetically (rage < surge)
+        expect(a.indexOf('"rage"')).toBeLessThan(a.indexOf('"surge"'));
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // replayEvents + byte-stable view: mixed Phase 02 + Phase 03 sequence
+    // -----------------------------------------------------------------------
+
+    describe('replayEvents + serializeView — byte-stable mixed-phase regression', () => {
+      it('replays mixed Phase 02 + Phase 03 events twice and produces byte-identical view', async () => {
+        const { projector } = await importWithRoot(testRoot);
+
+        const seedEnv = makeEnvelope(
+          'campaign_initialized',
+          {
+            characters: [
+              { id: CHAR_A_UUID, name: 'Aragorn', hp_max: 30, hp_current: 30 },
+            ],
+          },
+          'seed',
+          '2026-05-25T10:00:00.000Z',
+        );
+        const events = [
+          seedEnv,
+          makeEnvelope(
+            'hp_change',
+            { character: CHAR_A_UUID, delta: -8 },
+            'm1',
+            '2026-05-25T10:00:01.000Z',
+          ),
+          makeEnvelope(
+            'temp_hp_set',
+            { character: CHAR_A_UUID, tempHp: 3 },
+            'm2',
+            '2026-05-25T10:00:02.000Z',
+          ),
+          makeEnvelope(
+            'death_save_fail',
+            { character: CHAR_A_UUID },
+            'm3',
+            '2026-05-25T10:00:03.000Z',
+          ),
+          makeEnvelope(
+            'attune',
+            { character: CHAR_A_UUID, itemSlug: 'amulet' },
+            'm4',
+            '2026-05-25T10:00:04.000Z',
+          ),
+          makeEnvelope(
+            'attune',
+            { character: CHAR_A_UUID, itemSlug: 'wand' },
+            'm5',
+            '2026-05-25T10:00:05.000Z',
+          ),
+          makeEnvelope(
+            'concentration_set',
+            { character: CHAR_A_UUID, spellSlug: 'bless', slotLevel: 1, startedRound: 1 },
+            'm6',
+            '2026-05-25T10:00:06.000Z',
+          ),
+          makeEnvelope(
+            'exhaustion_increment',
+            { character: CHAR_A_UUID, source: 'forced_march' },
+            'm7',
+            '2026-05-25T10:00:07.000Z',
+          ),
+          makeEnvelope(
+            'inspiration_grant',
+            { character: CHAR_A_UUID },
+            'm8',
+            '2026-05-25T10:00:08.000Z',
+          ),
+          makeEnvelope(
+            'resource_use',
+            { character: CHAR_A_UUID, resourceKey: 'rage', uses: 1 },
+            'm9',
+            '2026-05-25T10:00:09.000Z',
+          ),
+          makeEnvelope(
+            'xp_award',
+            { character: CHAR_A_UUID, amount: 250, reason: 'monster' },
+            'm10',
+            '2026-05-25T10:00:10.000Z',
+          ),
+        ];
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const states1 = projector.replayEvents(events as any);
+        const view1 = projector.serializeView(states1.get(CHAR_A_UUID)!);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const states2 = projector.replayEvents(events as any);
+        const view2 = projector.serializeView(states2.get(CHAR_A_UUID)!);
+
+        expect(view1).toBe(view2); // byte-exact
+
+        // Sanity assertions on the replayed state
+        const s = states1.get(CHAR_A_UUID)!;
+        expect(s.hp_current).toBe(22); // 30 - 8
+        expect(s.temp_hp).toBe(3);
+        expect(s.death_saves.failures).toBe(1);
+        expect(s.attunements).toEqual(['amulet', 'wand']);
+        expect(s.concentrating_on).toEqual({
+          spellSlug: 'bless',
+          slotLevel: 1,
+          startedRound: 1,
+        });
+        expect(s.exhaustion_level).toBe(1);
+        expect(s.conditions).toContain('exhaustion');
+        expect(s.flags.inspiration).toBe(true);
+        expect(s.resources_used).toEqual({ rage: 1 });
+        expect(s.xp).toBe(250);
+      });
     });
   });
 });

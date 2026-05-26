@@ -86,3 +86,34 @@ out-of-scope and tracked here". The test suite for parity-check passes
 **Resolution path:** plan 03-A-03 will extend `applyEvent` to handle the
 20 new event types; the `never` sentinel will become reachable only for
 genuinely unknown types again, restoring `pnpm typecheck` to green.
+
+#### 2026-05-26 — RESOLVED by 03-A-03
+
+Plan 03-A-03 (extend-projector) landed the 20 reducer arms +
+CharacterState extension + serializeView/parseView extension. Post-
+plan state: `pnpm typecheck` exits 0 (gap closed); the projector
+contains a reducer arm for every Phase 03 event type and the `default:`
+arm's `never` sentinel once again only catches genuinely-unknown types
+(Pitfall 6 graceful degradation for Phase 04+ event types appearing in
+older deployments' events.md).
+
+### 2026-05-26 — Pre-existing test failure in system-prompt.mode.test.ts (discovered during 03-A-03)
+
+`pnpm test tests/ai/master/system-prompt.mode.test.ts` fails with two
+assertions in the "RAG chunks" describe block. The failures
+**predate** plan 03-A-03 (verified by `git stash` → re-running tests
+→ same failure) and are unrelated to the projector / vault subsystem.
+The owned scope of 03-A-03 is `src/ai/master/vault/projector.ts` and
+`tests/ai/master/vault/projector.test.ts` — both pass cleanly (140/140
++ exit-0 typecheck).
+
+Likely cause: a previous unresolved merge or refactor of the master
+system-prompt builder changed the RAG block insertion order. This is
+out of scope for 03-A-03 (SCOPE BOUNDARY rule — only auto-fix issues
+DIRECTLY caused by the current task's changes).
+
+**Recommended fix:** triage in a follow-up plan; either the test's
+expected ordering is stale (RAG block now placed elsewhere) or the
+master system-prompt builder regressed during a merge. The
+verification path is `git log --follow src/ai/master/system-prompt.ts`
+to find the offending commit.
