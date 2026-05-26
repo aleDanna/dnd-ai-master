@@ -29,6 +29,7 @@
     "build-local-models": "tsx scripts/build-local-models.ts",
     "build-rag-index": "tsx scripts/build-rag-index.ts",
     "migrate-handbook-to-vault": "tsx scripts/migrate-handbook-to-vault.ts",
+    "migrate-campaigns-to-vault": "tsx scripts/migrate-campaigns-to-vault.ts",
     "bench-vault-m4": "tsx scripts/bench-vault-m4.ts",
     "vault:flip": "tsx scripts/vault-flip.ts",
     "vault:backup": "tsx scripts/vault-backup.ts",
