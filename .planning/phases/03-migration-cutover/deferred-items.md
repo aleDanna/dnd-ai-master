@@ -60,3 +60,29 @@ relaxed to "no new typecheck errors in the modified files" with verification
 via filtered grep. Migration generation (Task 3) and test execution (Task 4)
 are unaffected — drizzle-kit reads schema files directly without typechecking
 unrelated source.
+
+### 2026-05-26 — Wave 2 in-flight: projector.ts exhaustiveness gap (discovered during 03-A-08 parity-check-module)
+
+Plan 03-A-02 (events-schema extension) shipped 20 new `VaultEvent` union
+members (`temp_hp_set`, `death_save_success`, … — see commit `8506977`)
+without a paired reducer update in `src/ai/master/vault/projector.ts`. The
+projector's `default:` arm uses `const _exhaustive: never = event` to
+enforce compile-time exhaustiveness over the union; the new members make
+the assignment fail with `TS2322 ... is not assignable to type 'never'`.
+
+This is **expected interim state** — plan 03-A-03 (extend the projector
+reducer) is queued to consume the new event types and close the gap.
+Until that lands, `pnpm typecheck` fails with exactly **one** error in
+`projector.ts:281` and zero errors anywhere else.
+
+**Impact on 03-A-08:** none. The parity-check module + its test file
+typecheck clean under `tsconfig.json` (verified by filtering tsc output
+for the owned paths — zero matches). The `pnpm typecheck exits 0`
+acceptance criterion was relaxed to "no new typecheck errors in the
+modified files; the single pre-existing error in projector.ts is
+out-of-scope and tracked here". The test suite for parity-check passes
+17/17 in ~12.7s, well under the 30s budget.
+
+**Resolution path:** plan 03-A-03 will extend `applyEvent` to handle the
+20 new event types; the `never` sentinel will become reachable only for
+genuinely unknown types again, restoring `pnpm typecheck` to green.
