@@ -309,13 +309,43 @@ function sortObjectKeys<T extends Record<string, unknown>>(
 }
 
 /**
+ * Canonical JSON serializer — recursively sorts object keys at every
+ * nesting level so that, e.g., Postgres-returned `{failures:0, successes:0}`
+ * and a TS-literal `{successes:0, failures:0}` produce the same string.
+ *
+ * Arrays are left as-is (insertion order is meaningful for sequences); the
+ * normalizers already sort the few arrays that should be order-agnostic
+ * (`conditions`, `inventory`). Primitives and `null` round-trip through
+ * `JSON.stringify` unchanged.
+ *
+ * The implementation rebuilds objects into a sorted-key skeleton before
+ * stringifying, rather than passing a `replacer` to `JSON.stringify` — a
+ * replacer cannot reorder keys; it can only filter or transform values.
+ */
+function canonicalize(value: unknown): unknown {
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map(canonicalize);
+  const sorted: Record<string, unknown> = {};
+  for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+    sorted[key] = canonicalize((value as Record<string, unknown>)[key]);
+  }
+  return sorted;
+}
+
+/** Canonical JSON string — keys sorted at every nesting level. */
+function canonicalStringify(value: unknown): string {
+  return JSON.stringify(canonicalize(value));
+}
+
+/**
  * Structural equality via canonical JSON. Works for the shapes we
- * compare here (primitives, arrays, plain objects, all keys sorted by
- * the normalizers). Faster than a hand-rolled deep walk at this scale
- * and avoids the `node:util` `isDeepStrictEqual` dependency.
+ * compare here (primitives, arrays, plain objects). The canonicalizer
+ * neutralizes key-ordering differences at every nested level, so a
+ * Postgres JSONB column returned as `{failures, successes}` matches a
+ * TypeScript literal `{successes, failures}` (the death-saves default).
  */
 function deepEqual(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+  return canonicalStringify(a) === canonicalStringify(b);
 }
 
 /**
@@ -342,8 +372,13 @@ function summarizeDiff(
   // Sort the keys so the summary order is stable across runs (deterministic
   // diff is easier to grep + cross-reference in the audit table).
   for (const key of [...allKeys].sort()) {
-    const av = JSON.stringify(a[key]);
-    const bv = JSON.stringify(b[key]);
+    // Use the canonical JSON serializer so per-key comparison is consistent
+    // with `deepEqual` — without this, two semantically-equal nested objects
+    // with different key order would show up here as divergent text even
+    // though `deepEqual` already returned true (and the function would have
+    // exited early in the happy path).
+    const av = canonicalStringify(a[key]);
+    const bv = canonicalStringify(b[key]);
     if (av !== bv) {
       parts.push(`${key}: vault=${av}, postgres=${bv}`);
     }
