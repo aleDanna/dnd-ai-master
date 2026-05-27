@@ -131,10 +131,13 @@ export function parseLenientCompliance(stdout: string): number | null {
 /**
  * Extract per-turn wall_ms values from a spike 011 session log.
  *
- * Matches lines like: `[turn  N] wall=NNNNms tool_calls=...`.
+ * Matches lines like: `[turn  N] wall=  NNNNms tool_calls=...`. Note the
+ * spike 011 harness right-pads the ms value to 6 characters (run-session.ts
+ * line 204: `wall_ms.toString().padStart(6)`), so we must tolerate leading
+ * whitespace between `wall=` and the digits.
  */
 export function parseTurnWallTimes(stdout: string): number[] {
-  return [...stdout.matchAll(/\[turn\s+\d+\]\s+wall=(\d+)ms/g)].map((m) => Number(m[1]));
+  return [...stdout.matchAll(/\[turn\s+\d+\]\s+wall=\s*(\d+)\s*ms/g)].map((m) => Number(m[1]));
 }
 
 /**
