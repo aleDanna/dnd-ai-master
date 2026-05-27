@@ -47,7 +47,7 @@ import {
   MASTER_HANDBOOK_ULTRA_SLIM,
 } from '../src/ai/master/slim-prompts';
 import { buildSrdContext } from '../src/ai/master/srd-context';
-import { getBakedModelName, computeMasterPromptHash, isLargeModelBase } from '../src/ai/master/baked-models';
+import { getBakedModelName, computeMasterPromptHash, isLargeModelBase, TIER_NAMES } from '../src/ai/master/baked-models';
 
 /**
  * Models we explicitly EXCLUDE from auto-bake:
@@ -78,6 +78,21 @@ function isBuildableBase(slug: string): boolean {
   if (lower.includes('bge-')) return false;
   if (lower.includes('reranker')) return false;
   return true;
+}
+
+/**
+ * Phase 03 (Decision 8 + REQ-033) curated-tier gate. Only bases mapped in
+ * TIER_NAMES — i.e. `gpt-oss:20b` + its `q4_K_M` / `q8_0` quantizations,
+ * all of which bake to `dnd-master-plus` — are auto-built without --base.
+ *
+ * Pre-Phase-03 the default loop would also build dnd-master-{lite,max,
+ * max2,max3} variants; that surface is retired (see baked-models.ts top
+ * JSDoc). Developers who want to bake a non-curated base for a one-off
+ * experiment can still pass `--base <slug>`; the curated filter is only
+ * applied to the auto-discovered set.
+ */
+function isCuratedTierBase(slug: string): boolean {
+  return slug in TIER_NAMES;
 }
 
 /**
@@ -341,15 +356,25 @@ async function main(): Promise<void> {
   const installed = await listInstalledOllamaModels();
   console.log(`[build-local-models] found ${installed.size} installed models in Ollama`);
 
-  // Pick target bases. With --base, build that one specifically.
-  // Without --base, build a dnd-master variant for EVERY installed model
-  // that isn't already a baked variant or a clearly-non-chat utility
-  // (embeddings, rerankers, ...). If a model lacks tool-calling
-  // capability the build will still succeed, but turns at runtime will
-  // surface the error — the user picks which variant to keep.
-  const targets = args.base
-    ? [args.base]
-    : [...installed].filter(isBuildableBase).sort();
+  // Pick target bases. With --base, build that one specifically (the
+  // developer escape-hatch — bypass the curated-tier gate for one-off
+  // experiments). Without --base, restrict to the Phase 03 curated
+  // TIER_NAMES set (REQ-033) — post-retirement that's gpt-oss:20b +
+  // q4_K_M/q8_0 only, all baking to dnd-master-plus (the regression
+  // baseline). Bases that pass isBuildableBase but fail
+  // isCuratedTierBase get a log line so operators know they were
+  // skipped on purpose (vs silently dropped).
+  let targets: string[];
+  if (args.base) {
+    targets = [args.base];
+  } else {
+    const buildable = [...installed].filter(isBuildableBase);
+    const skipped = buildable.filter((b) => !isCuratedTierBase(b)).sort();
+    for (const base of skipped) {
+      console.log(`[build-local-models] skip ${base} — not in Phase 03 TIER_NAMES (curated set: ${Object.keys(TIER_NAMES).join(', ')})`);
+    }
+    targets = buildable.filter(isCuratedTierBase).sort();
+  }
 
   if (targets.length === 0) {
     if (args.base) {
