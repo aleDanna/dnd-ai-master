@@ -18,18 +18,6 @@ export const aiUsage = pgTable(
     /** Plan E.1: whether the spellcasting overlay was injected this turn. */
     needsSpellcasting: boolean('needs_spellcasting'),
     /**
-     * Plan E.2: how many RAG chunks were retrieved for this turn.
-     *
-     * Three-state semantic (the hit-rate metric depends on it):
-     *  - NULL → retrieval not attempted (RAG disabled by user pref OR
-     *           mechanical-action gate skipped it). Excluded from hit-rate.
-     *  - 0    → retrieval ran but returned no chunks (real miss).
-     *  - >0   → retrieval returned chunks (hit).
-     *
-     * Validation query: `SELECT … WHERE rag_chunk_count IS NOT NULL`.
-     */
-    ragChunkCount: integer('rag_chunk_count'),
-    /**
      * Ollama model-load time (ms) — cold-start cost paid on the first call
      * after the model was evicted from VRAM. Typically 0-2s on a warm model
      * and 30-120s on a cold one. NULL for cloud providers.
@@ -37,8 +25,8 @@ export const aiUsage = pgTable(
     loadDurationMs: integer('load_duration_ms'),
     /**
      * Ollama prompt-eval time (ms) — time spent processing the input tokens
-     * (prefill phase). Proportional to prompt length; grows with system prompt +
-     * history + RAG chunks. NULL for cloud providers.
+     * (prefill phase). Proportional to prompt length; grows with the system
+     * prompt + history. NULL for cloud providers.
      */
     promptEvalDurationMs: integer('prompt_eval_duration_ms'),
     /**
