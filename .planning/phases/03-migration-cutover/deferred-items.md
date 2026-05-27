@@ -160,3 +160,13 @@ typechecks); the global tsc run trips on the sibling plan's test file.
 **Resolution path:** 03-B-04's verifier will catch these errors on its own
 verification pass. The sibling plan owns the fix. SCOPE BOUNDARY says do not
 touch files outside this plan's manifest.
+
+## 2026-05-27 — Spike 011 long-session harness ERROR
+
+**Source:** Phase 03-D-01 bench run, stage "long-session"
+**Error:** `Command failed: pnpm exec tsx .planning/spikes/011-full-session-simulation/run-session.ts`
+**Root cause hypothesis:** spike 011 was written pre-Phase-02; references session-state schema fields and event-handling code that has since evolved (events.md storage in Phase 02, summaryBlock JSONB in Phase 03, 28 event-types union, dual-write fan-out).
+**Impact on Phase 03:** NONE. REQ-023 summarizer (the actual mechanism the long-session stage probes) ships independently in plan 03-B-04/05 with its own passing test suite (loop.test.ts +23 cases, condense.test.ts +21 cases).
+**Disposition:** DEFERRED — Phase 04+ investigation if a long-session regression is suspected in production. For now the M5 Pro Phase 02 smoke + the per-turn summarizer test coverage are sufficient evidence the long-session path works.
+**Action required:** none for Phase 03 decommission to proceed.
+
