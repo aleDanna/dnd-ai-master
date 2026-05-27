@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import type {
   MasterProvider,
   Message,
@@ -11,6 +12,9 @@ import {
 } from '@/sessions/types';
 import { stripReasoningPreamble } from '@/ai/master/reasoning-strip';
 import { VAULT_TOOL_DEFINITIONS, dispatchVaultTool } from './tools';
+import { maybeCondense } from './condense';
+import { db } from '@/db/client';
+import { sessionState } from '@/db/schema';
 
 /**
  * REQ-010, REQ-013, REQ-021 — Parallel-to-`runToolLoop` orchestrator for
@@ -136,7 +140,46 @@ export async function runVaultToolLoop(input: VaultLoopInput): Promise<VaultLoop
     onEvent?.(ev);
   };
 
-  const messages: Message[] = [...history];
+  // `let` (not `const`) — Phase 03-B reassigns when `maybeCondense` fires.
+  let messages: Message[] = [...history];
+
+  // Phase 03-B (REQ-023) — restore persisted summary on restart (Pitfall 4).
+  // When a session resumes after a Next.js restart, we read the previously
+  // persisted summary block from `session_state.summaryBlock` and inject it
+  // RIGHT AFTER the first history message as a `[Riassunto ...]` user turn.
+  // This avoids re-summarizing on every cold start of an already-condensed
+  // session (which would waste 1-3s + a provider round-trip).
+  //
+  // Failures here are NON-FATAL: a DB outage shouldn't kill the turn. We
+  // log to console.warn and proceed with the unaugmented history; the next
+  // `maybeCondense` call will re-create the summary if still needed.
+  if (sessionId) {
+    try {
+      const [stateRow] = await db
+        .select({ summaryBlock: sessionState.summaryBlock })
+        .from(sessionState)
+        .where(eq(sessionState.sessionId, sessionId))
+        .limit(1);
+      if (stateRow?.summaryBlock?.text && messages.length > 0) {
+        const anchor = messages[0]!;
+        const rest = messages.slice(1);
+        messages = [
+          anchor,
+          {
+            role: 'user',
+            content: `[Riassunto dei turni precedenti]\n${stateRow.summaryBlock.text}`,
+          },
+          ...rest,
+        ];
+      }
+    } catch (e) {
+      console.warn(
+        '[vault-loop] summaryBlock restore failed:',
+        e instanceof Error ? e.message : e,
+      );
+    }
+  }
+
   let finalText = '';
   let toolCallCount = 0;
   let truncated = false;
@@ -148,6 +191,32 @@ export async function runVaultToolLoop(input: VaultLoopInput): Promise<VaultLoop
       timedOut = true;
       emit({ type: 'turn_error', reason: 'timeout', recoverable: true });
       break;
+    }
+
+    // Phase 03-B (REQ-023) — per-turn summarization at threshold. Fires
+    // when the in-loop history exceeds MASTER_SUMMARIZE_TRIGGER tokens
+    // (default 15K). When `condense.condensed === true`, the working
+    // messages array is REPLACED with `[anchor, summary, ...recent]` and
+    // a `summarized` event is emitted for SSE subscribers. The summary is
+    // simultaneously persisted to `session_state.summaryBlock` inside
+    // `maybeCondense` for restart-safety.
+    //
+    // Requires a `sessionId` and a `model` — without either, the summarizer
+    // cannot persist or pick the right backing model (REQ-034 forbids a
+    // per-turn router), so we skip silently. Phase 02 behavior is preserved
+    // when `MASTER_SUMMARIZATION=off` OR token count is below threshold —
+    // the kill-switch lives inside `maybeCondense` and reads env on every
+    // call so production toggling works without a Next.js restart.
+    if (sessionId && model) {
+      const condense = await maybeCondense(messages, provider, model, sessionId);
+      messages = condense.history;
+      if (condense.condensed) {
+        emit({
+          type: 'summarized',
+          tokensBefore: condense.tokensBefore,
+          tokensAfter: condense.tokensAfter,
+        });
+      }
     }
 
     let streamedAny = false;

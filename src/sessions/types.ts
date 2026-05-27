@@ -21,7 +21,11 @@ export type TurnEvent =
   | { type: 'tool_use_end'; toolUseId: string; ok: boolean; error?: string; rolls: ActionResult['rolls']; mutationCount: number }
   | { type: 'state_changed'; mutations: Mutation[] }
   | { type: 'turn_complete'; messageId: string; durationMs: number; toolCallCount: number; truncated: boolean; timedOut: boolean }
-  | { type: 'turn_error'; reason: string; recoverable: boolean };
+  | { type: 'turn_error'; reason: string; recoverable: boolean }
+  // Phase 03-B (REQ-023) — emitted when `maybeCondense` actually fires
+  // and shortens the in-loop history. Carries the token estimates so SSE
+  // subscribers can log compression ratio without re-tokenizing.
+  | { type: 'summarized'; tokensBefore: number; tokensAfter: number };
 
 export interface SnapshotForModel {
   state: EngineState;
