@@ -3,12 +3,54 @@ import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+
+// ---------------------------------------------------------------------------
+// Phase 03-B — mock `@/db/client` BEFORE importing the loop. The loop's new
+// `summaryBlock` restore path issues `db.select(...).from(...).where(...).limit(...)`
+// and the (transitive) `maybeCondense` issues `db.update(...).set(...).where(...)`.
+// The mock supports BOTH chains with controllable return values so each test
+// can stage a different scenario (no row, row with summaryBlock, etc.).
+//
+// `vi.hoisted` is required because the mock factory below is hoisted to the
+// top of the file by vitest — references to outer-scope variables would error
+// with "Cannot access X before initialization" otherwise. The hoisted block
+// runs BEFORE the factory and exposes the shared mock fns.
+// ---------------------------------------------------------------------------
+const { dbSelectMock, dbUpdateMock } = vi.hoisted(() => {
+  return {
+    dbSelectMock: vi.fn<() => Array<{ summaryBlock: { text: string; generatedAt: string; tokensBefore: number } | null } | undefined>>(() => []),
+    dbUpdateMock: vi.fn(() => ({
+      set: vi.fn(() => ({
+        where: vi.fn(async () => undefined),
+      })),
+    })),
+  };
+});
+
+vi.mock('@/db/client', () => ({
+  db: {
+    select: vi.fn(() => ({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          limit: vi.fn(async () => dbSelectMock()),
+        })),
+      })),
+    })),
+    update: dbUpdateMock,
+  },
+  pool: {},
+  createListenClient: () => {
+    throw new Error('not used in loop tests');
+  },
+}));
+
 import { runVaultToolLoop } from '@/ai/master/vault/loop';
 import type {
   MasterProvider,
   CompleteMessageInput,
   CompleteMessageOutput,
   ContentBlock,
+  Message,
   NormalizedUsage,
 } from '@/ai/provider/types';
 
@@ -446,5 +488,271 @@ describe('runVaultToolLoop — apply_event integration (Phase 02)', () => {
     expect(existsSync(eventsFile)).toBe(true);
     const linesAfter = (await readFile(eventsFile, 'utf8')).trim().split('\n').length;
     expect(linesAfter).toBe(linesBefore);
+  });
+});
+
+/* -------------------------------------------------------------------------- *
+ *  Phase 03-B — REQ-023 per-turn summarization (plan 03-B-05).               *
+ *                                                                            *
+ *  These tests exercise the two wiring changes added to runVaultToolLoop:    *
+ *   1. On loop entry, `session_state.summaryBlock` is read and (if present)  *
+ *      injected as a `[Riassunto dei turni precedenti]` user message right   *
+ *      after the anchor — Pitfall 4 restart-restore.                         *
+ *   2. Before each `provider.completeMessage`, `maybeCondense` is invoked    *
+ *      when `sessionId && model` are both present. When it returns           *
+ *      `condensed:true`, the loop emits a `summarized` event with the        *
+ *      tokensBefore/tokensAfter pair.                                        *
+ *                                                                            *
+ *  The Phase 02 / Phase 01 cases above pass `BASE_INPUT` WITHOUT `sessionId` *
+ *  and WITHOUT `model`, so they hit the early-return branches and observe   *
+ *  zero summarizer behavior — that's the regression guarantee.               *
+ * -------------------------------------------------------------------------- */
+
+const SUMM_SESSION = 'aaaaaaaa-1111-2222-3333-444444444444';
+const SUMM_MODEL = 'qwen3:30b-a3b-instruct-2507';
+
+/** Inspectable provider — `completeMessage` is a `vi.fn` so test bodies can
+ *  introspect call args (especially `messages` on the first call to assert
+ *  the restored summary block reached the model). Responses are queued
+ *  identically to `scriptedProvider`. */
+function inspectableProvider(responses: (
+  | { contentBlocks: ContentBlock[]; deltas?: string[]; sleepMs?: number }
+)[]): MasterProvider {
+  let idx = 0;
+  const completeMessage = vi.fn(async (input: CompleteMessageInput): Promise<CompleteMessageOutput> => {
+    const entry = responses[idx];
+    idx += 1;
+    if (!entry) throw new Error(`inspectableProvider: no response queued for call #${idx}`);
+    if (entry.sleepMs) await new Promise((r) => setTimeout(r, entry.sleepMs));
+    if (entry.deltas && input.onDelta) {
+      for (const d of entry.deltas) input.onDelta(d);
+    }
+    return {
+      contentBlocks: entry.contentBlocks,
+      stopReason: entry.contentBlocks.some((b) => b.type === 'tool_use') ? 'tool_use' : 'end_turn',
+      usage: EMPTY_USAGE,
+    };
+  });
+  return {
+    name: 'anthropic',
+    completeMessage,
+    async detectLanguage() { return { code: null, usage: EMPTY_USAGE }; },
+    async proposeWizard() { return { toolInput: {}, usage: EMPTY_USAGE }; },
+  } as unknown as MasterProvider;
+}
+
+/** History long enough to cross the default 15K-token trigger.
+ *  ~20 messages of 3500 chars = 70K chars / 4 ≈ 17.5K tokens. */
+function largeHistoryAboveDefaultThreshold(): Message[] {
+  return [
+    { role: 'user', content: 'Inizio campagna.' },
+    ...Array.from({ length: 20 }, (_, i) => ({
+      role: (i % 2 === 0 ? 'assistant' : 'user') as 'assistant' | 'user',
+      content: 'x'.repeat(3500),
+    })),
+  ];
+}
+
+/** Compact history that stays well below the default 15K trigger. */
+function smallHistory(): Message[] {
+  return [
+    { role: 'user', content: 'Hello.' },
+    { role: 'assistant', content: 'Hi.' },
+  ];
+}
+
+describe('runVaultToolLoop — REQ-023 per-turn summarization', () => {
+  beforeEach(() => {
+    dbSelectMock.mockReset();
+    dbSelectMock.mockReturnValue([]); // default: no persisted summaryBlock
+    dbUpdateMock.mockClear();
+    vi.unstubAllEnvs();
+    // Default ON so condense's kill-switch reads `true`. Individual tests
+    // re-stub to 'off' or different thresholds as needed.
+    vi.stubEnv('MASTER_SUMMARIZATION', 'on');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('no-op below threshold: no summarized event, no condense fire, no DB update', async () => {
+    const provider = inspectableProvider([
+      { contentBlocks: [{ type: 'tool_use', id: 'tu_end', name: 'end_turn', input: { response: 'OK' } }] },
+    ]);
+    const result = await runVaultToolLoop({
+      provider,
+      model: SUMM_MODEL,
+      sessionId: SUMM_SESSION,
+      systemBlocks: [{ type: 'text', text: 'system' }],
+      history: smallHistory(),
+    });
+    expect(result.finalText).toBe('OK');
+    expect(result.events.filter((e) => e.type === 'summarized')).toHaveLength(0);
+    expect(dbUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('fires above threshold: emits summarized event with tokensBefore/tokensAfter and persists', async () => {
+    // Force the threshold low so a 1-call setup easily triggers.
+    vi.stubEnv('MASTER_SUMMARIZE_TRIGGER', '1000');
+    const provider = inspectableProvider([
+      // Call 1: the summarizer's request — model returns a short summary text.
+      { contentBlocks: [{ type: 'text', text: 'Riassunto: i pirati sbarcano.' }] },
+      // Call 2: the actual turn — model immediately ends.
+      { contentBlocks: [{ type: 'tool_use', id: 'tu_end', name: 'end_turn', input: { response: 'Done.' } }] },
+    ]);
+    const result = await runVaultToolLoop({
+      provider,
+      model: SUMM_MODEL,
+      sessionId: SUMM_SESSION,
+      systemBlocks: [{ type: 'text', text: 'system' }],
+      history: largeHistoryAboveDefaultThreshold(),
+    });
+    expect(result.finalText).toBe('Done.');
+    const summEvents = result.events.filter((e) => e.type === 'summarized');
+    expect(summEvents).toHaveLength(1);
+    if (summEvents[0]?.type === 'summarized') {
+      expect(summEvents[0].tokensBefore).toBeGreaterThan(summEvents[0].tokensAfter);
+      expect(summEvents[0].tokensBefore).toBeGreaterThan(1000);
+    }
+    // Persistence fired exactly once during this turn.
+    expect(dbUpdateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores existing summaryBlock on entry: provider sees the [Riassunto] block in messages[1]', async () => {
+    // Prepopulate the DB read: the session_state row already carries a
+    // summary text from a previous turn (the "restart" scenario).
+    const prevSummary = 'Sintesi precedente: il gruppo ha sconfitto il drago.';
+    dbSelectMock.mockReturnValue([
+      { summaryBlock: { text: prevSummary, generatedAt: '2026-05-27T10:00:00.000Z', tokensBefore: 18000 } },
+    ]);
+    const provider = inspectableProvider([
+      { contentBlocks: [{ type: 'tool_use', id: 'tu_end', name: 'end_turn', input: { response: 'Riprendiamo.' } }] },
+    ]);
+    await runVaultToolLoop({
+      provider,
+      model: SUMM_MODEL,
+      sessionId: SUMM_SESSION,
+      systemBlocks: [{ type: 'text', text: 'system' }],
+      history: smallHistory(),
+    });
+    // First call to the model — assert the messages array carries the
+    // injected summary at index 1 (right after the anchor).
+    const completeMessage = provider.completeMessage as ReturnType<typeof vi.fn>;
+    expect(completeMessage).toHaveBeenCalledTimes(1);
+    const firstInput = completeMessage.mock.calls[0]![0] as CompleteMessageInput;
+    expect(firstInput.messages).toHaveLength(3); // anchor + summary + assistant reply
+    expect(firstInput.messages[1]!.role).toBe('user');
+    expect(firstInput.messages[1]!.content as string).toContain('[Riassunto dei turni precedenti]');
+    expect(firstInput.messages[1]!.content as string).toContain(prevSummary);
+  });
+
+  it('MASTER_SUMMARIZATION=off: kill-switch suppresses summarizer regardless of size', async () => {
+    vi.stubEnv('MASTER_SUMMARIZATION', 'off');
+    const provider = inspectableProvider([
+      { contentBlocks: [{ type: 'tool_use', id: 'tu_end', name: 'end_turn', input: { response: 'Off mode.' } }] },
+    ]);
+    const result = await runVaultToolLoop({
+      provider,
+      model: SUMM_MODEL,
+      sessionId: SUMM_SESSION,
+      systemBlocks: [{ type: 'text', text: 'system' }],
+      history: largeHistoryAboveDefaultThreshold(),
+    });
+    expect(result.finalText).toBe('Off mode.');
+    expect(result.events.filter((e) => e.type === 'summarized')).toHaveLength(0);
+    expect(dbUpdateMock).not.toHaveBeenCalled();
+    // The provider was called exactly once — no summarizer round-trip.
+    expect((provider.completeMessage as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1);
+  });
+
+  it('sessionId undefined: skips DB read AND maybeCondense entirely (Phase 02 behavior preserved)', async () => {
+    const provider = inspectableProvider([
+      { contentBlocks: [{ type: 'tool_use', id: 'tu_end', name: 'end_turn', input: { response: 'No session.' } }] },
+    ]);
+    const result = await runVaultToolLoop({
+      provider,
+      model: SUMM_MODEL,
+      // NO sessionId
+      systemBlocks: [{ type: 'text', text: 'system' }],
+      history: largeHistoryAboveDefaultThreshold(),
+    });
+    expect(result.finalText).toBe('No session.');
+    expect(result.events.filter((e) => e.type === 'summarized')).toHaveLength(0);
+    // No DB write triggered — both the restore read and the persist write skipped.
+    expect(dbUpdateMock).not.toHaveBeenCalled();
+    // The select mock callback was never invoked either (no DB read at all).
+    expect(dbSelectMock).not.toHaveBeenCalled();
+  });
+
+  it('model undefined: skips maybeCondense (REQ-034 — cannot pick a backing model)', async () => {
+    const provider = inspectableProvider([
+      { contentBlocks: [{ type: 'tool_use', id: 'tu_end', name: 'end_turn', input: { response: 'No model.' } }] },
+    ]);
+    const result = await runVaultToolLoop({
+      provider,
+      // NO model
+      sessionId: SUMM_SESSION,
+      systemBlocks: [{ type: 'text', text: 'system' }],
+      history: largeHistoryAboveDefaultThreshold(),
+    });
+    expect(result.finalText).toBe('No model.');
+    expect(result.events.filter((e) => e.type === 'summarized')).toHaveLength(0);
+    expect(dbUpdateMock).not.toHaveBeenCalled();
+    // The restore read still fires (gated on sessionId only), so the select mock
+    // should have been consulted once.
+    expect(dbSelectMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('multiple round-trips above threshold: summarizer can fire multiple times across turns', async () => {
+    vi.stubEnv('MASTER_SUMMARIZE_TRIGGER', '1000');
+    // Three round-trips: each iteration triggers maybeCondense (the working
+    // history grows after each tool dispatch, staying above 1000 tokens).
+    //   Iter 1: summarizer text response → loop main: tool_use (read_vault_multi)
+    //   Iter 2: summarizer text response → loop main: tool_use (list_vault)
+    //   Iter 3: summarizer text response → loop main: end_turn
+    const provider = inspectableProvider([
+      { contentBlocks: [{ type: 'text', text: 'Summary 1.' }] }, // summarizer 1
+      { contentBlocks: [{ type: 'tool_use', id: 'tu_1', name: 'list_vault', input: { directory: '/' } }] },
+      { contentBlocks: [{ type: 'text', text: 'Summary 2.' }] }, // summarizer 2
+      { contentBlocks: [{ type: 'tool_use', id: 'tu_2', name: 'list_vault', input: { directory: '/' } }] },
+      { contentBlocks: [{ type: 'text', text: 'Summary 3.' }] }, // summarizer 3
+      { contentBlocks: [{ type: 'tool_use', id: 'tu_end', name: 'end_turn', input: { response: 'Fine.' } }] },
+    ]);
+    const result = await runVaultToolLoop({
+      provider,
+      model: SUMM_MODEL,
+      sessionId: SUMM_SESSION,
+      systemBlocks: [{ type: 'text', text: 'system' }],
+      history: largeHistoryAboveDefaultThreshold(),
+    });
+    expect(result.finalText).toBe('Fine.');
+    // Each round-trip iteration calls maybeCondense BEFORE the provider —
+    // expect three summarized events (one per loop iteration).
+    expect(result.events.filter((e) => e.type === 'summarized')).toHaveLength(3);
+    expect(dbUpdateMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('DB read failure during restore is non-fatal: loop proceeds with unaugmented history', async () => {
+    // Simulate a DB outage on the restore-read path. The loop must NOT crash
+    // and the summarizer must not fire (history stays small).
+    dbSelectMock.mockImplementationOnce(() => {
+      throw new Error('connection refused');
+    });
+    const provider = inspectableProvider([
+      { contentBlocks: [{ type: 'tool_use', id: 'tu_end', name: 'end_turn', input: { response: 'Survived.' } }] },
+    ]);
+    const result = await runVaultToolLoop({
+      provider,
+      model: SUMM_MODEL,
+      sessionId: SUMM_SESSION,
+      systemBlocks: [{ type: 'text', text: 'system' }],
+      history: smallHistory(),
+    });
+    expect(result.finalText).toBe('Survived.');
+    // The provider's first call should have received the ORIGINAL messages,
+    // not an augmented copy.
+    const firstInput = (provider.completeMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as CompleteMessageInput;
+    expect(firstInput.messages).toHaveLength(smallHistory().length);
   });
 });
