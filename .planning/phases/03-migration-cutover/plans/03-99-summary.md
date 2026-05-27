@@ -124,3 +124,49 @@ The Self-Check at the bottom is the same shape as Phase 02:
     Phase 03 SUMMARY shipped. Phase 03 is COMPLETE.
   </done>
 </task>
+
+## SUMMARY (03-99 execution)
+
+**Status:** COMPLETE
+**Date:** 2026-05-28
+**Output artifact:** `.planning/phases/03-migration-cutover/SUMMARY.md` (687 lines)
+
+### What shipped
+
+Phase 03 closing SUMMARY mirroring Phase 02's structure verbatim. All 13
+required sections present:
+
+1. Phase outcome (Status + Date + commit range + wave structure + paragraph)
+2. What shipped — 24 plans across 4 sub-phases (03-A × 10, 03-B × 7, 03-D × 2, 03-C × 6) + 03-99
+3. REQ traceability matrix — 7 rows for REQ-006/020/023/031/032/033/034
+4. ROADMAP Phase 03 success criteria — 7 criteria with evidence + commits
+5. Threat model dispositions — 11 STRIDE threats (T-03-01 through T-03-11)
+6. Test totals — cumulative Phase 01+02+03 (600+ passing across 24+ files)
+7. Performance baseline — measured M4 values (8012 ms production model, REQ-021 closed)
+8. Open items / Phase 04 hand-offs — 9 enumerated (SSE replacement, long-session harness, narrative human verdict, Mistral install UX, event-log compaction, multi-process EventsWriter, post-30d Postgres drop, Settings UI dropdown, automated post-event push)
+9. Items inherited from deferred-items.md — 4 entries (system-prompt RAG failures CLOSED, applicator gp currency pre-existing, vault-flip-helpers contamination, merge conflicts CLOSED)
+10. Operator playbook — 11-step ceremony summarized
+11. Locked decisions — 12 rows for Decisions 1-12 from PLAN.md
+12. Cross-references — Requirements + Phase research + audits + spike findings + skills + Phase 01/02 inheritance + project constraints + Phase 04 entry conditions
+13. Self-Check: PASSED
+
+### Acceptance criteria — all PASS
+
+| Criterion | Result |
+|---|---|
+| File exists at `.planning/phases/03-migration-cutover/SUMMARY.md` | PASS |
+| All 7 REQs mentioned (count >= 14 — appears in both prose AND traceability) | PASS — 28 mentions |
+| All 11 threats (T-03-01 through T-03-11) referenced | PASS — 13 mentions (11 in table + 2 references) |
+| All 24 plans (03-A-01..10, 03-B-01..07, 03-C-01..06, 03-D-01..02) listed in "What shipped" | PASS — 109 plan refs across the doc |
+| Test totals table shows cumulative Phase 01+02+03 count | PASS — 600+ passing line + per-file table |
+| Performance baseline section has the actual M4 bench results | PASS — 8012 ms production model + decommission-target outlier table |
+| Self-Check is PASSED with all 10 checks | PASS |
+| The file is >= 500 LOC | PASS — 687 LOC |
+
+### Commits
+
+| Commit | Subject | Files |
+|---|---|---|
+| (this commit) | docs(phase-03): Phase 03 closing SUMMARY (03-99) | `.planning/phases/03-migration-cutover/SUMMARY.md` (NEW) + `.planning/phases/03-migration-cutover/plans/03-99-summary.md` (SUMMARY appended) |
+
+Phase 03 is COMPLETE.
