@@ -57,15 +57,9 @@ export interface CampaignSettings {
    */
   useModeAwarePrompt?: boolean;
   /**
-   * When true, the AI master retrieves relevant lore/world context via RAG
-   * before generating each response (Plan E.2). Default false in Phase 2
-   * (opt-in); Phase 3 flips the default to true for local providers.
-   */
-  useRagRetrieval?: boolean;
-  /**
    * Phase 01 feature flag (vault-llm-wiki migration). Selects which
    * knowledge backend the master uses for this campaign.
-   *  - 'baked' (default) → existing baked variant + RAG path (system_prompt.ts → tool-loop.ts → engine tools)
+   *  - 'baked' (default) → existing baked variant (system_prompt.ts → tool-loop.ts → engine tools)
    *  - 'vault'           → markdown-vault path (vault/prompt-builder.ts → vault/loop.ts → vault tools, NO engine tools)
    * When 'vault', game-state mutation is unavailable (Phase 02 adds apply_event).
    */

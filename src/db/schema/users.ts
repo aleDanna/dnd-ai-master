@@ -89,12 +89,6 @@ export interface UserPreferences {
    */
   useModeAwarePrompt?: boolean;
   /**
-   * When true, the AI master retrieves relevant lore/world context via RAG
-   * before generating each response (Plan E.2). Default false in Phase 2
-   * (opt-in); Phase 3 flips the default to true for local providers.
-   */
-  useRagRetrieval?: boolean;
-  /**
    * Phase 01 vault-llm-wiki migration — parallel-shape with `CampaignSettings.masterBackend`.
    * This field exists on UserPreferences for type compatibility with
    * `getSessionMasterPreferences` (which returns `Required<UserPreferences>`)

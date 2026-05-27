@@ -29,7 +29,6 @@ const ALLOWED_KEYS: ReadonlySet<keyof CampaignSettings> = new Set<keyof Campaign
   'imageModel',
   'compactPrompt',
   'useModeAwarePrompt',
-  'useRagRetrieval',
   'masterBackend',
 ]);
 

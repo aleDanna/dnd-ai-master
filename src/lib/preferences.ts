@@ -269,7 +269,6 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   // declutter the UI. Existing stored values (true OR false) still win.
   compactPrompt: true,
   useModeAwarePrompt: true,
-  useRagRetrieval: true,
   // Phase 01 vault-llm-wiki — campaign-only flag; user-side default is
   // 'baked' for parallel-shape parity with CampaignSettings. The resolver
   // ignores this user-side value; campaign-side resolution is in
@@ -338,7 +337,6 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
   // The UI toggle was removed; this is the new policy across providers.
   const compactPrompt = prefs.compactPrompt ?? true;
   const useModeAwarePrompt = resolveUseModeAwarePrompt({ aiProvider: provider, useModeAwarePrompt: prefs.useModeAwarePrompt });
-  const useRagRetrieval = resolveUseRagRetrieval({ aiProvider: provider, useRagRetrieval: prefs.useRagRetrieval });
   // Phase 01 vault-llm-wiki — user-side parallel shape only; resolution is
   // campaign-only at runtime (this value is never read directly).
   const masterBackend = resolveMasterBackend(prefs.masterBackend);
@@ -360,7 +358,6 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
     imageModel,
     compactPrompt,
     useModeAwarePrompt,
-    useRagRetrieval,
     masterBackend,
     // Phase 02 vault-llm-wiki — user-side parallel-shape parity only;
     // authoritative campaign-side resolution lives in `getCampaignSettings`
@@ -479,7 +476,6 @@ export async function getCampaignSettings(
   // Always default to compact prompt unless the stored value says otherwise.
   const compactPrompt = prefs.compactPrompt ?? true;
   const useModeAwarePrompt = resolveUseModeAwarePrompt({ aiProvider: provider, useModeAwarePrompt: prefs.useModeAwarePrompt });
-  const useRagRetrieval = resolveUseRagRetrieval({ aiProvider: provider, useRagRetrieval: prefs.useRagRetrieval });
   // Phase 01 vault-llm-wiki — authoritative campaign resolution.
   const masterBackend = resolveMasterBackend(prefs.masterBackend);
   return {
@@ -499,7 +495,6 @@ export async function getCampaignSettings(
     imageModel,
     compactPrompt,
     useModeAwarePrompt,
-    useRagRetrieval,
     masterBackend,
     // Phase 02 vault-llm-wiki — authoritative campaign resolution.
     // Pitfall 5: returns false when masterBackend !== 'vault' regardless
@@ -695,10 +690,6 @@ export function validateSettingsPatch(
     if (typeof body.useModeAwarePrompt !== 'boolean') return { ok: false, error: 'invalid-useModeAwarePrompt' };
     out.useModeAwarePrompt = body.useModeAwarePrompt;
   }
-  if ('useRagRetrieval' in body) {
-    if (typeof body.useRagRetrieval !== 'boolean') return { ok: false, error: 'invalid-useRagRetrieval' };
-    out.useRagRetrieval = body.useRagRetrieval;
-  }
   if ('masterBackend' in body) {
     if (body.masterBackend === undefined || body.masterBackend === null) {
       out.masterBackend = undefined;
@@ -768,18 +759,6 @@ export function resolveUseModeAwarePrompt(prefs: {
   useModeAwarePrompt?: boolean;
 }): boolean {
   if (typeof prefs.useModeAwarePrompt === 'boolean') return prefs.useModeAwarePrompt;
-  return true;
-}
-
-/**
- * Resolves the effective `useRagRetrieval` value. Same shape: stored
- * boolean wins, otherwise default ON now that the toggle is gone.
- */
-export function resolveUseRagRetrieval(prefs: {
-  aiProvider: string;
-  useRagRetrieval?: boolean;
-}): boolean {
-  if (typeof prefs.useRagRetrieval === 'boolean') return prefs.useRagRetrieval;
   return true;
 }
 
