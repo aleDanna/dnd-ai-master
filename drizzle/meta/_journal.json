@@ -274,6 +274,13 @@
       "when": 1779829795728,
       "tag": "0038_session_state_summary_block",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1779921144592,
+      "tag": "0039_drop_pgvector",
+      "breakpoints": true
     }
   ]
 }
