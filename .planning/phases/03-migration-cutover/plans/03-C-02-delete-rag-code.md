@@ -291,3 +291,40 @@ This task is the GATE for plan 03-C-03 (drop migration). Without `pnpm build` gr
     Code-side RAG decommission complete. Plan 03-C-03 drops the DB.
   </done>
 </task>
+
+---
+
+## SUMMARY (executor crash recovery + orchestrator finish — 2026-05-28)
+
+**Status:** COMPLETE
+**Tasks:** 4/4 (3 executor commits + 1 orchestrator finish-commit after socket crash)
+
+**Commits:**
+- `8a4b5b2` — chore(rag-decommission): delete RAG core + strip baked-path callers (executor)
+- `01108ca` — chore(rag-decommission): strip useRagRetrieval preference family (executor)
+- ??? — isMechanicalIntent move to src/ai/master/intent.ts (executor — pre-crash work captured in baked-path-callers commit)
+- This commit — chore(rag-decommission): strip ragChunkCount telemetry (orchestrator finish)
+
+**Files deleted:**
+- `src/ai/master/rag/` (entire directory) ✓
+- `scripts/build-rag-index.ts` ✓
+- `tests/lib/preferences-rag.test.ts` ✓
+- Inline RAG paths in `src/ai/master/system-prompt.ts` ✓
+
+**Files modified:**
+- `src/lib/preferences.ts`, `src/db/schema/users.ts`, `src/db/schema/campaigns.ts` — useRagRetrieval removed
+- `src/app/api/campaigns/[id]/settings/route.ts` — useRagRetrieval validation removed
+- `src/ai/master/usage.ts`, `src/db/schema/ai-usage.ts` — ragChunkCount column reference removed (Postgres DROP COLUMN deferred to plan 03-C-03)
+- `package.json` — build-rag-index script entry stripped
+- `scripts/build-local-models.ts` — dead-reference comments stripped
+- `src/ai/master/intent.ts` — NEW file holding isMechanicalIntent (moved from src/ai/master/rag/intent.ts)
+- `tests/ai/master/intent.test.ts` — NEW test file
+- `tests/ai/master/system-prompt.mode.test.ts` — 2 RAG-coupled `it()` blocks removed
+
+**Verification:**
+- `grep -rn "@/ai/master/rag|build-rag-index|useRagRetrieval" src/ scripts/ tests/ --include='*.ts'` returns 0 ✓
+- `grep -rn "ragChunkCount" src/ scripts/ tests/ --include='*.ts'` returns 0 ✓
+- `pnpm typecheck` exits 0 ✓
+
+**Deviation:** executor parent socket disconnected mid-execution after 3 commits. The 4th commit (ragChunkCount telemetry strip) was completed by the orchestrator from the staged-but-uncommitted state in the working tree. Per the "don't amend, create new commit" convention, the orchestrator commit is separate and clearly attributed.
+
