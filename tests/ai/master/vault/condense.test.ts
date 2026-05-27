@@ -248,10 +248,12 @@ describe('maybeCondense — condensation path', () => {
     // 1 system anchor + 1 summary user msg + 6 recent (keep=3 × 2)
     expect(r.history).toHaveLength(1 + 1 + 6);
     expect(r.history[0]).toBe(history[0]); // system anchor preserved by reference
-    expect(r.history[1].role).toBe('user');
-    expect(typeof r.history[1].content).toBe('string');
-    expect(r.history[1].content as string).toContain('[Riassunto dei turni precedenti]');
-    expect(r.history[1].content as string).toContain('Sintesi narrativa');
+    const summaryMsg = r.history[1];
+    expect(summaryMsg).toBeDefined();
+    expect(summaryMsg!.role).toBe('user');
+    expect(typeof summaryMsg!.content).toBe('string');
+    expect(summaryMsg!.content as string).toContain('[Riassunto dei turni precedenti]');
+    expect(summaryMsg!.content as string).toContain('Sintesi narrativa');
     // Recent block is the LAST 6 from input history.
     const recentSlice = history.slice(-6);
     for (let i = 0; i < 6; i += 1) {
@@ -278,7 +280,7 @@ describe('maybeCondense — condensation path', () => {
     await maybeCondense(longHistory(), provider, 'qwen3', 'session-id');
     const calls = (provider.completeMessage as ReturnType<typeof vi.fn>).mock.calls;
     expect(calls).toHaveLength(1);
-    const input = calls[0][0] as CompleteMessageInput;
+    const input = calls[0]![0] as CompleteMessageInput;
     expect(Array.isArray(input.systemBlocks)).toBe(true);
     expect(input.systemBlocks.length).toBeGreaterThan(0);
     // At least one block must mention "italiano" (case-insensitive).
@@ -298,7 +300,7 @@ describe('maybeCondense — condensation path', () => {
     const provider = mockProvider();
     await maybeCondense(longHistory(), provider, 'qwen3:30b-a3b-instruct-2507', 'session-id');
     const calls = (provider.completeMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const input = calls[0][0] as CompleteMessageInput;
+    const input = calls[0]![0] as CompleteMessageInput;
     expect(input.model).toBe('qwen3:30b-a3b-instruct-2507');
     // Also assert that NO other model was passed — only one call total.
     expect(provider.completeMessage).toHaveBeenCalledTimes(1);
@@ -309,7 +311,7 @@ describe('maybeCondense — condensation path', () => {
     const provider = mockProvider();
     await maybeCondense(longHistory(), provider, 'qwen3', 'session-id');
     const calls = (provider.completeMessage as ReturnType<typeof vi.fn>).mock.calls;
-    const input = calls[0][0] as CompleteMessageInput;
+    const input = calls[0]![0] as CompleteMessageInput;
     expect(input.tools).toEqual([]);
     // ~200 words of Italian needs roughly 300-400 tokens of headroom.
     expect(input.maxTokens).toBeGreaterThanOrEqual(200);
@@ -468,6 +470,7 @@ const HAS_DB = !!process.env.DATABASE_URL;
         premise: 'fixture',
       })
       .returning();
+    if (!session) throw new Error('session insert returned nothing');
     SESSION_ID = session.id;
     // Minimal session_state row — primary key is sessionId.
     await db.insert(schema.sessionState).values({
