@@ -29,6 +29,7 @@
     "build-local-models": "tsx scripts/build-local-models.ts",
     "migrate-handbook-to-vault": "tsx scripts/migrate-handbook-to-vault.ts",
     "migrate-campaigns-to-vault": "tsx scripts/migrate-campaigns-to-vault.ts",
+    "migrate-stale-userprefs": "tsx scripts/migrate-stale-userprefs.ts",
     "bench-vault-m4": "tsx scripts/bench-vault-m4.ts",
     "bench-phase-03-m4": "tsx scripts/bench-phase-03-m4.ts",
     "vault:backup": "tsx scripts/vault-backup.ts",
