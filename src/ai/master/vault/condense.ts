@@ -30,7 +30,20 @@ import { eq } from 'drizzle-orm';
 import type { CompleteMessageInput, MasterProvider, Message, SystemBlock } from '@/ai/provider/types';
 import { db } from '@/db/client';
 import { sessionState } from '@/db/schema';
-import { envBool, envPositiveInt } from '@/lib/env';
+import { envPositiveInt } from '@/lib/env';
+
+/**
+ * Read the kill-switch flag. The accepted "disabled" tokens are `off`,
+ * `false`, and `0` — anything else (including unset) leaves the
+ * summarizer ENABLED. We can't reuse `envBool` because that helper
+ * only accepts the `true|false|1|0` quartet, and the operator-facing
+ * docs talk about `MASTER_SUMMARIZATION=off`.
+ */
+function summarizationEnabled(): boolean {
+  const raw = process.env.MASTER_SUMMARIZATION?.trim().toLowerCase();
+  if (raw === 'off' || raw === 'false' || raw === '0') return false;
+  return true;
+}
 
 /**
  * Read the condensation trigger threshold from env on every call.
@@ -136,8 +149,7 @@ export async function maybeCondense(
 ): Promise<CondenseResult> {
   const tokensBefore = estimateTokens(history);
   // Kill switch — read on every call so prod can flip without restart.
-  const enabled = envBool('MASTER_SUMMARIZATION', true);
-  if (!enabled) {
+  if (!summarizationEnabled()) {
     return { history, condensed: false, tokensBefore, tokensAfter: tokensBefore };
   }
 
