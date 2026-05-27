@@ -139,3 +139,24 @@ turn-route + 14/14 turn-route-branch + 19/19 vault-mutations-gate +
 likely hits the cross-denomination payCurrency special-case in
 `src/sessions/currency.ts` which may have evolved without the test
 expectation being updated. SCOPE BOUNDARY says don't auto-fix.
+
+### 2026-05-27 — Wave 5a in-flight: condense.test.ts typecheck errors (discovered during 03-B-06)
+
+Plan 03-B-04 (condense — sibling parallel plan) ships
+`tests/ai/master/vault/condense.test.ts` with typecheck errors
+(9 errors total: 7 × `TS2532 Object is possibly 'undefined'`,
+1 × `TS2769 No overload matches this call`, 1 × `TS18048 'session' is
+possibly 'undefined'`). These predate plan 03-B-06 — they were committed
+by the sibling plan that runs concurrently on `src/ai/master/vault/condense.ts`
++ `src/ai/master/vault/condense-trigger.ts` + the test file above.
+
+**Impact on 03-B-06:** none. The plan touches only
+`src/ai/master/vault/snapshot-reader.ts` + `tests/ai/master/vault/snapshot-reader.test.ts`.
+Filtered `pnpm typecheck 2>&1 | grep snapshot-reader` returns zero matches —
+the snapshot-reader module and its tests compile cleanly. The `pnpm typecheck
+exits 0` acceptance criterion for Task 1 was met locally (the file in isolation
+typechecks); the global tsc run trips on the sibling plan's test file.
+
+**Resolution path:** 03-B-04's verifier will catch these errors on its own
+verification pass. The sibling plan owns the fix. SCOPE BOUNDARY says do not
+touch files outside this plan's manifest.
