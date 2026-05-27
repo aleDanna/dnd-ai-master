@@ -161,6 +161,21 @@ typechecks); the global tsc run trips on the sibling plan's test file.
 verification pass. The sibling plan owns the fix. SCOPE BOUNDARY says do not
 touch files outside this plan's manifest.
 
+### 2026-05-27 — Same system-prompt.mode RAG failure re-confirmed during 03-C-04
+
+Plan 03-C-04 (baked tier strip) re-ran `pnpm test tests/ai/master/` as a
+sanity check after committing Tasks 1-3 and observed the same 2 RAG-block
+failures in `tests/ai/master/system-prompt.mode.test.ts` originally
+flagged during 03-A-03 (see entry above). The 03-C-04 plan owns
+`src/ai/master/baked-models.ts`, `scripts/build-local-models.ts`, and the
+two test files for baked-models + local-services-ollama — none of which
+touch the system-prompt builder or RAG block insertion. Verified via
+`git diff --name-only HEAD~3 HEAD -- 'src/ai/master/system-prompt*'
+'src/ai/master/rag*' 'tests/ai/master/system-prompt.mode.test*'` →
+zero matches. SCOPE BOUNDARY says do not touch; the original 03-A-03
+recommendation (triage the system-prompt builder for a regressed RAG
+block insertion order) still stands.
+
 ## 2026-05-27 — Spike 011 long-session harness ERROR
 
 **Source:** Phase 03-D-01 bench run, stage "long-session"
