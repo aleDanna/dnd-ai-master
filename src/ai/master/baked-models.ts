@@ -10,7 +10,21 @@
  * `dnd-master-` prefix and omits those static blocks from the request,
  * shrinking the per-turn prompt from ~120 KB to ~10 KB.
  *
+ * Phase 03 cutover (REQ-033 + Decision 8): the curated TIER_NAMES set was
+ * stripped down to ONLY `dnd-master-plus` (gpt-oss:20b + quantizations),
+ * which we keep as a regression baseline for spike-004-style A/B tests
+ * against the vault path. The previously-baked Max / Max 2 / Max 3 / Lite
+ * tiers (mistral-small3.2:24b, qwen3:30b-a3b-instruct-2507, qwen3:30b-a3b,
+ * llama3.2:3b) are retired — they remain selectable as raw BASE slugs in
+ * Settings (the vault path runs them un-baked, REQ-030/031/032). The
+ * helpers in this file (`isBakedModel`, `getBakedBaseModel`,
+ * `getBakedModelName`, `LARGE_MODEL_BASES`) still recognise the legacy
+ * prefix and legacy base slugs so any stale `userPrefs.aiMasterModel`
+ * value pointing at a retired tier degrades gracefully until plan 03-C-05
+ * migrates it.
+ *
  * See docs/superpowers/specs/2026-05-16-local-baked-models-design.md.
+ * See .planning/phases/03-migration-cutover/03-RESEARCH.md (Decision 8).
  */
 
 export const BAKED_PREFIX = 'dnd-master-';
@@ -50,50 +64,38 @@ export function isLargeModelBase(baseSlug: string): boolean {
 }
 
 /**
- * Curated tier names for the baked variants the user actually picks from
- * in Settings. Maps base slug → short, speaking name. Models not in this
- * map fall back to the legacy `dnd-master-<slug>` naming so nothing
- * breaks for in-progress development variants.
+ * Phase 03 (Decision 8 + REQ-033) — TIER_NAMES contains ONLY dnd-master-plus
+ * (the regression-test baseline; gpt-oss:20b + its q4_K_M/q8_0 quantizations).
  *
- * Tier philosophy (multi-language campaigns, M-series Mac):
- *  - Max:    mistral-small3.2:24b           — strong multilingual narration + native tool-calling, dense 24B
- *  - Max 2:  qwen3:30b-a3b-instruct-2507    — MoE 30B/3B-active non-thinking instruct, fastest at this quality tier
- *  - Plus:   gpt-oss:20b                    — solid tool-calling fallback
+ * RETIRED in Phase 03:
+ *  - dnd-master-lite  (llama3.2:3b)                                — out of selector
+ *  - dnd-master-max   (mistral-small3.2:24b)                       — out of selector
+ *  - dnd-master-max2  (qwen3:30b-a3b-instruct-2507 + quantizations) — out of selector
+ *  - dnd-master-max3  (qwen3:30b-a3b + quantizations)              — out of selector
  *
- * Bases outside the curated tiers (small <7B models, reasoning-only models)
- * still get baked under the legacy slug-derived name (e.g.
- * `dnd-master-llama3-2-3b`) if the user installs them, and surface in
- * Settings without a polished label.
+ * The base slugs (e.g., `qwen3:30b-a3b-instruct-2507-q4_K_M`, REQ-030 primary;
+ * `mistral-small3.2:24b`, REQ-032 offline content tool) are selected DIRECTLY
+ * as `userPrefs.aiMasterModel` — they no longer require a baked variant
+ * because Phase 01 vault path runs them as base slugs.
+ *
+ * Phase 03-C-05 migrates stale `userPrefs.aiMasterModel` values that still
+ * point at retired tier names back to the production primary base slug.
+ *
+ * Phase 03-C-06 documents `ollama rm dnd-master-{lite,max,max2,max3}` for
+ * SSD reclaim on M4 (operator-run on the production host).
+ *
+ * Graceful-degradation note: `isBakedModel`, `getBakedBaseModel`, and
+ * `getBakedModelName` still recognise the `dnd-master-` prefix and the
+ * legacy slug-derived naming, so a stored userPrefs value of
+ * `dnd-master-max2:latest` (or any other retired tier) resolves via the
+ * fallback inverse-prefix logic until the 03-C-05 migration cleans it up.
  */
 export const TIER_NAMES: Record<string, string> = {
-  // Mistral Small 3.2 24B — Max tier (multilingual narration + native tool-calling)
-  'mistral-small3.2:24b':                  'dnd-master-max',
-  // Qwen3 30B-A3B Instruct — Max 2 tier (MoE, fastest at this quality)
-  // Map both the canonical tag and the explicit-quantization variants users
-  // commonly pull (q4_K_M / q8_0 / fp16). Without these the bake script
-  // creates a slug-derived name like `dnd-master-qwen3-30b-a3b-instruct-2507-q4_K_M`
-  // that surfaces in Settings as a confusing duplicate next to "D&D Master Max 2".
-  'qwen3:30b-a3b-instruct-2507':           'dnd-master-max2',
-  'qwen3:30b-a3b-instruct-2507-q4_K_M':    'dnd-master-max2',
-  'qwen3:30b-a3b-instruct-2507-q8_0':      'dnd-master-max2',
-  'qwen3:30b-a3b-instruct-2507-fp16':      'dnd-master-max2',
-  // Qwen3 30B-A3B (thinking-mode MoE base) — Max 3 tier. Same underlying
-  // architecture as the instruct-2507 sibling but the base variant has the
-  // chain-of-thought head active. The runtime sends `think: false` so the
-  // model behaves like an instruct variant in practice, while the broader
-  // pretraining of the thinking head can occasionally yield more
-  // creative narration. Kept as a separate tier so users can install
-  // both side-by-side and pick from the dropdown.
-  'qwen3:30b-a3b':                         'dnd-master-max3',
-  'qwen3:30b-a3b-q4_K_M':                  'dnd-master-max3',
-  'qwen3:30b-a3b-q8_0':                    'dnd-master-max3',
-  'qwen3:30b-a3b-fp16':                    'dnd-master-max3',
-  // GPT-OSS 20B — Plus tier (solid tool-calling fallback)
+  // GPT-OSS 20B — Plus tier (REGRESSION BASELINE per REQ-033; kept ONLY for
+  // spike-004-style A/B tests against the vault path).
   'gpt-oss:20b':                           'dnd-master-plus',
   'gpt-oss:20b-q4_K_M':                    'dnd-master-plus',
   'gpt-oss:20b-q8_0':                      'dnd-master-plus',
-  // Llama 3.2 3B — Lite tier (fast iteration, less reliable on long prompts)
-  'llama3.2:3b':                           'dnd-master-lite',
 };
 
 /** Reverse map of TIER_NAMES, populated lazily for O(1) lookup. */
