@@ -8,6 +8,7 @@ import {
   readBakedModelHash,
   warnIfBakedModelStale,
   _clearStaleWarningCache,
+  TIER_NAMES,
 } from '@/ai/master/baked-models';
 
 describe('isBakedModel', () => {
@@ -57,24 +58,27 @@ describe('getBakedBaseModel', () => {
 });
 
 describe('getBakedModelName', () => {
-  it('returns the tier name for curated bases', () => {
-    expect(getBakedModelName('mistral-small3.2:24b')).toBe('dnd-master-max');
-    expect(getBakedModelName('qwen3:30b-a3b-instruct-2507')).toBe('dnd-master-max2');
+  it('returns dnd-master-plus for the gpt-oss:20b curated tier (Phase 03 baseline)', () => {
     expect(getBakedModelName('gpt-oss:20b')).toBe('dnd-master-plus');
+    expect(getBakedModelName('gpt-oss:20b-q4_K_M')).toBe('dnd-master-plus');
+    expect(getBakedModelName('gpt-oss:20b-q8_0')).toBe('dnd-master-plus');
   });
 
-  it('falls back to legacy slug-derived naming for non-curated small bases', () => {
-    // qwen3:4b and llama3.2:3b are no longer curated tiers — they bake under
-    // the legacy slug-derived name if installed anyway.
-    expect(getBakedModelName('qwen3:4b')).toBe('dnd-master-qwen3-4b');
+  it('falls back to legacy slug-derived naming for Phase 03 retired tier bases', () => {
+    // mistral-small3.2:24b (legacy Max) and qwen3:30b-a3b-instruct-2507
+    // (legacy Max 2) are NO LONGER in TIER_NAMES — they fall through to the
+    // legacy slug-derived format. They remain selectable as raw BASE slugs
+    // in Settings via the vault path (REQ-031 / REQ-032).
+    expect(getBakedModelName('mistral-small3.2:24b')).toBe('dnd-master-mistral-small3.2-24b');
+    expect(getBakedModelName('qwen3:30b-a3b-instruct-2507')).toBe('dnd-master-qwen3-30b-a3b-instruct-2507');
+    expect(getBakedModelName('qwen3:30b-a3b')).toBe('dnd-master-qwen3-30b-a3b');
     expect(getBakedModelName('llama3.2:3b')).toBe('dnd-master-llama3.2-3b');
   });
 
   it('falls back to slug-derived naming for non-tier bases', () => {
-    // qwen3:30b-a3b (legacy Max) is NO LONGER in the tier map → legacy format kicks in.
-    expect(getBakedModelName('qwen3:30b-a3b')).toBe('dnd-master-qwen3-30b-a3b');
     expect(getBakedModelName('qwen3:30b')).toBe('dnd-master-qwen3-30b');
     expect(getBakedModelName('qwen3:14b')).toBe('dnd-master-qwen3-14b');
+    expect(getBakedModelName('qwen3:4b')).toBe('dnd-master-qwen3-4b');
     expect(getBakedModelName('gemma2:2b')).toBe('dnd-master-gemma2-2b');
   });
 
@@ -84,14 +88,23 @@ describe('getBakedModelName', () => {
 });
 
 describe('getBakedBaseModel — tier name reverse map', () => {
-  it('recovers the base from a tier name (with :latest)', () => {
-    expect(getBakedBaseModel('dnd-master-max:latest')).toBe('mistral-small3.2:24b');
-    expect(getBakedBaseModel('dnd-master-max2:latest')).toBe('qwen3:30b-a3b-instruct-2507');
+  it('recovers the base from the dnd-master-plus tier (the only Phase 03 baseline)', () => {
     expect(getBakedBaseModel('dnd-master-plus:latest')).toBe('gpt-oss:20b');
+    expect(getBakedBaseModel('dnd-master-plus')).toBe('gpt-oss:20b');
   });
 
-  it('recovers the base from a tier name (without :latest)', () => {
-    expect(getBakedBaseModel('dnd-master-max')).toBe('mistral-small3.2:24b');
+  it('returns null for Phase 03 retired tier names (no reverse entry, no dash after prefix)', () => {
+    // After the Phase 03 strip TIER_NAMES no longer maps dnd-master-{lite,max,
+    // max2,max3} to their bases, so the reverse-map lookup misses; the legacy
+    // inverse-prefix path also fails because there's no `-` after the prefix
+    // in `dnd-master-max` (the prefix consumes the full `dnd-master-` segment).
+    // Stale userPrefs values pointing at these tier names degrade gracefully —
+    // the plan 03-C-05 migration cleans them up to the production primary slug.
+    expect(getBakedBaseModel('dnd-master-max')).toBeNull();
+    expect(getBakedBaseModel('dnd-master-max2')).toBeNull();
+    expect(getBakedBaseModel('dnd-master-max3')).toBeNull();
+    expect(getBakedBaseModel('dnd-master-lite')).toBeNull();
+    expect(getBakedBaseModel('dnd-master-max2:latest')).toBeNull();
   });
 
   it('falls back to legacy parse for non-tier baked variants', () => {
@@ -257,5 +270,51 @@ describe('warnIfBakedModelStale', () => {
     expect(result?.stale).toBe(false);
     expect(result?.modelHash).toBeNull();
     expect(warnSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('baked-models — Phase 03 TIER_NAMES strip (REQ-033 / Decision 8)', () => {
+  it('TIER_NAMES contains only dnd-master-plus values', () => {
+    const tiers = new Set(Object.values(TIER_NAMES));
+    expect(tiers).toEqual(new Set(['dnd-master-plus']));
+  });
+
+  it('TIER_NAMES has exactly 3 base slugs (gpt-oss:20b + 2 quantizations)', () => {
+    const bases = Object.keys(TIER_NAMES);
+    expect(bases).toHaveLength(3);
+    expect(bases.every((b) => b.startsWith('gpt-oss:20b'))).toBe(true);
+  });
+
+  it('retired tier slugs are NOT in TIER_NAMES.values()', () => {
+    const tiers = Object.values(TIER_NAMES);
+    expect(tiers).not.toContain('dnd-master-lite');
+    expect(tiers).not.toContain('dnd-master-max');
+    expect(tiers).not.toContain('dnd-master-max2');
+    expect(tiers).not.toContain('dnd-master-max3');
+  });
+
+  it('retired base slugs are NOT in TIER_NAMES.keys()', () => {
+    const bases = Object.keys(TIER_NAMES);
+    expect(bases).not.toContain('mistral-small3.2:24b');
+    expect(bases).not.toContain('qwen3:30b-a3b-instruct-2507');
+    expect(bases).not.toContain('qwen3:30b-a3b-instruct-2507-q4_K_M');
+    expect(bases).not.toContain('qwen3:30b-a3b');
+    expect(bases).not.toContain('llama3.2:3b');
+  });
+
+  it('isBakedModel still recognises the dnd-master- prefix for graceful degradation', () => {
+    // Stale userPrefs.aiMasterModel values that point at retired tiers
+    // still match the prefix predicate — the value is treated as a baked
+    // variant by the turn route, and the userPrefs migration (plan
+    // 03-C-05) is what cleans up the stored string. The prefix check
+    // never depends on TIER_NAMES being populated.
+    expect(isBakedModel('dnd-master-plus')).toBe(true);
+    expect(isBakedModel('dnd-master-max2')).toBe(true); // historically baked
+    expect(isBakedModel('dnd-master-lite')).toBe(true); // historically baked
+    expect(isBakedModel('qwen3:30b-a3b-instruct-2507-q4_K_M')).toBe(false); // raw base slug
+  });
+
+  it('getBakedBaseModel returns the gpt-oss base for dnd-master-plus', () => {
+    expect(getBakedBaseModel('dnd-master-plus')).toBe('gpt-oss:20b');
   });
 });

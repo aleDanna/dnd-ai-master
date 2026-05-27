@@ -11,7 +11,15 @@ describe('fetchOllamaModels', () => {
     vi.unstubAllEnvs();
   });
 
-  it('returns ONLY baked dnd-master-* variants (raw base models are hidden from Settings)', async () => {
+  it('returns ONLY the dnd-master-plus baked baseline (Phase 03 strip — REQ-033)', async () => {
+    // Pre-Phase-03 the Settings dropdown surfaced dnd-master-{lite,max,max2,
+    // max3,plus}. After the TIER_NAMES strip in 03-C-04 only dnd-master-plus
+    // remains as a curated tier (regression baseline). Stale baked variants
+    // still installed on the host (the fixture below includes
+    // dnd-master-max / dnd-master-lite to simulate that case) are hidden
+    // from the dropdown because TIER_LABELS no longer contains their slug —
+    // the user picks the underlying base model directly via the raw-slug
+    // path in Settings (REQ-031 / REQ-032 / REQ-030).
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response(JSON.stringify({
       models: [
         { name: 'qwen3:30b-a3b',     details: { parameter_size: '30B', quantization_level: 'Q4_K_M' } },
@@ -25,8 +33,6 @@ describe('fetchOllamaModels', () => {
 
     const r = await fetchOllamaModels();
     expect(r.map((m) => m.slug).sort()).toEqual([
-      'dnd-master-lite',
-      'dnd-master-max',
       'dnd-master-plus',
     ]);
     expect(r.every((m) => m.kind === 'baked')).toBe(true);

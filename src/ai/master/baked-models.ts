@@ -98,10 +98,29 @@ export const TIER_NAMES: Record<string, string> = {
   'gpt-oss:20b-q8_0':                      'dnd-master-plus',
 };
 
-/** Reverse map of TIER_NAMES, populated lazily for O(1) lookup. */
-const TIER_BASES: Map<string, string> = new Map(
-  Object.entries(TIER_NAMES).map(([base, tier]) => [tier, base]),
-);
+/**
+ * Reverse map of TIER_NAMES, populated lazily for O(1) lookup.
+ *
+ * Each tier name maps to MULTIPLE base slugs (canonical + quantizations:
+ * `gpt-oss:20b` + `gpt-oss:20b-q4_K_M` + `gpt-oss:20b-q8_0` all bake to
+ * `dnd-master-plus`). The reverse direction is many-to-one: we want the
+ * CANONICAL (un-quantized) base slug so consumers like
+ * `runtime-prompt-hash.ts` and `isLargeModelBase()` can match against the
+ * `LARGE_MODEL_BASES` Set (which holds canonical slugs only — adding
+ * quantization variants there would double the maintenance surface).
+ *
+ * Iteration preserves insertion order in `Object.entries`, so the FIRST
+ * base slug listed under each tier wins. TIER_NAMES is hand-written with
+ * the canonical slug first; the `if (!has)` guard makes that contract
+ * explicit and survives a future reordering.
+ */
+const TIER_BASES: Map<string, string> = (() => {
+  const m = new Map<string, string>();
+  for (const [base, tier] of Object.entries(TIER_NAMES)) {
+    if (!m.has(tier)) m.set(tier, base);
+  }
+  return m;
+})();
 
 /**
  * Display labels for tier baked variants. Maps the Ollama model name
