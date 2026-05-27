@@ -212,8 +212,9 @@ async function listInstalledOllamaModels(): Promise<Set<string>> {
  * Concatenate the 7 slim/compact static blocks for Plan E.1.
  * Vs the Plan B+C+D 9-block bake (~12.3K tok):
  *  - BASE/TOOL_CONTRACT/REWARDS/MEMORY_TOOL_RULE: full -> slim
- *  - HANDBOOK: full -> ultra-slim (full content moves to RAG in Plan E.2)
- *  - WORLD_LORE: dropped entirely (full content moves to RAG in Plan E.2)
+ *  - HANDBOOK: full -> ultra-slim (Phase 03 decommissioned RAG, so the
+ *    full handbook only lives in the non-baked code path and on disk)
+ *  - WORLD_LORE: dropped entirely from the bake (non-baked path keeps it)
  *  - ROLL_TRIGGERS: dropped (distributed across mode blocks added at turn time)
  *  - SRD compact: unchanged per design decision (keep intact for reliability)
  *
@@ -236,7 +237,8 @@ export async function buildStaticSystemContent(opts: BuildContentOptions = {}): 
     MASTER_REWARDS_MANDATE_SLIM,
     MASTER_MEMORY_TOOL_RULE_SLIM,
     // Selective Phase 3 cutover: large models skip the ultra-slim block,
-    // small models keep it. RAG retrieves the full handbook when needed.
+    // small models keep it. Non-baked code path always loads the full
+    // handbook from disk; baked path relies on the ultra-slim summary.
     ...(opts.isLarge ? [] : [MASTER_HANDBOOK_ULTRA_SLIM]),
     srdContext,
   ];

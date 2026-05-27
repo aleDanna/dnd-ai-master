@@ -13,10 +13,7 @@ import { buildSrdContext } from '@/ai/master/srd-context';
 import { getMasterHandbook, getMasterWorldLore } from '@/ai/master/handbook';
 import { buildMasterSystemPrompt } from '@/ai/master/system-prompt';
 import { deriveMode, needsSpellcastingOverlay } from '@/ai/master/mode';
-import { retrieveRelevant } from '@/ai/master/rag/retriever';
-import { getRagStore } from '@/ai/master/rag/store';
-import { embed } from '@/ai/master/rag/embedder';
-import { isMechanicalIntent } from '@/ai/master/rag/intent';
+import { isMechanicalIntent } from '@/ai/master/intent';
 import { isBakedModel, warnIfBakedModelStale, thinkingFlagFor } from '@/ai/master/baked-models';
 import { getRuntimePromptHash } from '@/ai/master/runtime-prompt-hash';
 import { detectLanguage } from '@/ai/master/language';
@@ -369,13 +366,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 endpoint: 'master',
                 model: vaultMasterModel,
                 usage,
-                // Vault path: no mode, no spellcasting overlay, no RAG.
+                // Vault path: no mode, no spellcasting overlay.
                 // mode/needsSpellcasting are undefined → null in DB.
-                // ragChunkCount is null (retrieval not attempted) — distinct
-                // from 0 (attempted, no chunks), so the hit-rate metric stays honest.
                 mode: undefined,
                 needsSpellcasting: undefined,
-                ragChunkCount: null,
               });
             },
             onEvent: (ev) => {
@@ -594,59 +588,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             });
         }
 
-        // Plan E.2: RAG retrieval. Off by default; opt-in per campaign in Phase 2.
-        // When enabled, we embed the last 2 user messages + last master message
-        // and retrieve top-3 chunks. Failure (embedder down, store empty) returns
-        // [] so the prompt builder skips the block entirely.
-        //
-        // RAG retrieval gating — two conditions must hold:
-        //
-        //  1. Baked model only. Non-baked models already receive the full
-        //     master_handbook.md + master_world_lore.md verbatim in the system
-        //     prompt (handbook/worldLore are '' only for baked variants). The RAG
-        //     corpus is built exclusively from those same two files, so injecting
-        //     chunks for a non-baked model would duplicate content the model can
-        //     already see in full. Skipping also saves the embedding + vector-search
-        //     round-trip (~80 ms) for cloud calls where the handbook is always in
-        //     context anyway.
-        //
-        //  2. Non-mechanical turn. On clear mechanical actions ("tiro percezione",
-        //     "I attack the goblin", …) the model resolves via the baked SRD + tool
-        //     definitions; handbook narrative chunks add latency + tokens for no
-        //     benefit. Questions and narrative declarations still trigger retrieval.
-        //     See `isMechanicalIntent`.
+        // Phase 03 (vault-llm-wiki) decommissioned RAG retrieval (REQ-033).
+        // The `isMechanicalIntent` heuristic survives because it still gates the
+        // `injectRollTriggersSlim` block: baked models don't carry the full
+        // MASTER_ROLL_TRIGGERS in their Modelfile (Plan E.1 slim manifest), so a
+        // baked master on "tiro percezione" / "ispeziono il sigillo" needs the
+        // SLIM block injected at runtime to keep its roll-trigger guidance.
         const lastUserText = (() => {
           const last = [...history].reverse().find((m) => m.role === 'user');
           return last && typeof last.content === 'string' ? last.content : '';
         })();
         const mechanical = isMechanicalIntent(lastUserText);
-        const useRag = userPrefs.useRagRetrieval && baked && !mechanical;
-        let ragChunks: Awaited<ReturnType<typeof retrieveRelevant>> = [];
-        if (useRag) {
-          const recentForQuery = [
-            ...history.filter((m) => m.role === 'user').slice(-2).map((m) =>
-              typeof m.content === 'string' ? m.content : ''
-            ),
-            ...history.filter((m) => m.role === 'assistant').slice(-1).map((m) =>
-              typeof m.content === 'string' ? m.content : ''
-            ),
-          ].filter(Boolean).join('\n');
-          if (recentForQuery) {
-            const { store } = await getRagStore();
-            ragChunks = await retrieveRelevant({
-              query: recentForQuery,
-              store,
-              embedFn: (t) => embed(t),
-              k: 3,
-            });
-          }
-        } else if (userPrefs.useRagRetrieval && !baked) {
-          // eslint-disable-next-line no-console
-          console.log('[rag] skipped (non-baked model — handbook already in prompt)');
-        } else if (userPrefs.useRagRetrieval && mechanical) {
-          // eslint-disable-next-line no-console
-          console.log('[rag] skipped (mechanical action detected):', lastUserText.slice(0, 80));
-        }
 
         const sys = buildMasterSystemPrompt({
           srdContext: srd,
@@ -699,14 +651,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // entirely (back-compat path).
           mode,
           needsSpellcasting,
-          // Plan E.2:
-          ragChunks,
-          // Compensation for the mechanical-intent RAG skip: baked variants
-          // don't carry the full MASTER_ROLL_TRIGGERS in their Modelfile, and
-          // when isMechanicalIntent fires we also skip RAG — so on a "tiro
-          // percezione" or "ispeziono il sigillo" turn the master would
-          // have no explicit roll-trigger guidance left. Inject the SLIM
-          // block (~500 tok) only on those turns and only for baked models.
+          // Compensation for the baked-model slim manifest: baked variants
+          // don't carry the full MASTER_ROLL_TRIGGERS in their Modelfile, so
+          // on a "tiro percezione" / "ispeziono il sigillo" turn the master
+          // would have no explicit roll-trigger guidance left. Inject the
+          // SLIM block (~500 tok) only on those turns and only for baked models.
           //
           // The variant (tool-call vs manual-prose) is picked inside
           // buildMasterSystemPrompt based on `manualRolls`. We previously
@@ -766,13 +715,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               usage,
               mode,
               needsSpellcasting,
-              // Distinguish RAG-skipped (null) from attempted-but-empty (0):
-              //   null  → retrieval not attempted (user pref off OR mechanical gate)
-              //   0     → retrieval ran, returned no chunks (real miss)
-              //   >0    → retrieval returned chunks (hit)
-              // The hit-rate metric (`count(chunks > 0) / count(*)`) becomes
-              // meaningful only when filtered on `rag_chunk_count IS NOT NULL`.
-              ragChunkCount: useRag ? ragChunks.length : null,
             });
           },
           onEvent: (ev) => {

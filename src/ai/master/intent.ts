@@ -1,23 +1,28 @@
 /**
- * Plan E.2 — runtime RAG gating.
+ * Mechanical-intent heuristic for the master turn route.
  *
- * RAG retrieval costs ~80ms (embed + pgvector query) plus a few hundred
- * tokens added to the prompt. On turns where the player is declaring a
- * mechanical action (`tiro percezione`, `attacco il goblin`, `lancio
- * palla di fuoco`), the model resolves the outcome via the baked SRD +
- * tool definitions alone — no handbook chunk lookup adds value, and the
- * tokens spent on chunks are pure overhead.
+ * Originally introduced for Plan E.2 RAG retrieval gating (commit 65d7bf5):
+ * on turns where the player declared a mechanical action (`tiro percezione`,
+ * `attacco il goblin`, `lancio palla di fuoco`), RAG retrieval was skipped
+ * because the model resolves outcomes via the baked SRD + tool definitions
+ * alone — no handbook chunk lookup adds value, and the tokens spent on
+ * chunks are pure overhead.
  *
- * We skip RAG when the latest user message matches a *mechanical action*
- * pattern OR is clearly an imperative without a question mark. We keep
- * RAG when the player asks a question (rules lookup, lore query, NPC
- * details), because those are exactly the turns where handbook /
- * world-lore chunks improve narration grounding.
+ * Phase 03 (vault-llm-wiki migration) decommissioned RAG entirely. This
+ * heuristic survives because the baked path still uses it to gate the
+ * `injectRollTriggersSlim` block: baked models do NOT carry the full
+ * MASTER_ROLL_TRIGGERS in their Modelfile (Plan E.1 slim manifest), so a
+ * baked master on "tiro percezione" has no explicit roll-trigger guidance
+ * left unless the SLIM block is injected at runtime. The gate keeps that
+ * ~500-tok block off narrative turns where it would be pure overhead.
  *
- * False positives (skip when RAG would have helped) are cheaper than
- * false negatives (run RAG on every turn) — the model can always fall
- * back to `lookup_codex` as a tool call if it really needs a specific
- * fact mid-turn.
+ * We treat questions as non-mechanical (rules lookup, lore query, NPC
+ * details), because those are exactly the turns where the model benefits
+ * from richer narration context, not from a roll-trigger guard-rail.
+ *
+ * False positives (skip when injection would have helped) are cheaper
+ * than false negatives (inject on every turn) — the model can always
+ * fall back to general rules guidance if it really needs to.
  */
 
 const MECHANICAL_ACTION_PATTERNS: RegExp[] = [
@@ -57,7 +62,8 @@ export function isMechanicalIntent(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
 
-  // Questions probably need a rules / lore lookup — keep RAG on.
+  // Questions probably need a rules / lore lookup — keep the SLIM block off
+  // (the model will narrate, not call out for a roll).
   if (trimmed.includes('?')) return false;
 
   // Whitelist of mechanical-action patterns.

@@ -93,38 +93,3 @@ describe('buildMasterSystemPrompt — mode injection', () => {
     expect(text).not.toMatch(/MODE: EXPLORATION/);
   });
 });
-
-describe('buildMasterSystemPrompt — RAG chunks', () => {
-  it('injects RELEVANT CONTEXT block when ragChunks is non-empty', () => {
-    const { system } = buildMasterSystemPrompt(baseInput({
-      mode: 'narrative',
-      ragChunks: [
-        { source: 'handbook' as const, sectionPath: 'Pacing', content: 'pace tight', distance: 0.1 },
-      ],
-    }));
-    const text = system.map((b) => b.text).join('\n');
-    expect(text).toMatch(/RELEVANT CONTEXT/);
-    expect(text).toMatch(/handbook > Pacing/);
-    expect(text).toMatch(/pace tight/);
-  });
-
-  it('does NOT inject RELEVANT CONTEXT block when ragChunks is undefined or empty', () => {
-    const noField = buildMasterSystemPrompt(baseInput({ mode: 'narrative' }));
-    const empty = buildMasterSystemPrompt(baseInput({ mode: 'narrative', ragChunks: [] }));
-    expect(noField.system.map((b) => b.text).join('\n')).not.toMatch(/RELEVANT CONTEXT/);
-    expect(empty.system.map((b) => b.text).join('\n')).not.toMatch(/RELEVANT CONTEXT/);
-  });
-
-  it('RAG block appears between mode block and active character (cache stability)', () => {
-    const { system } = buildMasterSystemPrompt(baseInput({
-      mode: 'combat',
-      ragChunks: [{ source: 'lore' as const, sectionPath: 'S', content: 'x', distance: 0.1 }],
-    }));
-    const texts = system.map((b) => b.text);
-    const modeIdx = texts.findIndex((t) => t.includes('MODE: COMBAT'));
-    const ragIdx = texts.findIndex((t) => t.includes('RELEVANT CONTEXT'));
-    const charIdx = texts.findIndex((t) => t.includes('ACTIVE PLAYER CHARACTER'));
-    expect(modeIdx).toBeLessThan(ragIdx);
-    expect(ragIdx).toBeLessThan(charIdx);
-  });
-});

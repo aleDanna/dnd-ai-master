@@ -1,5 +1,4 @@
 import { isBakedModel, getBakedBaseModel, TIER_LABELS } from '@/ai/master/baked-models';
-import { pingEmbedder } from '@/ai/master/rag/embedder';
 import { ollamaHeaders } from './local-fetch';
 import { envPositiveInt } from './env';
 
@@ -92,7 +91,6 @@ export interface LocalServicesStatus {
     enabled: boolean;
     engines: { drawThings: EngineStatus };
   };
-  embedder: { reachable: boolean };
 }
 
 // LLM whitelist — phase 1 supports qwen3 and gpt-oss families, both from the
@@ -308,9 +306,9 @@ async function buildDrawThingsStatus(): Promise<EngineStatus> {
   return { enabled, reachable, models, ...(reachable ? {} : { error: 'unreachable' }) };
 }
 
-/** Server-side aggregator: runs all five health checks in parallel and
- *  returns the shape consumed by the Settings client component. Always
- *  resolves — never throws. */
+/** Server-side aggregator: runs all health checks in parallel and returns
+ *  the shape consumed by the Settings client component. Always resolves —
+ *  never throws. */
 export async function fetchLocalServicesStatus(): Promise<LocalServicesStatus> {
   if (!isLocalEnvironment()) {
     const empty: EngineStatus = { enabled: false, reachable: false, models: [] };
@@ -319,15 +317,13 @@ export async function fetchLocalServicesStatus(): Promise<LocalServicesStatus> {
       ai: empty,
       tts: { enabled: false, engines: { piper: empty } },
       image: { enabled: false, engines: { drawThings: empty } },
-      embedder: { reachable: false },
     };
   }
 
-  const [ai, piper, drawThings, embedderReachable] = await Promise.all([
+  const [ai, piper, drawThings] = await Promise.all([
     buildAiStatus(),
     buildPiperStatus(),
     buildDrawThingsStatus(),
-    pingEmbedder().catch(() => false),
   ]);
 
   return {
@@ -341,6 +337,5 @@ export async function fetchLocalServicesStatus(): Promise<LocalServicesStatus> {
       enabled: drawThings.enabled,
       engines: { drawThings },
     },
-    embedder: { reachable: embedderReachable },
   };
 }

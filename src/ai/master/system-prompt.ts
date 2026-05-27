@@ -2,8 +2,6 @@ import type { TonalFrame, EngagementProfile } from '@/engine/types';
 import { TONAL_FRAME_GUIDANCE } from '@/engine/npc-tonal';
 import type { MasterMode } from './mode';
 import { MODE_BLOCKS, SPELLCASTING_OVERLAY_BLOCK } from './mode-blocks';
-import type { RetrievedChunk } from './rag/types';
-import { formatRagBlock } from './rag/format';
 
 /**
  * Bump this integer whenever the *static* portion of the master system
@@ -1389,17 +1387,14 @@ export interface MasterPromptInput {
   mode?: MasterMode;
   /** Plan E.1: whether the active PC has spellcasting (overlay gate). */
   needsSpellcasting?: boolean;
-  /** Plan E.2: retrieved RAG chunks to inject as a RELEVANT CONTEXT block. */
-  ragChunks?: RetrievedChunk[];
   /**
    * When true, inject `MASTER_ROLL_TRIGGERS_SLIM` into the runtime prompt.
    * Use case: baked models do NOT carry the full MASTER_ROLL_TRIGGERS in
-   * their Modelfile (Plan E.1 slim manifest), and the mechanical-intent
-   * heuristic (commit 65d7bf5) also skips RAG retrieval on those turns —
-   * so a baked master on "tiro percezione" has no explicit roll-trigger
-   * guidance left. The caller (turn route) sets this true iff
-   * `isMechanicalIntent(lastUser) && staticBlocksAlreadyBaked`. ~500 tok,
-   * paid only on the turns that need it.
+   * their Modelfile (Plan E.1 slim manifest), so a baked master on
+   * "tiro percezione" / "ispeziono il sigillo" has no explicit
+   * roll-trigger guidance left. The caller (turn route) sets this true
+   * iff `isMechanicalIntent(lastUser) && staticBlocksAlreadyBaked`.
+   * ~500 tok, paid only on the turns that need it.
    */
   injectRollTriggersSlim?: boolean;
 }
@@ -2091,10 +2086,9 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
 
   // ── (2.55) ROLL TRIGGERS SLIM — turn-dynamic, on mechanical-intent only ──
   // Baked models don't carry the full MASTER_ROLL_TRIGGERS (Plan E.1 slim
-  // manifest), and on mechanical-intent turns the RAG retrieval is also
-  // skipped (commit 65d7bf5), leaving the baked master with no explicit
-  // roll-trigger rules right when it needs them most ("tiro percezione",
-  // "ispeziono il sigillo", "convinco il mercante", ...).
+  // manifest), leaving the baked master with no explicit roll-trigger rules
+  // right when it needs them most ("tiro percezione", "ispeziono il sigillo",
+  // "convinco il mercante", ...).
   //
   // Two variants exist:
   //  - SLIM (tool-call) — used when manualRolls=false. Tells the model
@@ -2112,25 +2106,6 @@ export function buildMasterSystemPrompt(input: MasterPromptInput): { system: { t
   if (input.injectRollTriggersSlim) {
     const trigger = input.manualRolls ? MASTER_ROLL_TRIGGERS_SLIM_MANUAL : MASTER_ROLL_TRIGGERS_SLIM;
     blocks.push({ type: 'text', text: trigger, cache_control: { type: 'ephemeral' } });
-  }
-
-  // ── (2.6) PLAN E.2 RAG RETRIEVED CONTEXT ──
-  // Goes after the mode block (mode-stable) but BEFORE the active character
-  // block (per-turn dynamic). The RAG block changes per turn (new query
-  // embedding) so it sits in the dynamic region — cache invalidates here.
-  //
-  // Guard: only inject when staticBlocksAlreadyBaked is true. Non-baked models
-  // receive the full master_handbook.md + master_world_lore.md verbatim earlier
-  // in this same prompt (section 1 static blocks). The RAG corpus is built
-  // exclusively from those two files, so injecting chunks here for a non-baked
-  // model would give the model the same text twice. The turn route already
-  // enforces this (useRag && baked), but this guard is a second safety net.
-  if (input.staticBlocksAlreadyBaked && input.ragChunks && input.ragChunks.length > 0) {
-    blocks.push({
-      type: 'text',
-      text: formatRagBlock(input.ragChunks),
-      cache_control: { type: 'ephemeral' },
-    });
   }
 
   // ── (3) PER-TURN DYNAMIC — invalidates the cache from this point onward. ──

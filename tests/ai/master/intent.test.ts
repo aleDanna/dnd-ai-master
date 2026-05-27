@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isMechanicalIntent } from '@/ai/master/rag/intent';
+import { isMechanicalIntent } from '@/ai/master/intent';
 
 describe('isMechanicalIntent — Italian patterns', () => {
   it.each([
@@ -80,7 +80,7 @@ describe('isMechanicalIntent — English patterns', () => {
   });
 });
 
-describe('isMechanicalIntent — questions keep RAG on', () => {
+describe('isMechanicalIntent — questions stay narrative', () => {
   it.each([
     'come funziona il grapple?',
     'che bonus ha questa pozione?',
@@ -92,7 +92,7 @@ describe('isMechanicalIntent — questions keep RAG on', () => {
   });
 });
 
-describe('isMechanicalIntent — narrative / rules requests keep RAG on', () => {
+describe('isMechanicalIntent — narrative / rules requests stay narrative', () => {
   it.each([
     'Mi guardo intorno e descrivo cosa vedo nella sala del trono',
     'Voglio parlare con la sacerdotessa e capire chi è la divinità che venera',
