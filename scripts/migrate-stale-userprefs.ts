@@ -81,6 +81,22 @@ const STALE_SLUGS = [
  */
 const PRIMARY = 'qwen3:30b-a3b-instruct-2507-q4_K_M';
 
+/**
+ * Drizzle's `sql` tag flattens a JS array into N comma-separated parameter
+ * binders — `${STALE_SLUGS}` emits `($1, $2, ..., $N)`. The pg driver then
+ * cannot reconcile `= ANY(($1,$2,...))` (ANY needs a single array operand,
+ * not a parenthesised list) so we emit `IN (...)` instead, which accepts
+ * the parenthesised parameter list verbatim. Equivalent semantics for
+ * a non-NULL text column; cheaper for the planner than rewriting via
+ * a string-array cast.
+ *
+ * The parenthesisation comes from drizzle's expansion of an array
+ * inside a template hole — both the parens AND the per-element
+ * placeholders are emitted by drizzle, so we DON'T add extra `()`
+ * around `${STALE_SLUGS_SQL}` at the call site.
+ */
+const STALE_SLUGS_SQL = sql`(${sql.join(STALE_SLUGS.map((s) => sql`${s}`), sql.raw(', '))})`;
+
 interface Args {
   dryRun: boolean;
   preservePrettyNames: boolean;
@@ -129,11 +145,12 @@ interface StaleCampaignRow {
 
 async function findStaleUsers(): Promise<StaleUserRow[]> {
   // Read every user row whose stored slug matches one of STALE_SLUGS.
-  // The `= ANY(${arr})` predicate is parameterized — no string-concat SQL.
+  // The `IN (${binders})` predicate is parameterized — no string-concat
+  // SQL; drizzle expands STALE_SLUGS into N $-binders inside `IN (...)`.
   const result = await db.execute(sql`
     SELECT id, preferences->>'aiMasterModel' AS slug
     FROM users
-    WHERE preferences->>'aiMasterModel' = ANY(${STALE_SLUGS})
+    WHERE preferences->>'aiMasterModel' IN ${STALE_SLUGS_SQL}
     ORDER BY id
   `);
   const rows = (result.rows ?? []) as Array<{ id: string; slug: string }>;
@@ -147,7 +164,7 @@ async function findStaleCampaigns(): Promise<StaleCampaignRow[]> {
   const result = await db.execute(sql`
     SELECT id, name, settings->>'aiMasterModel' AS slug
     FROM campaigns
-    WHERE settings->>'aiMasterModel' = ANY(${STALE_SLUGS})
+    WHERE settings->>'aiMasterModel' IN ${STALE_SLUGS_SQL}
       AND deleted_at IS NULL
     ORDER BY id
   `);
@@ -184,11 +201,12 @@ async function applyMigration(): Promise<{ users: number; campaigns: number }> {
   // single JSONB key in place. The `::text` cast on the literal is
   // necessary because drizzle's parameter binder defaults bind-typed
   // unknown parameters to `text`, but the `to_jsonb` overload resolution
-  // is unambiguous when the cast is explicit.
+  // is unambiguous when the cast is explicit. The same `IN` expansion
+  // pattern from `findStaleUsers` keeps the parameter list parameterized.
   const userResult = await db.execute(sql`
     UPDATE users
     SET preferences = jsonb_set(preferences, '{aiMasterModel}', to_jsonb(${PRIMARY}::text))
-    WHERE preferences->>'aiMasterModel' = ANY(${STALE_SLUGS})
+    WHERE preferences->>'aiMasterModel' IN ${STALE_SLUGS_SQL}
   `);
 
   // Same pattern for campaigns + bump `updated_at` so the UI's
@@ -199,7 +217,7 @@ async function applyMigration(): Promise<{ users: number; campaigns: number }> {
     UPDATE campaigns
     SET settings = jsonb_set(settings, '{aiMasterModel}', to_jsonb(${PRIMARY}::text)),
         updated_at = now()
-    WHERE settings->>'aiMasterModel' = ANY(${STALE_SLUGS})
+    WHERE settings->>'aiMasterModel' IN ${STALE_SLUGS_SQL}
       AND deleted_at IS NULL
   `);
 
