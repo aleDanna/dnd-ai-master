@@ -174,4 +174,33 @@ Plans:
 - [x] 06-01-PLAN.md — Event schema (6 encounter types), EncounterState reducer, combat.md view, regeneration hook, headless reducer/round-trip/determinism tests
 - [x] 06-02-PLAN.md — Snapshot wiring (snapshot-reader + client-snapshot), vault actors from encounter, snapshot-shape tests
 
+## Phase 07: Vault Combat Playable (D2)
+
+**Goal:** Make vault combat LLM-playable on top of D1: the master starts/runs/ends combat by emitting the D1 encounter events via `apply_event`, monsters come from a seeded SRD bestiary (+ master-invented custom bosses), turns interleave PCs and monsters (master acts for monsters), and the combat renders live in the `CombatTracker`. Sub-phase **D2** of piece D (combat); D3 adds action economy + in-combat conditions.
+
+**Scope:**
+- Tool exposure (`tools.ts`): relax the UUID guard for `ENCOUNTER_EVENT_TYPES`; advertise the 6 encounter types + payloads in the `apply_event` schema description; add `data/vault/tools/apply_event.md` + index entry
+- `vaultMutations`-gated "Combat lifecycle" prompt block in `buildVaultSystemPrompt` (REQ-022-stable): lifecycle, monster-stats rule (SRD bestiary vs custom-via-payload), turn rule
+- Bestiary: `scripts/seed-bestiary.ts` generates `data/vault/handbook/monsters/<slug>.md` for all 180 `data/monsters.csv` monsters (committed); custom bosses via the fat `monster_spawn` payload
+- Turn interleaving (`route.ts` vault branch): drive handoff from `EncounterState.turnOrder` (master runs monster turns, hands to the PC on a PC turn; `detectAddressee` fallback); non-combat handoff unchanged
+- One Piece `sourceOfTruth:'vault'` flip + operator smoke
+- Design ref: `docs/superpowers/specs/2026-05-28-vault-combat-d2-playable-design.md`
+
+**Success criteria:**
+- ✓ `apply_event` dispatcher accepts the 6 encounter events (UUID guard skipped) and the schema description lists all 6 types
+- ✓ Combat-lifecycle prompt block present when `vaultMutations:true`, absent otherwise; REQ-022 1000-build stability holds
+- ✓ `scripts/seed-bestiary.ts` produces 180 `handbook/monsters/<slug>.md` files; `goblin.md` frontmatter maps to a valid `monster_spawn` payload
+- ✓ Turn route: in an active encounter, handoff is driven by `turnOrder` (PC turn → `currentPlayerCharacterId` set; monster turn → no PC handoff); `detectAddressee` fallback; **non-combat multiplayer handoff unchanged (regression test)**
+- ✓ One Piece `sourceOfTruth:'vault'`; operator smoke: a fight spawns a monster, sets initiative, renders in the tracker, turns alternate, HP changes land, combat ends
+- ✓ No new combat tool; no change to `CombatTracker` rendering
+
+**Depends on:** Phase 06
+
+**Requirements:** REQ-038
+
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 07 to break down)
+
 ---

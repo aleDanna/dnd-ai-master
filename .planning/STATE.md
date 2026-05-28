@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: milestone_complete
+status: in_progress
 last_updated: "2026-05-28T20:34:21.590Z"
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 3
   total_plans: 3
   completed_plans: 21
@@ -18,6 +18,7 @@ progress:
 
 - Phase 5 added: Vault Ability Checks (Manual Rolls)
 - Phase 6 added: Vault Combat State Foundation (D1)
+- Phase 7 added: Vault Combat Playable (D2)
 
 ### Phase 05 — Plan 01 Execution (2026-05-28)
 
