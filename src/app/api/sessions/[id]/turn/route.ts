@@ -36,6 +36,7 @@ import { checkPartyAccess } from '@/multiplayer/access';
 import { resolveCombatHandoff } from './combat-handoff';
 import { parseEventsFile, replayEvents } from '@/ai/master/vault/projector';
 import { eventsPath } from '@/ai/master/vault/campaign-paths';
+import { buildTurnDirective, appendDirectiveToHistory } from '@/ai/master/vault/turn-directive';
 
 /**
  * Synthetic user instruction injected on the very first turn of a campaign,
@@ -340,6 +341,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 const content = name ? `[${name}] ${m.content}` : m.content;
                 return { role: 'user', content };
               });
+          }
+
+          // 5v-directive. REQ-038 — per-turn anti-anchoring directive.
+          // Appended to the LAST user turn of vaultHistory (recency position)
+          // so the model's most recent "instruction" breaks pattern-anchoring
+          // on narration-heavy histories (validated probe 2026-05-28).
+          // Null when neither vaultMutations nor manualRolls is set (read-only
+          // campaigns get no directive and history stays byte-identical).
+          const _directive = buildTurnDirective({
+            vaultMutations: vaultMutationsEnabled,
+            manualRolls: userPrefs.manualRolls,
+            language: campaign.language ?? snap.language ?? undefined,
+          });
+          if (_directive !== null) {
+            // Vault history elements always have string content (built by the
+            // .map() call above). Cast to the narrower shape so appendDirectiveToHistory
+            // can spread + reassign content without the ContentBlockParam[] union.
+            vaultHistory = appendDirectiveToHistory(
+              vaultHistory as { role: string; content: string }[],
+              _directive,
+            ) as typeof vaultHistory;
           }
 
           // 6v. Run vault tool loop.
