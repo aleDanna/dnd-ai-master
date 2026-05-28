@@ -204,7 +204,7 @@ describe('snapshot-reader / materializeFromVault', () => {
 
       const r = await reader.materializeFromVault(CAMPAIGN_UUID, CHAR_UUID, SESSION_UUID);
       expect(r).not.toBeNull();
-      expect(r!.sessionId).toBe(SESSION_UUID);
+      expect(r!.state.sessionId).toBe(SESSION_UUID);
     });
 
     it('translates hp_current after damage events', async () => {
@@ -220,7 +220,7 @@ describe('snapshot-reader / materializeFromVault', () => {
       ]);
 
       const r = await reader.materializeFromVault(CAMPAIGN_UUID, CHAR_UUID, SESSION_UUID);
-      expect(r!.hpCurrent).toBe(25);
+      expect(r!.state.hpCurrent).toBe(25);
     });
 
     it('translates conditions slug array to PG condition shape', async () => {
@@ -243,14 +243,14 @@ describe('snapshot-reader / materializeFromVault', () => {
 
       const r = await reader.materializeFromVault(CAMPAIGN_UUID, CHAR_UUID, SESSION_UUID);
       // Reducer sorts conditions alphabetically (DR byte-stability).
-      expect(r!.conditions).toHaveLength(2);
-      expect(r!.conditions![0]).toEqual({
+      expect(r!.state.conditions).toHaveLength(2);
+      expect(r!.state.conditions![0]).toEqual({
         slug: 'blinded',
         source: 'vault-replay',
         durationRounds: 'until_removed',
         appliedRound: 0,
       });
-      expect(r!.conditions![1]).toEqual({
+      expect(r!.state.conditions![1]).toEqual({
         slug: 'prone',
         source: 'vault-replay',
         durationRounds: 'until_removed',
@@ -283,7 +283,7 @@ describe('snapshot-reader / materializeFromVault', () => {
       ]);
 
       const r = await reader.materializeFromVault(CAMPAIGN_UUID, CHAR_UUID, SESSION_UUID);
-      expect(r!.spellSlotsUsed).toEqual({ '1': 2, '2': 0 });
+      expect(r!.state.spellSlotsUsed).toEqual({ '1': 2, '2': 0 });
     });
 
     it('translates temp_hp via temp_hp_set event', async () => {
@@ -299,7 +299,7 @@ describe('snapshot-reader / materializeFromVault', () => {
       ]);
 
       const r = await reader.materializeFromVault(CAMPAIGN_UUID, CHAR_UUID, SESSION_UUID);
-      expect(r!.tempHp).toBe(8);
+      expect(r!.state.tempHp).toBe(8);
     });
 
     it('translates exhaustion_level via exhaustion_increment events', async () => {
@@ -321,9 +321,9 @@ describe('snapshot-reader / materializeFromVault', () => {
       ]);
 
       const r = await reader.materializeFromVault(CAMPAIGN_UUID, CHAR_UUID, SESSION_UUID);
-      expect(r!.exhaustionLevel).toBe(2);
+      expect(r!.state.exhaustionLevel).toBe(2);
       // exhaustion_increment also appends 'exhaustion' to conditions.
-      expect(r!.conditions!.some((c) => c.slug === 'exhaustion')).toBe(true);
+      expect(r!.state.conditions!.some((c) => c.slug === 'exhaustion')).toBe(true);
     });
 
     it('translates hit_dice_remaining via hit_dice_use events', async () => {
@@ -343,7 +343,7 @@ describe('snapshot-reader / materializeFromVault', () => {
       ]);
 
       const r = await reader.materializeFromVault(CAMPAIGN_UUID, CHAR_UUID, SESSION_UUID);
-      expect(r!.hitDiceRemaining).toBe(3);
+      expect(r!.state.hitDiceRemaining).toBe(3);
     });
 
     it('translates resources_used via resource_use events', async () => {
@@ -371,7 +371,7 @@ describe('snapshot-reader / materializeFromVault', () => {
       ]);
 
       const r = await reader.materializeFromVault(CAMPAIGN_UUID, CHAR_UUID, SESSION_UUID);
-      expect(r!.resourcesUsed).toEqual({ rage: 2, action_surge: 1 });
+      expect(r!.state.resourcesUsed).toEqual({ rage: 2, action_surge: 1 });
     });
 
     it('translates death_saves correctly after death_save_fail events', async () => {
@@ -393,7 +393,7 @@ describe('snapshot-reader / materializeFromVault', () => {
       ]);
 
       const r = await reader.materializeFromVault(CAMPAIGN_UUID, CHAR_UUID, SESSION_UUID);
-      expect(r!.deathSaves).toEqual({ successes: 0, failures: 2 });
+      expect(r!.state.deathSaves).toEqual({ successes: 0, failures: 2 });
     });
 
     it('translates death_saves successes via death_save_success', async () => {
@@ -409,7 +409,7 @@ describe('snapshot-reader / materializeFromVault', () => {
       ]);
 
       const r = await reader.materializeFromVault(CAMPAIGN_UUID, CHAR_UUID, SESSION_UUID);
-      expect(r!.deathSaves).toEqual({ successes: 1, failures: 0 });
+      expect(r!.state.deathSaves).toEqual({ successes: 1, failures: 0 });
     });
 
     it('translates flags.stable after death_save_stabilize', async () => {
@@ -425,7 +425,7 @@ describe('snapshot-reader / materializeFromVault', () => {
       ]);
 
       const r = await reader.materializeFromVault(CAMPAIGN_UUID, CHAR_UUID, SESSION_UUID);
-      expect(r!.flags).toEqual({ stable: true, dead: false });
+      expect(r!.state.flags).toEqual({ stable: true, dead: false });
     });
 
     it('omits inspiration from flags even though vault tracks it', async () => {
@@ -444,11 +444,11 @@ describe('snapshot-reader / materializeFromVault', () => {
       ]);
 
       const r = await reader.materializeFromVault(CAMPAIGN_UUID, CHAR_UUID, SESSION_UUID);
-      // Type-narrowing: r!.flags is the SessionState column type which
+      // Type-narrowing: r!.state.flags is the SessionState column type which
       // only declares stable/dead. The TypeScript surface won't even allow
-      // `r!.flags.inspiration` at the call site; we assert by reading the
+      // `r!.state.flags.inspiration` at the call site; we assert by reading the
       // raw object's enumerable own keys.
-      const flagKeys = Object.keys(r!.flags ?? {}).sort();
+      const flagKeys = Object.keys(r!.state.flags ?? {}).sort();
       expect(flagKeys).toEqual(['dead', 'stable']);
     });
 
@@ -470,7 +470,7 @@ describe('snapshot-reader / materializeFromVault', () => {
       ]);
 
       const r = await reader.materializeFromVault(CAMPAIGN_UUID, CHAR_UUID, SESSION_UUID);
-      expect(r!.concentratingOn).toEqual({
+      expect(r!.state.concentratingOn).toEqual({
         spellSlug: 'bless',
         slotLevel: 1,
         startedRound: 2,
@@ -501,7 +501,7 @@ describe('snapshot-reader / materializeFromVault', () => {
       ]);
 
       const r = await reader.materializeFromVault(CAMPAIGN_UUID, CHAR_UUID, SESSION_UUID);
-      expect(r!.concentratingOn).toBeNull();
+      expect(r!.state.concentratingOn).toBeNull();
     });
   });
 
@@ -515,22 +515,22 @@ describe('snapshot-reader / materializeFromVault', () => {
       writeEvents(paths, CAMPAIGN_UUID, [seedEnvelope({ hp_max: 30 })]);
 
       const r = await reader.materializeFromVault(CAMPAIGN_UUID, CHAR_UUID, SESSION_UUID);
-      expect(r!.turnState).toBeNull();
-      expect(r!.position).toBeNull();
-      expect(r!.inCombat).toBe(false);
-      expect(r!.combat).toBeNull();
-      expect(r!.scene).toBe('');
-      expect(r!.inventoryDelta).toEqual([]);
-      expect(r!.statusFlag).toBeNull();
-      expect(r!.sceneImageData).toBeNull();
-      expect(r!.sceneImagePrompt).toBeNull();
-      expect(r!.sceneImageVersion).toBe(0);
-      expect(r!.sceneImagePending).toBe(false);
-      expect(r!.sceneImagePendingAt).toBeNull();
-      expect(r!.sceneImageFailedReason).toBeNull();
-      expect(r!.lastLongRestAt).toBeNull();
-      expect(r!.travel).toBeNull();
-      expect(r!.summaryBlock).toBeNull();
+      expect(r!.state.turnState).toBeNull();
+      expect(r!.state.position).toBeNull();
+      expect(r!.state.inCombat).toBe(false);
+      expect(r!.state.combat).toBeNull();
+      expect(r!.state.scene).toBe('');
+      expect(r!.state.inventoryDelta).toEqual([]);
+      expect(r!.state.statusFlag).toBeNull();
+      expect(r!.state.sceneImageData).toBeNull();
+      expect(r!.state.sceneImagePrompt).toBeNull();
+      expect(r!.state.sceneImageVersion).toBe(0);
+      expect(r!.state.sceneImagePending).toBe(false);
+      expect(r!.state.sceneImagePendingAt).toBeNull();
+      expect(r!.state.sceneImageFailedReason).toBeNull();
+      expect(r!.state.lastLongRestAt).toBeNull();
+      expect(r!.state.travel).toBeNull();
+      expect(r!.state.summaryBlock).toBeNull();
     });
   });
 
@@ -661,25 +661,25 @@ describe('snapshot-reader / materializeFromVault', () => {
       // depend on reducer semantics tested elsewhere (projector.test.ts);
       // this test proves the translator never threw and produced a complete
       // SessionState shape.
-      expect(r!.hpCurrent).toBeGreaterThanOrEqual(0);
-      expect(r!.tempHp).toBe(3);
+      expect(r!.state.hpCurrent).toBeGreaterThanOrEqual(0);
+      expect(r!.state.tempHp).toBe(3);
       // death_save_recover_at_one resets death_saves to {0,0} (the final
       // state-machine reset event in our sequence).
-      expect(r!.deathSaves).toEqual({ successes: 0, failures: 0 });
+      expect(r!.state.deathSaves).toEqual({ successes: 0, failures: 0 });
       // exhaustion_increment then exhaustion_decrement → back to 0.
-      expect(r!.exhaustionLevel).toBe(0);
+      expect(r!.state.exhaustionLevel).toBe(0);
       // hit_dice_use then hit_dice_restore → back to 10.
-      expect(r!.hitDiceRemaining).toBe(10);
+      expect(r!.state.hitDiceRemaining).toBe(10);
       // resource_use then resource_restore → key cleared.
-      expect(r!.resourcesUsed).toEqual({});
+      expect(r!.state.resourcesUsed).toEqual({});
       // concentration_set then concentration_break → null.
-      expect(r!.concentratingOn).toBeNull();
+      expect(r!.state.concentratingOn).toBeNull();
       // spell_slot_use then spell_slot_restore → back to 0.
-      expect(r!.spellSlotsUsed).toEqual({ '1': 0, '2': 0 });
+      expect(r!.state.spellSlotsUsed).toEqual({ '1': 0, '2': 0 });
       // inspiration_grant then inspiration_spend → flags.stable unchanged
       // by these events. The session_state.flags type is `{stable?, dead?}`
       // so `inspiration` is dropped by the translator regardless.
-      expect(Object.keys(r!.flags ?? {}).sort()).toEqual(['dead', 'stable']);
+      expect(Object.keys(r!.state.flags ?? {}).sort()).toEqual(['dead', 'stable']);
       // focus_set then focus_unset → equipped_focus is vault-only (not
       // mapped to session_state); the translator just doesn't emit it.
       // attune then unattune → attunements is vault-only too.

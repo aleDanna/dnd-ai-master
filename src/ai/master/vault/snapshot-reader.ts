@@ -66,7 +66,7 @@
  *   parse + replay + translate. No DB round-trips.
  */
 import { existsSync } from 'node:fs';
-import { parseEventsFile, replayEvents, type CharacterState } from './projector';
+import { parseEventsFile, replayEvents, type CharacterState, type EncounterState } from './projector';
 import { eventsPath } from './campaign-paths';
 import type { SessionState } from '@/db/schema';
 
@@ -89,11 +89,25 @@ import type { SessionState } from '@/db/schema';
  * @returns A `Partial<SessionState>` populated from vault replay, OR `null`
  *          when events.md is missing/empty or the character is not seeded.
  */
+/**
+ * Result shape returned by `materializeFromVault`.
+ *
+ * The `state` field is the SessionState-shaped partial populated from vault
+ * replay (same shape as before — consumers can cast to `SessionState`).
+ * The `encounter` field is the EncounterState derived from the same replay
+ * pass; consumers (client-snapshot.ts) use it to populate `actors` without
+ * a second replay.
+ */
+export interface VaultMaterializeResult {
+  state: Partial<SessionState>;
+  encounter: EncounterState;
+}
+
 export async function materializeFromVault(
   campaignId: string,
   characterId: string,
   sessionId: string,
-): Promise<Partial<SessionState> | null> {
+): Promise<VaultMaterializeResult | null> {
   const eventsFile = eventsPath(campaignId);
   // Fast-path bail: a campaign that never flipped to vault has no events.md.
   // existsSync is the cheapest pre-check — avoids opening a file descriptor
@@ -105,7 +119,7 @@ export async function materializeFromVault(
   // missing file: caller falls back to Postgres.
   if (envelopes.length === 0) return null;
 
-  const { chars: states } = replayEvents(envelopes);
+  const { chars: states, encounter } = replayEvents(envelopes);
   const charState = states.get(characterId);
   // Unseeded character (e.g., the campaign was flipped before this PC was
   // added, or the seed event names a different set of characters) — return
@@ -114,7 +128,7 @@ export async function materializeFromVault(
   // character-add propagation.
   if (!charState) return null;
 
-  return translateCharacterState(charState, sessionId);
+  return { state: translateCharacterState(charState, sessionId, encounter), encounter };
 }
 
 /**
@@ -177,6 +191,7 @@ export async function materializeFromVault(
 function translateCharacterState(
   s: CharacterState,
   sessionId: string,
+  encounter: EncounterState,
 ): Partial<SessionState> {
   return {
     sessionId,
@@ -206,14 +221,22 @@ function translateCharacterState(
     concentratingOn: s.concentrating_on,
 
     // -----------------------------------------------------------------------
-    // UI-only / scene-state fields — vault doesn't track these; emit defaults
-    // matching the Postgres NOT NULL / DEFAULT column constraints so the
-    // consumer sees a complete-looking row.
+    // UI-only / scene-state fields — vault doesn't track most of these; emit
+    // defaults matching the Postgres NOT NULL / DEFAULT column constraints.
+    // Exception: inCombat and combat are derived from the EncounterState so
+    // the CombatTracker renders vault combat state (REQ-037 D1 — Phase 06).
     // -----------------------------------------------------------------------
     turnState: null,
     position: null,
-    inCombat: false,
-    combat: null,
+    // Phase 06 D1 — encounter-derived (CONTEXT §"EncounterState + view LOCKED"):
+    //   inCombat = encounter.active
+    //   combat   = active ? { round, currentIdx, turnOrder } : null
+    // The turnOrder entries already carry the exact { actorId, initiative }
+    // shape that the session_state.combat column type requires.
+    inCombat: encounter.active,
+    combat: encounter.active
+      ? { round: encounter.round, currentIdx: encounter.currentIdx, turnOrder: encounter.turnOrder }
+      : null,
     scene: '',
     inventoryDelta: [],
     statusFlag: null,
