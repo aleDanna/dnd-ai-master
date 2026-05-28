@@ -168,7 +168,7 @@ Plans:
 
 **Requirements:** REQ-037
 
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 - [x] 06-01-PLAN.md — Event schema (6 encounter types), EncounterState reducer, combat.md view, regeneration hook, headless reducer/round-trip/determinism tests
