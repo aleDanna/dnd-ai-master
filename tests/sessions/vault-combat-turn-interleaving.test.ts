@@ -1,6 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import type { EncounterState } from '@/ai/master/vault/projector';
-import type { TurnAdvanceDecision } from '@/multiplayer/turn-advance';
 
 /**
  * Phase 07 Plan 03 — vault combat turn interleaving.

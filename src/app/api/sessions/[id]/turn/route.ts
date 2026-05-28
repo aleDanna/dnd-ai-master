@@ -33,6 +33,9 @@ import { touchCampaign } from '@/campaigns/persist';
 import { computeTurnAdvance, detectAddressee } from '@/multiplayer/turn-advance';
 import { notifySession } from '@/sessions/notify';
 import { checkPartyAccess } from '@/multiplayer/access';
+import { resolveCombatHandoff } from './combat-handoff';
+import { parseEventsFile, replayEvents } from '@/ai/master/vault/projector';
+import { eventsPath } from '@/ai/master/vault/campaign-paths';
 
 /**
  * Synthetic user instruction injected on the very first turn of a campaign,
@@ -408,20 +411,60 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                   isNotNull(charactersTable.templateId),
                 ))
                 .orderBy(charactersTable.createdAt);
-              const addressee = detectAddressee(vaultResult.finalText, party);
-              const decision = computeTurnAdvance({
-                isBegin,
-                beforeCpcId: authorCharacterId,
-                afterCpcId: s.cpcId,
-                party,
-                addresseeId: addressee?.id ?? null,
-              });
-              if (decision.kind === 'advance') {
-                await tx
-                  .update(sessions)
-                  .set({ currentPlayerCharacterId: decision.nextCharacterId, turnsSinceMasterAdvance: 0 })
-                  .where(eq(sessions.id, sessionId));
-                await notifySession(sessionId, { type: 'turn-change', characterId: decision.nextCharacterId });
+              // 7v-combat. Combat-interleaving: when an encounter is active,
+              // derive turn handoff from EncounterState.turnOrder[currentIdx]
+              // instead of prose-addressee. Falls back to the existing
+              // detectAddressee/computeTurnAdvance path when the encounter is
+              // inactive, turnOrder is empty, or the read fails.
+              // Wrapped in try/catch: any exception in the new block falls
+              // through to the existing path so non-combat sessions are safe.
+              let combatHandoffDone = false;
+              try {
+                // Re-read the encounter state from events.md (read-only pass;
+                // the loop has already committed its apply_event writes).
+                const envelopes = await parseEventsFile(eventsPath(s.campaignId));
+                const { encounter } = replayEvents(envelopes);
+                const combatDecision = resolveCombatHandoff({ encounter, party });
+
+                if (combatDecision.kind === 'advance') {
+                  // PC turn: hand off to the PC and emit turn-change.
+                  await tx
+                    .update(sessions)
+                    .set({ currentPlayerCharacterId: combatDecision.nextCharacterId, turnsSinceMasterAdvance: 0 })
+                    .where(eq(sessions.id, sessionId));
+                  await notifySession(sessionId, { type: 'turn-change', characterId: combatDecision.nextCharacterId });
+                  combatHandoffDone = true;
+                } else if (combatDecision.kind === 'skip') {
+                  // Monster turn: the master ran it; no PC handoff needed.
+                  combatHandoffDone = true;
+                }
+                // kind === 'fallback': fall through to detectAddressee below.
+              } catch (err) {
+                console.warn(
+                  '[turn] combat-interleaving read failed, falling back to detectAddressee:',
+                  err instanceof Error ? err.message : String(err),
+                );
+              }
+
+              if (!combatHandoffDone) {
+                // Fallback: existing detectAddressee / computeTurnAdvance path,
+                // unchanged. This runs for non-combat sessions, inactive
+                // encounters, and on any error in the combat block above.
+                const addressee = detectAddressee(vaultResult.finalText, party);
+                const decision = computeTurnAdvance({
+                  isBegin,
+                  beforeCpcId: authorCharacterId,
+                  afterCpcId: s.cpcId,
+                  party,
+                  addresseeId: addressee?.id ?? null,
+                });
+                if (decision.kind === 'advance') {
+                  await tx
+                    .update(sessions)
+                    .set({ currentPlayerCharacterId: decision.nextCharacterId, turnsSinceMasterAdvance: 0 })
+                    .where(eq(sessions.id, sessionId));
+                  await notifySession(sessionId, { type: 'turn-change', characterId: decision.nextCharacterId });
+                }
               }
             }
             await tx.update(sessions).set({ turnSeq: sql`turn_seq + 1` }).where(eq(sessions.id, sessionId));
