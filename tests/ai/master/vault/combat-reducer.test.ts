@@ -203,18 +203,23 @@ describe('EncounterState reducer: defensive / edge cases', () => {
     expect(enc.round).toBe(1);
   });
 
-  it('initiative_set before combat_start (not active): state unchanged', async () => {
+  // Robustness (2026-05-29): local models (qwen3/gemma4) emit monster_spawn +
+  // initiative_set but frequently SKIP combat_start. The reducer auto-activates
+  // on the first combat event so a skipped combat_start no longer leaves the
+  // encounter inactive/invisible.
+  it('initiative_set before combat_start AUTO-ACTIVATES the encounter', async () => {
     const { projector } = await importModules('/tmp/test-vault');
     const enc = projector.replayEvents([E4]).encounter;
-    expect(enc.active).toBe(false);
-    expect(enc.turnOrder).toEqual([]);
+    expect(enc.active).toBe(true);
+    expect(enc.turnOrder.length).toBeGreaterThan(0);
+    expect(enc.round).toBe(1);
   });
 
-  it('monster_spawn before combat_start (not active): state unchanged', async () => {
+  it('monster_spawn before combat_start AUTO-ACTIVATES the encounter', async () => {
     const { projector } = await importModules('/tmp/test-vault');
     const enc = projector.replayEvents([E2]).encounter;
-    expect(enc.active).toBe(false);
-    expect(enc.monsters).toHaveLength(0);
+    expect(enc.active).toBe(true);
+    expect(enc.monsters).toHaveLength(1);
   });
 
   it('combat_end on already-inactive encounter: active stays false (idempotent)', async () => {

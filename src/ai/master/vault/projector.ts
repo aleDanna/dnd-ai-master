@@ -700,10 +700,12 @@ export const INITIAL_ENCOUNTER_STATE: EncounterState = {
  *
  *   - combat_start          → re-init: active=true, round=1, currentIdx=0,
  *                             turnOrder=[], monsters=[]
- *   - monster_spawn         → if !active skip; if duplicate id skip;
- *                             append {id,name,hpCurrent:hpMax,hpMax,ac?,
- *                             initiativeBonus?,isAlive:true,conditions:[]}
- *   - initiative_set        → if !active skip; turnOrder=order, currentIdx=0
+ *   - monster_spawn         → if !active, AUTO-ACTIVATE (fresh active encounter)
+ *                             then append (robustness: models skip combat_start);
+ *                             if duplicate id skip; append {id,name,
+ *                             hpCurrent:hpMax,hpMax,ac?,initiativeBonus?,
+ *                             isAlive:true,conditions:[]}
+ *   - initiative_set        → if !active, AUTO-ACTIVATE; turnOrder=order, currentIdx=0
  *   - turn_advance          → if !active skip; if turnOrder empty skip;
  *                             newIdx = currentIdx+1;
  *                             if newIdx >= turnOrder.length: currentIdx=0, round++
@@ -726,10 +728,17 @@ export function applyEncounterEvent(state: EncounterState, event: VaultEvent): E
       return { active: true, round: 1, currentIdx: 0, turnOrder: [], monsters: [] };
 
     case 'monster_spawn': {
-      if (!state.active) return next; // defensive: ignore if combat hasn't started
+      // Auto-activate: spawning an enemy STARTS combat even when the model
+      // skipped combat_start (observed 2026-05-29: qwen3 emits monster_spawn +
+      // initiative_set but omits combat_start → encounter stayed inactive and
+      // the tracker never showed). The first combat event resets to a fresh
+      // active encounter; subsequent spawns append to the running one.
+      const base: EncounterState = state.active
+        ? next
+        : { active: true, round: 1, currentIdx: 0, turnOrder: [], monsters: [] };
       const { id, name, hpMax, ac, initiativeBonus } = event.payload;
       // Idempotent: skip duplicate spawns (deterministic replay invariant).
-      if (next.monsters.some((m) => m.id === id)) return next;
+      if (base.monsters.some((m) => m.id === id)) return base;
       const monster: EncounterState['monsters'][number] = {
         id,
         name,
@@ -740,15 +749,19 @@ export function applyEncounterEvent(state: EncounterState, event: VaultEvent): E
       };
       if (ac !== undefined) monster.ac = ac;
       if (initiativeBonus !== undefined) monster.initiativeBonus = initiativeBonus;
-      next.monsters.push(monster);
-      return next;
+      base.monsters.push(monster);
+      return base;
     }
 
     case 'initiative_set': {
-      if (!state.active) return next; // defensive: ignore before combat_start
-      next.turnOrder = [...event.payload.order];
-      next.currentIdx = 0;
-      return next;
+      // Auto-activate (same rationale as monster_spawn): setting initiative
+      // starts combat even if combat_start was skipped.
+      const base: EncounterState = state.active
+        ? next
+        : { active: true, round: 1, currentIdx: 0, turnOrder: [], monsters: [] };
+      base.turnOrder = [...event.payload.order];
+      base.currentIdx = 0;
+      return base;
     }
 
     case 'turn_advance': {
