@@ -115,15 +115,33 @@ The migration is decomposed into 3 phases. Each phase ships independently (the s
 Plans:
 - [x] 04-01-insert-your-role-block.md — TDD insert of the static `## Your role` anti-railroading block; regenerate locked-snapshot/hash expected values; REQ-022 stability + typecheck green
 
-### Phase 5: Vault Ability Checks (Manual Rolls)
+## Phase 05: Vault Ability Checks (Manual Rolls)
 
 **Goal:** The vault-path Dungeon Master calls for ability checks, saving throws, and attack/damage rolls via the existing manual-roll surface — writing parser-compatible roll requests in prose so the client's 🎲 buttons render and resolve. Prompt + setting only (a `manualRolls`-gated `## Rolls` block in `buildVaultSystemPrompt`); no parser/engine/tool changes; REQ-022 byte-stability preserved.
 
+**Scope:**
+- `manualRolls`-gated `## Rolls` block inserted into `buildVaultSystemPrompt` (`src/ai/master/vault/prompt-builder.ts`) — language- and DC-aware, content adapted from the proven baked `buildManualRollsRule` but self-contained (no baked-tool mention)
+- New `VaultPromptInput` fields `manualRolls?` + `showDifficultyNumbers?`, wired from `userPrefs` at the turn route vault branch (`route.ts:296-309`; baked already passes `showDifficultyNumbers` at :625)
+- Block content: when-to-roll + DC anchors (Easy 10 / Medium 15 / Hard 20); authoritative-number contract; bare-d20 + sheet-modifier rule for checks/saves, embedded-bonus for attacks/damage; parser-compatible IT/EN phrasings; hidden-difficulty variant
+- Reuse the existing client roll-button flow (parser + `RollRequestGroup`) — ZERO changes to `roll-parser.ts`, the client components, or the engine
+- Enable `manualRolls=true` on the One Piece campaign
+- Design ref: `docs/superpowers/specs/2026-05-28-vault-ability-checks-design.md`
+
+**Success criteria:**
+- ✓ `buildVaultSystemPrompt` emits the `## Rolls` block when `manualRolls:true` (contains `## Rolls`, "Easy 10, Medium 15, Hard 20", "AUTHORITATIVE", the bare-d20 + "modifier" rule, the parser phrasings) and OMITS it when `manualRolls` is false/undefined
+- ✓ `language:'it'` → Italian phrasings ("Tira una prova di Percezione (CD 15)") + the anti-mixing clause; default → English ("Roll a DC 15 Perception check.")
+- ✓ `showDifficultyNumbers:false` → examples omit the numeric DC and the hidden-difficulty line is present
+- ✓ REQ-022 holds: 1000 builds with identical input → exactly 1 SHA256; the read-only default hash (`60e567…c54b14e`) is UNCHANGED (block is gated/additive)
+- ✓ The turn route passes `manualRolls` + `showDifficultyNumbers` from `userPrefs` to `buildVaultSystemPrompt`
+- ✓ Operator smoke on One Piece (gemma4, `manualRolls=true`): an uncertain action → master writes a roll request → 🎲 button renders → tapping returns "I rolled **N**" → master resolves with N + the sheet modifier
+
+**Depends on:** Phase 04
+
 **Requirements:** REQ-036
-**Depends on:** Phase 4
+
 **Plans:** 0 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 5 to break down)
+- [ ] TBD (run /gsd-plan-phase 05 to break down)
 
 ---
