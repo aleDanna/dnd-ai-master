@@ -139,9 +139,9 @@ Plans:
 
 **Requirements:** REQ-036
 
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 05-01-PLAN.md — Extend VaultPromptInput, emit gated ## Rolls block, wire manualRolls + showDifficultyNumbers at turn route vault branch; operator smoke on One Piece campaign
+- [x] 05-01-PLAN.md — Extend VaultPromptInput, emit gated ## Rolls block, wire manualRolls + showDifficultyNumbers at turn route vault branch; operator smoke on One Piece campaign
 
 ---
