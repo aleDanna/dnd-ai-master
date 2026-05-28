@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-05-28T23:26:00Z"
+last_updated: "2026-05-28T21:37:29.463Z"
 progress:
   total_phases: 7
   completed_phases: 2
@@ -49,3 +49,9 @@ progress:
 - All tasks completed: 465eb77 (RED tests), 1020ab3 (feat implementation)
 - Decisions: combatLifecycleBlock() takes no arguments (static/deterministic, preserves REQ-022); prose reference to roster section uses "character roster above" not the literal "## Available characters" header (Rule 1 fix — avoids roster-absent test false-positive); block inserted between applyEventMention and character roster blocks
 - Combat-lifecycle block gated on vaultMutations === true; covers lifecycle/monster-stats/turn-rule semantic areas; locked read-only hash 60e56767...c54b14e unchanged; 56 tests pass; pnpm tsc --noEmit clean
+
+### Phase 07 — Plan 03 Execution (2026-05-28)
+
+- All tasks completed: 372baf7 (RED tests), 5266e1a (feat implementation GREEN)
+- Decisions: resolveCombatHandoff() pure helper returns 3-way union ('advance'/'skip'/'fallback'); parseEventsFile+replayEvents used directly (not materializeFromVault — that requires characterId not available in transaction context); combatHandoffDone flag gates fallback; entire combat block in try/catch
+- Combat-active turns: turnOrder[currentIdx] PC UUID → cpcId set + turn-change; monster id → no handoff; inactive/empty/error → detectAddressee/computeTurnAdvance unchanged; 8 new tests pass; pnpm tsc --noEmit clean; no new test failures (1 pre-existing applicator/gp-stack)
