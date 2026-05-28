@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-05-28T21:21:32Z"
+last_updated: "2026-05-28T23:26:00Z"
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 7
-  completed_plans: 22
+  completed_plans: 24
   percent: 100
 ---
 
@@ -43,3 +43,9 @@ progress:
 - All tasks completed: 182efa5 (RED tests), 4214782 (feat Task 1), df02ba8 (feat Task 2)
 - Decisions: UUID guard relaxation scoped to ENCOUNTER_EVENT_TYPES.has(type) — character events retain UUID validation; seed-bestiary.ts uses Node.js built-ins only; 180 SRD monster .md files committed as static vault knowledge
 - apply_event tool description extended with 6 encounter types + payload shapes; apply_event.md created; index.md updated to 4 tools; 180 monster files seeded from data/monsters.csv; 661 vault tests pass; pnpm tsc --noEmit clean
+
+### Phase 07 — Plan 02 Execution (2026-05-28)
+
+- All tasks completed: 465eb77 (RED tests), 1020ab3 (feat implementation)
+- Decisions: combatLifecycleBlock() takes no arguments (static/deterministic, preserves REQ-022); prose reference to roster section uses "character roster above" not the literal "## Available characters" header (Rule 1 fix — avoids roster-absent test false-positive); block inserted between applyEventMention and character roster blocks
+- Combat-lifecycle block gated on vaultMutations === true; covers lifecycle/monster-stats/turn-rule semantic areas; locked read-only hash 60e56767...c54b14e unchanged; 56 tests pass; pnpm tsc --noEmit clean
