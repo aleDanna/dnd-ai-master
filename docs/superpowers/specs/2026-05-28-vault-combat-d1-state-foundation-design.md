@@ -173,6 +173,10 @@ EncounterState = {
 - NO `apply_event` tool / dispatcher exposure for combat events, NO prompt block,
   NO bestiary content, NO PC↔monster turn interleaving driving the master — all
   **D2**.
+- The `sourceOfTruth: 'vault'` flip for the One Piece campaign (so the LIVE UI
+  reads vault state incl. combat) is a **D2** operator prerequisite, NOT D1. D1's
+  snapshot tests construct a `sourceOfTruth: 'vault'` campaign *in-test*, so D1
+  needs no live campaign flip and stays fully headless.
 - NO action economy (action/bonus/reaction/movement/position), NO in-combat
   conditions events — **D3**.
 - NO writes to Postgres `session_state.combat` / `combat_actors` (that was the
