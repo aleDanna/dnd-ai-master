@@ -35,13 +35,21 @@ fi
 
 # Candidate models for M4 production. Order matters: smallest first so
 # we see fast feedback before committing to the longer 30b runs.
-CANDIDATES=(
-  "mistral-small3.2:24b-instruct-2506-q4_K_M"
-  "mistral-small3.2:24b"
-  "qwen3:30b-a3b-instruct-2507-q4_K_M"
-  "qwen3:30b-a3b-instruct-2507"
-  "qwen3:30b-a3b"
-)
+# Override with SPIKE_CANDIDATES="modelA modelB" (space-separated) to run an
+# ad-hoc subset — e.g. a single-model A/B comparison. Defaults below are the
+# spike-004 candidate set.
+if [ -n "${SPIKE_CANDIDATES:-}" ]; then
+  # shellcheck disable=SC2206
+  CANDIDATES=(${SPIKE_CANDIDATES})
+else
+  CANDIDATES=(
+    "mistral-small3.2:24b-instruct-2506-q4_K_M"
+    "mistral-small3.2:24b"
+    "qwen3:30b-a3b-instruct-2507-q4_K_M"
+    "qwen3:30b-a3b-instruct-2507"
+    "qwen3:30b-a3b"
+  )
+fi
 
 OUT_DIR=".planning/spikes/004-m4-validation/results"
 mkdir -p "$OUT_DIR"
