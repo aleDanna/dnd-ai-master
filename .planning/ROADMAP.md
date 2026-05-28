@@ -115,4 +115,15 @@ The migration is decomposed into 3 phases. Each phase ships independently (the s
 Plans:
 - [x] 04-01-insert-your-role-block.md — TDD insert of the static `## Your role` anti-railroading block; regenerate locked-snapshot/hash expected values; REQ-022 stability + typecheck green
 
+### Phase 5: Vault Ability Checks (Manual Rolls)
+
+**Goal:** The vault-path Dungeon Master calls for ability checks, saving throws, and attack/damage rolls via the existing manual-roll surface — writing parser-compatible roll requests in prose so the client's 🎲 buttons render and resolve. Prompt + setting only (a `manualRolls`-gated `## Rolls` block in `buildVaultSystemPrompt`); no parser/engine/tool changes; REQ-022 byte-stability preserved.
+
+**Requirements:** REQ-036
+**Depends on:** Phase 4
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 5 to break down)
+
 ---

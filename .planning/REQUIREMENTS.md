@@ -44,6 +44,12 @@ All requirements below are **LOCKED** by spike validation work (rounds 1-3 + nar
 | REQ-034 | No per-turn model router in Phase 1. Switching between primary/fallback is per-session via user setting. | spike 014 |
 | REQ-035 | Vault-path master must not railroad the player character — narrate world / NPCs / consequences of declared actions only; never invent the PC's actions, dialogue, decisions, or outcomes. | gemma4 experiment 2026-05-28 |
 
+## Game mechanics (vault path)
+
+| REQ | Statement | Locked by |
+|-----|-----------|-----------|
+| REQ-036 | Vault-path master must call for ability checks / saving throws (and attack/damage rolls) via the existing manual-roll surface: write parser-compatible roll requests in prose (the client renders 🎲 buttons), gated on the campaign `manualRolls` setting, reusing the proven `buildManualRollsRule` content. Prompt-only; REQ-022 byte-stability preserved. | ability-checks design 2026-05-28 |
+
 ## Out of scope (explicit non-requirements)
 
 | Non-REQ | Statement |

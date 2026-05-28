@@ -5,8 +5,14 @@ milestone_name: milestone
 status: unknown
 last_updated: "2026-05-28T10:13:30.890Z"
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 18
 ---
+
+## Accumulated Context
+
+### Roadmap Evolution
+
+- Phase 5 added: Vault Ability Checks (Manual Rolls)
