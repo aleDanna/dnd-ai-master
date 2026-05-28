@@ -3,6 +3,8 @@ import { db } from '@/db/client';
 import { sessions, sessionState, combatActors, characters, campaigns, type SessionState } from '@/db/schema';
 import { resolveSourceOfTruth } from '@/lib/preferences';
 import { materializeFromVault } from '@/ai/master/vault/snapshot-reader';
+import type { EncounterState } from '@/ai/master/vault/projector';
+import type { CombatActorRow } from './client-types';
 
 /**
  * Build the client-shaped session snapshot used by `useSessionStream` on
@@ -42,6 +44,61 @@ import { materializeFromVault } from '@/ai/master/vault/snapshot-reader';
  *   Postgres in that case too: the vault pivot only fires when the viewer
  *   resolved to their own campaign-instance character.
  */
+/**
+ * Map an EncounterState to an array of CombatActorRow — one entry per monster.
+ *
+ * Phase 06 D1 — LOCKED mapping (06-CONTEXT.md §"EncounterState + view"):
+ *   - Only monsters live in actors (PCs are looked up by the CombatTracker
+ *     from the party snapshot; they are NOT included here).
+ *   - Per-actor `initiative` is sourced from the matching turnOrder entry;
+ *     defaults to 0 when the monster is not yet in the turn order.
+ *   - `monsterSlug` is null in D1 (bestiary is D2).
+ *   - `conditions` are mapped from string slugs to the condition object shape
+ *     required by CombatActorRow, with source='vault-encounter'.
+ *   - Optional CombatActorRow fields (turnState, position, senses) are omitted
+ *     in D1 (no action economy / positions yet — those are D3).
+ *
+ * When `encounter.active === false` (no combat): returns an empty array.
+ * Vault campaigns never write to Postgres combat_actors, so an empty array
+ * from an inactive encounter is correct (not a fallback failure).
+ *
+ * Exported for headless snapshot-shape tests (no live DB required).
+ */
+export function buildVaultActors(
+  encounter: EncounterState,
+  sessionId: string,
+): CombatActorRow[] {
+  if (!encounter.active) return [];
+
+  return encounter.monsters.map((monster) => {
+    // Initiative comes from the matching turnOrder entry (the initiative_set
+    // event populates this). Defaults to 0 when the monster has been spawned
+    // but initiative has not been set yet (monster_spawn before initiative_set).
+    const initiative =
+      encounter.turnOrder.find((e) => e.actorId === monster.id)?.initiative ?? 0;
+
+    const row: CombatActorRow = {
+      id: monster.id,
+      sessionId,
+      name: monster.name,
+      monsterSlug: null, // D1: no bestiary — slug is a D2 concern.
+      hpCurrent: monster.hpCurrent,
+      hpMax: monster.hpMax,
+      initiative,
+      isAlive: monster.isAlive,
+      // Map string slugs → condition object shape. source='vault-encounter'
+      // distinguishes these from character conditions (source='vault-replay').
+      conditions: monster.conditions.map((slug) => ({
+        slug,
+        source: 'vault-encounter',
+        durationRounds: 'until_removed' as const,
+        appliedRound: 0,
+      })),
+    };
+    return row;
+  });
+}
+
 export async function buildClientSnapshot(sessionId: string, userId: string) {
   const [row] = await db
     .select({ session: sessions, campaign: campaigns })
@@ -75,6 +132,10 @@ export async function buildClientSnapshot(sessionId: string, userId: string) {
   // field (actors, party, character, currentPlayerCharacterId,
   // viewerCharacterId) reads from Postgres as before.
   let state: SessionState | null = null;
+  // Track the vault encounter so actors can be sourced from it (vault path)
+  // without a second replay pass. Stays null on the Postgres path.
+  let vaultEncounter: EncounterState | null = null;
+
   const sourceOfTruth = resolveSourceOfTruth(campaign?.settings?.sourceOfTruth);
   // The vault pivot requires (a) a campaign (legacy single-character
   // sessions without a campaignId stay on Postgres) and (b) the viewer's
@@ -82,13 +143,16 @@ export async function buildClientSnapshot(sessionId: string, userId: string) {
   const viewerCharId = viewerChar?.id;
   if (sourceOfTruth === 'vault' && campaign && viewerCharId) {
     try {
-      const vaultState = await materializeFromVault(campaign.id, viewerCharId, sessionId);
-      if (vaultState) {
+      const vaultResult = await materializeFromVault(campaign.id, viewerCharId, sessionId);
+      if (vaultResult) {
         // The translator returns `Partial<SessionState>` populated from
         // vault replay; consumers downstream type it as `SessionState | null`,
         // so we cast here. The translator emits sane defaults for every
         // non-vault-tracked field (see snapshot-reader.translateCharacterState).
-        state = vaultState as SessionState;
+        state = vaultResult.state as SessionState;
+        // Stash the encounter state so actors below can be sourced from
+        // the vault encounter monsters without a second replay round-trip.
+        vaultEncounter = vaultResult.encounter;
       }
     } catch (e) {
       // Defensive: never let a vault read error bubble up — the UI loses
@@ -114,7 +178,25 @@ export async function buildClientSnapshot(sessionId: string, userId: string) {
     state = pgState ?? null;
   }
 
-  const actors = await db.select().from(combatActors).where(eq(combatActors.sessionId, sessionId));
+  // Phase 06 D1 — actors source:
+  //   Vault path: source from EncounterState.monsters (no Postgres combat_actors
+  //   query for vault sessions — they never write to Postgres combat_actors, so
+  //   the query would return [] anyway; skipping it saves a DB round-trip).
+  //   Postgres path: query combat_actors as before.
+  let actors: CombatActorRow[];
+  if (vaultEncounter !== null) {
+    // Vault session — build actors from the encounter monster list.
+    actors = buildVaultActors(vaultEncounter, sessionId);
+  } else {
+    // Default (sourceOfTruth='postgres') or vault fallback.
+    const pgActors = await db.select().from(combatActors).where(eq(combatActors.sessionId, sessionId));
+    // The DB schema type carries extra columns (custom, size) and uses
+    // `null` for optional fields (turnState/position/senses) rather than
+    // `undefined`. Cast to CombatActorRow[] — the client-facing shape is a
+    // structural subset; the extra/null-vs-undefined differences are safe to
+    // bridge at this point in the call chain.
+    actors = pgActors as unknown as CombatActorRow[];
+  }
 
   const party = session.campaignId
     ? await db
