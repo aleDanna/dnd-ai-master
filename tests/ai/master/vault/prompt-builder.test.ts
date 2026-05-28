@@ -313,6 +313,69 @@ describe('buildVaultSystemPrompt — Phase 02.1 character roster injection', () 
   });
 });
 
+// Phase 07 — vaultMutations-gated Combat-lifecycle block (REQ-038).
+// The block is emitted ONLY when vaultMutations === true; absent otherwise.
+// REQ-022 byte-stability must be preserved: the read-only default
+// (vaultMutations undefined, toolCount:3) hash MUST remain
+// 60e56767b9c63ae936741fc6812a3958c6be346662736a455bed75510c54b14e.
+describe('buildVaultSystemPrompt — Phase 07 Combat-lifecycle block (REQ-038)', () => {
+  const READ_WRITE_07 = { ...BASE_INPUT, toolCount: 4, vaultMutations: true as const };
+
+  // (a) vaultMutations:false (default, BASE_INPUT) → block ABSENT
+  it('vaultMutations:false (default) → combat_start block ABSENT', () => {
+    const prompt = buildVaultSystemPrompt(BASE_INPUT);
+    expect(prompt).not.toContain('combat_start');
+  });
+
+  // (b) vaultMutations:true, toolCount:4 → block PRESENT with all lifecycle event names
+  it('vaultMutations:true, toolCount:4 → block PRESENT with all 6 lifecycle event names', () => {
+    const prompt = buildVaultSystemPrompt(READ_WRITE_07);
+    expect(prompt).toContain('combat_start');
+    expect(prompt).toContain('monster_spawn');
+    expect(prompt).toContain('initiative_set');
+    expect(prompt).toContain('turn_advance');
+    expect(prompt).toContain('monster_hp_change');
+    expect(prompt).toContain('combat_end');
+  });
+
+  // (c) vaultMutations:true → block contains monster-stats rule tokens
+  it('vaultMutations:true → block contains monster-stats rule: handbook path and inline instruction', () => {
+    const prompt = buildVaultSystemPrompt(READ_WRITE_07);
+    expect(prompt).toContain('handbook/monsters/');
+    // The monster-stats rule tells the master to invent stats and put them inline
+    // in the monster_spawn payload for custom bosses not in the bestiary.
+    expect(prompt).toContain('monster_spawn');
+    // Ensure the block mentions inventing stats for custom/boss monsters
+    expect(prompt).toMatch(/invent/i);
+  });
+
+  // (d) vaultMutations:true → block contains turn rule tokens
+  it('vaultMutations:true → block contains turn rule: stop on PC turn, do not act for PC', () => {
+    const prompt = buildVaultSystemPrompt(READ_WRITE_07);
+    // Turn rule says stop when it becomes a PC's turn
+    expect(prompt).toMatch(/stop/i);
+    // Turn rule says do not act for the PC
+    expect(prompt).toMatch(/do not act for the PC/i);
+  });
+
+  // (e) REQ-022 — 1000-build stability for vaultMutations:true
+  it('1000 builds {vaultMutations:true, toolCount:4} produce ONE unique SHA256 (REQ-022 stability)', () => {
+    const hashes = new Set<string>();
+    for (let i = 0; i < 1000; i++) {
+      hashes.add(hashVaultPrompt(buildVaultSystemPrompt(READ_WRITE_07)));
+    }
+    expect(hashes.size).toBe(1);
+  });
+
+  // (f) REQ-022 — existing locked-snapshot hash unchanged (block absent for BASE_INPUT)
+  it('locked-snapshot hash still matches for read-only BASE_INPUT (combat block absent)', () => {
+    const prompt = buildVaultSystemPrompt({ vaultRoot: 'data/vault', campaignId: 'test-camp', toolCount: 3 });
+    expect(hashVaultPrompt(prompt)).toBe(
+      '60e56767b9c63ae936741fc6812a3958c6be346662736a455bed75510c54b14e',
+    );
+  });
+});
+
 // Phase 05 — manualRolls-gated `## Rolls` block (REQ-036).
 // The block is emitted ONLY when manualRolls === true; absent otherwise.
 // REQ-022 byte-stability must be preserved: the read-only default
