@@ -198,9 +198,12 @@ Plans:
 
 **Requirements:** REQ-038
 
-**Plans:** 0 plans
+**Plans:** 4 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 07 to break down)
+- [ ] 07-01-PLAN.md — UUID guard relaxed for ENCOUNTER_EVENT_TYPES; apply_event description extended with 6 encounter types + payloads; apply_event.md + index.md; 180-monster SRD bestiary seeded and committed
+- [ ] 07-02-PLAN.md — vaultMutations-gated Combat-lifecycle prompt block (lifecycle sequence + monster-stats rule + turn rule); REQ-022 byte-stable; existing locked-snapshot hash unchanged
+- [ ] 07-03-PLAN.md — turnOrder-driven turn handoff in vault branch (PC actor → cpcId set; monster actor → no handoff; detectAddressee fallback); non-combat regression test suite
+- [ ] 07-04-PLAN.md — _set-source-of-truth.ts script; One Piece sourceOfTruth:'vault'; operator smoke (fight plays through to combat_end)
 
 ---
