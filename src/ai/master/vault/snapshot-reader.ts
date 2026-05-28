@@ -105,7 +105,7 @@ export async function materializeFromVault(
   // missing file: caller falls back to Postgres.
   if (envelopes.length === 0) return null;
 
-  const states = replayEvents(envelopes);
+  const { chars: states } = replayEvents(envelopes);
   const charState = states.get(characterId);
   // Unseeded character (e.g., the campaign was flipped before this PC was
   // added, or the seed event names a different set of characters) — return

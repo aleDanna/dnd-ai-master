@@ -88,7 +88,7 @@ async function rebuildOneCampaign(campaignId: string): Promise<void> {
   }
 
   const envelopes = await parseEventsFile(path);
-  const states = replayEvents(envelopes);
+  const { chars: states } = replayEvents(envelopes);
   console.log(
     `[rebuild] ${campaignId}: ${envelopes.length} events → ${states.size} characters`,
   );

@@ -76,13 +76,14 @@
  * so the must_have "Round-trip property" stays asserted in regression.
  */
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import type {
   VaultEvent,
   VaultEventEnvelope,
   VaultSeedCharacter,
 } from './events-schema';
-import { eventsPath, characterViewPath } from './campaign-paths';
+import { ENCOUNTER_EVENT_TYPES } from './events-schema';
+import { eventsPath, characterViewPath, campaignDir } from './campaign-paths';
 
 /**
  * Materialized per-character state derived from replaying the events.md
@@ -636,28 +637,195 @@ export function applyEvent(state: CharacterState, event: VaultEvent): CharacterS
 }
 
 /**
- * Replay an ordered list of `VaultEventEnvelope`s into a per-character
- * state Map. Pure function — no FS reads, no global state, no clock.
+ * Materialized encounter state derived from replaying the encounter-scoped
+ * events in an events.md log (Phase 06 D1).
+ *
+ * Shape is LOCKED by 06-CONTEXT.md §"EncounterState + view (LOCKED)":
+ *   - `active`      — true while combat is running
+ *   - `round`       — current combat round (starts at 1 on combat_start)
+ *   - `currentIdx`  — index into `turnOrder` pointing at the active actor
+ *   - `turnOrder`   — ordered list of {actorId, initiative} pairs; PC UUIDs
+ *                     and monster IDs are mixed here. Set by initiative_set.
+ *   - `monsters`    — encounter-scoped monster states (PCs are tracked in the
+ *                     existing per-character CharacterState map; only monsters
+ *                     live here as they have no separate vault character file).
+ *
+ * Design invariants:
+ *   - Only monsters live in `EncounterState.monsters`. PC HP comes from the
+ *     per-character CharacterState (unchanged by this phase).
+ *   - `conditions` on a monster defaults to `[]`; Phase 06 D1 does not add
+ *     in-combat conditions (that is D3). The field exists for forward-compat.
+ *   - `ac` and `initiativeBonus` are optional — many basic monsters specify
+ *     only HP (the minimum needed to render HP bars in the CombatTracker).
+ */
+export interface EncounterState {
+  active: boolean;
+  round: number;
+  currentIdx: number;
+  turnOrder: Array<{ actorId: string; initiative: number }>;
+  monsters: Array<{
+    id: string;
+    name: string;
+    hpCurrent: number;
+    hpMax: number;
+    ac?: number;
+    initiativeBonus?: number;
+    isAlive: boolean;
+    conditions: string[];
+  }>;
+}
+
+/**
+ * The inert initial encounter state — no combat running, no monsters.
+ * Used as the starting point for `replayEncounterEvents` before any
+ * combat events have been applied.
+ */
+export const INITIAL_ENCOUNTER_STATE: EncounterState = {
+  active: false,
+  round: 0,
+  currentIdx: 0,
+  turnOrder: [],
+  monsters: [],
+};
+
+/**
+ * PURE reducer over the 6 encounter-scoped event types (Phase 06 D1).
+ *
+ * Determinism contract (same as `applyEvent`):
+ *   - No clock reads, no randomness, no environment reads.
+ *   - `structuredClone(state)` is the first statement.
+ *   - Same `(state, event)` input always yields a deeply-equal output.
+ *
+ * Reducer effects per CONTEXT §"Event schema (LOCKED)":
+ *
+ *   - combat_start          → re-init: active=true, round=1, currentIdx=0,
+ *                             turnOrder=[], monsters=[]
+ *   - monster_spawn         → if !active skip; if duplicate id skip;
+ *                             append {id,name,hpCurrent:hpMax,hpMax,ac?,
+ *                             initiativeBonus?,isAlive:true,conditions:[]}
+ *   - initiative_set        → if !active skip; turnOrder=order, currentIdx=0
+ *   - turn_advance          → if !active skip; if turnOrder empty skip;
+ *                             newIdx = currentIdx+1;
+ *                             if newIdx >= turnOrder.length: currentIdx=0, round++
+ *                             else: currentIdx=newIdx
+ *   - monster_hp_change     → if !active skip; find monster by id;
+ *                             if not found skip (defensive);
+ *                             newHp = max(0, hpCurrent+delta);
+ *                             isAlive = newHp > 0
+ *   - combat_end            → active=false
+ *
+ * The `default:` arm returns state unchanged — NOT `never`-typed — because
+ * this reducer only handles the 6 encounter event types; it is intentionally
+ * NOT exhaustive over all VaultEvent members.
+ */
+export function applyEncounterEvent(state: EncounterState, event: VaultEvent): EncounterState {
+  const next = structuredClone(state);
+  switch (event.type) {
+    case 'combat_start':
+      // Re-initialize: fresh encounter state, discards any prior encounter.
+      return { active: true, round: 1, currentIdx: 0, turnOrder: [], monsters: [] };
+
+    case 'monster_spawn': {
+      if (!state.active) return next; // defensive: ignore if combat hasn't started
+      const { id, name, hpMax, ac, initiativeBonus } = event.payload;
+      // Idempotent: skip duplicate spawns (deterministic replay invariant).
+      if (next.monsters.some((m) => m.id === id)) return next;
+      const monster: EncounterState['monsters'][number] = {
+        id,
+        name,
+        hpCurrent: hpMax,
+        hpMax,
+        isAlive: true,
+        conditions: [],
+      };
+      if (ac !== undefined) monster.ac = ac;
+      if (initiativeBonus !== undefined) monster.initiativeBonus = initiativeBonus;
+      next.monsters.push(monster);
+      return next;
+    }
+
+    case 'initiative_set': {
+      if (!state.active) return next; // defensive: ignore before combat_start
+      next.turnOrder = [...event.payload.order];
+      next.currentIdx = 0;
+      return next;
+    }
+
+    case 'turn_advance': {
+      if (!state.active) return next; // defensive
+      if (state.turnOrder.length === 0) return next; // edge case: no actors yet
+      const newIdx = state.currentIdx + 1;
+      if (newIdx >= state.turnOrder.length) {
+        next.currentIdx = 0;
+        next.round = state.round + 1;
+      } else {
+        next.currentIdx = newIdx;
+      }
+      return next;
+    }
+
+    case 'monster_hp_change': {
+      if (!state.active) return next; // defensive
+      const { id, delta } = event.payload;
+      const monsterIdx = next.monsters.findIndex((m) => m.id === id);
+      if (monsterIdx === -1) return next; // unknown monster id — defensive skip
+      const monster = next.monsters[monsterIdx]!;
+      monster.hpCurrent = Math.max(0, monster.hpCurrent + delta);
+      monster.isAlive = monster.hpCurrent > 0;
+      return next;
+    }
+
+    case 'combat_end': {
+      next.active = false;
+      return next;
+    }
+
+    default:
+      // Non-encounter event — no-op. The encounter reducer does not throw
+      // on unknown event types (defensive / forward-compat).
+      return next;
+  }
+}
+
+/**
+ * Replay an ordered list of `VaultEventEnvelope`s.
+ *
+ * Returns `{ chars, encounter }` — both reducers run in a SINGLE pass over
+ * the event log. The encounter reducer is additive: it does not change the
+ * `chars` Map semantics established by Phase 02/03.
  *
  * Algorithm:
  *   1. Iterate envelopes in order.
- *   2. `campaign_initialized` events seed the Map: for each character in
- *      `payload.characters`, allocate `INITIAL_CHARACTER_STATE` and store
- *      it under `character.id`.
- *   3. All other event types target one character (the `payload.character`
- *      field IS the character UUID). Look up the existing state, apply
- *      the reducer, write back. Attach envelope metadata
- *      (`last_event_id`, `last_updated`) to the new state.
- *   4. Events for unseeded characters are skipped with a warning. In
- *      practice the seed event always lands first; this is defensive
- *      hardening against an operator's manual events.md edit that drops
- *      the seed line.
+ *   2. `campaign_initialized` seeds the chars Map (character-only; not
+ *      encounter).
+ *   3. Encounter-scoped events (`ENCOUNTER_EVENT_TYPES.has(env.type)`) go
+ *      to `applyEncounterEvent`. They have no `payload.character`.
+ *   4. All other character events target one character by `payload.character`
+ *      UUID. Unseeded characters are skipped with a warning.
  */
 export function replayEvents(
   envelopes: VaultEventEnvelope[],
-): Map<string, CharacterState> {
+): { chars: Map<string, CharacterState>; encounter: EncounterState } {
   const states = new Map<string, CharacterState>();
+  let encounterState: EncounterState = structuredClone(INITIAL_ENCOUNTER_STATE);
+
   for (const env of envelopes) {
+    // -----------------------------------------------------------------------
+    // Encounter-scoped routing — ENCOUNTER_EVENT_TYPES.has is O(1).
+    // These events have no payload.character so the character path must NOT
+    // run for them.
+    // -----------------------------------------------------------------------
+    if (ENCOUNTER_EVENT_TYPES.has(env.type)) {
+      encounterState = applyEncounterEvent(
+        encounterState,
+        { type: env.type, payload: env.payload } as VaultEvent,
+      );
+      continue;
+    }
+
+    // -----------------------------------------------------------------------
+    // Character-scoped routing (Phase 02/03 events + campaign_initialized).
+    // -----------------------------------------------------------------------
     if (env.type === 'campaign_initialized') {
       const payload = env.payload as { characters: VaultSeedCharacter[] };
       for (const c of payload.characters) {
@@ -687,7 +855,7 @@ export function replayEvents(
     next.last_updated = env.timestamp;
     states.set(charId, next);
   }
-  return states;
+  return { chars: states, encounter: encounterState };
 }
 
 /**
@@ -762,8 +930,8 @@ export async function regenerateCharacterView(
   characterId: string,
 ): Promise<void> {
   const envelopes = await parseEventsFile(eventsPath(campaignId));
-  const states = replayEvents(envelopes);
-  const state = states.get(characterId);
+  const { chars } = replayEvents(envelopes);
+  const state = chars.get(characterId);
   if (!state) {
     throw new Error(
       `[projector] regenerateCharacterView: character ${characterId} not seeded in campaign ${campaignId}`,
@@ -775,10 +943,33 @@ export async function regenerateCharacterView(
 }
 
 /**
+ * Regenerate the `combat.md` materialized view for a campaign.
+ *
+ * Steps:
+ *   1. Parse events.md from disk via `parseEventsFile`.
+ *   2. Replay to get the encounter state.
+ *   3. Serialize via `serializeCombatView`.
+ *   4. Write to `<campaignDir>/combat.md` (mkdir -p parent).
+ *
+ * Phase 06 D1 — called by `regenerateAffectedViews` whenever an encounter
+ * event is applied. The snapshot wiring in plan 06-02 reads this file.
+ */
+export async function regenerateCombatView(campaignId: string): Promise<void> {
+  const envelopes = await parseEventsFile(eventsPath(campaignId));
+  const { encounter } = replayEvents(envelopes);
+  const combatPath = join(campaignDir(campaignId), 'combat.md');
+  await mkdir(dirname(combatPath), { recursive: true });
+  await writeFile(combatPath, serializeCombatView(encounter), 'utf8');
+}
+
+/**
  * Dispatcher hook — synchronously regenerate all views affected by the
  * just-appended event.
  *
- * Affected-set rules:
+ * Affected-set rules (Phase 06 D1 extended):
+ *   - Encounter-scoped events (`ENCOUNTER_EVENT_TYPES.has(event.type)`) —
+ *     regenerate `combat.md` and return early. These events have no
+ *     `payload.character`, so the character-regen path MUST NOT run.
  *   - `campaign_initialized` — regenerate every character in the seed
  *     payload (the campaign just bootstrapped; all views need to exist
  *     before the LLM can read any of them).
@@ -794,6 +985,14 @@ export async function regenerateAffectedViews(
   campaignId: string,
   event: VaultEventEnvelope,
 ): Promise<void> {
+  // Phase 06 D1 — encounter-scoped events regenerate combat.md and return.
+  // These events have no payload.character; the character-regen path below
+  // must not execute for them (it would crash on undefined charId).
+  if (ENCOUNTER_EVENT_TYPES.has(event.type)) {
+    await regenerateCombatView(campaignId);
+    return;
+  }
+
   if (event.type === 'campaign_initialized') {
     const payload = event.payload as { characters: VaultSeedCharacter[] };
     await Promise.all(
@@ -941,6 +1140,91 @@ export function serializeView(state: CharacterState): string {
   lines.push('---');
   lines.push('');
   lines.push(`# ${state.name}`);
+  lines.push('');
+  lines.push(
+    '(materialized view; do not edit — regenerated by the projector after each apply_event)',
+  );
+  lines.push('');
+  return lines.join('\n');
+}
+
+/**
+ * Serialize an `EncounterState` into a frontmatter markdown view (`combat.md`).
+ *
+ * Phase 06 D1 — hand-rolled YAML emitter, byte-stable for the same input.
+ * Mirrors the `serializeView` pattern (no yaml dependency, deterministic
+ * key ordering, `---` delimiters).
+ *
+ * When `encounter.active === false`: emits minimal frontmatter (`active: false`)
+ * because there is no active encounter to render.
+ *
+ * When `encounter.active === true`: emits full encounter state:
+ *   - active, round, currentIdx
+ *   - turnOrder: YAML sequence of {actorId, initiative} items
+ *   - monsters: YAML sequence of full monster stats
+ *
+ * Byte-stability: turnOrder and monsters are emitted in their list order
+ * (authoritative from initiative_set / monster_spawn order — NOT re-sorted).
+ * String values use JSON.stringify for consistent quoting.
+ */
+export function serializeCombatView(encounter: EncounterState): string {
+  const lines: string[] = ['---'];
+
+  if (!encounter.active) {
+    lines.push('active: false');
+    lines.push('---');
+    lines.push('');
+    lines.push('# Combat');
+    lines.push('');
+    lines.push('(no active encounter)');
+    lines.push('');
+    return lines.join('\n');
+  }
+
+  lines.push('active: true');
+  lines.push(`round: ${encounter.round}`);
+  lines.push(`currentIdx: ${encounter.currentIdx}`);
+
+  if (encounter.turnOrder.length === 0) {
+    lines.push('turnOrder: []');
+  } else {
+    lines.push('turnOrder:');
+    for (const t of encounter.turnOrder) {
+      lines.push(`  - actorId: ${JSON.stringify(t.actorId)}`);
+      lines.push(`    initiative: ${t.initiative}`);
+    }
+  }
+
+  if (encounter.monsters.length === 0) {
+    lines.push('monsters: []');
+  } else {
+    lines.push('monsters:');
+    for (const m of encounter.monsters) {
+      lines.push(`  - id: ${JSON.stringify(m.id)}`);
+      lines.push(`    name: ${JSON.stringify(m.name)}`);
+      lines.push(`    hpCurrent: ${m.hpCurrent}`);
+      lines.push(`    hpMax: ${m.hpMax}`);
+      if (m.ac !== undefined) {
+        lines.push(`    ac: ${m.ac}`);
+      }
+      if (m.initiativeBonus !== undefined) {
+        lines.push(`    initiativeBonus: ${m.initiativeBonus}`);
+      }
+      lines.push(`    isAlive: ${m.isAlive}`);
+      if (m.conditions.length === 0) {
+        lines.push('    conditions: []');
+      } else {
+        lines.push('    conditions:');
+        for (const c of m.conditions) {
+          lines.push(`      - ${JSON.stringify(c)}`);
+        }
+      }
+    }
+  }
+
+  lines.push('---');
+  lines.push('');
+  lines.push('# Combat');
   lines.push('');
   lines.push(
     '(materialized view; do not edit — regenerated by the projector after each apply_event)',

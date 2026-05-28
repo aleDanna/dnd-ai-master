@@ -108,7 +108,7 @@ describe('vault-mutations resume — replay-on-read invariant', () => {
     // (before the flip script appends the seed).
     const envelopes = await mod.parseEventsFile(mod.eventsPath(CAMPAIGN_UUID));
     expect(envelopes).toEqual([]);
-    const states = mod.replayEvents(envelopes);
+    const { chars: states } = mod.replayEvents(envelopes);
     expect(states.size).toBe(0);
   });
 
@@ -123,7 +123,7 @@ describe('vault-mutations resume — replay-on-read invariant', () => {
     await writeSeedEvent(mod, CAMPAIGN_UUID, seed);
 
     const envelopes = await mod.parseEventsFile(mod.eventsPath(CAMPAIGN_UUID));
-    const states = mod.replayEvents(envelopes);
+    const { chars: states } = mod.replayEvents(envelopes);
     expect(states.size).toBe(1);
 
     const rogan = states.get(FIGHTER_UUID);
@@ -151,7 +151,7 @@ describe('vault-mutations resume — replay-on-read invariant', () => {
     await writeSeedEvent(mod, CAMPAIGN_UUID, seed);
 
     const envelopes = await mod.parseEventsFile(mod.eventsPath(CAMPAIGN_UUID));
-    const states = mod.replayEvents(envelopes);
+    const { chars: states } = mod.replayEvents(envelopes);
     const elara = states.get(WIZARD_UUID);
     expect(elara).toBeDefined();
     expect(elara!.hp_current).toBe(12); // verbatim from seed (no fallback)
@@ -170,7 +170,7 @@ describe('vault-mutations resume — replay-on-read invariant', () => {
     await writeSeedEvent(mod, CAMPAIGN_UUID, seed);
 
     const envelopes = await mod.parseEventsFile(mod.eventsPath(CAMPAIGN_UUID));
-    const states = mod.replayEvents(envelopes);
+    const { chars: states } = mod.replayEvents(envelopes);
     expect(states.size).toBe(2);
     expect(states.get(FIGHTER_UUID)!.hp_current).toBe(20); // fallback to hp_max
     expect(states.get(SECOND_UUID)!.hp_current).toBe(15);  // verbatim
@@ -204,7 +204,7 @@ describe('vault-mutations resume — replay-on-read invariant', () => {
 
     const envelopes = await mod.parseEventsFile(mod.eventsPath(CAMPAIGN_UUID));
     expect(envelopes).toHaveLength(6); // seed + 5 mutations
-    const states = mod.replayEvents(envelopes);
+    const { chars: states } = mod.replayEvents(envelopes);
     expect(states.get(WIZARD_UUID)!.hp_current).toBe(15);
   });
 

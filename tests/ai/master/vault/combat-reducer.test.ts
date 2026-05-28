@@ -188,7 +188,6 @@ describe('EncounterState reducer: step-by-step', () => {
 describe('EncounterState reducer: defensive / edge cases', () => {
   it('monster_hp_change on unknown id does not throw and returns state unchanged', async () => {
     const { projector } = await importModules('/tmp/test-vault');
-    const before = projector.replayEvents([E1, E2]).encounter;
     const unknown = makeEnv('monster_hp_change', { id: 'nonexistent-monster', delta: -99 });
     const after = projector.replayEvents([E1, E2, unknown]).encounter;
     expect(after.monsters).toHaveLength(1);
@@ -363,7 +362,7 @@ describe('regenerateCombatView: disk write', () => {
   });
 
   it('writes combat.md to campaignDir after encounter events', async () => {
-    const { projector, schema } = await importModules(tmpDir);
+    const { projector } = await importModules(tmpDir);
     const { writeFile, mkdir: mkdirFs } = await import('node:fs/promises');
     const { eventsPath, campaignDir } = await import('@/ai/master/vault/campaign-paths');
 

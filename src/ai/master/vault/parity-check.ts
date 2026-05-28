@@ -104,7 +104,7 @@ export async function parityCheck(
   if (!existsSync(eventsFile)) return null;
   const envelopes = await parseEventsFile(eventsFile);
   if (envelopes.length === 0) return null;
-  const states = replayEvents(envelopes);
+  const { chars: states } = replayEvents(envelopes);
   const vaultState = states.get(characterId);
   // Skip 3: character not seeded into vault.
   if (!vaultState) return null;

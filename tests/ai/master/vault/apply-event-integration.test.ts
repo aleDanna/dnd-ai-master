@@ -207,7 +207,7 @@ describe('apply_event end-to-end integration', () => {
 
       // Replay path A — events.md → parseEventsFile → replayEvents.
       const envelopes = await mod.parseEventsFile(mod.eventsPath(CAMPAIGN_UUID));
-      const replayState = mod.replayEvents(envelopes).get(CHAR_UUID);
+      const replayState = mod.replayEvents(envelopes).chars.get(CHAR_UUID);
       expect(replayState).toBeDefined();
 
       // Replay path B — view-file → parseView (the LLM's read path).
@@ -293,7 +293,7 @@ describe('apply_event end-to-end integration', () => {
 
       const envelopes = await fresh.parseEventsFile(eventsFile);
       expect(envelopes.length).toBe(4); // seed + 3
-      const state = fresh.replayEvents(envelopes).get(CHAR_UUID);
+      const state = fresh.replayEvents(envelopes).chars.get(CHAR_UUID);
       expect(state).toBeDefined();
       expect(state!.hp_current).toBe(23); // 30 - 3 - 4
       expect(state!.conditions).toEqual(['prone']);
@@ -326,7 +326,7 @@ describe('apply_event end-to-end integration', () => {
 
       // Replay yields TWO entries with the expected per-character state.
       const envelopes = await mod.parseEventsFile(mod.eventsPath(CAMPAIGN_UUID));
-      const states = mod.replayEvents(envelopes);
+      const { chars: states } = mod.replayEvents(envelopes);
       expect(states.size).toBe(2);
       expect(states.get(CHAR_UUID)!.hp_current).toBe(25); // 30 - 5
       expect(states.get(CHAR_UUID_2)!.hp_current).toBe(25); // untouched

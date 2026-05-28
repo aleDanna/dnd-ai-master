@@ -569,9 +569,9 @@ describe('projector', () => {
       const all = [seedEnv, ...mutEnvs];
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result1 = projector.replayEvents(all as any);
+      const result1 = projector.replayEvents(all as any).chars;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result2 = projector.replayEvents(all as any);
+      const result2 = projector.replayEvents(all as any).chars;
 
       // Two replays of the same event list MUST produce deeply equal Maps.
       const obj1: Record<string, unknown> = {};
@@ -604,10 +604,10 @@ describe('projector', () => {
 
       // Order A: heal then damage. Start at 30, heal clamped at 30, then -10 → 20.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const r1 = projector.replayEvents([seedEnv, heal, damage] as any);
+      const r1 = projector.replayEvents([seedEnv, heal, damage] as any).chars;
       // Order B: damage then heal. Start at 30, damage → 20, heal → 25.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const r2 = projector.replayEvents([seedEnv, damage, heal] as any);
+      const r2 = projector.replayEvents([seedEnv, damage, heal] as any).chars;
 
       expect(r1.get(CHAR_A_UUID)!.hp_current).toBe(20);
       expect(r2.get(CHAR_A_UUID)!.hp_current).toBe(25);
@@ -640,7 +640,7 @@ describe('projector', () => {
       );
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const states = projector.replayEvents([seedEnv, dmgA, dmgB] as any);
+      const { chars: states } = projector.replayEvents([seedEnv, dmgA, dmgB] as any);
       expect(states.get(CHAR_A_UUID)!.hp_current).toBe(27);
       expect(states.get(CHAR_B_UUID)!.hp_current).toBe(18);
     });
@@ -654,7 +654,7 @@ describe('projector', () => {
         '2026-05-25T10:00:00.000Z',
       );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const states = projector.replayEvents([seedEnv] as any);
+      const { chars: states } = projector.replayEvents([seedEnv] as any);
       expect(states.get(CHAR_A_UUID)!.hp_current).toBe(20);
     });
 
@@ -667,7 +667,7 @@ describe('projector', () => {
         '2026-05-25T10:00:00.000Z',
       );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const states = projector.replayEvents([seedEnv] as any);
+      const { chars: states } = projector.replayEvents([seedEnv] as any);
       expect(states.get(CHAR_A_UUID)!.hp_current).toBe(7);
     });
 
@@ -680,7 +680,7 @@ describe('projector', () => {
         '2026-05-25T10:00:00.000Z',
       );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const states = projector.replayEvents([seedEnv] as any);
+      const { chars: states } = projector.replayEvents([seedEnv] as any);
       expect(states.get(CHAR_A_UUID)!.spell_slots).toEqual({});
     });
 
@@ -694,7 +694,7 @@ describe('projector', () => {
         '2026-05-25T10:00:00.000Z',
       );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const states = projector.replayEvents([orphan] as any);
+      const { chars: states } = projector.replayEvents([orphan] as any);
       expect(states.has(CHAR_C_UUID)).toBe(false);
       expect(warnSpy).toHaveBeenCalled();
     });
@@ -714,7 +714,7 @@ describe('projector', () => {
         '2026-05-25T10:05:00.000Z',
       );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const states = projector.replayEvents([seedEnv, mut] as any);
+      const { chars: states } = projector.replayEvents([seedEnv, mut] as any);
       const state = states.get(CHAR_A_UUID)!;
       expect(state.last_event_id).toBe('event-uuid-123');
       expect(state.last_updated).toBe('2026-05-25T10:05:00.000Z');
@@ -2527,10 +2527,10 @@ describe('projector', () => {
         ];
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const states1 = projector.replayEvents(events as any);
+        const { chars: states1 } = projector.replayEvents(events as any);
         const view1 = projector.serializeView(states1.get(CHAR_A_UUID)!);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const states2 = projector.replayEvents(events as any);
+        const { chars: states2 } = projector.replayEvents(events as any);
         const view2 = projector.serializeView(states2.get(CHAR_A_UUID)!);
 
         expect(view1).toBe(view2); // byte-exact
