@@ -115,6 +115,52 @@ describe('hashVaultPrompt', () => {
   });
 });
 
+// Phase 04 — anti-railroading `## Your role` block (REQ-035).
+// The block is UNCONDITIONAL (present whether vaultMutations is true or false)
+// and STATIC (no per-input variation → preserves REQ-022 byte-stability). The
+// content is LOCKED in 04-CONTEXT.md §"Exact block content". These assertions
+// pin the load-bearing tokens; the byte-exact reproduction is enforced by the
+// regenerated locked-snapshot test in `content sanity`.
+describe('buildVaultSystemPrompt — Phase 04 anti-railroading (REQ-035)', () => {
+  const READ_WRITE = { vaultRoot: 'data/vault', campaignId: 'test', toolCount: 4, vaultMutations: true };
+
+  it('read-only prompt contains the "## Your role" block', () => {
+    const prompt = buildVaultSystemPrompt(BASE_INPUT);
+    expect(prompt).toContain('## Your role');
+  });
+
+  it('read-write prompt (vaultMutations:true) ALSO contains "## Your role" (unconditional)', () => {
+    const prompt = buildVaultSystemPrompt(READ_WRITE);
+    expect(prompt).toContain('## Your role');
+  });
+
+  it('instructs second-person narration', () => {
+    const prompt = buildVaultSystemPrompt(BASE_INPUT);
+    expect(prompt).toContain('second person');
+  });
+
+  it('forbids inventing the PC\'s actions', () => {
+    const prompt = buildVaultSystemPrompt(BASE_INPUT);
+    expect(prompt).toContain('never invent actions');
+  });
+
+  it('includes the GOOD/BAD worked example markers', () => {
+    const prompt = buildVaultSystemPrompt(BASE_INPUT);
+    expect(prompt).toContain('GOOD:');
+    expect(prompt).toContain('BAD:');
+  });
+
+  it('tells the master to address the next character BY NAME (multiplayer hand-off)', () => {
+    const prompt = buildVaultSystemPrompt(BASE_INPUT);
+    expect(prompt).toContain('BY NAME');
+  });
+
+  it('vault prompt stays under 2048 bytes for BASE_INPUT', () => {
+    const prompt = buildVaultSystemPrompt(BASE_INPUT);
+    expect(Buffer.byteLength(prompt, 'utf8')).toBeLessThan(2048);
+  });
+});
+
 describe('buildVaultSystemPrompt — Phase 02 vaultMutations gate', () => {
   // The Phase 02 contract: vaultMutations:true ⇒ toolCount:4 (apply_event
   // advertised); vaultMutations !== true ⇒ toolCount:3 (read-only). Pairs
