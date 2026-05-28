@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { ToolDef } from '@/ai/provider/types';
 import { listVaultDir, readVaultFile, VAULT_CAMPAIGNS_ROOT } from './path';
-import { validateEvent, EVENT_SCHEMA_VERSION, type VaultEventEnvelope } from './events-schema';
+import { validateEvent, EVENT_SCHEMA_VERSION, ENCOUNTER_EVENT_TYPES, type VaultEventEnvelope } from './events-schema';
 import { EventsWriter } from './events-writer';
 import { regenerateAffectedViews } from './projector';
 import { eventsPath, UUID_REGEX } from './campaign-paths';
@@ -86,19 +86,19 @@ export const VAULT_TOOL_DEFINITIONS: ToolDef[] = [
   {
     name: 'apply_event',
     description:
-      'Append a game-state mutation event (HP, conditions, slots, inventory, temp HP, death saves, concentration, exhaustion, hit dice, resources, inspiration, attunement, focus, XP). Returns {ok, event_id} on success. One event per call; do not batch.',
+      'Append a game-state mutation event (HP, conditions, slots, inventory, temp HP, death saves, concentration, exhaustion, hit dice, resources, inspiration, attunement, focus, XP). Returns {ok, event_id} on success. One event per call; do not batch. Also drives combat encounters: combat_start, monster_spawn, initiative_set, turn_advance, monster_hp_change, combat_end (these have no payload.character — see payload description).',
     input_schema: {
       type: 'object',
       properties: {
         type: {
           type: 'string',
           description:
-            'Event type. One of: hp_change, condition_add, condition_remove, spell_slot_use, spell_slot_restore, inventory_add, inventory_remove, temp_hp_set, death_save_success, death_save_fail, death_save_stabilize, death_save_recover_at_one, concentration_set, concentration_break, exhaustion_increment, exhaustion_decrement, hit_dice_use, hit_dice_restore, resource_use, resource_restore, inspiration_grant, inspiration_spend, attune, unattune, focus_set, focus_unset, xp_award.',
+            'Event type. One of: hp_change, condition_add, condition_remove, spell_slot_use, spell_slot_restore, inventory_add, inventory_remove, temp_hp_set, death_save_success, death_save_fail, death_save_stabilize, death_save_recover_at_one, concentration_set, concentration_break, exhaustion_increment, exhaustion_decrement, hit_dice_use, hit_dice_restore, resource_use, resource_restore, inspiration_grant, inspiration_spend, attune, unattune, focus_set, focus_unset, xp_award, combat_start, monster_spawn, initiative_set, turn_advance, monster_hp_change, combat_end.',
         },
         payload: {
           type: 'object',
           description:
-            'Event-specific data. The `character` field is the character UUID (the value of `id` in the materialized view frontmatter — NOT the character name; names are not unique across campaigns). Per-type shapes — Phase 02: hp_change {character, delta:number}; condition_add/remove {character, condition:string}; spell_slot_use/restore {character, level:1-9}; inventory_add/remove {character, item:string, qty:1-999}. Phase 03: temp_hp_set {character, tempHp:0-999}; death_save_success/stabilize/recover_at_one {character}; death_save_fail {character, critical?:boolean}; concentration_set {character, spellSlug:string, slotLevel:0-9, startedRound:int>=0}; concentration_break {character, reason:"damage"|"killed"|"incapacitated"}; exhaustion_increment {character, source:string}; exhaustion_decrement {character}; hit_dice_use/restore {character, count:1-20}; resource_use/restore {character, resourceKey:string, uses:1-50}; inspiration_grant/spend {character}; attune/unattune {character, itemSlug:string<=64}; focus_set {character, kind:"arcane"|"druidic"|"holy"|"instrument", itemSlug:string}; focus_unset {character}; xp_award {character, amount:1-999999, reason?:string<=256}.',
+            'Event-specific data. The `character` field is the character UUID (the value of `id` in the materialized view frontmatter — NOT the character name; names are not unique across campaigns). Per-type shapes — Phase 02: hp_change {character, delta:number}; condition_add/remove {character, condition:string}; spell_slot_use/restore {character, level:1-9}; inventory_add/remove {character, item:string, qty:1-999}. Phase 03: temp_hp_set {character, tempHp:0-999}; death_save_success/stabilize/recover_at_one {character}; death_save_fail {character, critical?:boolean}; concentration_set {character, spellSlug:string, slotLevel:0-9, startedRound:int>=0}; concentration_break {character, reason:"damage"|"killed"|"incapacitated"}; exhaustion_increment {character, source:string}; exhaustion_decrement {character}; hit_dice_use/restore {character, count:1-20}; resource_use/restore {character, resourceKey:string, uses:1-50}; inspiration_grant/spend {character}; attune/unattune {character, itemSlug:string<=64}; focus_set {character, kind:"arcane"|"druidic"|"holy"|"instrument", itemSlug:string}; focus_unset {character}; xp_award {character, amount:1-999999, reason?:string<=256}. Encounter events (no payload.character): combat_start {}; monster_spawn {id:string, name:string, hpMax:number, ac?:number, initiativeBonus?:number}; initiative_set {order:[{actorId:string, initiative:number}]}; turn_advance {}; monster_hp_change {id:string, delta:number}; combat_end {}.',
         },
       },
       required: ['type', 'payload'],
@@ -280,7 +280,9 @@ export async function dispatchVaultTool(
     // schema declares `character: string`, not `character: UUID`, so the
     // check belongs here at the dispatch boundary, not inside validateEvent.
     // `campaign_initialized` (seed event) has no `character` field — skip it.
-    if (guarded.value.type !== 'campaign_initialized') {
+    // Phase 07-D2: encounter-scoped events (ENCOUNTER_EVENT_TYPES) have no
+    // `character` field either — the UUID guard must NOT apply to them.
+    if (guarded.value.type !== 'campaign_initialized' && !ENCOUNTER_EVENT_TYPES.has(guarded.value.type)) {
       const characterId = (guarded.value.payload as { character?: unknown }).character;
       if (typeof characterId !== 'string' || !UUID_REGEX.test(characterId)) {
         return {
