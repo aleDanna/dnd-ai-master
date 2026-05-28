@@ -43,7 +43,7 @@ export function parseRollRequests(text: string): RollRequest[] {
   //     colon, then the formula. Group 1 is the descriptor (used as label),
   //     group 2 is the formula. We run this BEFORE the bare pattern so we don't
   //     miss formulas tagged this way; the seen-set dedupes any overlap.
-  const taggedRe = /(?:^|[\s(.,!])(?:roll|tira|lancia)\s+([^.!?\n:]{1,40}?)\s*:\s*((?:\d+)?d\d+\s*(?:[+-]\s*\d+)?)/gi;
+  const taggedRe = /(?:^|[\s(.,!"'«»“”])(?:roll|tira|lancia)\s+([^.!?\n:]{1,40}?)\s*:\s*((?:\d+)?d\d+\s*(?:[+-]\s*\d+)?)/gi;
   let m: RegExpExecArray | null;
   while ((m = taggedRe.exec(text)) !== null) {
     const purposeRaw = m[1]!.trim();
@@ -65,7 +65,7 @@ export function parseRollRequests(text: string): RollRequest[] {
 
   // 1b. Bare formula: "Roll 1d20+5"  /  "Roll 2d6 + 3"  / "Roll 1d8"
   // Capture group 1 is the formula; we then look at the text right after to extract the purpose.
-  const bareRe = /(?:^|[\s(.,!])(?:roll|tira|lancia)\s+((?:\d+)?d\d+\s*(?:[+-]\s*\d+)?)/gi;
+  const bareRe = /(?:^|[\s(.,!"'«»“”])(?:roll|tira|lancia)\s+((?:\d+)?d\d+\s*(?:[+-]\s*\d+)?)/gi;
   while ((m = bareRe.exec(text)) !== null) {
     const raw = m[1]!.replace(/\s+/g, '');
     const formula = normalizeFormula(raw);

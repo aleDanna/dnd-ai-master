@@ -16,6 +16,21 @@ describe('parseRollRequests', () => {
     expect(reqs[0]!.kind).toBe('generic');
   });
 
+  it('parses a quote-wrapped Italian attack formula (model copies the quoted example)', () => {
+    // The combat directive + rolls-block examples are quoted: "Tira 1d20+<bonus>...".
+    // Local models copy the quotes verbatim, so the parser must tolerate a
+    // leading quote char before the verb (regression: bottone 🎲 non comparendo).
+    const reqs = parseRollRequests('Ma prima che tu possa toccarla, il mondo si piega.\n\n"Tira 1d20+3 per attaccare Veyra."');
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.formula).toBe('1d20+3');
+    expect(reqs[0]!.kind).toBe('attack');
+  });
+
+  it('tolerates curly/guillemet quotes before the verb', () => {
+    expect(parseRollRequests('“Tira 1d20+2 per colpire.”').length).toBe(1);
+    expect(parseRollRequests('«Roll 1d20+4 to attack»').length).toBe(1);
+  });
+
   it('infers attack kind from surrounding text', () => {
     const reqs = parseRollRequests('You swing your blade. Roll 1d20+5 for an attack against the goblin.');
     expect(reqs[0]!.kind).toBe('attack');
