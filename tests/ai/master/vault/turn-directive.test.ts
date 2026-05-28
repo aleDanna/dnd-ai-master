@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildTurnDirective, appendDirectiveToHistory, detectCombatIntent } from '@/ai/master/vault/turn-directive';
+import { buildTurnDirective, appendDirectiveToHistory, detectCombatIntent, isRollResult } from '@/ai/master/vault/turn-directive';
 
 describe('buildTurnDirective', () => {
   describe('null gate — returns null when no mechanics requested', () => {
@@ -157,6 +157,40 @@ describe('buildTurnDirective', () => {
       const first = buildTurnDirective(opts);
       for (let i = 0; i < 99; i++) expect(buildTurnDirective(opts)).toBe(first);
     });
+  });
+});
+
+// REQ-038 — roll-result resolve directive (fixes the 2026-05-29 stall loop:
+// a roll-result message echoes the attack label "...per attaccare Veyra",
+// tripping combat-intent and re-asking the same roll forever).
+describe('roll-result resolve directive', () => {
+  const ROLL = '🎲 I rolled **18** for 1d20+3 (attaccare Veyra) (15+3).';
+
+  it('isRollResult detects the in-app roll-result format', () => {
+    expect(isRollResult(ROLL)).toBe(true);
+    expect(isRollResult('🎲 I rolled **7** for damage')).toBe(true);
+    expect(isRollResult('attacco Veyra')).toBe(false);
+    expect(isRollResult(undefined)).toBe(false);
+  });
+
+  it('returns the RESOLVE directive (not combat-start) when the message is a roll result — even though it contains "attaccare"', () => {
+    // This is the exact loop bug: ROLL contains "attaccare" so detectCombatIntent is true,
+    // but isRollResult must win → resolve, not re-ask.
+    expect(detectCombatIntent(ROLL)).toBe(true); // it DOES look like combat intent
+    const result = buildTurnDirective({ vaultMutations: true, manualRolls: true, playerMessage: ROLL });
+    expect(result).not.toBeNull();
+    expect(result!).toContain('ha appena tirato');
+    expect(result!).toContain('NON chiederlo di nuovo');
+    expect(result!).toContain('monster_hp_change');
+    expect(result!).toContain('turn_advance');
+    // Must NOT be the combat-START directive (which would re-ask the roll).
+    expect(result!).not.toContain('il giocatore sta attaccando');
+  });
+
+  it('resolve directive is deterministic', () => {
+    const opts = { vaultMutations: true, manualRolls: true, playerMessage: ROLL };
+    const first = buildTurnDirective(opts);
+    for (let i = 0; i < 99; i++) expect(buildTurnDirective(opts)).toBe(first);
   });
 });
 

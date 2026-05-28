@@ -56,6 +56,22 @@ export function detectCombatIntent(playerMessage?: string): boolean {
 }
 
 /**
+ * Roll-result detector. The in-app 🎲 button sends the result as
+ * "🎲 I rolled **<TOTAL>** for <label>." When the player's latest message is
+ * such a result, the directive MUST switch to "resolve" mode — NOT re-ask for
+ * the same roll. Without this, a roll-result message like
+ * "🎲 I rolled **18** for 1d20+3 (attaccare Veyra)" trips COMBAT_INTENT_RE
+ * (it contains "attaccare") and the combat-start directive re-asks the roll →
+ * infinite loop (observed 2026-05-29). Checked BEFORE combat-intent.
+ */
+const ROLL_RESULT_RE = /🎲|\bI rolled\b/i;
+
+export function isRollResult(playerMessage?: string): boolean {
+  if (typeof playerMessage !== 'string' || playerMessage.length === 0) return false;
+  return ROLL_RESULT_RE.test(playerMessage);
+}
+
+/**
  * Build a per-turn anti-anchoring directive string.
  *
  * Returns `null` when BOTH `vaultMutations` and `manualRolls` are falsy —
@@ -72,6 +88,24 @@ export function buildTurnDirective(opts: TurnDirectiveOpts): string | null {
 
   if (!vaultMutations && !manualRolls) {
     return null;
+  }
+
+  // Roll-result → RESOLVE directive (checked BEFORE combat-intent, because a
+  // roll-result echoes the attack label e.g. "...per attaccare Veyra" which
+  // trips COMBAT_INTENT_RE). Tells the model to USE the rolled number and
+  // advance — never re-ask the same roll (fixes the 2026-05-29 stall loop).
+  if (isRollResult(playerMessage)) {
+    const r: string[] = [];
+    r.push('[ISTRUZIONE PRIORITARIA — il giocatore ha appena tirato]');
+    r.push('');
+    r.push('Il numero in grassetto è il totale del tiro. NON chiederlo di nuovo, NON ripetere la stessa richiesta di tiro.');
+    r.push('Risolvi l\'azione con quel numero e narra l\'esito in seconda persona ("tu").');
+    if (vaultMutations) {
+      r.push('Se era un tiro PER COLPIRE: confronta il totale con la CA del bersaglio (vedi combat.md). Se colpisce, chiedi il tiro per i danni ("Tira <XdY+bonus> danni"); se manca, narra il mancato.');
+      r.push('Se era un tiro PER I DANNI: chiama apply_event con monster_hp_change (id del bersaglio, delta negativo).');
+      r.push('Quando l\'azione del turno è conclusa, chiama apply_event con turn_advance per passare al turno successivo.');
+    }
+    return r.join('\n');
   }
 
   // Combat-intent → STRONG situational directive (validated 3/3 to break the
