@@ -162,6 +162,63 @@ function buildRollsBlock(opts: { language?: string; hideDC: boolean }): string[]
 }
 
 /**
+ * Phase 07 (REQ-038) — Build the lines for the Combat-lifecycle block.
+ *
+ * Covers three semantic areas (semantics LOCKED in 07-CONTEXT.md):
+ *   Area A — Lifecycle sequence (combat_start through combat_end).
+ *   Area B — Monster-stats rule (standard: read handbook/monsters/<slug>.md;
+ *             custom boss: invent + inline in monster_spawn payload).
+ *   Area C — Turn rule (run monster turns, stop on PC turn, do not act for PC).
+ *
+ * Returns an array of explicit line strings — no multi-line template literals
+ * (same \r\n-drift paranoia as the rest of this file). Takes no arguments:
+ * the block is fully deterministic (no per-call inputs vary), preserving REQ-022.
+ *
+ * MUST NOT call the non-deterministic constructs listed in __forbidden-patterns.ts.
+ */
+function combatLifecycleBlock(): string[] {
+  const lines: string[] = [];
+  lines.push('## Combat lifecycle');
+  lines.push('');
+  lines.push('Drive combat by emitting encounter events via `apply_event` in this sequence:');
+  lines.push('');
+  lines.push('1. `combat_start` — call once at the beginning of a fight to open the encounter.');
+  lines.push('2. `monster_spawn` — one call per enemy. Payload: `{ id, name, hpMax, ac?, initiativeBonus? }`.');
+  lines.push('   Invent a stable id for the monster (e.g. "goblin-1", "orc-2") — not a UUID.');
+  lines.push('3. `initiative_set` — pass the full ordered actor list once all combatants are known.');
+  lines.push('   Include both PC UUIDs (from the character roster above) and monster ids.');
+  lines.push('   Payload: `{ order: [{ actorId, initiative }] }`.');
+  lines.push('4. Per turn:');
+  lines.push('   - `monster_hp_change` when a monster takes damage: `{ id, delta }` (delta is negative).');
+  lines.push('   - `hp_change` on the target PC when a monster deals damage: `{ character, delta }`.');
+  lines.push('   - `turn_advance` to end each actor\'s turn and move to the next actor in the order.');
+  lines.push('5. `combat_end` — call once when the fight ends (all enemies defeated or encounter over).');
+  lines.push('');
+  lines.push('The live combat tracker is at `campaigns/<campaignId>/combat.md` — updated automatically');
+  lines.push('each time you emit an encounter event.');
+  lines.push('');
+  lines.push('### Monster stats');
+  lines.push('');
+  lines.push('For a standard SRD creature: read `handbook/monsters/<slug>.md` (or use `list_vault` on');
+  lines.push('the monsters directory to find the slug). Copy `name`, `hpMax`, `ac`, and `initiativeBonus`');
+  lines.push('from the frontmatter directly into the `monster_spawn` payload.');
+  lines.push('');
+  lines.push('For a campaign-specific boss not in the bestiary: invent appropriate stats and put them');
+  lines.push('inline in the `monster_spawn` payload — no handbook file needed for custom monsters.');
+  lines.push('');
+  lines.push('### Turn rule');
+  lines.push('');
+  lines.push('On a monster\'s turn: narrate its action, apply effects (`monster_hp_change` for damage');
+  lines.push('the monster takes; `hp_change` on the target PC for damage the monster deals to a PC),');
+  lines.push('then call `turn_advance`. Run through consecutive monster turns automatically.');
+  lines.push('');
+  lines.push('Stop when it becomes a PC\'s turn — do not act for the PC. Let that player declare');
+  lines.push('their action. The Phase 04 anti-railroading rule holds: you do NOT control PC actions.');
+  lines.push('PC attack and damage rolls use the `## Rolls` surface (Phase 05).');
+  return lines;
+}
+
+/**
  * Build the vault system prompt as a byte-stable string.
  *
  * Implementation note: every line is an explicit element in an array
@@ -251,6 +308,17 @@ export function buildVaultSystemPrompt(input: VaultPromptInput): string {
   ];
   if (applyEventMention.length > 0) {
     lines.push(applyEventMention);
+    lines.push('');
+  }
+  // Phase 07 (REQ-038) — Combat-lifecycle block. Gated on vaultMutations === true,
+  // same as applyEventMention. Deterministic (combatLifecycleBlock() takes no args),
+  // so REQ-022 byte-stability is preserved. Inserted after applyEventMention and
+  // before the character roster, so the master sees lifecycle instructions before
+  // it is given the character UUIDs it needs to populate event payloads.
+  if (input.vaultMutations === true) {
+    for (const line of combatLifecycleBlock()) {
+      lines.push(line);
+    }
     lines.push('');
   }
   // Phase 02.1 — character roster injection (smoke 2026-05-26 follow-up).
