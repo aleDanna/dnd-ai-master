@@ -110,4 +110,9 @@ The migration is decomposed into 3 phases. Each phase ships independently (the s
 
 **Requirements:** REQ-035
 
+**Plans:** 1 plan
+
+Plans:
+- [ ] 04-01-insert-your-role-block.md — TDD insert of the static `## Your role` anti-railroading block; regenerate locked-snapshot/hash expected values; REQ-022 stability + typecheck green
+
 ---
