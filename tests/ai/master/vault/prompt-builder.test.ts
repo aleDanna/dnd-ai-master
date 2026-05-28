@@ -369,11 +369,23 @@ describe('buildVaultSystemPrompt — Phase 05 rolls block (REQ-036)', () => {
     expect(prompt).toContain('never mix languages');
   });
 
-  // (e) showDifficultyNumbers:false → no numeric DC/CD, hidden-difficulty line
-  it('showDifficultyNumbers:false → no DC numbers, hidden-difficulty line present', () => {
+  // (e) showDifficultyNumbers:false → no numeric DC/CD in ANY example, hidden-difficulty line.
+  // Regex (not a bare 'DC 15' string) so a leak in any single example — e.g. the
+  // Dexterity-save line — is caught regardless of the specific number. The
+  // "Difficulty anchors: Easy 10, Medium 15, Hard 20" guidance line has no DC/CD
+  // prefix before its numbers, so it does not trip these assertions.
+  it('showDifficultyNumbers:false (English) → no DC/CD numbers anywhere, hidden-difficulty line present', () => {
     const prompt = buildVaultSystemPrompt({ ...BASE_INPUT, manualRolls: true, showDifficultyNumbers: false });
-    expect(prompt).not.toContain('DC 15');
-    expect(prompt).not.toContain('CD 15');
+    expect(prompt).not.toMatch(/\bDC\s*\d/);
+    expect(prompt).not.toMatch(/\bCD\s*\d/);
+    expect(prompt).toContain('Hidden difficulty');
+  });
+
+  // (e-it) Italian + showDifficultyNumbers:false → no CD/DC numbers in any example either.
+  it('showDifficultyNumbers:false (Italian) → no CD/DC numbers anywhere', () => {
+    const prompt = buildVaultSystemPrompt({ ...BASE_INPUT, manualRolls: true, language: 'it', showDifficultyNumbers: false });
+    expect(prompt).not.toMatch(/\bCD\s*\d/);
+    expect(prompt).not.toMatch(/\bDC\s*\d/);
     expect(prompt).toContain('Hidden difficulty');
   });
 

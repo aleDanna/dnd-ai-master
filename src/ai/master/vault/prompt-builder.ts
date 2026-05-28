@@ -143,7 +143,7 @@ function buildRollsBlock(opts: { language?: string; hideDC: boolean }): string[]
     lines.push('like "Roll una prova di Perception" or the button will not appear):');
     if (hideDC) {
       lines.push('- "Roll a Perception check."   (ability check — no DC)');
-      lines.push('- "Roll a DC 14 Dexterity save."   (saving throw)');
+      lines.push('- "Roll a Dexterity save."   (saving throw — no DC)');
       lines.push('- "Roll 1d20+<bonus> to attack <TARGET NAME>."  (attack — no AC)');
       lines.push('- "Roll 2d6+<bonus> <type> damage."          (damage)');
     } else {
