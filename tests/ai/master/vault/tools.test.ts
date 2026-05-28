@@ -1216,3 +1216,101 @@ describe('dispatchVaultTool — apply_event (Phase 03 event types — plan 03-A-
     });
   });
 });
+
+/* -------------------------------------------------------------------------- *
+ *  Phase 07-D2 — apply_event encounter event dispatch (UUID guard skip).     *
+ * -------------------------------------------------------------------------- */
+
+describe('apply_event — encounter event dispatch (D2 UUID guard skip)', () => {
+  let campaignsRoot: string;
+  let helpers: Awaited<ReturnType<typeof withStubbedRoot>>;
+
+  beforeEach(async () => {
+    campaignsRoot = mkdtempSync(join(tmpdir(), 'gsd-encounter-dispatch-'));
+    helpers = await withStubbedRoot(campaignsRoot);
+    // Seed the campaign so events.md exists and subsequent events can land.
+    const seedResult = await helpers.dispatchVaultTool(
+      'apply_event',
+      {
+        type: 'campaign_initialized',
+        payload: {
+          characters: [
+            { id: CHAR_UUID, name: 'Aragorn', hp_max: 30, hp_current: 30 },
+          ],
+        },
+      },
+      { campaignId: CAMPAIGN_UUID },
+    );
+    expect(seedResult.isError).toBe(false);
+  });
+
+  afterEach(() => {
+    rmSync(campaignsRoot, { recursive: true, force: true });
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  // (a): combat_start dispatches without payload.character.
+  it('(a) combat_start dispatches without payload.character', async () => {
+    const result = await helpers.dispatchVaultTool(
+      'apply_event',
+      { type: 'combat_start', payload: {} },
+      { campaignId: CAMPAIGN_UUID },
+    );
+    expect(result.isError).toBeFalsy();
+    expect(result.content).not.toMatch(/^ERROR/);
+  });
+
+  // (b): monster_spawn dispatches without payload.character.
+  it('(b) monster_spawn dispatches without payload.character', async () => {
+    const result = await helpers.dispatchVaultTool(
+      'apply_event',
+      {
+        type: 'monster_spawn',
+        payload: { id: 'goblin-1', name: 'Goblin', hpMax: 7, ac: 15, initiativeBonus: 2 },
+      },
+      { campaignId: CAMPAIGN_UUID },
+    );
+    expect(result.isError).toBeFalsy();
+    expect(result.content).not.toMatch(/^ERROR/);
+  });
+
+  // (c): hp_change without payload.character is STILL rejected.
+  // Note: an empty/missing `character` field is caught FIRST by validateEvent
+  // (schema level), which returns "requires {character: non-empty string ...}".
+  // If character is a non-empty non-UUID string (e.g. "pc-001"), the UUID guard
+  // fires. Both paths reject — the key invariant is that the guard relaxation
+  // for encounter types does NOT weaken character event rejection.
+  it('(c) hp_change with non-UUID character is still rejected by UUID guard', async () => {
+    const result = await helpers.dispatchVaultTool(
+      'apply_event',
+      { type: 'hp_change', payload: { character: 'pc-001', delta: -5 } },
+      { campaignId: CAMPAIGN_UUID },
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content).toMatch(/UUID/);
+  });
+
+  // (d): all 6 encounter type names appear in the apply_event type.description.
+  it('(d) apply_event type.description lists all 6 encounter type names', () => {
+    const applyDef = helpers.VAULT_TOOL_DEFINITIONS.find((t) => t.name === 'apply_event');
+    expect(applyDef).toBeDefined();
+    const typeDesc =
+      (
+        applyDef!.input_schema.properties as {
+          type?: { description?: string };
+        }
+      ).type?.description ?? '';
+    const encounterTypes = [
+      'combat_start',
+      'monster_spawn',
+      'initiative_set',
+      'turn_advance',
+      'monster_hp_change',
+      'combat_end',
+    ];
+    for (const et of encounterTypes) {
+      expect(typeDesc).toContain(et);
+    }
+  });
+});
