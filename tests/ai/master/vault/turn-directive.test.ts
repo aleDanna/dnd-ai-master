@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildTurnDirective, appendDirectiveToHistory } from '@/ai/master/vault/turn-directive';
+import { buildTurnDirective, appendDirectiveToHistory, detectCombatIntent } from '@/ai/master/vault/turn-directive';
 
 describe('buildTurnDirective', () => {
   describe('null gate — returns null when no mechanics requested', () => {
@@ -119,6 +119,69 @@ describe('buildTurnDirective', () => {
       // Must start with some kind of header/reminder marker
       expect(result!).toMatch(/^\[/);
     });
+  });
+
+  // REQ-038 — combat-intent-aware situational directive. Validated 2026-05-29
+  // (_probe-combat.ts): the general directive was too soft to break narration
+  // anchoring; the situational combat-first directive bootstraps combat 3/3.
+  describe('combat-intent situational directive', () => {
+    it('switches to the STRONG combat-first directive when player message is an attack + vaultMutations', () => {
+      const result = buildTurnDirective({ vaultMutations: true, manualRolls: true, playerMessage: 'attacco Veyra con un pugno' });
+      expect(result).not.toBeNull();
+      expect(result!).toContain('PRIORITARIA');
+      expect(result!).toContain('combat_start');
+      expect(result!).toContain('monster_spawn');
+      expect(result!).toContain('initiative_set');
+      expect(result!).toMatch(/[Tt]ira 1d20/);
+      expect(result!.toLowerCase()).toMatch(/seconda persona/);
+      // The strong directive leads with the priority marker, NOT the general header.
+      expect(result!).not.toContain('[Promemoria di sistema');
+    });
+
+    it('uses the GENERAL directive (not the strong one) when player message has NO combat intent', () => {
+      const result = buildTurnDirective({ vaultMutations: true, manualRolls: true, playerMessage: 'esamino la stanza con calma' });
+      expect(result).not.toBeNull();
+      expect(result!).toContain('[Promemoria di sistema');
+      expect(result!).not.toContain('PRIORITARIA');
+    });
+
+    it('does NOT use the strong directive when combat intent present but vaultMutations is off', () => {
+      const result = buildTurnDirective({ manualRolls: true, playerMessage: 'attacco il nemico' });
+      expect(result).not.toBeNull();
+      expect(result!).not.toContain('PRIORITARIA');
+      expect(result!).not.toContain('combat_start');
+    });
+
+    it('strong directive is deterministic across 100 calls', () => {
+      const opts = { vaultMutations: true, manualRolls: true, playerMessage: 'colpisco con la spada' };
+      const first = buildTurnDirective(opts);
+      for (let i = 0; i < 99; i++) expect(buildTurnDirective(opts)).toBe(first);
+    });
+  });
+});
+
+describe('detectCombatIntent', () => {
+  it('returns false for undefined / empty', () => {
+    expect(detectCombatIntent(undefined)).toBe(false);
+    expect(detectCombatIntent('')).toBe(false);
+  });
+
+  it('detects Italian attack verbs', () => {
+    for (const m of ['attacco Veyra', 'lo attacco', 'provo a colpirlo', 'colpisco con la spada', 'mi scaglio verso di lui', 'sferro un pugno', 'ingaggio il combattimento', 'lo affronto', 'combatto contro di lui']) {
+      expect(detectCombatIntent(m)).toBe(true);
+    }
+  });
+
+  it('detects English attack verbs', () => {
+    for (const m of ['I attack the goblin', 'strike the orc', 'I punch him']) {
+      expect(detectCombatIntent(m)).toBe(true);
+    }
+  });
+
+  it('returns false for non-combat messages', () => {
+    for (const m of ['esamino la stanza', 'parlo con il barista', 'mi guardo intorno', 'apro la porta', 'voglio riposare']) {
+      expect(detectCombatIntent(m)).toBe(false);
+    }
   });
 });
 

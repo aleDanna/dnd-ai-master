@@ -30,6 +30,29 @@ export interface TurnDirectiveOpts {
    * multi-language expansion lands.
    */
   language?: string;
+  /**
+   * The player's latest message text. When it expresses combat intent
+   * (attack verbs) AND vaultMutations is on, the directive switches to a
+   * STRONG combat-first form. Validated 2026-05-29 (_probe-combat.ts): the
+   * general directive was too soft to break the narration anchoring (0/1
+   * tool calls), while the situational combat-first directive reliably
+   * bootstraps combat (3/3 → apply_event{combat_start}).
+   */
+  playerMessage?: string;
+}
+
+/**
+ * Combat-intent detector. Stem-based regex over common IT (+ EN) attack
+ * verbs. Deterministic, no external state. Conservative-ish to limit false
+ * positives (a false positive just adds a combat nudge to a non-combat turn;
+ * a false negative falls back to the general directive).
+ */
+const COMBAT_INTENT_RE =
+  /\b(attacc\w*|colpisc\w*|colpir\w*|combatt\w*|ingagg\w*|sferr\w*|assal\w*|scagli\w*|menar\w*|pugn\w*|calci\w*|affront\w*|carica\b|uccid\w*|ammazz\w*|attack\w*|strik\w*|fight\w*|punch\w*|engage\w*|slash\w*|stab\w*)/i;
+
+export function detectCombatIntent(playerMessage?: string): boolean {
+  if (typeof playerMessage !== 'string' || playerMessage.length === 0) return false;
+  return COMBAT_INTENT_RE.test(playerMessage);
 }
 
 /**
@@ -45,10 +68,26 @@ export interface TurnDirectiveOpts {
  *   4. Roll line (only when manualRolls)
  */
 export function buildTurnDirective(opts: TurnDirectiveOpts): string | null {
-  const { vaultMutations, manualRolls } = opts;
+  const { vaultMutations, manualRolls, playerMessage } = opts;
 
   if (!vaultMutations && !manualRolls) {
     return null;
+  }
+
+  // Combat-intent → STRONG situational directive (validated 3/3 to break the
+  // narration anchoring where the general directive failed). Combat-first +
+  // explicitly counters the anti-railroading "narrate the outcome" pull. Only
+  // when vaultMutations (apply_event available) AND the player is attacking.
+  if (vaultMutations && detectCombatIntent(playerMessage)) {
+    return [
+      '[ISTRUZIONE PRIORITARIA — il giocatore sta attaccando]',
+      '',
+      'PRIMA di narrare l\'esito DEVI usare gli strumenti (apply_event):',
+      '- Se il combattimento NON è ancora iniziato: chiama combat_start, poi monster_spawn per ogni nemico presente, poi initiative_set.',
+      '- Se è già in corso: usa monster_hp_change e turn_advance secondo il turno.',
+      'Poi chiedi il tiro al giocatore: "Tira 1d20+<bonus> per attaccare <nemico>."',
+      'Narra l\'esito SOLO dopo che il giocatore ha tirato. Scrivi sempre in seconda persona ("tu").',
+    ].join('\n');
   }
 
   const lines: string[] = [];

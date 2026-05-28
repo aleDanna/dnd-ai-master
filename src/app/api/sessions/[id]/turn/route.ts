@@ -349,10 +349,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // on narration-heavy histories (validated probe 2026-05-28).
           // Null when neither vaultMutations nor manualRolls is set (read-only
           // campaigns get no directive and history stays byte-identical).
+          // Player's latest message → combat-intent detection inside the
+          // builder (attack verbs switch the directive to the strong
+          // combat-first form). Last user turn of the assembled history.
+          const _lastUserTurn = [...vaultHistory].reverse().find((m) => m.role === 'user');
+          const _playerMessage =
+            typeof _lastUserTurn?.content === 'string' ? _lastUserTurn.content : undefined;
           const _directive = buildTurnDirective({
             vaultMutations: vaultMutationsEnabled,
             manualRolls: userPrefs.manualRolls,
             language: campaign.language ?? snap.language ?? undefined,
+            ...(_playerMessage !== undefined && { playerMessage: _playerMessage }),
           });
           if (_directive !== null) {
             // Vault history elements always have string content (built by the
