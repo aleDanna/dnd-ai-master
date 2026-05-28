@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-05-28T21:37:29.463Z"
+last_updated: "2026-05-29T00:25:00.000Z"
 progress:
   total_phases: 7
   completed_phases: 2
-  total_plans: 7
-  completed_plans: 24
+  total_plans: 8
+  completed_plans: 25
   percent: 100
 ---
 
@@ -55,3 +55,10 @@ progress:
 - All tasks completed: 372baf7 (RED tests), 5266e1a (feat implementation GREEN)
 - Decisions: resolveCombatHandoff() pure helper returns 3-way union ('advance'/'skip'/'fallback'); parseEventsFile+replayEvents used directly (not materializeFromVault — that requires characterId not available in transaction context); combatHandoffDone flag gates fallback; entire combat block in try/catch
 - Combat-active turns: turnOrder[currentIdx] PC UUID → cpcId set + turn-change; monster id → no handoff; inactive/empty/error → detectAddressee/computeTurnAdvance unchanged; 8 new tests pass; pnpm tsc --noEmit clean; no new test failures (1 pre-existing applicator/gp-stack)
+
+### Phase 07 — Plan 05 Execution (2026-05-29)
+
+- Task 1 committed: 402de30 (feat — buildTurnDirective + appendDirectiveToHistory + route wiring)
+- Paused at Task 2 (checkpoint:human-verify) — operator smoke required
+- Decisions: directive is a separate module (REQ-022 untouched); null return for read-only campaigns; Italian directive language (primary play language); route uses narrow cast for MessageParam string-content invariant; language param reserved for future expansion
+- 24 unit tests; pnpm tsc --noEmit clean; no new test failures
