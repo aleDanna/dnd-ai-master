@@ -144,4 +144,33 @@ Plans:
 Plans:
 - [x] 05-01-PLAN.md — Extend VaultPromptInput, emit gated ## Rolls block, wire manualRolls + showDifficultyNumbers at turn route vault branch; operator smoke on One Piece campaign
 
+## Phase 06: Vault Combat State Foundation (D1)
+
+**Goal:** The vault path tracks combat state via event sourcing: encounter-scoped events in `events.md` → a projector encounter reducer → a `combat.md` materialized view → snapshot wiring that feeds the existing backend-agnostic `CombatTracker`. Vault-native (replayable, Postgres-free), fully headless-testable. Sub-phase **D1** of piece D (combat); D2 adds the LLM tools/prompt/bestiary/turn-interleaving, D3 the action economy.
+
+**Scope:**
+- 6 encounter-scoped event types in `events-schema.ts` (`combat_start`, `monster_spawn` [fat/self-contained: deterministic id + stat block in payload], `initiative_set`, `turn_advance`, `monster_hp_change`, `combat_end`); relax the per-PC "UUID required" guard for them
+- Projector encounter reducer (alongside the per-character `Map`) + `combat.md` materialized-view serialization; EventsWriter regenerates `combat.md` on encounter events
+- Snapshot wiring: `snapshot-reader.ts` surfaces encounter-derived `combat`/`inCombat`; `client-snapshot.ts` sources `actors` from the vault encounter view for vault campaigns
+- Reuse `CombatTracker` unchanged; PC HP reused from existing character views (only monsters live in encounter state)
+- Headless tests (no LLM): reducer, `combat.md` round-trip, replay determinism, snapshot shape, regression
+- Design ref: `docs/superpowers/specs/2026-05-28-vault-combat-d1-state-foundation-design.md`
+
+**Success criteria:**
+- ✓ A headless event sequence (`combat_start` → `monster_spawn`×2 → `initiative_set` → `turn_advance`×N → `monster_hp_change` → `combat_end`) produces correct EncounterState (round wrap, `isAlive` flips at hp≤0, `active` flips)
+- ✓ `combat.md` round-trips (event→state→view→state derivable back) and replay is deterministic (same `events.md` → identical EncounterState)
+- ✓ `buildClientSnapshot` for a `sourceOfTruth:'vault'` campaign mid-encounter surfaces `state.combat {round,currentIdx,turnOrder}` + `inCombat:true` + `actors` in the exact `CombatTracker`-consumed shape; after `combat_end` → `combat:null, inCombat:false, actors:[]`
+- ✓ No writes to Postgres `combat_actors` / `session_state.combat`; combat state lives only in `events.md` + the `combat.md` view
+- ✓ Existing per-character projector + vault tests stay green (encounter reducer is additive)
+- ✓ REQ-004 / REQ-007 honored (events.md source of truth; campaign data outside the repo)
+
+**Depends on:** Phase 02
+
+**Requirements:** REQ-037
+
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 06 to break down)
+
 ---

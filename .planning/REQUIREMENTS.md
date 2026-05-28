@@ -49,6 +49,7 @@ All requirements below are **LOCKED** by spike validation work (rounds 1-3 + nar
 | REQ | Statement | Locked by |
 |-----|-----------|-----------|
 | REQ-036 | Vault-path master must call for ability checks / saving throws (and attack/damage rolls) via the existing manual-roll surface: write parser-compatible roll requests in prose (the client renders 🎲 buttons), gated on the campaign `manualRolls` setting, reusing the proven `buildManualRollsRule` content. Prompt-only; REQ-022 byte-stability preserved. | ability-checks design 2026-05-28 |
+| REQ-037 | Vault-path combat state is event-sourced: encounter-scoped events (`combat_start`, `monster_spawn`, `initiative_set`, `turn_advance`, `monster_hp_change`, `combat_end`) appended to `events.md` → projector encounter reducer → `combat.md` materialized view → snapshot wiring feeds the existing backend-agnostic `CombatTracker`. State is replayable + Postgres-free (REQ-004/007). Decomposed: D1 = state foundation (headless); D2 = LLM tools/prompt/bestiary/turn-interleaving; D3 = action economy. | combat D1 design 2026-05-28 |
 
 ## Out of scope (explicit non-requirements)
 
