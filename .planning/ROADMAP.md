@@ -59,8 +59,6 @@ The migration is decomposed into 3 phases. Each phase ships independently (the s
 
 **Requirements:** REQ-004, REQ-005, REQ-006, REQ-007, REQ-010
 
----
-
 ## Phase 03: Migration & Cutover
 
 **Goal:** Existing Postgres campaigns (campaigns + characters + session_state) exported to vault format. Dual-write coexistence period validates parity. Cutover flips source-of-truth to vault. RAG layer (pgvector + embedder) retired. Baked variants other than `dnd-master-plus` regression-baseline removed.
@@ -87,3 +85,29 @@ The migration is decomposed into 3 phases. Each phase ships independently (the s
 **Depends on:** Phase 02
 
 **Requirements:** REQ-006, REQ-020, REQ-023, REQ-031, REQ-032, REQ-033, REQ-034
+
+---
+
+## Phase 04: Vault Anti-Railroading Prompt
+
+**Goal:** The vault-path Dungeon Master stops railroading the player character. It narrates the world (environment, NPCs, and the consequences of actions the player declared) in second person, but never invents the PC's actions, dialogue, decisions, or outcomes. Prompt-only change to the vault system-prompt builder; the existing automatic turn-advance (`computeTurnAdvance` + `detectAddressee`) handles multiplayer hand-off, so no new tool is needed. Fixes the model-independent railroading surfaced by the 2026-05-28 gemma4-vs-qwen3 A/B experiment (both models railroaded on the minimal vault prompt). This is piece A of 4 in the "game-mechanics on the vault path" effort; B (roll discipline + action→event), C (dice system), D (combat state machine) are future phases.
+
+**Scope:**
+- Static `## Your role` block inserted into `buildVaultSystemPrompt` (`src/ai/master/vault/prompt-builder.ts`) between the DM identity line and `## Knowledge layout` — unconditional (present on every vault turn, both `vaultMutations` true and false)
+- Block content: second-person narration; the player decides PC actions/words/intentions; soft strictness (brief connective body language allowed, never decisions/dialogue/outcomes the player didn't declare); multiplayer "never speak or decide for any PG, close the beat addressing the next character BY NAME"; end with an open cue, never a numbered menu
+- One worked example in Italian anchoring weak models: player "provo ad attaccarlo" → GOOD (narrate consequence) / BAD (invent the PC's action+dialogue+outcome)
+- REQ-022 byte-stability preserved (static deterministic block; 1000 builds → 1 hash; no Date.now/Math.random/process.env)
+- Design ref: `docs/superpowers/specs/2026-05-28-vault-anti-railroading-design.md`
+
+**Success criteria:**
+- ✓ `buildVaultSystemPrompt` output contains the `## Your role` block with second-person guidance + "never invent actions" + the `GOOD:`/`BAD:` worked-example markers
+- ✓ Block present with BOTH `vaultMutations: true` and `vaultMutations: false` (unconditional)
+- ✓ REQ-022 holds: 1000 builds with identical input → exactly 1 unique SHA256
+- ✓ Vault system prompt stays under 2KB
+- ✓ Operator smoke: "provo ad attaccarlo" on gemma4/qwen3 narrates the consequence and hands agency back (e.g. "…che fai?") instead of inventing the PC's full action + dialogue + outcome
+
+**Depends on:** Phase 02
+
+**Requirements:** REQ-035
+
+---

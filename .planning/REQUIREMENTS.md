@@ -42,6 +42,7 @@ All requirements below are **LOCKED** by spike validation work (rounds 1-3 + nar
 | REQ-032 | Offline content tool (non-default): `mistral-small3.2:24b` for voice-strong non-standard prose | spike 014 |
 | REQ-033 | Drop all `dnd-master-*` baked variants from production. Build script keeps `dnd-master-plus` only as a regression-test baseline. | spike 003, 004 |
 | REQ-034 | No per-turn model router in Phase 1. Switching between primary/fallback is per-session via user setting. | spike 014 |
+| REQ-035 | Vault-path master must not railroad the player character — narrate world / NPCs / consequences of declared actions only; never invent the PC's actions, dialogue, decisions, or outcomes. | gemma4 experiment 2026-05-28 |
 
 ## Out of scope (explicit non-requirements)
 
