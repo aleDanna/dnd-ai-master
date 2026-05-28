@@ -168,9 +168,10 @@ Plans:
 
 **Requirements:** REQ-037
 
-**Plans:** 0 plans
+**Plans:** 2 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 06 to break down)
+- [ ] 06-01-PLAN.md — Event schema (6 encounter types), EncounterState reducer, combat.md view, regeneration hook, headless reducer/round-trip/determinism tests
+- [ ] 06-02-PLAN.md — Snapshot wiring (snapshot-reader + client-snapshot), vault actors from encounter, snapshot-shape tests
 
 ---
