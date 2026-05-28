@@ -253,3 +253,22 @@ the `\r\n`-drift risk the file comment warns against.
 <output>
 Create `.planning/phases/04-vault-anti-railroading-prompt/04-01-SUMMARY.md` when done.
 </output>
+
+---
+
+## EXECUTION SUMMARY (appended on completion)
+
+**Status:** COMPLETE — 2/2 tasks, all gates green.
+
+Full SUMMARY: `.planning/phases/04-vault-anti-railroading-prompt/04-01-SUMMARY.md`
+
+- Inserted the LOCKED `## Your role` block byte-identical (verified via programmatic substring match against 04-CONTEXT.md: em-dash U+2014 ×4, ellipsis U+2026 ×1), unconditional, between the DM identity line and `## Knowledge layout`. Prompt = 1603 bytes (< 2048).
+- REQ-022 "1000 builds → 1 hash" tests unchanged and green. No forbidden non-deterministic construct introduced.
+- Regenerated the locked-snapshot expected literal (copied, not retyped).
+- **Deviation (Rule 1):** Fixed Phase 02.1 "roster order is preserved" test — the new worked example's prose "Luffy" collided with the bare `indexOf('Luffy')`; rescoped to the unique `Name: \`uuid\`` roster-line form. LOCKED block untouched.
+
+**Commits:**
+- `ec64538` feat(phase-04): insert unconditional `## Your role` anti-railroading block (REQ-035)
+- `46859ca` test(phase-04): regenerate locked snapshot; fix roster-order collision
+
+**Final gates:** `vitest run` 38/38 pass · `tsc --noEmit` exit 0 · `eslint` on touched file exit 0.
