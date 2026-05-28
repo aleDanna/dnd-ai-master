@@ -312,3 +312,101 @@ describe('buildVaultSystemPrompt — Phase 02.1 character roster injection', () 
     expect(hashes.size).toBe(1);
   });
 });
+
+// Phase 05 — manualRolls-gated `## Rolls` block (REQ-036).
+// The block is emitted ONLY when manualRolls === true; absent otherwise.
+// REQ-022 byte-stability must be preserved: the read-only default
+// (manualRolls undefined) hash MUST remain
+// 60e56767b9c63ae936741fc6812a3958c6be346662736a455bed75510c54b14e.
+describe('buildVaultSystemPrompt — Phase 05 rolls block (REQ-036)', () => {
+  // (a) read-only default — block absent
+  it('read-only default (manualRolls undefined) → ## Rolls block ABSENT', () => {
+    const prompt = buildVaultSystemPrompt(BASE_INPUT);
+    expect(prompt).not.toContain('## Rolls');
+  });
+
+  // (b) manualRolls:false — block absent
+  it('manualRolls:false → ## Rolls block ABSENT', () => {
+    const prompt = buildVaultSystemPrompt({ ...BASE_INPUT, manualRolls: false });
+    expect(prompt).not.toContain('## Rolls');
+  });
+
+  // (c) manualRolls:true — block present with required tokens (English)
+  it('manualRolls:true → ## Rolls block PRESENT with required English tokens', () => {
+    const prompt = buildVaultSystemPrompt({ ...BASE_INPUT, manualRolls: true });
+    expect(prompt).toContain('## Rolls');
+    expect(prompt).toContain('Easy 10, Medium 15, Hard 20');
+    expect(prompt).toContain('AUTHORITATIVE');
+    expect(prompt).toContain('bare d20');
+    // add modifier instruction for ability checks / saves
+    expect(prompt).toMatch(/add.*modifier/i);
+    // English phrasing examples
+    expect(prompt).toContain('Roll a DC 15 Perception check.');
+    expect(prompt).toContain('Roll a DC 14 Dexterity save.');
+    expect(prompt).toContain('Roll 1d20+');
+  });
+
+  // (c) also: block present regardless of vaultMutations value
+  it('manualRolls:true block present even when vaultMutations:true (independent gating)', () => {
+    const prompt = buildVaultSystemPrompt({
+      vaultRoot: 'data/vault',
+      campaignId: 'test',
+      toolCount: 4,
+      vaultMutations: true,
+      manualRolls: true,
+    });
+    expect(prompt).toContain('## Rolls');
+    expect(prompt).toContain('Easy 10, Medium 15, Hard 20');
+    expect(prompt).toContain('AUTHORITATIVE');
+  });
+
+  // (d) language:'it' → Italian phrasings + anti-mixing clause
+  it('language:it + manualRolls:true → Italian phrasings and anti-mixing clause', () => {
+    const prompt = buildVaultSystemPrompt({ ...BASE_INPUT, manualRolls: true, language: 'it' });
+    expect(prompt).toContain('Tira una prova di Percezione (CD 15).');
+    expect(prompt).toContain('Tira un TS Destrezza (CD 14).');
+    // anti-mixing clause token
+    expect(prompt).toContain('never mix languages');
+  });
+
+  // (e) showDifficultyNumbers:false → no numeric DC/CD, hidden-difficulty line
+  it('showDifficultyNumbers:false → no DC numbers, hidden-difficulty line present', () => {
+    const prompt = buildVaultSystemPrompt({ ...BASE_INPUT, manualRolls: true, showDifficultyNumbers: false });
+    expect(prompt).not.toContain('DC 15');
+    expect(prompt).not.toContain('CD 15');
+    expect(prompt).toContain('Hidden difficulty');
+  });
+
+  // (f) showDifficultyNumbers:true (explicit) → DC numbers present
+  it('showDifficultyNumbers:true → DC numbers present', () => {
+    const prompt = buildVaultSystemPrompt({ ...BASE_INPUT, manualRolls: true, showDifficultyNumbers: true });
+    expect(prompt).toContain('DC 15');
+  });
+
+  // (g) REQ-022 byte-stability — 1000 builds of {manualRolls:true, toolCount:3} → 1 hash
+  it('1000 builds {manualRolls:true} produce ONE unique SHA256 (REQ-022 stability)', () => {
+    const hashes = new Set<string>();
+    for (let i = 0; i < 1000; i++) {
+      hashes.add(hashVaultPrompt(buildVaultSystemPrompt({ ...BASE_INPUT, manualRolls: true })));
+    }
+    expect(hashes.size).toBe(1);
+  });
+
+  // (h) REQ-022 byte-stability — language:'it' variant
+  it('1000 builds {manualRolls:true, language:it} produce ONE unique SHA256 (REQ-022 stability)', () => {
+    const hashes = new Set<string>();
+    for (let i = 0; i < 1000; i++) {
+      hashes.add(hashVaultPrompt(buildVaultSystemPrompt({ ...BASE_INPUT, manualRolls: true, language: 'it' })));
+    }
+    expect(hashes.size).toBe(1);
+  });
+
+  // (i) REQ-022 byte-stability — showDifficultyNumbers:false variant
+  it('1000 builds {manualRolls:true, showDifficultyNumbers:false} produce ONE unique SHA256 (REQ-022 stability)', () => {
+    const hashes = new Set<string>();
+    for (let i = 0; i < 1000; i++) {
+      hashes.add(hashVaultPrompt(buildVaultSystemPrompt({ ...BASE_INPUT, manualRolls: true, showDifficultyNumbers: false })));
+    }
+    expect(hashes.size).toBe(1);
+  });
+});

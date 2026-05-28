@@ -64,6 +64,101 @@ export interface VaultPromptInput {
    * party.length > 0.
    */
   characters?: ReadonlyArray<{ id: string; name: string }>;
+  /**
+   * Phase 05 (REQ-036) — manual rolls block injection.
+   *
+   * When true, the prompt includes a `## Rolls` block that instructs
+   * the vault-path DM to write parser-compatible roll requests in prose
+   * so the existing in-app 🎲 button renders and resolves them. The block
+   * is deterministic given (manualRolls, language, showDifficultyNumbers)
+   * and preserves REQ-022 byte-stability.
+   *
+   * Default (undefined / false): block is absent → read-only default
+   * prompt bytes are unchanged and the locked-snapshot hash
+   * 60e56767b9c63ae936741fc6812a3958c6be346662736a455bed75510c54b14e
+   * remains valid.
+   */
+  manualRolls?: boolean;
+  /**
+   * Phase 05 (REQ-036) — whether to include numeric DC/AC values in the
+   * roll-request examples. When false (hidden-difficulty mode), numeric
+   * DCs are omitted from examples and a hidden-difficulty warning line is
+   * appended. Default (undefined) is treated as true (show numbers).
+   * Only relevant when manualRolls === true.
+   */
+  showDifficultyNumbers?: boolean;
+}
+
+/**
+ * Phase 05 (REQ-036) — Build the lines for the `## Rolls` block.
+ *
+ * Accepts language and hideDC flags (mirrors buildManualRollsRule signature).
+ * Returns an array of explicit line strings — no multi-line template literals
+ * (same `\r\n`-drift paranoia as the rest of this file).
+ *
+ * MUST NOT call the non-deterministic constructs listed in the sibling
+ * __forbidden-patterns lint — enforced by the REQ-022 lint test.
+ */
+function buildRollsBlock(opts: { language?: string; hideDC: boolean }): string[] {
+  const it = opts.language === 'it';
+  const hideDC = opts.hideDC;
+
+  const lines: string[] = [];
+  lines.push('## Rolls');
+  lines.push('');
+  lines.push('When the outcome of an action is uncertain AND failure would be interesting,');
+  lines.push('call for a roll. Do NOT roll for trivial actions (they just succeed) or');
+  lines.push('impossible ones (they just fail). Difficulty anchors: Easy 10, Medium 15, Hard 20.');
+  lines.push('');
+  lines.push('The app turns each roll request you write into a tap-to-roll button for the');
+  lines.push('player; the result returns as the next player message in the exact form');
+  lines.push('"I rolled **<TOTAL>** for <label>." The bold number is AUTHORITATIVE — never');
+  lines.push('recompute or re-roll it, and never invent a result that was not sent. If no');
+  lines.push('roll message arrived, ask again; do not fabricate one.');
+  lines.push('');
+  lines.push('- Ability check or saving throw: the button rolls a bare d20. Read the');
+  lines.push("  character's relevant modifier from their sheet in the vault, add the modifier");
+  lines.push('  to the bold number, then compare to the DC.');
+  lines.push('- Attack or damage: put the bonus in the formula, so the bold number is the');
+  lines.push('  final total — use it as-is.');
+  lines.push('');
+  if (it) {
+    lines.push('Write roll requests using these phrasings (the in-app parser is tuned for');
+    lines.push('them; in Italian use the Italian verb and skill names — never mix languages');
+    lines.push('like "Roll una prova di Perception" or the button will not appear):');
+    if (hideDC) {
+      lines.push('- "Tira una prova di Percezione."   (prova di abilità — no CD)');
+      lines.push('- "Tira un TS Destrezza."           (tiro salvezza — no CD)');
+      lines.push('- "Tira 1d20+<bonus> per attaccare <NOME DEL BERSAGLIO>."  (attacco — no CA)');
+      lines.push('- "Tira 2d6+<bonus> danni <tipo>."          (danni)');
+    } else {
+      lines.push('- "Tira una prova di Percezione (CD 15)."   (prova di abilità)');
+      lines.push('- "Tira un TS Destrezza (CD 14)."           (tiro salvezza)');
+      lines.push('- "Tira 1d20+<bonus> per attaccare <NOME DEL BERSAGLIO> (CA <ca>)."  (attacco)');
+      lines.push('- "Tira 2d6+<bonus> danni <tipo>."          (danni)');
+    }
+  } else {
+    lines.push('Write roll requests using these phrasings (the in-app parser is tuned for');
+    lines.push('them; in English use the English verb and skill names — never mix languages');
+    lines.push('like "Roll una prova di Perception" or the button will not appear):');
+    if (hideDC) {
+      lines.push('- "Roll a Perception check."   (ability check — no DC)');
+      lines.push('- "Roll a DC 14 Dexterity save."   (saving throw)');
+      lines.push('- "Roll 1d20+<bonus> to attack <TARGET NAME>."  (attack — no AC)');
+      lines.push('- "Roll 2d6+<bonus> <type> damage."          (damage)');
+    } else {
+      lines.push('- "Roll a DC 15 Perception check."');
+      lines.push('- "Roll a DC 14 Dexterity save."');
+      lines.push('- "Roll 1d20+<bonus> to attack <TARGET NAME> (AC <ac>)."  (attack)');
+      lines.push('- "Roll 2d6+<bonus> <type> damage."          (damage)');
+    }
+  }
+  if (hideDC) {
+    lines.push('');
+    lines.push('Hidden difficulty is ON: do NOT write the numeric DC/AC in the roll request.');
+    lines.push('You still know the DC internally and use it to judge the result.');
+  }
+  return lines;
 }
 
 /**
@@ -175,6 +270,18 @@ export function buildVaultSystemPrompt(input: VaultPromptInput): string {
     lines.push('');
     for (const c of input.characters) {
       lines.push('- ' + c.name + ': `' + c.id + '`');
+    }
+    lines.push('');
+  }
+  // Phase 05 (REQ-036) — manual rolls block. Gated solely on manualRolls === true,
+  // independent of vaultMutations. Preserves REQ-022: when manualRolls is
+  // undefined or false, no bytes are added so the locked-snapshot hash remains
+  // unchanged. showDifficultyNumbers defaults to true (show DCs) when undefined.
+  if (input.manualRolls === true) {
+    const hideDC = input.showDifficultyNumbers === false;
+    const rollLines = buildRollsBlock({ language: input.language, hideDC });
+    for (const line of rollLines) {
+      lines.push(line);
     }
     lines.push('');
   }
