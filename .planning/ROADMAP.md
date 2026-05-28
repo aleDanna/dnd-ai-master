@@ -139,9 +139,9 @@ Plans:
 
 **Requirements:** REQ-036
 
-**Plans:** 0 plans
+**Plans:** 1 plan
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 05 to break down)
+- [ ] 05-01-PLAN.md — Extend VaultPromptInput, emit gated ## Rolls block, wire manualRolls + showDifficultyNumbers at turn route vault branch; operator smoke on One Piece campaign
 
 ---
