@@ -211,23 +211,29 @@ export async function fetchOllamaModels(): Promise<ModelOption[]> {
     if (!res.ok) return [];
     const json = (await res.json()) as OllamaTagsResponse;
     const models = json.models ?? [];
-    // Expose ONLY curated tier baked variants (dnd-master-max / max2 / plus
-    // and any future tier added to TIER_NAMES) in the Settings UI. Raw base
-    // models AND legacy slug-derived baked variants (e.g. when the user
-    // installs `qwen3:30b-a3b-instruct-2507-q4_K_M` and the bake script
-    // creates `dnd-master-qwen3-30b-a3b-instruct-2507-q4_K_M`) are both
-    // hidden:
-    //  - raw bases: keep the choice simple and steer toward optimised builds
-    //  - slug-derived bakes: avoid confusing duplicates next to the polished
-    //    tier label for the same base. Picking one accidentally has bitten
-    //    us (sessions where the model emits tool calls as text because that
-    //    bake wasn't tuned). To install a base outside the curated tiers,
-    //    add an entry to TIER_NAMES in baked-models.ts so the bake script
-    //    targets the tier name and the dropdown surfaces a proper label.
+    // Surface two kinds of model in the Settings dropdown:
+    //  (a) Curated baked tiers (dnd-master-plus + any future TIER_NAMES entry),
+    //      labelled via TIER_LABELS. Legacy slug-derived bakes (e.g.
+    //      `dnd-master-qwen3-...`) stay hidden to avoid confusing duplicates.
+    //  (b) Raw generative base models (qwen3, gemma4, mistral, ...).
+    //
+    // (b) was previously hidden. Phase 03 (03-C-04) stripped the dropdown to
+    // baked-only on the assumption of a "raw-slug" Settings path that never
+    // existed — so on hosts without a baked model the dropdown went empty and
+    // REQ-031 (quality-fallback opt-in via Settings) / REQ-032 (content model)
+    // / REQ-034 (per-session primary↔fallback switch) became unsatisfiable:
+    // the user had no way to pick a base model. Exposing raw bases restores
+    // those requirements. Embedding models (bert-family OR an `embed` name,
+    // e.g. nomic-embed-text) are excluded — they can't drive a turn and would
+    // only pollute the list.
     return models.filter((m) => {
-      if (!isBakedModel(m.name)) return false;
-      const bareSlug = m.name.replace(/:latest$/, '');
-      return Boolean(TIER_LABELS[bareSlug]);
+      if (isBakedModel(m.name)) {
+        const bareSlug = m.name.replace(/:latest$/, '');
+        return Boolean(TIER_LABELS[bareSlug]);
+      }
+      const family = m.details?.family ?? '';
+      const isEmbedder = /bert/i.test(family) || /embed/i.test(m.name);
+      return !isEmbedder;
     }).map((m) => {
       const baked = isBakedModel(m.name);
       const baseSlug = baked ? getBakedBaseModel(m.name) : null;
