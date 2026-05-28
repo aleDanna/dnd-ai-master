@@ -306,6 +306,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             characters: vaultMutationsEnabled
               ? snap.party.map((c) => ({ id: c.id, name: c.name }))
               : undefined,
+            // Phase 05 (REQ-036) — manual rolls block and DC visibility.
+            manualRolls: userPrefs.manualRolls,
+            showDifficultyNumbers: userPrefs.showDifficultyNumbers,
           });
 
           // 5v. Build history — simpler than baked (no budget truncation needed,
