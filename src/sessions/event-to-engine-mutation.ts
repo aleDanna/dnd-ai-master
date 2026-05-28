@@ -463,6 +463,21 @@ export async function invokeEnginePathwayFromEvent(
       return;
     }
 
+    case 'combat_start':
+    case 'monster_spawn':
+    case 'initiative_set':
+    case 'turn_advance':
+    case 'monster_hp_change':
+    case 'combat_end': {
+      // Phase 06 D1 — encounter-scoped events have NO Postgres write.
+      // Combat state is vault-native (events.md + combat.md) per the D1
+      // architecture decision. REQ-037 prohibits Postgres combat writes
+      // in this phase. The dual-writer invokes this function after vault
+      // append; for encounter events we simply return without touching
+      // session_state.combat or combat_actors.
+      return;
+    }
+
     default: {
       // tsc exhaustiveness — adding a new event type without an arm here
       // is a build error. Runtime fallthrough returns silently.

@@ -29,8 +29,8 @@ import {
  */
 describe('events-schema', () => {
   describe('VAULT_EVENT_TYPES + isVaultEventType', () => {
-    it('lists exactly the 28 known event types (8 Phase 02 + 20 Phase 03)', () => {
-      expect(VAULT_EVENT_TYPES).toHaveLength(28);
+    it('lists exactly the 34 known event types (8 Phase 02 + 20 Phase 03 + 6 Phase 06 D1)', () => {
+      expect(VAULT_EVENT_TYPES).toHaveLength(34);
       expect(new Set(VAULT_EVENT_TYPES)).toEqual(
         new Set([
           // Phase 02 (unchanged)
@@ -63,6 +63,13 @@ describe('events-schema', () => {
           'focus_set',
           'focus_unset',
           'xp_award',
+          // Phase 06 D1 (encounter-scoped — no payload.character)
+          'combat_start',
+          'monster_spawn',
+          'initiative_set',
+          'turn_advance',
+          'monster_hp_change',
+          'combat_end',
         ]),
       );
     });

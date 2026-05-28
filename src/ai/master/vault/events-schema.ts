@@ -139,6 +139,13 @@ export const VAULT_EVENT_TYPES = [
   'focus_set',
   'focus_unset',
   'xp_award',
+  // Phase 06 (D1 — encounter-scoped, no payload.character)
+  'combat_start',
+  'monster_spawn',
+  'initiative_set',
+  'turn_advance',
+  'monster_hp_change',
+  'combat_end',
 ] as const;
 
 export type VaultEventType = (typeof VAULT_EVENT_TYPES)[number];
@@ -297,7 +304,39 @@ export type VaultEvent =
       };
     }
   | { type: 'focus_unset'; payload: { character: string } }
-  | { type: 'xp_award'; payload: { character: string; amount: number; reason?: string } };
+  | { type: 'xp_award'; payload: { character: string; amount: number; reason?: string } }
+  // Phase 06 (D1 — encounter-scoped; no payload.character field)
+  | { type: 'combat_start'; payload: Record<string, never> }
+  | {
+      type: 'monster_spawn';
+      payload: {
+        id: string;
+        name: string;
+        hpMax: number;
+        ac?: number;
+        initiativeBonus?: number;
+      };
+    }
+  | { type: 'initiative_set'; payload: { order: Array<{ actorId: string; initiative: number }> } }
+  | { type: 'turn_advance'; payload: Record<string, never> }
+  | { type: 'monster_hp_change'; payload: { id: string; delta: number } }
+  | { type: 'combat_end'; payload: Record<string, never> };
+
+/**
+ * O(1) lookup set for encounter-scoped event types (Phase 06 D1).
+ * Used by `replayEvents` and `regenerateAffectedViews` to route encounter
+ * events to the EncounterState reducer instead of the per-character reducer.
+ * These event types have NO `payload.character` field — the UUID-required
+ * guard in the character event path MUST NOT apply to members of this set.
+ */
+export const ENCOUNTER_EVENT_TYPES: Set<string> = new Set<string>([
+  'combat_start',
+  'monster_spawn',
+  'initiative_set',
+  'turn_advance',
+  'monster_hp_change',
+  'combat_end',
+]);
 
 /**
  * On-disk envelope persisted to `events.md` (one JSON-line per event).
@@ -956,6 +995,106 @@ export function validateEvent(input: { type: string; payload: unknown }): Valida
           },
         },
       };
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 06 (D1 — encounter-scoped) additions. None of the 6 arms below
+    // check for `payload.character` — encounter events have no character
+    // field (the UUID-required guard is relaxed for this entire group per
+    // CONTEXT §"Event lane"). The validator arms mirror the audit row 1:1.
+    // -----------------------------------------------------------------------
+
+    case 'combat_start': {
+      // Empty payload — only plain-object check required; no fields.
+      return { ok: true, value: { type: 'combat_start', payload: {} } };
+    }
+
+    case 'monster_spawn': {
+      if (typeof p.id !== 'string' || p.id.length === 0) {
+        return { ok: false, error: 'monster_spawn requires {id: non-empty string, name: non-empty string, hpMax: positive integer, ac?: positive integer, initiativeBonus?: integer}' };
+      }
+      if (typeof p.name !== 'string' || p.name.length === 0) {
+        return { ok: false, error: 'monster_spawn requires {id: non-empty string, name: non-empty string, hpMax: positive integer, ac?: positive integer, initiativeBonus?: integer}' };
+      }
+      if (
+        typeof p.hpMax !== 'number' ||
+        !Number.isInteger(p.hpMax) ||
+        p.hpMax <= 0
+      ) {
+        return { ok: false, error: 'monster_spawn requires {id: non-empty string, name: non-empty string, hpMax: positive integer, ac?: positive integer, initiativeBonus?: integer}' };
+      }
+      const spawnPayload: { id: string; name: string; hpMax: number; ac?: number; initiativeBonus?: number } = {
+        id: p.id,
+        name: p.name,
+        hpMax: p.hpMax,
+      };
+      if (p.ac !== undefined) {
+        if (
+          typeof p.ac !== 'number' ||
+          !Number.isInteger(p.ac) ||
+          p.ac <= 0
+        ) {
+          return { ok: false, error: 'monster_spawn.ac must be a positive integer when provided' };
+        }
+        spawnPayload.ac = p.ac;
+      }
+      if (p.initiativeBonus !== undefined) {
+        if (
+          typeof p.initiativeBonus !== 'number' ||
+          !Number.isInteger(p.initiativeBonus) ||
+          !Number.isFinite(p.initiativeBonus)
+        ) {
+          return { ok: false, error: 'monster_spawn.initiativeBonus must be an integer when provided' };
+        }
+        spawnPayload.initiativeBonus = p.initiativeBonus;
+      }
+      return { ok: true, value: { type: 'monster_spawn', payload: spawnPayload } };
+    }
+
+    case 'initiative_set': {
+      if (!Array.isArray(p.order)) {
+        return { ok: false, error: 'initiative_set requires {order: Array<{actorId: string, initiative: number}>}' };
+      }
+      const order: Array<{ actorId: string; initiative: number }> = [];
+      for (let i = 0; i < p.order.length; i++) {
+        const entry: unknown = p.order[i];
+        if (!isPlainObject(entry)) {
+          return { ok: false, error: `initiative_set.order[${i}] must be an object` };
+        }
+        const e: RawPayload = entry;
+        if (typeof e.actorId !== 'string' || e.actorId.length === 0) {
+          return { ok: false, error: `initiative_set.order[${i}].actorId must be a non-empty string` };
+        }
+        if (
+          typeof e.initiative !== 'number' ||
+          !Number.isInteger(e.initiative) ||
+          !Number.isFinite(e.initiative)
+        ) {
+          return { ok: false, error: `initiative_set.order[${i}].initiative must be a finite integer` };
+        }
+        order.push({ actorId: e.actorId, initiative: e.initiative });
+      }
+      return { ok: true, value: { type: 'initiative_set', payload: { order } } };
+    }
+
+    case 'turn_advance': {
+      // Empty payload — only plain-object check required; no fields.
+      return { ok: true, value: { type: 'turn_advance', payload: {} } };
+    }
+
+    case 'monster_hp_change': {
+      if (typeof p.id !== 'string' || p.id.length === 0) {
+        return { ok: false, error: 'monster_hp_change requires {id: non-empty string, delta: finite number}' };
+      }
+      if (typeof p.delta !== 'number' || !Number.isFinite(p.delta)) {
+        return { ok: false, error: 'monster_hp_change requires {id: non-empty string, delta: finite number}' };
+      }
+      return { ok: true, value: { type: 'monster_hp_change', payload: { id: p.id, delta: p.delta } } };
+    }
+
+    case 'combat_end': {
+      // Empty payload — only plain-object check required; no fields.
+      return { ok: true, value: { type: 'combat_end', payload: {} } };
     }
 
     default: {

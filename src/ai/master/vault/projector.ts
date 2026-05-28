@@ -600,6 +600,24 @@ export function applyEvent(state: CharacterState, event: VaultEvent): CharacterS
       return next;
     }
 
+    // -----------------------------------------------------------------------
+    // Phase 06 (D1 — encounter-scoped) no-ops for the per-character reducer.
+    // Encounter events have no `payload.character` field; they are consumed
+    // by `applyEncounterEvent` (below) in a separate reducer pass. The
+    // per-character reducer sees these events only if they somehow pass
+    // through the character-event routing in `replayEvents`, which should
+    // not happen — but the case arms are required for tsc exhaustiveness.
+    // -----------------------------------------------------------------------
+    case 'combat_start':
+    case 'monster_spawn':
+    case 'initiative_set':
+    case 'turn_advance':
+    case 'monster_hp_change':
+    case 'combat_end':
+      // Encounter-scoped events — no per-character state change. Return the
+      // cloned state unchanged (structuredClone already applied at top of fn).
+      return next;
+
     default: {
       // Compile-time exhaustiveness check (Decision 1). Adding a new
       // member to the `VaultEvent` union without a corresponding `case`
