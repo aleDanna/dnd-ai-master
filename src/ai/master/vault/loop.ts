@@ -12,6 +12,7 @@ import {
 } from '@/sessions/types';
 import { stripReasoningPreamble } from '@/ai/master/reasoning-strip';
 import { VAULT_TOOL_DEFINITIONS, dispatchVaultTool } from './tools';
+import { ENCOUNTER_EVENT_TYPES } from './events-schema';
 import { maybeCondense } from './condense';
 import { db } from '@/db/client';
 import { sessionState } from '@/db/schema';
@@ -66,6 +67,20 @@ export interface VaultLoopInput {
    * `resolveDualWrite` (plan 03-B-01). Default false (Phase 02 single-write).
    */
   dualWrite?: boolean;
+  /**
+   * Phase 08 (D-06 / REQ-039 — narration-only mode) — when `true`, the loop
+   * DROPS the LLM's combat-event `apply_event` tool calls this turn instead of
+   * dispatching them. Only `ENCOUNTER_EVENT_TYPES` (combat_start, monster_spawn,
+   * initiative_set, turn_advance, monster_hp_change, combat_end) are dropped;
+   * a non-combat `apply_event` (e.g. `hp_change`, `inventory_add`) STILL
+   * dispatches. The turn-route sets this on server-resolved combat turns: the
+   * resolver already emitted the authoritative encounter events server-side, so
+   * honoring the model's duplicates would double-apply the damage / double-
+   * advance the turn (RESEARCH Pitfall 3). The dropped call still emits a
+   * `tool_use_start` / `tool_use_end` (ok:true) + a benign tool_result so the
+   * model's turn completes cleanly. Default false → Phase 07 behavior unchanged.
+   */
+  suppressCombatMutations?: boolean;
   /** Telemetry sink — receives every `provider.completeMessage` usage. */
   recordUsage?: (u: NormalizedUsage) => Promise<void>;
   /** SSE event sink — fires per `narrative_delta`, `tool_use_*`, etc. */
@@ -126,6 +141,7 @@ export async function runVaultToolLoop(input: VaultLoopInput): Promise<VaultLoop
     vaultRoot,
     campaignId,
     dualWrite,
+    suppressCombatMutations,
     recordUsage,
     onEvent,
     sessionId,
@@ -312,6 +328,34 @@ export async function runVaultToolLoop(input: VaultLoopInput): Promise<VaultLoop
     }[] = [];
     for (const tu of toolUses) {
       toolCallCount += 1;
+      // Phase 08 (D-06 / REQ-039) — NARRATION-ONLY drop. On a server-resolved
+      // combat turn the resolver already emitted the authoritative encounter
+      // events; honoring the model's duplicate `apply_event` would double-apply
+      // (Pitfall 3). Drop ONLY `ENCOUNTER_EVENT_TYPES` apply_event calls — a
+      // non-combat apply_event (hp_change, inventory_add, …) must still
+      // dispatch. We still emit start/end (ok:true) + a benign tool_result so
+      // the model's turn completes; we just never reach dispatchVaultTool.
+      if (
+        suppressCombatMutations &&
+        tu.name === 'apply_event' &&
+        ENCOUNTER_EVENT_TYPES.has((tu.input as { type?: string }).type ?? '')
+      ) {
+        emit({ type: 'tool_use_start', toolUseId: tu.id, name: tu.name, input: tu.input });
+        emit({
+          type: 'tool_use_end',
+          toolUseId: tu.id,
+          ok: true,
+          rolls: [],
+          mutationCount: 0,
+        });
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: tu.id,
+          content: JSON.stringify({ ok: true, note: 'combat resolved server-side this turn' }),
+          is_error: false,
+        });
+        continue;
+      }
       emit({ type: 'tool_use_start', toolUseId: tu.id, name: tu.name, input: tu.input });
       // Phase 03-A — extract the per-event character UUID at dispatch time
       // and forward dualWrite + sessionId so the apply_event branch can
