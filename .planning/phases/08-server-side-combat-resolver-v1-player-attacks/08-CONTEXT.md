@@ -29,7 +29,10 @@ resolver only EMITS existing events (`monster_hp_change`, `turn_advance`).
 <decisions>
 ## Implementation Decisions
 
-Everything in the approved spec is a LOCKED decision.
+Everything in the approved spec is a LOCKED decision. **One correction applied from
+verified research (`08-RESEARCH.md`, operator-confirmed):** the damage-request uses
+`per danni a <target>` (NOT the spec's `danni a`) — the client parser drops the target
+without the `per` lead-in (D-03). Two verified parse rules also folded into D-05.
 
 ### D-01 — Resolver gate + hook point (LOCKED)
 - New pure function `resolveCombat` in
@@ -52,7 +55,7 @@ resolveCombat(input: {
   kind: 'to-hit' | 'damage' | 'none';
   events: VaultEvent[];          // monster_hp_change / turn_advance — emitted server-side
   narrationDirective: string;    // "[RESOLVED BY SYSTEM: ...] narrate in 2nd person"
-  damageRequest: string | null;  // "Tira 1d6+3 danni a Veyra" on a hit, else null
+  damageRequest: string | null;  // "Tira 1d6+3 per danni a Veyra" on a hit, else null
 } | null                         // null → not a combat roll; fall through to normal turn
 ```
 
@@ -65,8 +68,13 @@ resolveCombat(input: {
   is already rolled client-side, so the resolver compares the rolled TOTAL — it does
   NOT recompute the bonus from a sheet.)
 - **Miss** → `{ kind:'to-hit', events:[turn_advance], directive:"narrate MISS", damageRequest:null }`.
-- **Hit** → `{ kind:'to-hit', events:[], directive:"narrate HIT", damageRequest:"Tira <defaultDie>+<bonus> danni a <target>" }`
+- **Hit** → `{ kind:'to-hit', events:[], directive:"narrate HIT", damageRequest:"Tira <defaultDie>+<bonus> per danni a <target>" }`
   (bonus reused from the to-hit roll; turn does NOT advance yet — it advances after the damage roll).
+  **The `per` lead-in is REQUIRED** (corrects the spec's `danni a` form): the client
+  `extractPurpose` (`roll-parser.ts:748`) only captures the target into the roll label
+  when a `per`/`for` lead-in precedes it; without `per` the target name is dropped and
+  the stateless two-step breaks. Symmetric with the existing attack format
+  (`prompt-builder.ts:132` `per attaccare <target>`). [verified — RESEARCH Pitfall 1]
 
 ### D-04 — Damage resolution (LOCKED — two-step, stateless via label)
 - Kind detection: non-`d20` dice expr + label keyword `danni` → damage.
@@ -80,14 +88,26 @@ resolveCombat(input: {
 ### D-05 — Parsing helpers (LOCKED)
 - Total + natural + bonus + dice from the roll-result string. Example:
   `🎲 I rolled **18** for 1d20+3 (attaccare Veyra) (15+3).`
-  → total `18`, natural `15` (first number of the breakdown), bonus `+3`, dice `1d20`.
-- Reuse `isRollResult` (already at `turn-directive.ts:67`); reuse the roll-result
-  format produced at `roll-request-button.tsx:128,133`.
+  → total `18`, natural `15`, bonus `+3` (derive `bonus = total − natural`), dice `1d20`.
+- **The breakdown is the LAST parenthetical** — the label purpose `(attaccare Veyra)`
+  comes first, the breakdown `(15+3)` last. Anchor the breakdown regex to end-of-string.
+- **`+0` / single-die rolls emit NO breakdown** (`formatResultText` sets
+  `showBreakdown=false` when `rolls.length<=1 && modifier===0`, `roll-request-button.tsx:126`):
+  e.g. `🎲 I rolled **18** for 1d20 (attaccare Veyra).` → fall back to `natural = total`
+  (correct: with +0 the die IS the total; also makes nat-20 auto-hit work on +0).
+  [verified — RESEARCH Pitfall 2]
+- Reuse `isRollResult` (`turn-directive.ts:69`); the roll-result + damage-request
+  formats are produced by `formatResultText` (`roll-request-button.tsx:125-134`).
 - **Edge → return `null`** (graceful fall-through to the normal LLM turn, never throw):
-  no target match, ambiguous target, unparseable roll, or not a combat roll.
+  no target match; ambiguous target (recommended: case-insensitive EXACT name match —
+  0 or >1 matches → `null`); unparseable roll; or not a combat roll.
 
 ### D-06 — Server-side emission + narration-only loop (LOCKED)
-- Emit `resolver.events` via the existing `apply_event` dispatch (server-side).
+- Emit `resolver.events` server-side via the existing dispatcher: per event call
+  `dispatchVaultTool('apply_event', ev, { campaignId: campaign.id })` (`tools.ts:251-383`)
+  — it validates, allocates the UUID, persists to `events.md`, and regenerates `combat.md`;
+  the encounter-event UUID guard is already relaxed (`tools.ts:285`). The resolver returns
+  plain `VaultEvent[]` (`{type,payload}`, no envelope) to stay pure/headless-testable.
 - Run `runVaultToolLoop` in **NARRATION-ONLY mode** with `resolver.narrationDirective`:
   the LLM's combat-event `apply_event` tool calls are **DROPPED that turn** (prevents
   double-apply — the server already emitted the authoritative events). The LLM colors;
@@ -148,7 +168,7 @@ resolveCombat(input: {
 
 ### Code to modify
 - `src/app/api/sessions/[id]/turn/combat-resolver.ts` (**NEW**) — the pure `resolveCombat` + parsing helpers (D-02..D-05).
-- `src/app/api/sessions/[id]/turn/route.ts` (vault branch) — hook before `runVaultToolLoop` (~:379): read the encounter early (~:357 instead of POST-LLM ~:454-455), gate (D-01), call `resolveCombat`, emit events, run the narration-only loop with the directive, append the damage request if missing (D-06).
+- `src/app/api/sessions/[id]/turn/route.ts` (vault branch) — hook before `runVaultToolLoop`: read the encounter early, gate (D-01), call `resolveCombat`, emit events, run the narration-only loop with the directive, append the damage request if missing (D-06). **Line refs drifted — use RESEARCH Pitfall 5 verified anchors** (route.ts is now 936 lines): vault branch `:278`, clean `_playerMessage` `:355-357` (capture BEFORE the directive is appended at `:358-372`), `runVaultToolLoop` `:379`, the POST-LLM encounter read to DUPLICATE-up (do not delete — 07-03 handoff still needs it) `:454-455`, handoff `:456`, vault early-return `:523`.
 - `src/ai/master/vault/turn-directive.ts` — suppress the player-side resolve directive when the server already resolved (D-07); `isRollResult` lives here (~:67) — reuse it.
 
 ### Reference (do NOT modify — pattern/contract source)
@@ -167,8 +187,10 @@ resolveCombat(input: {
 
 - Roll-result example (to-hit): `🎲 I rolled **18** for 1d20+3 (attaccare Veyra) (15+3).`
   → total 18, natural 15, bonus +3, dice 1d20, target "Veyra".
-- Damage-request format the server emits on a hit: `Tira 1d6+3 danni a Veyra`
-  (bonus reused from the to-hit; target name echoed → enables the stateless two-step).
+- Damage-request format the server emits on a hit: `Tira 1d6+3 per danni a Veyra`
+  (the `per` lead-in is REQUIRED so the client parser captures the target; bonus reused
+  from the to-hit; target name echoed → enables the stateless two-step). On the roll it
+  round-trips as `🎲 I rolled **9** for 1d6+3 (danni a Veyra) (6+3).` → resolver recovers "Veyra".
 - 1v1 example (One Piece vs Veyra, qwen3): the player's hits drop Veyra's HP in the
   `CombatTracker`; Veyra's attacks on the PC remain narrative until v2.
 - **Testing (3 layers, same automated-vs-smoke split as prior phases):**
