@@ -492,6 +492,183 @@ describe('runVaultToolLoop — apply_event integration (Phase 02)', () => {
 });
 
 /* -------------------------------------------------------------------------- *
+ *  Phase 08 — narration-only mode (plan 08-02, D-06 / RESEARCH Pattern 2).    *
+ *                                                                            *
+ *  On a server-resolved combat turn the route emits the authoritative        *
+ *  encounter events itself (via resolveCombat), then runs the loop in         *
+ *  NARRATION-ONLY mode so the LLM colors the outcome WITHOUT re-applying it.  *
+ *  `suppressCombatMutations: true` drops the LLM's `apply_event` calls whose  *
+ *  type is in ENCOUNTER_EVENT_TYPES (combat_start, monster_spawn,             *
+ *  initiative_set, turn_advance, monster_hp_change, combat_end) at the        *
+ *  dispatch seam — preventing the Pitfall 3 double-apply. NON-combat          *
+ *  apply_event calls (e.g. hp_change) MUST still dispatch.                    *
+ *                                                                            *
+ *  Reuses the same `scriptedProvider` + tmpfs `VAULT_CAMPAIGNS_ROOT` harness  *
+ *  as the Phase 02 apply_event tests, asserting on the events.md line count   *
+ *  before/after (the drop = zero new lines; the dispatch = one new line).     *
+ * -------------------------------------------------------------------------- */
+
+const NARRATION_CAMPAIGN_UUID = '99999999-8888-7777-6666-555555555555';
+const NARRATION_CHAR_UUID = 'cccccccc-dddd-eeee-ffff-000000000000';
+const NARRATION_MONSTER_ID = 'monster-veyra-1';
+
+/** Seed a campaign with an active encounter (one monster spawned) AND a
+ *  character, so the narration-only tests can drive both a combat-event
+ *  apply_event (monster_hp_change → dropped under the flag) and a non-combat
+ *  apply_event (hp_change → still dispatched). Returns the events.md path. */
+async function seedEncounterCampaign(campaignsRoot: string): Promise<string> {
+  vi.stubEnv('VAULT_CAMPAIGNS_ROOT', campaignsRoot);
+  vi.resetModules();
+  const { dispatchVaultTool } = await import('@/ai/master/vault/tools');
+  const { eventsPath } = await import('@/ai/master/vault/campaign-paths');
+  const seedEvents: { type: string; payload: Record<string, unknown> }[] = [
+    {
+      type: 'campaign_initialized',
+      payload: {
+        characters: [
+          { id: NARRATION_CHAR_UUID, name: 'Rufy', hp_max: 40, hp_current: 40 },
+        ],
+      },
+    },
+    { type: 'combat_start', payload: {} },
+    {
+      type: 'monster_spawn',
+      payload: { id: NARRATION_MONSTER_ID, name: 'Veyra', hpMax: 18, ac: 14 },
+    },
+  ];
+  for (const ev of seedEvents) {
+    const r = await dispatchVaultTool('apply_event', ev, { campaignId: NARRATION_CAMPAIGN_UUID });
+    if (r.isError) throw new Error('encounter seed failed: ' + r.content);
+  }
+  return eventsPath(NARRATION_CAMPAIGN_UUID);
+}
+
+describe('runVaultToolLoop — narration-only mode (Phase 08)', () => {
+  let campaignsRoot: string;
+  let eventsFile: string;
+  let loop: typeof import('@/ai/master/vault/loop').runVaultToolLoop;
+
+  beforeEach(async () => {
+    campaignsRoot = mkdtempSync(join(tmpdir(), 'gsd-loop-narration-'));
+    eventsFile = await seedEncounterCampaign(campaignsRoot);
+    loop = (await import('@/ai/master/vault/loop')).runVaultToolLoop;
+  });
+
+  afterEach(() => {
+    rmSync(campaignsRoot, { recursive: true, force: true });
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it('(a) suppressCombatMutations:true DROPS a monster_hp_change apply_event (zero new lines) yet completes the turn', async () => {
+    const linesBefore = (await readFile(eventsFile, 'utf8')).trim().split('\n').length;
+    const provider = scriptedProvider([
+      {
+        contentBlocks: [
+          {
+            type: 'tool_use',
+            id: 'tu_combat',
+            name: 'apply_event',
+            input: { type: 'monster_hp_change', payload: { id: NARRATION_MONSTER_ID, delta: -9 } },
+          },
+        ],
+      },
+      {
+        contentBlocks: [
+          { type: 'tool_use', id: 'tu_end', name: 'end_turn', input: { response: 'Veyra barcolla.' } },
+        ],
+      },
+    ]);
+    const result = await loop({
+      provider,
+      campaignId: NARRATION_CAMPAIGN_UUID,
+      suppressCombatMutations: true,
+      ...BASE_INPUT,
+    });
+    expect(result.finalText).toBe('Veyra barcolla.');
+    // The drop happens at the loop seam — events.md is untouched.
+    const linesAfter = (await readFile(eventsFile, 'utf8')).trim().split('\n').length;
+    expect(linesAfter).toBe(linesBefore);
+    // The turn still completes: the dropped call emitted a tool_use_end ok:true.
+    const droppedEnd = result.events.find(
+      (e) => e.type === 'tool_use_end' && 'toolUseId' in e && e.toolUseId === 'tu_combat',
+    );
+    expect(droppedEnd).toBeDefined();
+    if (droppedEnd && droppedEnd.type === 'tool_use_end') {
+      expect(droppedEnd.ok).toBe(true);
+    }
+  });
+
+  it('(b) regression: flag falsy DISPATCHES the same monster_hp_change (one new line) — Phase 07 behavior', async () => {
+    const linesBefore = (await readFile(eventsFile, 'utf8')).trim().split('\n').length;
+    const provider = scriptedProvider([
+      {
+        contentBlocks: [
+          {
+            type: 'tool_use',
+            id: 'tu_combat',
+            name: 'apply_event',
+            input: { type: 'monster_hp_change', payload: { id: NARRATION_MONSTER_ID, delta: -9 } },
+          },
+        ],
+      },
+      {
+        contentBlocks: [
+          { type: 'tool_use', id: 'tu_end', name: 'end_turn', input: { response: 'Colpito.' } },
+        ],
+      },
+    ]);
+    // NOTE: suppressCombatMutations omitted (falsy) — today's behavior.
+    const result = await loop({
+      provider,
+      campaignId: NARRATION_CAMPAIGN_UUID,
+      ...BASE_INPUT,
+    });
+    expect(result.finalText).toBe('Colpito.');
+    const linesAfter = (await readFile(eventsFile, 'utf8')).trim().split('\n').length;
+    expect(linesAfter).toBe(linesBefore + 1);
+  });
+
+  it('(c) flag true STILL dispatches a NON-combat apply_event (hp_change) — drop scoped to ENCOUNTER_EVENT_TYPES', async () => {
+    const linesBefore = (await readFile(eventsFile, 'utf8')).trim().split('\n').length;
+    const provider = scriptedProvider([
+      {
+        contentBlocks: [
+          {
+            type: 'tool_use',
+            id: 'tu_hp',
+            name: 'apply_event',
+            input: { type: 'hp_change', payload: { character: NARRATION_CHAR_UUID, delta: -3 } },
+          },
+        ],
+      },
+      {
+        contentBlocks: [
+          { type: 'tool_use', id: 'tu_end', name: 'end_turn', input: { response: 'Rufy ferito.' } },
+        ],
+      },
+    ]);
+    const result = await loop({
+      provider,
+      campaignId: NARRATION_CAMPAIGN_UUID,
+      suppressCombatMutations: true,
+      ...BASE_INPUT,
+    });
+    expect(result.finalText).toBe('Rufy ferito.');
+    // hp_change is NOT an encounter event → it must still dispatch + persist.
+    const linesAfter = (await readFile(eventsFile, 'utf8')).trim().split('\n').length;
+    expect(linesAfter).toBe(linesBefore + 1);
+    const hpEnd = result.events.find(
+      (e) => e.type === 'tool_use_end' && 'toolUseId' in e && e.toolUseId === 'tu_hp',
+    );
+    expect(hpEnd).toBeDefined();
+    if (hpEnd && hpEnd.type === 'tool_use_end') {
+      expect(hpEnd.ok).toBe(true);
+    }
+  });
+});
+
+/* -------------------------------------------------------------------------- *
  *  Phase 03-B — REQ-023 per-turn summarization (plan 03-B-05).               *
  *                                                                            *
  *  These tests exercise the two wiring changes added to runVaultToolLoop:    *
