@@ -209,7 +209,7 @@ Plans:
 
 ## Phase 08: Server-Side Combat Resolver (v1 Player Attacks)
 
-**Status:** DESIGNED (spec approved 2026-05-29) — execution deferred to a dedicated session. Spec: `docs/superpowers/specs/2026-05-29-combat-resolver-v1-design.md`. Next: `/gsd-plan-phase 08 --prd docs/superpowers/specs/2026-05-29-combat-resolver-v1-design.md`.
+**Status:** PLANNED (2026-05-29) — 3 plans in 2 waves. Spec: `docs/superpowers/specs/2026-05-29-combat-resolver-v1-design.md`. Next: `/gsd-execute-phase 08`.
 
 **Goal:** Move combat MECHANICAL RESOLUTION server-side (the fix for the local-model ceiling found in the D2 smoke: models start combat + ask for rolls but free-narrate outcomes, ignore the rolled number, never apply HP/turns). When a roll-result arrives during an active vault encounter, the turn route resolves deterministically (roll → AC → hit/miss → damage → `monster_hp_change` → `turn_advance`) reusing the engine math, and the LLM only NARRATES the server-determined outcome. **v1 scope = player attacks** (clean: the rolled total already carries the PC's bonus, so only the monster AC is needed — no PC-stats bridge).
 
@@ -232,9 +232,11 @@ Plans:
 
 **Requirements:** REQ-039
 
-**Plans:** 0 plans
+**Plans:** 3 plans
 
 Plans:
-- [ ] TBD (brainstorm from the groundwork doc, then /gsd-plan-phase 08)
+- [ ] 08-01-PLAN.md — Pure `resolveCombat` (to-hit/damage/miss, nat-20/nat-1, default AC 12 / die 1d6, `per danni a` round-trip, null on edges) + headless REQ-039 unit suite [Wave 1]
+- [ ] 08-02-PLAN.md — `suppressCombatMutations` narration-only drop in `loop.ts` + D-07 `serverResolved` directive suppression in `turn-directive.ts` (no-double-apply guards) + test extensions [Wave 1]
+- [ ] 08-03-PLAN.md — Vault-branch wiring in `route.ts` (early read, gate, server-side emit, narration-only loop, safety-net append, 07-03 handoff preserved) + regression + operator smoke [Wave 2]
 
 ---
