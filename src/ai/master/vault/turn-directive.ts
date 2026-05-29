@@ -39,6 +39,19 @@ export interface TurnDirectiveOpts {
    * bootstraps combat (3/3 → apply_event{combat_start}).
    */
   playerMessage?: string;
+  /**
+   * Phase 08 (D-07 / REQ-039) — when `true`, the SERVER already resolved this
+   * combat turn (resolveCombat emitted the authoritative monster_hp_change /
+   * turn_advance events server-side) and is injecting its own narration
+   * directive. In that case the player-side "resolve" directive below (the
+   * 07-05 re-ask-breaker that instructs the model to call apply_event with
+   * monster_hp_change / turn_advance) is SUPPRESSED — we must not ask the model
+   * to emit the very events the loop is about to drop (suppressCombatMutations).
+   * Belt-and-suspenders with the loop drop (RESEARCH Pitfall 3): don't ask, and
+   * don't honor if asked anyway. When this flag is absent the resolve directive
+   * is emitted byte-identically to Phase 07 (regression-protected).
+   */
+  serverResolved?: boolean;
 }
 
 /**
@@ -84,7 +97,7 @@ export function isRollResult(playerMessage?: string): boolean {
  *   4. Roll line (only when manualRolls)
  */
 export function buildTurnDirective(opts: TurnDirectiveOpts): string | null {
-  const { vaultMutations, manualRolls, playerMessage } = opts;
+  const { vaultMutations, manualRolls, playerMessage, serverResolved } = opts;
 
   if (!vaultMutations && !manualRolls) {
     return null;
@@ -94,7 +107,15 @@ export function buildTurnDirective(opts: TurnDirectiveOpts): string | null {
   // roll-result echoes the attack label e.g. "...per attaccare Veyra" which
   // trips COMBAT_INTENT_RE). Tells the model to USE the rolled number and
   // advance — never re-ask the same roll (fixes the 2026-05-29 stall loop).
-  if (isRollResult(playerMessage)) {
+  //
+  // Phase 08 (D-07): SKIP this branch entirely when the server already resolved
+  // the turn (`serverResolved`). The server emits the authoritative events and
+  // injects its own narration directive, so re-instructing the model to call
+  // apply_event monster_hp_change / turn_advance here would only ask for the
+  // events the loop is about to drop (suppressCombatMutations) — belt-and-
+  // suspenders with RESEARCH Pitfall 3. Fall through to the combat-intent /
+  // general directive as if this were not a roll-result.
+  if (!serverResolved && isRollResult(playerMessage)) {
     const r: string[] = [];
     r.push('[ISTRUZIONE PRIORITARIA — il giocatore ha appena tirato]');
     r.push('');
@@ -112,7 +133,16 @@ export function buildTurnDirective(opts: TurnDirectiveOpts): string | null {
   // narration anchoring where the general directive failed). Combat-first +
   // explicitly counters the anti-railroading "narrate the outcome" pull. Only
   // when vaultMutations (apply_event available) AND the player is attacking.
-  if (vaultMutations && detectCombatIntent(playerMessage)) {
+  //
+  // Phase 08 (D-07): also gated on `!serverResolved`. A server-resolved roll
+  // result still trips detectCombatIntent (it echoes "...attaccare Veyra"), so
+  // without this gate the suppressed resolve directive would simply fall through
+  // to THIS combat-start directive — which re-asks combat_start / monster_spawn
+  // / monster_hp_change / turn_advance, defeating the suppression (T-08-04). On
+  // a server-resolved turn both re-ask directives are suppressed; the route
+  // injects the server's authoritative narration directive instead, and the
+  // general POV directive below supplies the 2nd-person guidance.
+  if (!serverResolved && vaultMutations && detectCombatIntent(playerMessage)) {
     return [
       '[ISTRUZIONE PRIORITARIA — il giocatore sta attaccando]',
       '',
@@ -138,7 +168,15 @@ export function buildTurnDirective(opts: TurnDirectiveOpts): string | null {
   lines.push('');
 
   // apply_event / combat line — only when vaultMutations is true.
-  if (vaultMutations) {
+  //
+  // Phase 08 (D-07): suppressed when `serverResolved`. On a server-resolved turn
+  // the server is the authority for mutations and injects its own narration
+  // directive; re-listing the combat apply_event catalog here (combat_start …
+  // monster_hp_change … turn_advance) would re-ask for the very events the loop
+  // is dropping (suppressCombatMutations) — the same double-apply re-ask D-07
+  // guards against (T-08-04). The POV line above still anchors 2nd-person
+  // narration; the server's directive carries the combat semantics.
+  if (vaultMutations && !serverResolved) {
     lines.push('Quando lo stato di gioco cambia (danni, condizioni, inizio/fine scontro,');
     lines.push('turni in combattimento), USA apply_event — non limitarti alla narrazione.');
     lines.push('Tipi di evento per il combattimento:');
