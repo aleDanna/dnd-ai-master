@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-05-29T15:55:26.084Z"
+last_updated: "2026-05-29T23:10:00.000Z"
 progress:
   total_phases: 8
   completed_phases: 2
   total_plans: 11
-  completed_plans: 25
+  completed_plans: 26
   percent: 100
 ---
 
@@ -63,3 +63,9 @@ progress:
 - Paused at Task 2 (checkpoint:human-verify) — operator smoke required
 - Decisions: directive is a separate module (REQ-022 untouched); null return for read-only campaigns; Italian directive language (primary play language); route uses narrow cast for MessageParam string-content invariant; language param reserved for future expansion
 - 24 unit tests; pnpm tsc --noEmit clean; no new test failures
+
+### Phase 08 — Plan 01 Execution (2026-05-29)
+
+- All tasks completed: e80293f (feat — pure resolveCombat + parsing helpers), 1722ac4 (test — 16-case headless REQ-039 suite)
+- Decisions: damage request uses the `per danni a <target>` lead-in (corrects spec `danni a` — extractPurpose needs per/for to keep the target; RESEARCH Pitfall 1, round-trip verified); hit rule MIRRORED on the rolled total (hit = natural !== 1 && (natural === 20 || total >= ac)) — does NOT call makeAttack (re-rolls d20, needs full Character, D-09); target match case-insensitive EXACT against monsters[].name then resolve server-side id (T-08-01); 0 or >1 → null; +0/no-breakdown roll → natural=total (nat-20-on-+0 auto-hits, Pitfall 2); HIT emits NO events (advance after damage roll), MISS emits turn_advance, DAMAGE emits monster_hp_change(-total)+turn_advance; never-throws → null on any fall-through (T-08-03)
+- resolveCombat is pure (no Date.now/Math.random/randomUUID/process.env/fs); 16 headless tests pass; pnpm tsc --noEmit clean. REQ-039 resolver math delivered; route wiring + narration-only loop + D-07 suppression remain (Plans 08-02/08-03). No deviations.
