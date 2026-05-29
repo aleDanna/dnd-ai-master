@@ -194,6 +194,39 @@ describe('roll-result resolve directive', () => {
   });
 });
 
+// REQ-039 / D-07 — server-resolved suppression. On a turn the server already
+// resolved (resolveCombat returned non-null), the player-side resolve directive
+// (the 07-05 re-ask-breaker that instructs the model to call apply_event
+// monster_hp_change / turn_advance) MUST be suppressed: the server's own
+// narration directive takes over that turn. Belt-and-suspenders with the loop's
+// suppressCombatMutations drop (RESEARCH Pitfall 3) — don't ASK for the events
+// we're going to drop. Gated, not a deletion: when the flag is absent the
+// Phase 07 resolve directive is byte-identical.
+describe('D-07 — server-resolved suppression', () => {
+  const ROLL = '🎲 I rolled **18** for 1d20+3 (attaccare Veyra) (15+3).';
+
+  it('suppresses the resolve directive when serverResolved is true (+vaultMutations)', () => {
+    const result = buildTurnDirective({ vaultMutations: true, serverResolved: true, playerMessage: ROLL });
+    // The resolve branch (which would re-instruct the model) is gone.
+    expect(result).not.toBeNull();
+    expect(result!).not.toContain('monster_hp_change');
+    expect(result!).not.toContain('ISTRUZIONE PRIORITARIA — il giocatore ha appena tirato');
+  });
+
+  it('regression: WITHOUT serverResolved the resolve directive is still emitted (+vaultMutations)', () => {
+    const result = buildTurnDirective({ vaultMutations: true, playerMessage: ROLL });
+    expect(result).not.toBeNull();
+    expect(result!).toContain('monster_hp_change');
+    expect(result!).toContain('ISTRUZIONE PRIORITARIA — il giocatore ha appena tirato');
+  });
+
+  it('serverResolved suppression is deterministic across 100 calls', () => {
+    const opts = { vaultMutations: true, serverResolved: true, playerMessage: ROLL };
+    const first = buildTurnDirective(opts);
+    for (let i = 0; i < 99; i++) expect(buildTurnDirective(opts)).toBe(first);
+  });
+});
+
 describe('detectCombatIntent', () => {
   it('returns false for undefined / empty', () => {
     expect(detectCombatIntent(undefined)).toBe(false);
