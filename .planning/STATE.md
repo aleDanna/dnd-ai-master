@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-05-29T23:10:00.000Z"
+last_updated: "2026-05-29T21:18:38.000Z"
 progress:
   total_phases: 8
   completed_phases: 2
   total_plans: 11
-  completed_plans: 26
+  completed_plans: 27
   percent: 100
 ---
 
@@ -69,3 +69,10 @@ progress:
 - All tasks completed: e80293f (feat — pure resolveCombat + parsing helpers), 1722ac4 (test — 16-case headless REQ-039 suite)
 - Decisions: damage request uses the `per danni a <target>` lead-in (corrects spec `danni a` — extractPurpose needs per/for to keep the target; RESEARCH Pitfall 1, round-trip verified); hit rule MIRRORED on the rolled total (hit = natural !== 1 && (natural === 20 || total >= ac)) — does NOT call makeAttack (re-rolls d20, needs full Character, D-09); target match case-insensitive EXACT against monsters[].name then resolve server-side id (T-08-01); 0 or >1 → null; +0/no-breakdown roll → natural=total (nat-20-on-+0 auto-hits, Pitfall 2); HIT emits NO events (advance after damage roll), MISS emits turn_advance, DAMAGE emits monster_hp_change(-total)+turn_advance; never-throws → null on any fall-through (T-08-03)
 - resolveCombat is pure (no Date.now/Math.random/randomUUID/process.env/fs); 16 headless tests pass; pnpm tsc --noEmit clean. REQ-039 resolver math delivered; route wiring + narration-only loop + D-07 suppression remain (Plans 08-02/08-03). No deviations.
+
+### Phase 08 — Plan 02 Execution (2026-05-29)
+
+- All tasks completed (TDD test→feat): c46f952 (RED loop tests), 77b5230 (feat — suppressCombatMutations narration-only mode), 7086539 (RED directive tests), 0c070f1 (feat — D-07 serverResolved suppression)
+- Decisions: suppressCombatMutations drops ONLY ENCOUNTER_EVENT_TYPES apply_event calls at the loop dispatch seam (non-combat hp_change/inventory_add still dispatch — T-08-05); dropped call still emits start/end(ok:true)+benign tool_result so the turn completes, placed after toolCallCount+=1 for cap parity; D-07 serverResolved suppresses ALL THREE combat-mutation re-ask directives (resolve branch + combat-intent combat-start + general apply_event catalog) — the roll-result echoes "attaccare <target>" tripping detectCombatIntent and the general catalog lists monster_hp_change, so a literal "fall through" would re-ask the dropped events; both flags default-falsy → Phase 07 byte-identical when absent
+- Deviation [Rule 1/2]: plan said "skip only the isRollResult branch, fall through to combat-intent/general directive" but that re-introduces the monster_hp_change re-ask the must_have forbids (T-08-04 double-apply) — gated all three re-ask directives on !serverResolved; directive now returns POV-only general block on a server-resolved turn (08-03 must inject resolver.narrationDirective for combat semantics)
+- 6 new tests (3 loop + 3 directive); full vault suite 708 passing; pnpm tsc --noEmit clean. Pre-existing unrelated applicator.test.ts (inventory) failure logged to 08/deferred-items.md (out of scope — last touched by 7ad8533, before Phase 08). Both double-apply guards (T-08-04) unit-proven; Plan 08-03 wires them at the route.
