@@ -25,7 +25,7 @@ import { checkQuotas } from '@/ai/master/quotas';
 import { getSessionMasterPreferences, resolveMasterBackend, resolveVaultMutations, resolveDualWrite, type MasterBackend } from '@/lib/preferences';
 import { runVaultToolLoop } from '@/ai/master/vault/loop';
 import { buildVaultSystemPrompt } from '@/ai/master/vault/prompt-builder';
-import { VAULT_TOOL_DEFINITIONS } from '@/ai/master/vault/tools';
+import { VAULT_TOOL_DEFINITIONS, dispatchVaultTool } from '@/ai/master/vault/tools';
 import { VAULT_ROOT } from '@/ai/master/vault/path';
 import { loadMemoryContext } from '@/sessions/memory/context';
 import { extractMemory } from '@/sessions/memory/extractor';
@@ -34,9 +34,11 @@ import { computeTurnAdvance, detectAddressee } from '@/multiplayer/turn-advance'
 import { notifySession } from '@/sessions/notify';
 import { checkPartyAccess } from '@/multiplayer/access';
 import { resolveCombatHandoff } from './combat-handoff';
+import { resolveCombat } from './combat-resolver';
 import { parseEventsFile, replayEvents } from '@/ai/master/vault/projector';
 import { eventsPath } from '@/ai/master/vault/campaign-paths';
-import { buildTurnDirective, appendDirectiveToHistory } from '@/ai/master/vault/turn-directive';
+import { buildTurnDirective, appendDirectiveToHistory, isRollResult } from '@/ai/master/vault/turn-directive';
+import { parseRollRequests } from '@/lib/roll-parser';
 
 /**
  * Synthetic user instruction injected on the very first turn of a campaign,
@@ -355,11 +357,83 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           const _lastUserTurn = [...vaultHistory].reverse().find((m) => m.role === 'user');
           const _playerMessage =
             typeof _lastUserTurn?.content === 'string' ? _lastUserTurn.content : undefined;
+
+          // 5v-combat (Phase 08 / REQ-039 / D-01). SERVER-SIDE COMBAT RESOLVER hook.
+          // BEFORE the LLM loop, on a roll-result during an active vault encounter,
+          // the server deterministically resolves hit/miss vs the monster AC, emits
+          // the authoritative monster_hp_change / turn_advance events, and runs the
+          // LLM narration-only. The model no longer decides the outcome.
+          //
+          // RESEARCH Pitfall 4: gate on the CLEAN `_playerMessage` captured ABOVE
+          // (before the directive is appended at the buildTurnDirective call below),
+          // so resolveCombat parses the player's original roll text — never a string
+          // with the directive glued on.
+          //
+          // RESEARCH Pattern 3: this is an EARLY, gated read of events.md. It is a
+          // DUPLICATE of the post-loop read (7v-combat) — they read the same file at
+          // two different times. This early read sees the PRE-resolution encounter (to
+          // decide hit/miss/target); the post-loop read sees the POST-turn_advance state
+          // (so the 07-03 resolveCombatHandoff hands to the next PC). Both reads are
+          // required; do NOT collapse them.
+          let _resolver: ReturnType<typeof resolveCombat> = null;
+          if (vaultMutationsEnabled && isRollResult(_playerMessage)) {
+            try {
+              const { encounter } = replayEvents(await parseEventsFile(eventsPath(campaign.id)));
+              if (encounter.active) {
+                // D-01 gate satisfied (vaultMutations && active encounter && roll-result).
+                // resolveCombat NEVER throws (D-05/D-10): a non-combat / unparseable /
+                // ambiguous roll returns null → fall through to today's prompt path.
+                _resolver = resolveCombat({ rollResult: _playerMessage!, encounter });
+              }
+            } catch (err) {
+              // D-10 — never hard-fail the turn on the gate read. A read error falls
+              // through to today's prompt-driven path (resolver stays null).
+              console.warn(
+                '[turn]', sessionId, 'combat-resolver gate read failed, falling through:',
+                err instanceof Error ? err.message : String(err),
+              );
+            }
+          }
+
+          // EMIT (D-06 / Pattern C): when the resolver fired, emit each authoritative
+          // event server-side BEFORE the loop. dispatchVaultTool validates, allocates
+          // the UUID, persists to events.md, and regenerates combat.md (encounter events
+          // skip the payload.character UUID guard, tools.ts:285). campaignId is the
+          // SERVER campaign id — never anything player-derived (T-08-06). Wrapped
+          // defensively (D-10): a dispatcher error logs + continues, never hard-fails.
+          if (_resolver !== null) {
+            for (const ev of _resolver.events) {
+              const r = await dispatchVaultTool('apply_event', ev, { campaignId: campaign.id });
+              if (r.isError) {
+                console.warn('[turn]', sessionId, 'resolver emit failed:', r.content);
+              }
+            }
+          }
+
+          // 5v-directive. REQ-038 — per-turn anti-anchoring directive.
+          // Appended to the LAST user turn of vaultHistory (recency position)
+          // so the model's most recent "instruction" breaks pattern-anchoring
+          // on narration-heavy histories (validated probe 2026-05-28).
+          // Null when neither vaultMutations nor manualRolls is set (read-only
+          // campaigns get no directive and history stays byte-identical).
+          // Player's latest message → combat-intent detection inside the
+          // builder (attack verbs switch the directive to the strong
+          // combat-first form). Last user turn of the assembled history.
+          //
+          // Phase 08 (D-07): pass serverResolved so that on a server-resolved turn
+          // the player-side "resolve" re-ask directive AND the combat-start directive
+          // are SUPPRESSED — we must not instruct the model to emit the very
+          // monster_hp_change / turn_advance events the loop is about to drop
+          // (suppressCombatMutations). The server's narrationDirective (injected just
+          // below) carries the combat semantics instead. When the resolver did NOT
+          // fire (_resolver === null → serverResolved false), directive behavior is
+          // byte-identical to Phase 07.
           const _directive = buildTurnDirective({
             vaultMutations: vaultMutationsEnabled,
             manualRolls: userPrefs.manualRolls,
             language: campaign.language ?? snap.language ?? undefined,
             ...(_playerMessage !== undefined && { playerMessage: _playerMessage }),
+            serverResolved: _resolver !== null,
           });
           if (_directive !== null) {
             // Vault history elements always have string content (built by the
@@ -368,6 +442,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             vaultHistory = appendDirectiveToHistory(
               vaultHistory as { role: string; content: string }[],
               _directive,
+            ) as typeof vaultHistory;
+          }
+
+          // Phase 08 (D-06 / Pattern D): on a server-resolved turn, inject the
+          // resolver's narration directive into vaultHistory (recency) so the LLM
+          // narrates the SERVER-determined outcome (hit/miss/-HP) in 2nd person.
+          // Critical handoff from 08-02: buildTurnDirective with serverResolved:true
+          // returns only a POV-only general block (it suppressed BOTH re-ask
+          // catalogs), so WITHOUT this injection the LLM would get no combat
+          // directive at all. appendDirectiveToHistory stacks this AFTER the general
+          // directive on the same last user turn (recency wins).
+          if (_resolver !== null) {
+            vaultHistory = appendDirectiveToHistory(
+              vaultHistory as { role: string; content: string }[],
+              _resolver.narrationDirective,
             ) as typeof vaultHistory;
           }
 
@@ -394,6 +483,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             // Postgres + parity-check); otherwise the dispatcher preserves
             // Phase 02 single-write semantics.
             ...(dualWriteEnabled && { dualWrite: true }),
+            // Phase 08 (D-06 / REQ-039 — narration-only mode). On a server-resolved
+            // combat turn, DROP the LLM's combat-event apply_event calls
+            // (ENCOUNTER_EVENT_TYPES) this turn — the resolver already emitted the
+            // authoritative events above, so honoring the model's duplicates would
+            // double-apply the damage / double-advance the turn (RESEARCH Pitfall 3,
+            // T-08-04). Belt-and-suspenders with D-07 directive suppression: don't
+            // ask (serverResolved), and don't honor if asked anyway (this drop).
+            // Non-combat turns pass it falsy → Phase 07 behavior unchanged.
+            ...(_resolver !== null && { suppressCombatMutations: true }),
             recordUsage: async (usage) => {
               await recordUsage({
                 userId,
@@ -419,6 +517,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               }
             },
           });
+
+          // 6v-safetynet (Phase 08 / D-06 / RESEARCH Open Q3). On a HIT the resolver
+          // returns a `damageRequest` ("Tira <die>+<bonus> per danni a <monster>").
+          // The narration-only LLM is supposed to surface that 🎲 damage button, but a
+          // weaker local model may omit it. SAFETY NET: if the resolver wants a damage
+          // request AND the model's output carries no damage roll-request, append the
+          // resolver's damageRequest to the narration so the button reliably appears.
+          //
+          // Detection uses parseRollRequests — the SAME parser the client renders
+          // buttons from (RESEARCH Open Q3) — NOT an ad-hoc regex. Note parseRollRequests
+          // has a built-in filter that DROPS damage requests whenever an attack request
+          // is also present in the same text; that only strengthens this net (if the
+          // model emitted both an attack and a damage ask, `.some(damage)` is false and
+          // we still append the authoritative damage request). `_finalNarration` is then
+          // used for BOTH addressee detection and persistence so they stay consistent
+          // (today's invariant). When the resolver did not fire, this is a no-op and the
+          // text is byte-identical to vaultResult.finalText.
+          let _finalNarration = vaultResult.finalText;
+          if (
+            _resolver?.damageRequest &&
+            !parseRollRequests(_finalNarration).some((r) => r.kind === 'damage')
+          ) {
+            const _sep = _finalNarration.trim() ? '\n\n' : '';
+            _finalNarration = `${_finalNarration}${_sep}${_resolver.damageRequest}`;
+          }
 
           // 7v. Post-loop: turn-advance + persist master message + memory extraction.
           // Logic is identical to the baked path (same multiplayer semantics, same
@@ -479,7 +602,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 // Fallback: existing detectAddressee / computeTurnAdvance path,
                 // unchanged. This runs for non-combat sessions, inactive
                 // encounters, and on any error in the combat block above.
-                const addressee = detectAddressee(vaultResult.finalText, party);
+                const addressee = detectAddressee(_finalNarration, party);
                 const decision = computeTurnAdvance({
                   isBegin,
                   beforeCpcId: authorCharacterId,
@@ -499,8 +622,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             await tx.update(sessions).set({ turnSeq: sql`turn_seq + 1` }).where(eq(sessions.id, sessionId));
           });
 
-          if (vaultResult.finalText.trim()) {
-            const [mm] = await db.insert(sessionMessages).values({ sessionId, role: 'master', content: vaultResult.finalText }).returning();
+          if (_finalNarration.trim()) {
+            const [mm] = await db.insert(sessionMessages).values({ sessionId, role: 'master', content: _finalNarration }).returning();
             notifySession(sessionId, { type: 'message', messageId: mm!.id }).catch(
               (e) => console.warn('notifySession(message) failed:', e instanceof Error ? e.message : String(e)),
             );
