@@ -235,8 +235,11 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
+**Wave 1**
 - [ ] 08-01-PLAN.md — Pure `resolveCombat` (to-hit/damage/miss, nat-20/nat-1, default AC 12 / die 1d6, `per danni a` round-trip, null on edges) + headless REQ-039 unit suite [Wave 1]
 - [ ] 08-02-PLAN.md — `suppressCombatMutations` narration-only drop in `loop.ts` + D-07 `serverResolved` directive suppression in `turn-directive.ts` (no-double-apply guards) + test extensions [Wave 1]
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 08-03-PLAN.md — Vault-branch wiring in `route.ts` (early read, gate, server-side emit, narration-only loop, safety-net append, 07-03 handoff preserved) + regression + operator smoke [Wave 2]
 
 ---
