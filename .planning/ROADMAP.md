@@ -209,7 +209,7 @@ Plans:
 
 ## Phase 08: Server-Side Combat Resolver (v1 Player Attacks)
 
-**Status:** NOT designed yet — research + decisions captured; brainstorm → spec → execute in a dedicated session.
+**Status:** DESIGNED (spec approved 2026-05-29) — execution deferred to a dedicated session. Spec: `docs/superpowers/specs/2026-05-29-combat-resolver-v1-design.md`. Next: `/gsd-plan-phase 08 --prd docs/superpowers/specs/2026-05-29-combat-resolver-v1-design.md`.
 
 **Goal:** Move combat MECHANICAL RESOLUTION server-side (the fix for the local-model ceiling found in the D2 smoke: models start combat + ask for rolls but free-narrate outcomes, ignore the rolled number, never apply HP/turns). When a roll-result arrives during an active vault encounter, the turn route resolves deterministically (roll → AC → hit/miss → damage → `monster_hp_change` → `turn_advance`) reusing the engine math, and the LLM only NARRATES the server-determined outcome. **v1 scope = player attacks** (clean: the rolled total already carries the PC's bonus, so only the monster AC is needed — no PC-stats bridge).
 
