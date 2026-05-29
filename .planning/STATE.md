@@ -5,7 +5,7 @@ milestone_name: milestone
 status: in_progress
 last_updated: "2026-05-29T00:25:00.000Z"
 progress:
-  total_phases: 7
+  total_phases: 8
   completed_phases: 2
   total_plans: 8
   completed_plans: 25
@@ -19,6 +19,7 @@ progress:
 - Phase 5 added: Vault Ability Checks (Manual Rolls)
 - Phase 6 added: Vault Combat State Foundation (D1)
 - Phase 7 added: Vault Combat Playable (D2)
+- Phase 8 added: Server-Side Combat Resolver (v1 Player Attacks) — captured as groundwork, not yet designed
 
 ### Phase 05 — Plan 01 Execution (2026-05-28)
 

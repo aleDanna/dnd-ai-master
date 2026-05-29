@@ -207,4 +207,34 @@ Plans:
 - [x] 07-04-PLAN.md — _set-source-of-truth.ts script; One Piece sourceOfTruth:'vault'; (smoke deferred to 07-05 — combat blocked by history-anchoring)
 - [x] 07-05-PLAN.md — per-turn anti-anchoring directive (2nd-person POV + use apply_event for combat + ask for rolls) appended after history; fixes history-anchoring tool-suppression (validated: clean→combat_start, narration-history→0 tools, +directive→combat_start); re-smoke
 
+## Phase 08: Server-Side Combat Resolver (v1 Player Attacks)
+
+**Status:** NOT designed yet — research + decisions captured; brainstorm → spec → execute in a dedicated session.
+
+**Goal:** Move combat MECHANICAL RESOLUTION server-side (the fix for the local-model ceiling found in the D2 smoke: models start combat + ask for rolls but free-narrate outcomes, ignore the rolled number, never apply HP/turns). When a roll-result arrives during an active vault encounter, the turn route resolves deterministically (roll → AC → hit/miss → damage → `monster_hp_change` → `turn_advance`) reusing the engine math, and the LLM only NARRATES the server-determined outcome. **v1 scope = player attacks** (clean: the rolled total already carries the PC's bonus, so only the monster AC is needed — no PC-stats bridge).
+
+**Scope (v1 — to be refined in the design session):**
+- Server-side resolver hooked in the turn route BEFORE `runVaultToolLoop`, gated on `vaultMutations && encounter.active && isRollResult(playerMessage)`
+- Parse the roll-result label → kind (to-hit vs damage) + target name → monster id (match `EncounterState.monsters`)
+- To-hit: rolled total vs monster AC (+ default fallback) → hit/miss; on hit → damage roll → `monster_hp_change`; then `turn_advance`
+- Reuse `src/engine/{combat,dice,modifiers}` math (pure, crypto-RNG); LLM narrates the outcome via a directive
+- Groundwork ref: `docs/superpowers/specs/2026-05-29-server-side-combat-resolver-groundwork.md` (reusable math file:lines, hook point, data wrinkle, open decisions)
+
+**Decomposition:** v1 player attacks (this phase) · v2 monster turns (PC-AC Postgres bridge + monster attack data) · v3 polish (conditions, multi-attack, crit/resistances, auto `combat_end`).
+
+**Success criteria (provisional — finalize in design):**
+- ✓ A player attack roll during combat is resolved server-side (hit/miss vs monster AC) — the model no longer decides the outcome
+- ✓ On a hit, damage is applied via `monster_hp_change` and the monster's HP drops in the `CombatTracker`
+- ✓ The turn advances (`turn_advance`) after the player's action resolves
+- ✓ The LLM narrates the server-determined outcome (no contradiction between narration and mechanics)
+
+**Depends on:** Phase 07
+
+**Requirements:** REQ-039
+
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (brainstorm from the groundwork doc, then /gsd-plan-phase 08)
+
 ---
