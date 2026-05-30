@@ -248,7 +248,7 @@ Plans:
 
 **Requirements:** No REQ-IDs mapped; tracked against the 16 LOCKED decisions D-01..D-16 in 09-CONTEXT.md (this phase's de-facto requirement set).
 **Depends on:** Phase 08
-**Plans:** 3/6 plans executed
+**Plans:** 5/6 plans executed
 
 Plans:
 
@@ -258,8 +258,8 @@ Plans:
 - [x] 09-03-PLAN.md — Isolated SRD bestiary attack-prose parser via the path-safe vault reader (D-04, D-07; non-blocking to the smoke)
 
 **Wave 2** *(parallel, autonomous)*
-- [ ] 09-04-PLAN.md — `runMonsterTurnLoop` driver (3-level stat fallback, stop conditions, safety cap, in-memory event application) + single combined Italian narration directive (D-03, D-03c, D-14, D-15)
-- [ ] 09-05-PLAN.md — Advertise `cr` in the apply_event tool/prompt + `monsterResolved` directive suppression (D-08, D-16; REQ-022 byte-stability preserved)
+- [x] 09-04-PLAN.md — `runMonsterTurnLoop` driver (3-level stat fallback, stop conditions, safety cap, in-memory event application) + single combined Italian narration directive (D-03, D-03c, D-14, D-15)
+- [x] 09-05-PLAN.md — Advertise `cr` in the apply_event tool/prompt + `monsterResolved` directive suppression (D-08, D-16; REQ-022 byte-stability preserved)
 
 **Wave 3** *(has checkpoint)*
 - [ ] 09-06-PLAN.md — Route vault-branch wiring: monster-loop hook, PC-AC/PC-HP maps, server-side emission, suppression + combined narration, 07-03 handoff preserved + operator smoke (D-01, D-02, D-12, D-13, D-16)
