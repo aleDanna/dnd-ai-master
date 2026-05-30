@@ -38,7 +38,14 @@ completed: 2026-05-30
 
 ## STATUS: AUTONOMOUS WORK COMPLETE — CHECKPOINT PENDING
 
-This plan is `autonomous: false`. Task 1 (the route wiring) is **done + committed** (`b3f9c0e`). Task 2 is a `checkpoint:human-verify` operator smoke (live One Piece campaign, custom monster "Veyra") that the executor cannot perform headlessly. **The plan is NOT yet complete** — it awaits the operator typing "approved" (or reporting divergence), after which a continuation agent finalizes.
+This plan is `autonomous: false`. Task 1 (the route wiring) is **done + committed** (`47ef812`). Task 2 is a `checkpoint:human-verify` operator smoke (live One Piece campaign, custom monster "Veyra") that the executor cannot perform headlessly. **The plan is NOT yet complete** — it awaits the operator typing "approved" (or reporting divergence), after which a continuation agent finalizes.
+
+## Task Commits
+
+1. **Task 1: route wiring (D-01..D-16)** — `47ef812` (feat) — `src/app/api/sessions/[id]/turn/route.ts` (+146 / −6).
+2. **Task 2: operator smoke** — PENDING (checkpoint:human-verify; no code).
+
+**Plan metadata (this SUMMARY + ROADMAP):** `f4a20ab` (docs).
 
 ## Performance
 
@@ -65,11 +72,11 @@ This plan is `autonomous: false`. Task 1 (the route wiring) is **done + committe
 ## Verification (Task 1 — automated)
 
 - `npx tsc --noEmit` — **EXIT 0, clean** (project-wide).
-- `npx vitest run tests/app/api/sessions/[id]/turn/monster-turns.test.ts tests/app/api/sessions/[id]/turn/combat-resolver.test.ts tests/ai/master/vault/turn-directive.test.ts` — **199 passed / 0 failed (EXIT 0)** (the plan's `<verify>` triad: the code this task wires + the v1 resolver + the directive regression).
-- `npx vitest run "tests/app/api/sessions/[id]/turn/"` — **149 passed / 0 failed (EXIT 0)** (full turn/ directory, 4 files).
-- `npx vitest run tests/ai/master/vault` — **728 passed / 0 failed (EXIT 0)**.
-- `npx vitest run tests/sessions` — **859 passed / 0 failed (EXIT 0)**.
-- No new failures introduced. The 4 documented pre-existing failures (applicator inventory, scene-image-coalesce, tts-coalesce, preferences-local-validation) live in `tests/api/*` + `tests/lib/*` — outside this plan's scope (logged in `.planning/phases/09-v2-monster-turns/deferred-items.md`).
+- `npx vitest run tests/app/api/sessions/[id]/turn/monster-turns.test.ts tests/app/api/sessions/[id]/turn/combat-resolver.test.ts tests/ai/master/vault/turn-directive.test.ts` — **3 files / 122 passed / 0 failed (EXIT 0)** (the plan's `<verify>` triad: the code this task wires + the v1 resolver + the directive regression).
+- `npx vitest run "tests/app/api/sessions/[id]/turn/"` — **3 files / 96 passed / 0 failed (EXIT 0)** (full turn/ directory: combat-resolver, monster-bestiary, monster-turns).
+- `npx vitest run tests/ai/master/vault` — **16 passed | 1 skipped files / 732 passed | 21 skipped / 0 failed (EXIT 0)**.
+- `npx vitest run tests/sessions` — **17 passed | 4 skipped files / 219 passed | 26 skipped / 1 FAILED (EXIT 1)**. The single failure is `tests/sessions/applicator.test.ts > applyMutations > add_inventory + remove_inventory + set_equipped` — the EXACT pre-existing gp-stack (qty 60 vs 50) failure documented in `deferred-items.md` (last touched `7ad8533`, pre-Phase-08, inventory — NOT combat). Verified independent of this change: my commit `47ef812` touches ONLY `route.ts` (`applicator.ts` not in the diff). Per the deviation scope-boundary, NOT fixed (out of scope).
+- No NEW failures introduced in the combat/turn/vault suites. The 4 documented pre-existing failures (applicator inventory, scene-image-coalesce, tts-coalesce, preferences-local-validation) are outside this plan's scope (logged in `.planning/phases/09-v2-monster-turns/deferred-items.md`).
 - Acceptance-criteria greps (all PASS): `runMonsterTurnLoop(` (1 in vault branch); `monsterResolved:` (passed to buildTurnDirective); `charactersTable.ac` (PC-AC bridge select); `_resolver !== null || _monsterLoopRan` (extended suppress gate); `dispatchVaultTool('apply_event'` (loop emit); `enforceResolvedNarration` bound under `if (_monsterLoopRan)`.
 
 ## Decisions Made
@@ -129,10 +136,11 @@ No new security surface beyond the plan's threat_model. No stubs.
 
 - `src/app/api/sessions/[id]/turn/route.ts` — FOUND on disk (modified).
 - `.planning/phases/09-v2-monster-turns/09-06-SUMMARY.md` — FOUND on disk.
-- Commit `b3f9c0e` (feat 09-06 route wiring) — FOUND in git log; touches ONLY `route.ts`; no deletions.
+- Commit `47ef812` (feat 09-06 route wiring) — FOUND in git log; touches ONLY `route.ts`; no deletions.
+- Commit `f4a20ab` (docs 09-06 SUMMARY + ROADMAP) — FOUND in git log.
 - Consumed exports verified present: `runMonsterTurnLoop` + `buildMonsterLoopNarrationDirective` (monster-turns.ts), `getBestiaryAttackStats` (monster-bestiary.ts), `monsterResolved?: boolean` (turn-directive.ts).
 - `npx tsc --noEmit` → EXIT 0, clean.
-- Plan `<verify>` triad → 199/199 passed, EXIT 0. Full turn/ → 149/149. Vault → 728/728. Sessions → 859/859.
+- Plan `<verify>` triad → 122/122 passed, EXIT 0. Full turn/ → 96/96. Vault → 732/732. Sessions → 219 passed, 1 pre-existing-applicator FAIL (documented; out of scope; `applicator.ts` not in my diff).
 - All 6 acceptance-criteria greps → PASS.
 - Scope: exactly ONE source file (`route.ts`) modified; no sibling-plan files touched; no tracked-file deletions.
 
