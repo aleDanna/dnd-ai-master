@@ -60,7 +60,7 @@ Real hashes, confirmed via `git log`.
 
 **Plan metadata:** `18dccf1` (initial) then re-committed (this SUMMARY + ROADMAP).
 
-**Post-GREEN test-fixture fix:** `5f9c4e2` `test(09-04): fix seed-fragile last-PC-KO fixture (seed 3 -> 0)` — see Deviations #2.
+**Post-GREEN test-fixture fixes:** `3290572` `test(09-04): fix seed-fragile last-PC-KO fixture (seed 3 -> 0)` then `a85a64b` `test(09-04): use seed 2 (verified hitting) for last-PC-KO fixture` — see Deviations #2.
 
 _Both `tdd="true"` tasks share the same two interdependent files (the loop calls the directive builder), so the cycle is one RED commit (all failing cases) → one GREEN commit (full implementation), mirroring the sanctioned 09-02 shared-file approach. No REFACTOR pass needed._
 
@@ -105,7 +105,7 @@ _(Not deviations, but recorded for honesty: two genuine fixes landed during the 
 
 ## Issues Encountered
 
-- **Transient tool-output instability during execution.** For part of the run, Bash stdout and piped `cat`/`grep` output were intermittently stale or truncated (the harness occasionally returned cached pipe contents, and some Read calls returned "Wasted call"). This produced a few misleading "failing" snapshots that contradicted the actual code. Resolved by routing all verification through file writes (vitest `--outputFile` JSON, `appendFileSync` traces) read back with the Read tool, which were reliable. A temporary in-source trace + a throwaway `_probe.test.ts` were used to confirm the true loop behavior, then BOTH were removed (verified: `PROBE_GONE`, no source instrumentation remains, working tree clean of stray files). Final authoritative result: vitest JSON `success=true total=54 passed=54`; full `turn/` dir 139/139; `tsc --noEmit` exit 0.
+- **Transient tool-output instability during execution.** For part of the run, Bash stdout and piped `cat`/`grep` output were intermittently stale or truncated (the harness occasionally returned cached pipe contents, and some Read calls returned "Wasted call"). This produced a few misleading "failing" snapshots that contradicted the actual code. Resolved by routing all verification through file writes (vitest `--outputFile` JSON, `appendFileSync` traces) read back with the Read tool, which were reliable. A temporary in-source trace + a throwaway `_probe.test.ts` were used to confirm the true loop behavior, then BOTH were removed (verified: `PROBE_GONE`, no source instrumentation remains, working tree clean of stray files). Critically, this instability initially MASKED a genuine seed-fragile-fixture bug (Deviation #2): an early corrupted snapshot showed the last-PC-KO test passing when a clean machine-readable JSON run showed it failing. That is why all final verification uses `vitest --outputFile` JSON, never piped stdout. Final authoritative result: vitest JSON `success=true total=54 passed=54`; full `turn/` dir 96/96; `tsc --noEmit` exit 0.
 
 ## TDD Gate Compliance
 
@@ -138,7 +138,7 @@ No new security surface beyond the plan's threat_model. No stubs.
 - `.planning/phases/09-v2-monster-turns/09-04-SUMMARY.md` — FOUND on disk.
 - Commit `97b2c7d` (test 09-04 RED) — FOUND in git log.
 - Commit `64e0bb3` (feat 09-04 GREEN) — FOUND in git log.
-- Commit `3290572` then `8e3c9d1` (test 09-04 seed-fixture fixes) — FOUND in git log.
+- Commits `3290572` then `a85a64b` (test 09-04 seed-fixture fixes) — FOUND in git log.
 - `npx vitest run tests/app/api/sessions/[id]/turn/monster-turns.test.ts` → success=true, 54/54 passed, exit 0 (authoritative JSON `--outputFile`).
 - Full `turn/` dir → 96/96 passed.
 - `npx tsc --noEmit` → exit 0, clean.
