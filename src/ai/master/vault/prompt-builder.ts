@@ -205,6 +205,8 @@ function combatLifecycleBlock(): string[] {
   lines.push('');
   lines.push('For a campaign-specific boss not in the bestiary: invent appropriate stats and put them');
   lines.push('inline in the `monster_spawn` payload — no handbook file needed for custom monsters.');
+  lines.push('Include `cr` (Challenge Rating, a number like 1, 3, 5) in the payload as a difficulty');
+  lines.push('hint — the server uses it to set the monster\'s attack strength deterministically.');
   lines.push('');
   lines.push('### Turn rule');
   lines.push('');
