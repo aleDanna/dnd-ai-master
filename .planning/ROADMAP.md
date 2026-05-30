@@ -248,12 +248,12 @@ Plans:
 
 **Requirements:** No REQ-IDs mapped; tracked against the 16 LOCKED decisions D-01..D-16 in 09-CONTEXT.md (this phase's de-facto requirement set).
 **Depends on:** Phase 08
-**Plans:** 6 plans in 3 waves
+**Plans:** 1/6 plans executed
 
 Plans:
 
 **Wave 1** *(parallel, autonomous)*
-- [ ] 09-01-PLAN.md — Additive `cr?` on the monster_spawn event + validator + projector propagation into EncounterState.monsters[] (D-08; closes state-gap 2)
+- [x] 09-01-PLAN.md — Additive `cr?` on the monster_spawn event + validator + projector propagation into EncounterState.monsters[] (D-08; closes state-gap 2)
 - [ ] 09-02-PLAN.md — CR->stats table + named-constant defaults + pure `resolveMonsterTurn` (v1 hit rule, injected RNG, random live-PC target) (D-05, D-06, D-09, D-10, D-11)
 - [ ] 09-03-PLAN.md — Isolated SRD bestiary attack-prose parser via the path-safe vault reader (D-04, D-07; non-blocking to the smoke)
 
