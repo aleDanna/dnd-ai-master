@@ -538,16 +538,21 @@ describe('runMonsterTurnLoop — last-PC KO stops the loop + party-down (D-14)',
         monster({ id: 'm3', name: 'Bugbear', cr: 1 }),
       ],
     );
-    // A bestiary stub returning a large attack profile guarantees the hit + kill
-    // (attackBonus 100 vs AC 1 → always hits; 20d6+50 >> 5 HP → always kills).
+    // A bestiary stub returning a large attack profile + a seed whose first d20
+    // is NOT a natural 1 guarantees the hit + kill (attackBonus 100 vs AC 1 with
+    // natural != 1 → hits; 20d6+50 >> 5 HP → always kills). Seed 0's first attack
+    // rolls a natural 14 (a hit); a natural-1 seed would auto-miss and the PC
+    // would survive (correct loop behavior, but not this test's KO scenario).
     const BIG = async () => ({ attackBonus: 100, damageDice: '20d6+50' });
     const out = await runMonsterTurnLoop({
       encounter: enc,
       pcAcById: new Map([['pc-1', 1]]),
       pcHpById: new Map([['pc-1', 5]]),
-      rng: makeSeededRng(3),
+      rng: makeSeededRng(0),
       bestiaryLookup: BIG,
     });
+    // The lead monster's attack must have LANDED for this KO scenario to hold.
+    expect(out.results[0]!.hit).toBe(true);
     expect(out.stopReason).toBe('party-down');
     expect(out.partyDown).toBe(true);
     // Only ONE monster acted — the loop stopped after the KO, it did not let the
