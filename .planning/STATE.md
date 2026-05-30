@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: milestone_complete
-last_updated: "2026-05-29T21:18:38.000Z"
+last_updated: "2026-05-30T16:18:33.775Z"
 progress:
-  total_phases: 8
+  total_phases: 9
   completed_phases: 3
   total_plans: 11
-  completed_plans: 27
-  percent: 38
+  completed_plans: 28
+  percent: 100
 ---
 
 ## Accumulated Context
@@ -20,6 +20,7 @@ progress:
 - Phase 6 added: Vault Combat State Foundation (D1)
 - Phase 7 added: Vault Combat Playable (D2)
 - Phase 8 added: Server-Side Combat Resolver (v1 Player Attacks) — captured as groundwork, not yet designed
+- Phase 9 added: v2 Monster Turns (PC-AC Postgres bridge + monster attack data; v2 slice of the combat-resolver decomposition)
 
 ### Phase 05 — Plan 01 Execution (2026-05-28)
 
