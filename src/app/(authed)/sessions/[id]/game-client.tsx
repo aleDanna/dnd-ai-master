@@ -67,6 +67,13 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     setTurnStatus,
     clearTurnError,
     finalizedSeq,
+    // Refetches the session snapshot (`GET /api/sessions/:id` -> setSnapshot).
+    // This is the ONLY thing that refreshes the combat slice (turn pointer,
+    // PC/monster HP, actors). The SSE-drop safety nets below must call it,
+    // otherwise the combat tracker goes stale on a dropped `message` event —
+    // critical on vault sessions, where `message` is the sole tracker refresh
+    // (the server never emits a `state` SSE event on the vault path).
+    refetch,
     clearStreamingMessage,
     ttsPending,
     ttsErrors,
@@ -226,8 +233,11 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
       if (data.messages) setMessages(data.messages);
       if (data.character) setCharacter(data.character);
     });
+    // Also refresh the session snapshot so the combat tracker (turn pointer,
+    // HP) stays in sync — `fetchSessionData` only covers messages + character.
+    void refetch();
     return () => { active = false; };
-  }, [finalizedSeq, fetchSessionData]);
+  }, [finalizedSeq, fetchSessionData, refetch]);
 
   // POST to /turn. Returns true on success, false on error.
   const postTurn = React.useCallback(async (payload: { message?: string; begin?: boolean }): Promise<boolean> => {
@@ -280,6 +290,11 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
         if (masterCount > baselineMasterCount) {
           setMessages(data.messages);
           if (data.character) setCharacter(data.character);
+          // The dropped `message` event also skipped its snapshot refetch, so
+          // the combat slice (turn pointer, PC/monster HP, actors) is stale.
+          // `fetchSessionData` above only refreshes messages + character —
+          // refetch the snapshot too so the combat tracker catches up.
+          void refetch();
           // If chunks had arrived but the final `message` event got dropped,
           // streamingMessage would still be non-null, keeping busy=true and
           // the composer locked. Clearing it here releases that gate now
@@ -300,7 +315,7 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
         if (Date.now() - startedAt > 180_000) clearSafetyPoll();
       }).catch(() => { /* network blip — keep polling */ });
     }, 3000);
-  }, [messages, fetchSessionData, clearSafetyPoll, clearStreamingMessage]);
+  }, [messages, fetchSessionData, clearSafetyPoll, clearStreamingMessage, refetch]);
 
   React.useEffect(() => () => clearSafetyPoll(), [clearSafetyPoll]);
 
