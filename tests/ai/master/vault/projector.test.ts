@@ -2555,3 +2555,104 @@ describe('projector', () => {
     });
   });
 });
+
+// =====================================================================
+// D-08 (Plan 09-01): cr propagation through applyEncounterEvent into
+// EncounterState.monsters[].cr — additive, sourced only from the
+// server-controlled monster_spawn event; cr-less logs replay byte-stable.
+// Appended as a top-level describe (this file had no encounter-reducer
+// tests on disk — the plan's read_first anchors were stale; the reducer
+// is otherwise covered in combat-reducer.test.ts). See 09-01-SUMMARY.
+// =====================================================================
+describe('applyEncounterEvent — monster_spawn cr propagation (D-08)', () => {
+  // Build a monster_spawn event without importing the VaultEvent union
+  // (keeps this appended block self-contained against the existing imports).
+  type EncEvent = Parameters<
+    typeof import('@/ai/master/vault/projector')['applyEncounterEvent']
+  >[1];
+  const spawn = (payload: Record<string, unknown>): EncEvent =>
+    ({ type: 'monster_spawn', payload } as unknown as EncEvent);
+
+  it('copies cr into the monsters[] entry when provided', async () => {
+    const { projector } = await importWithRoot('/tmp/test-vault-cr');
+    const s = projector.applyEncounterEvent(
+      projector.INITIAL_ENCOUNTER_STATE,
+      spawn({ id: 'veyra-1', name: 'Veyra', hpMax: 30, cr: 3 }),
+    );
+    expect(s.monsters[0]!.cr).toBe(3);
+  });
+
+  it('copies a fractional cr (CR 1/4)', async () => {
+    const { projector } = await importWithRoot('/tmp/test-vault-cr');
+    const s = projector.applyEncounterEvent(
+      projector.INITIAL_ENCOUNTER_STATE,
+      spawn({ id: 'rat-1', name: 'Giant Rat', hpMax: 7, cr: 0.25 }),
+    );
+    expect(s.monsters[0]!.cr).toBe(0.25);
+  });
+
+  it('copies cr alongside ac and initiativeBonus', async () => {
+    const { projector } = await importWithRoot('/tmp/test-vault-cr');
+    const s = projector.applyEncounterEvent(
+      projector.INITIAL_ENCOUNTER_STATE,
+      spawn({ id: 'veyra-1', name: 'Veyra', hpMax: 30, ac: 15, initiativeBonus: 2, cr: 5 }),
+    );
+    expect(s.monsters[0]!.ac).toBe(15);
+    expect(s.monsters[0]!.initiativeBonus).toBe(2);
+    expect(s.monsters[0]!.cr).toBe(5);
+  });
+
+  it('produces no cr key when cr is absent (back-compat entry shape)', async () => {
+    const { projector } = await importWithRoot('/tmp/test-vault-cr');
+    const s = projector.applyEncounterEvent(
+      projector.INITIAL_ENCOUNTER_STATE,
+      spawn({ id: 'goblin-1', name: 'Goblin', hpMax: 7 }),
+    );
+    // Byte-identical to the pre-change entry shape — no spurious cr key.
+    expect(s.monsters[0]).toEqual({
+      id: 'goblin-1',
+      name: 'Goblin',
+      hpCurrent: 7,
+      hpMax: 7,
+      isAlive: true,
+      conditions: [],
+    });
+    expect('cr' in s.monsters[0]!).toBe(false);
+  });
+
+  it('replays a cr-less event sequence byte-identical to the pre-change snapshot', async () => {
+    const { projector } = await importWithRoot('/tmp/test-vault-cr');
+    const events: EncEvent[] = [
+      { type: 'combat_start', payload: {} } as unknown as EncEvent,
+      spawn({ id: 'goblin-1', name: 'Goblin', hpMax: 7 }),
+      {
+        type: 'initiative_set',
+        payload: { order: [{ actorId: 'goblin-1', initiative: 12 }] },
+      } as unknown as EncEvent,
+      { type: 'turn_advance', payload: {} } as unknown as EncEvent,
+    ];
+    let enc = projector.INITIAL_ENCOUNTER_STATE;
+    for (const ev of events) {
+      enc = projector.applyEncounterEvent(enc, ev);
+    }
+    // cr is purely additive: a cr-less log must serialize exactly as before —
+    // no spurious cr key anywhere in the tree (proves no migration needed).
+    const expected = {
+      active: true,
+      round: 1,
+      currentIdx: 0,
+      turnOrder: [{ actorId: 'goblin-1', initiative: 12 }],
+      monsters: [
+        {
+          id: 'goblin-1',
+          name: 'Goblin',
+          hpCurrent: 7,
+          hpMax: 7,
+          isAlive: true,
+          conditions: [],
+        },
+      ],
+    };
+    expect(JSON.stringify(enc)).toBe(JSON.stringify(expected));
+  });
+});
