@@ -62,7 +62,7 @@ Atomic commits (real hashes, confirmed via `git log`). Note the non-canonical or
 2. **Task 2 — cr propagation in projector reducer (source)** — `303afde` (feat)
 3. **Task 1 — cr validation tests** — `b59d389` (test)
 4. **Task 2 — cr propagation tests** — `a79b7b5` (test)
-5. **Task 2 — byte-stable replay expected `round` fix (1 -> 2)** — `31ff8df` (fix)
+5. **Task 2 — byte-stable replay expected `round` fix (1 -> 2)** — `9d38933` (fix)
 
 **Plan metadata (initial, contained placeholder hashes + premature claims — superseded):** `7518344` (docs)
 **Plan metadata (this corrected SUMMARY + STATE entry):** see final docs commit returned by the executor.
@@ -87,9 +87,9 @@ Atomic commits (real hashes, confirmed via `git log`). Note the non-canonical or
 - **Found during:** Task 1 (and again Task 2), at the test-writing step.
 - **Issue:** The plan instructed editing existing anchors in the test files that **do not exist on disk**. Task 1's `<action>` referenced "the existing `monster_spawn` valid/invalid cases" in `events-schema.test.ts`, but that file has **no `monster_spawn` validateEvent tests at all** (only the type-name appears in the 34-type list). Task 2's `<read_first>` cited `projector.test.ts` reducer/replay conventions for `applyEncounterEvent`, but that file has **zero** `applyEncounterEvent` / `INITIAL_ENCOUNTER_STATE` references — the encounter reducer is actually tested in `tests/ai/master/vault/combat-reducer.test.ts`. My initial anchor-based `Edit` calls therefore silently failed to match (the test files were never modified), while the source `Edit`s succeeded and were committed first (`f97403d`, `303afde`).
 - **Fix:** Honored the plan's `files_modified` and `must_haves.artifacts` (which name `events-schema.test.ts` and `projector.test.ts` as the test homes) by appending the cr tests as **new top-level `describe` blocks** to those exact files, using each file's real in-file helpers (`validateEvent` import; `importWithRoot` + `projector.applyEncounterEvent` / `projector.INITIAL_ENCOUNTER_STATE`). No production source was changed by this fix.
-- **Sub-fix [Rule 1 - test bug]:** The projector byte-stable fixture asserted `round: 1`, but `turn_advance` over a length-1 `turnOrder` correctly wraps to `round: 2`. The appended test caught this as a genuine failure; corrected the expected snapshot to `round: 2` in `31ff8df` (the cr-additivity assertion — no spurious `cr` key — was already satisfied; only the unrelated `round` field was wrong).
+- **Sub-fix [Rule 1 - test bug]:** The projector byte-stable fixture asserted `round: 1`, but `turn_advance` over a length-1 `turnOrder` correctly wraps to `round: 2`. The appended test caught this as a genuine failure; corrected the expected snapshot to `round: 2` in `9d38933` (the cr-additivity assertion — no spurious `cr` key — was already satisfied; only the unrelated `round` field was wrong).
 - **Verification:** Both suites pass (331 tests across the two files; full vault dir 725 passed / 0 failed). Ran an explicit **negative control**: temporarily removing `if (cr !== undefined) monster.cr = cr;` from `projector.ts` makes the cr-propagation tests fail (4 fail); restoring it (byte-identical to committed HEAD) makes them pass — proving the tests are non-vacuous and genuinely bind to the reducer copy.
-- **Committed in:** `b59d389` (Task 1 tests), `a79b7b5` (Task 2 tests), `31ff8df` (round fix).
+- **Committed in:** `b59d389` (Task 1 tests), `a79b7b5` (Task 2 tests), `9d38933` (round fix).
 
 ---
 
@@ -111,7 +111,7 @@ Atomic commits (real hashes, confirmed via `git log`). Note the non-canonical or
 
 ## TDD Gate Compliance
 
-Per-task `tdd="true"`. Both feat and test commits exist for each task (`f97403d`+`b59d389` for Task 1; `303afde`+`a79b7b5`+`31ff8df` for Task 2). **Caveat:** the canonical RED-before-feat order was broken by the stale-anchor defect (tests committed after source); validity was instead proven by negative control. Documented honestly under Issues Encountered.
+Per-task `tdd="true"`. Both feat and test commits exist for each task (`f97403d`+`b59d389` for Task 1; `303afde`+`a79b7b5`+`9d38933` for Task 2). **Caveat:** the canonical RED-before-feat order was broken by the stale-anchor defect (tests committed after source); validity was instead proven by negative control. Documented honestly under Issues Encountered.
 
 ## Threat Coverage
 
@@ -130,7 +130,7 @@ No new security surface introduced beyond the plan's threat_model. No stubs.
 ## Self-Check: PASSED
 
 - Files verified present: `09-01-SUMMARY.md`, `events-schema.ts`, `projector.ts`, `events-schema.test.ts`, `projector.test.ts`.
-- Commits verified in git (real hashes, confirmed via `git log`): `f97403d` (feat schema), `303afde` (feat projector), `b59d389` (test schema), `a79b7b5` (test projector), `31ff8df` (fix round).
+- Commits verified in git (real hashes, confirmed via `git log`): `f97403d` (feat schema), `303afde` (feat projector), `b59d389` (test schema), `a79b7b5` (test projector), `9d38933` (fix round).
 
 ---
 *Phase: 09-v2-monster-turns*
