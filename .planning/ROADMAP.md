@@ -232,7 +232,7 @@ Plans:
 
 **Requirements:** REQ-039
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 **Wave 1**
@@ -240,6 +240,6 @@ Plans:
 - [x] 08-02-PLAN.md — `suppressCombatMutations` narration-only drop in `loop.ts` + D-07 `serverResolved` directive suppression in `turn-directive.ts` (no-double-apply guards) + test extensions [Wave 1]
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 08-03-PLAN.md — Vault-branch wiring in `route.ts` (early read, gate, server-side emit, narration-only loop, safety-net append, 07-03 handoff preserved) + regression + operator smoke [Wave 2]
+- [x] 08-03-PLAN.md — Vault-branch wiring in `route.ts` (early read, gate, server-side emit, narration-only loop, safety-net append, 07-03 handoff preserved) + regression + operator smoke [Wave 2]
 
 ---
