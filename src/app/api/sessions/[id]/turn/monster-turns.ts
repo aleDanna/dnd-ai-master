@@ -32,10 +32,11 @@
  *   - T-09-07 (Tampering): this function emits only the negative `delta`; the
  *     `hp_change` reducer clamps `max(0, hp+delta)` — HP never goes negative.
  */
-import type { EncounterState } from '@/ai/master/vault/projector';
+import { applyEncounterEvent, type EncounterState } from '@/ai/master/vault/projector';
 import type { VaultEvent } from '@/ai/master/vault/events-schema';
 import { rollD20, rollDamage } from '@/engine/dice';
 import { defaultRng, type Rng } from '@/engine/rand';
+import { getBestiaryAttackStats } from '@/app/api/sessions/[id]/turn/monster-bestiary';
 
 /**
  * D-06 named-constant default attack profile, mirroring v1's
@@ -230,4 +231,261 @@ export function resolveMonsterTurn(input: {
     pcTargetId: pcId,
     events,
   };
+}
+
+/**
+ * D-03c safety iteration cap for the monster-turn loop — a NAMED constant, not
+ * an inline magic number. Bounds total loop iterations so a degenerate state
+ * (e.g. a `turn_advance` that never reaches a PC) cannot spin forever and hang
+ * the request (T-09-11 DoS). Reaching it stops the loop CLEANLY with
+ * `stopReason 'cap-reached'` and NEVER throws.
+ *
+ * 20 covers any realistic encounter: 5e initiative orders rarely exceed ~8
+ * combatants, and a single round of monster turns before the next PC turn is at
+ * most (turnOrder.length - 1) monster actions. 20 leaves generous headroom
+ * (RESEARCH Pattern 6 starting value; Claude's discretion — documented here).
+ */
+export const MONSTER_LOOP_SAFETY_CAP = 20;
+
+/**
+ * Why the loop stopped (D-03 + D-14):
+ *   - `pc-turn`     — the active actor is a live PC (or no live monster is
+ *                     active): the player acts next. The normal, common stop.
+ *   - `party-down`  — no live targetable PC remains (last-PC-KO, D-14): combat
+ *                     is lost for the party. The combined directive signals it.
+ *   - `cap-reached` — the safety cap bounded a degenerate loop (D-03c). Clean
+ *                     stop, never a throw.
+ */
+export type MonsterLoopStopReason = 'pc-turn' | 'party-down' | 'cap-reached';
+
+/**
+ * The accumulated result of one monster-turn loop pass.
+ *
+ *   - `results`           — the per-monster turn results, in turn order.
+ *   - `events`            — the concatenated VaultEvents from every result, in
+ *                           order, for the route (09-06) to persist. The single
+ *                           source of truth for HP/turn mutations (D-13); the
+ *                           loop itself only mutates in-memory working copies.
+ *   - `stopReason`        — why the loop stopped (see MonsterLoopStopReason).
+ *   - `partyDown`         — true iff the loop stopped because the last live PC
+ *                           was downed (D-14).
+ *   - `narrationDirective`— the ONE combined Italian 2nd-person directive (D-15)
+ *                           listing every outcome, or `null` when no monster
+ *                           acted. Built ONCE per loop, never per monster.
+ */
+export interface MonsterLoopResult {
+  results: MonsterTurnResult[];
+  events: VaultEvent[];
+  stopReason: MonsterLoopStopReason;
+  partyDown: boolean;
+  narrationDirective: string | null;
+}
+
+/** The Level-1 bestiary lookup seam (injectable for headless tests, T-09-22). */
+type BestiaryLookup = (name: string) => Promise<MonsterAttackStats | null>;
+
+/**
+ * Run consecutive monster turns over an in-memory EncounterState + PC-HP working
+ * copy until a stop condition fires (D-03, D-14).
+ *
+ * PURITY / DETERMINISM (D-10): the roll/target/stop/damage CORE is pure. The
+ * loop operates on `structuredClone(args.encounter)` and a copy of
+ * `args.pcHpById`, applies each result's events to the working encounter via the
+ * pure `applyEncounterEvent` (so the next iteration sees the advanced turn), and
+ * decrements the target PC's working HP manually (clamped at 0). It NEVER
+ * mutates the caller's inputs (T-09-13). All randomness routes through the
+ * injected `rng` (default `defaultRng`).
+ *
+ * THE ONLY I/O is the Level-1 bestiary read `getBestiaryAttackStats` (09-03),
+ * injectable via `bestiaryLookup` for headless tests. That read NEVER throws —
+ * it returns `null` on any miss/fs-error — and a `null` bestiary is the normal
+ * "use the fallback" signal: `getMonsterAttackStats` then falls through to the
+ * CR table (Level 2) / named-constant default (Level 3). So a bestiary read
+ * failure mid-loop is absorbed: the monster uses fallback stats and the loop
+ * CONTINUES — it never aborts (T-09-22).
+ *
+ * Per iteration (bounded by MONSTER_LOOP_SAFETY_CAP, D-03c):
+ *   1. Derive the active actor `turnOrder[currentIdx]`. If the encounter is
+ *      inactive or the actor is missing → stop defensively ('cap-reached'-class
+ *      degenerate guard, but reported as 'pc-turn' since no monster can act).
+ *   2. If the active actor is NOT a live monster (it is a PC, or a dead monster
+ *      the reducer will skip) → stop 'pc-turn'. (A dead active monster cannot
+ *      attack; advancing past it is the reducer's job at the next PC turn.)
+ *   3. Compute the live PC pool (PCs in pcAcById with working HP > 0). Empty →
+ *      stop 'party-down'.
+ *   4. Resolve the 3-level attack profile (bestiary → cr-table → default) and
+ *      `resolveMonsterTurn`. A `null` result (no live PC) → stop 'party-down'.
+ *   5. Accumulate the result + its events; on a hit, decrement the target PC's
+ *      working HP (clamped at 0). Apply the result's events to the working
+ *      encounter (advances the turn; the PC `hp_change` is a no-op there).
+ *   6. If every live PC is now downed → stop 'party-down'.
+ *
+ * NEVER throws — every degenerate path resolves to a stopReason.
+ */
+export async function runMonsterTurnLoop(args: {
+  encounter: EncounterState;
+  pcAcById: Map<string, number>;
+  pcHpById: Map<string, number>;
+  rng?: Rng;
+  /** Injectable Level-1 bestiary lookup (defaults to the fs-backed 09-03 read). */
+  bestiaryLookup?: BestiaryLookup;
+}): Promise<MonsterLoopResult> {
+  // Working copies — never mutate the caller's encounter or HP map (T-09-13).
+  let workEncounter = structuredClone(args.encounter);
+  const workHp = new Map(args.pcHpById);
+  const lookup = args.bestiaryLookup ?? getBestiaryAttackStats;
+
+  const results: MonsterTurnResult[] = [];
+  const events: VaultEvent[] = [];
+  let stopReason: MonsterLoopStopReason = 'cap-reached';
+  let partyDown = false;
+
+  // True iff at least one PC in pcAcById still has working HP > 0.
+  const anyLivePc = (): boolean => {
+    for (const pcId of args.pcAcById.keys()) {
+      if ((workHp.get(pcId) ?? 0) > 0) return true;
+    }
+    return false;
+  };
+
+  let iterations = 0;
+  while (iterations < MONSTER_LOOP_SAFETY_CAP) {
+    iterations++;
+
+    // (1) Active actor. Defensive: an inactive/empty encounter cannot have a
+    // monster acting → treat as a PC turn (nothing for the loop to do).
+    const active = workEncounter.turnOrder[workEncounter.currentIdx];
+    if (!workEncounter.active || !active) {
+      stopReason = 'pc-turn';
+      break;
+    }
+
+    // (2) The active actor must be a LIVE monster; otherwise it is a PC (or a
+    // dead monster the reducer skips) → the loop yields. D-14: if NO live PC
+    // remains at this point (the loop advanced onto a downed PC because the last
+    // live PC was just KO'd), this is a party-KO stop, not a normal PC turn — the
+    // combined directive must signal the wipe. Otherwise the player acts next.
+    const activeMonster = workEncounter.monsters.find(
+      (m) => m.id === active.actorId && m.isAlive,
+    );
+    if (!activeMonster) {
+      if (!anyLivePc()) {
+        stopReason = 'party-down';
+        partyDown = true;
+      } else {
+        stopReason = 'pc-turn';
+      }
+      break;
+    }
+
+    // (3) Live PC pool (D-11/D-14): PCs in pcAcById with working HP > 0.
+    const livePcIds = workEncounter.turnOrder
+      .map((t) => t.actorId)
+      .filter((id) => args.pcAcById.has(id) && (workHp.get(id) ?? 0) > 0);
+    if (livePcIds.length === 0) {
+      stopReason = 'party-down';
+      partyDown = true;
+      break;
+    }
+
+    // (4) 3-level attack profile: bestiary (Level 1, isolated async, null on any
+    // miss → never aborts the loop, T-09-22) → cr table (Level 2) → default
+    // (Level 3). getMonsterAttackStats absorbs a null bestiary as "use fallback".
+    const bestiary = await lookup(activeMonster.name);
+    const stats = getMonsterAttackStats({ cr: activeMonster.cr, bestiary });
+
+    const result = resolveMonsterTurn({
+      monster: activeMonster,
+      attackBonus: stats.attackBonus,
+      damageDice: stats.damageDice,
+      livePcIds,
+      pcAcById: args.pcAcById,
+      rng: args.rng,
+    });
+    // Defensive (D-11): resolveMonsterTurn returns null only when livePcIds is
+    // empty — already guarded above, but handle it as party-down, never a throw.
+    if (result === null) {
+      stopReason = 'party-down';
+      partyDown = true;
+      break;
+    }
+
+    // (5) Accumulate, decrement the target PC's working HP (clamped at 0), then
+    // apply the result's events to the working encounter (advances the turn; the
+    // PC hp_change is a no-op in applyEncounterEvent — handled by the route's
+    // per-character reducer downstream).
+    results.push(result);
+    events.push(...result.events);
+    if (result.damage != null) {
+      const current = workHp.get(result.pcTargetId) ?? 0;
+      workHp.set(result.pcTargetId, Math.max(0, current - result.damage));
+    }
+    for (const ev of result.events) {
+      workEncounter = applyEncounterEvent(workEncounter, ev);
+    }
+
+    // (6) If the last live PC was just downed → stop + party-KO (D-14). A
+    // non-last KO leaves another live PC, so the loop continues.
+    if (!anyLivePc()) {
+      stopReason = 'party-down';
+      partyDown = true;
+      break;
+    }
+  }
+  // If the while-condition exhausted the cap without an explicit break, the
+  // default stopReason ('cap-reached') stands (D-03c) — clean stop, no throw.
+
+  // (D-15) ONE combined narration directive for the whole loop — built ONCE
+  // here, never inside the per-monster loop.
+  const narrationDirective = buildMonsterLoopNarrationDirective(results, { partyDown });
+
+  return { results, events, stopReason, partyDown, narrationDirective };
+}
+
+/**
+ * The LOCKED closing instruction shared by every monster-loop directive — Italian,
+ * 2nd person, no-roll/no-event (mirrors the v1 combat-resolver wording at
+ * combat-resolver.ts:216, D-15 / PATTERNS.md:116-121).
+ */
+const MONSTER_LOOP_DIRECTIVE_CLOSER =
+  'Narra questi esiti in seconda persona, in ordine; NON chiedere tiri e NON scrivere eventi JSON — il sistema ha già applicato danni e avanzamenti di turno.';
+
+/**
+ * Italian party-KO signal appended when the loop ended party-down (D-14), so the
+ * narration-only LLM narrates the knock-out.
+ */
+const PARTY_DOWN_SIGNAL =
+  "L'intero gruppo è a terra (0 PF): narra la sconfitta del party e la fine dello scontro, sempre in seconda persona.";
+
+/**
+ * Build the ONE combined narration directive listing every monster outcome (D-15).
+ *
+ * Composes a single `[RESOLVED BY SYSTEM: turni mostri — …]` directive: per
+ * result, an Italian 2nd-person clause — `<monster> ti colpisce per <damage>
+ * danni (<total> vs CA <ac>)` on a hit, `<monster> ti manca (<total> vs CA
+ * <ac>)` on a miss — joined with `; `, then the LOCKED no-roll/no-event closer.
+ * When `opts.partyDown` is true, appends the party-KO signal (D-14).
+ *
+ * Returns `null` for an empty `results` array (no monster acted → the route
+ * injects nothing; never fabricates a fake outcome). Built ONCE per loop — never
+ * one directive per monster (the D-15 single-combined-pass latency requirement,
+ * critical on the Mac Mini M4).
+ */
+export function buildMonsterLoopNarrationDirective(
+  results: MonsterTurnResult[],
+  opts?: { partyDown?: boolean },
+): string | null {
+  if (results.length === 0) return null;
+
+  const clauses = results.map((r) =>
+    r.hit
+      ? `${r.monsterName} ti colpisce per ${r.damage ?? 0} danni (${r.total} vs CA ${r.ac})`
+      : `${r.monsterName} ti manca (${r.total} vs CA ${r.ac})`,
+  );
+
+  let directive = `[RESOLVED BY SYSTEM: turni mostri — ${clauses.join('; ')}] ${MONSTER_LOOP_DIRECTIVE_CLOSER}`;
+  if (opts?.partyDown) {
+    directive = `${directive} ${PARTY_DOWN_SIGNAL}`;
+  }
+  return directive;
 }
