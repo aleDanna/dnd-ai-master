@@ -48,7 +48,7 @@ completed: 2026-05-30
 - Loop core is pure-in-memory: the only I/O is the isolated Level-1 bestiary read (`getBestiaryAttackStats`), injectable and null-returning, so a read failure mid-loop is absorbed (T-09-22) and every test runs with a stub (no fs).
 - The single combined narration pass (D-15) is the Mac Mini M4 latency requirement: ONE directive for the whole loop, never one per monster (asserted: a 2-result loop yields exactly one `RESOLVED BY SYSTEM` header).
 - Plan test file: vitest JSON `success=true total=54 passed=54 failed=0` (18 new tests for this plan).
-- Full `turn/` test directory after change: `success=true 139/139 passed` (no regression).
+- Full `turn/` test directory after change: `success=true 96/96 passed` (no regression).
 - `npx tsc --noEmit`: exit 0, clean (project-wide).
 
 ## Task Commits
