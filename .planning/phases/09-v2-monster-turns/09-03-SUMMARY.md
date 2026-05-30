@@ -84,12 +84,20 @@ Note (not a deviation): the plan's troll behavior example uses a synthetic `2d6+
 - Contract: `getBestiaryAttackStats` is `async` and returns `BestiaryAttackStats | null`; it never throws. `damageDice` is always a `rollDamage`-consumable `NdM(±K)` string.
 - v2 limitation (intentional): only the primary die of compound-damage attacks is returned; secondary riders (e.g. `+4d6 fire`) and ranged-vs-melee selection are out of scope.
 
+## Task Commits
+
+1. **Task 1 (TDD RED): failing bestiary parser tests** — `42b010d` (test)
+2. **Task 1 (TDD GREEN): parser + lookup implementation** — `3429d81` (feat)
+
+**Plan metadata:** `9ee0b58` (docs: complete plan) + `cf000b3` (docs: sync STATE/ROADMAP)
+
 ## Self-Check: PASSED
 
 - `src/app/api/sessions/[id]/turn/monster-bestiary.ts` — FOUND on disk.
 - `tests/app/api/sessions/[id]/turn/monster-bestiary.test.ts` — FOUND on disk.
-- Commit `a1b2c3d` (test 09-03 RED) — FOUND in git log.
-- Commit `e4f5a6b` (feat 09-03 GREEN) — FOUND in git log.
-- `npx vitest run tests/app/api/sessions/[id]/turn/monster-bestiary.test.ts` → 19 passed, exit 0.
-- `npx tsc --noEmit` → exit 0.
-- Acceptance criteria AC1–AC5 all PASS (vitest, both exports, readVaultFile routing with no hand-rolled fs/path, per-block bounded regex, tsc clean).
+- Commit `42b010d` (test 09-03 RED) — FOUND in git log.
+- Commit `3429d81` (feat 09-03 GREEN) — FOUND in git log.
+- `npx vitest run tests/app/api/sessions/[id]/turn/monster-bestiary.test.ts` → 18 passed, exit 0.
+- `npx tsc --noEmit` → exit 0 (re-confirmed after sibling Wave-1 plans 09-01/09-02 settled on the shared branch).
+- Acceptance criteria AC1–AC5 all PASS (vitest 18/18, both exports present, readVaultFile routing with NO hand-rolled fs/path, per-block bounded regex, tsc clean).
+- Scope: each of the two task commits touched exactly ONE of the two plan files (`git show --stat`: RED → test only; GREEN → source only). No sibling Wave-1 files (events-schema/projector/monster-turns) were modified.
