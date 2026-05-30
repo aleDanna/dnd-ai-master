@@ -182,6 +182,75 @@ describe('EncounterState reducer: step-by-step', () => {
 });
 
 // -------------------------------------------------------------------------
+// Suite A2 — Phase 08 lifecycle hardening (operator smoke 2026-05-30)
+//   Fix A: turn_advance skips dead monster actors (no stall on a corpse).
+//   Fix B: monster_spawn resets an all-dead active encounter (new fight).
+// -------------------------------------------------------------------------
+
+describe('EncounterState reducer: Phase 08 lifecycle hardening', () => {
+  const cs = makeEnv('combat_start', {});
+  const spawnM1 = makeEnv('monster_spawn', { id: 'm1', name: 'Veyra', hpMax: 10, ac: 14 }, 'm1');
+  const spawnM2 = makeEnv('monster_spawn', { id: 'm2', name: 'Slime', hpMax: 10, ac: 12 }, 'm2');
+  const init3 = makeEnv('initiative_set', {
+    order: [
+      { actorId: 'pc-1', initiative: 20 },
+      { actorId: 'm1', initiative: 14 },
+      { actorId: 'm2', initiative: 10 },
+    ],
+  }, 'i3');
+  const init2 = makeEnv('initiative_set', {
+    order: [
+      { actorId: 'pc-1', initiative: 20 },
+      { actorId: 'm1', initiative: 14 },
+    ],
+  }, 'i2');
+  const killM1 = makeEnv('monster_hp_change', { id: 'm1', delta: -10 }, 'k1'); // m1 → 0, dead
+
+  // --- Fix A ---
+  it('turn_advance SKIPS a dead monster actor (PC@0 → dead m1@1 → lands m2@2)', async () => {
+    const { projector } = await importModules('/tmp/test-vault');
+    const adv = makeEnv('turn_advance', {}, 'aA');
+    const enc = projector.replayEvents([cs, spawnM1, spawnM2, init3, killM1, adv]).encounter;
+    expect(enc.currentIdx).toBe(2); // not 1 (the dead m1) — that would stall
+    expect(enc.turnOrder[enc.currentIdx]!.actorId).toBe('m2');
+  });
+
+  it('turn_advance skips a dead monster and WRAPS to the PC (round increments)', async () => {
+    const { projector } = await importModules('/tmp/test-vault');
+    const adv = makeEnv('turn_advance', {}, 'aB');
+    const enc = projector.replayEvents([cs, spawnM1, init2, killM1, adv]).encounter;
+    expect(enc.currentIdx).toBe(0); // back to the PC
+    expect(enc.round).toBe(2); // wrapped past idx 0
+  });
+
+  it('turn_advance does NOT skip a LIVE monster (regression — monster turns still run)', async () => {
+    const { projector } = await importModules('/tmp/test-vault');
+    const adv = makeEnv('turn_advance', {}, 'aC');
+    const enc = projector.replayEvents([cs, spawnM1, init2, adv]).encounter; // m1 alive
+    expect(enc.currentIdx).toBe(1);
+    expect(enc.turnOrder[enc.currentIdx]!.actorId).toBe('m1');
+  });
+
+  // --- Fix B ---
+  it('monster_spawn into an ALL-DEAD active encounter RESETS (discards corpses)', async () => {
+    const { projector } = await importModules('/tmp/test-vault');
+    const spawnM3 = makeEnv('monster_spawn', { id: 'm3', name: 'Drake', hpMax: 20 }, 'm3a');
+    const enc = projector.replayEvents([cs, spawnM1, killM1, spawnM3]).encounter;
+    expect(enc.monsters).toHaveLength(1);
+    expect(enc.monsters[0]!.id).toBe('m3');
+    expect(enc.monsters[0]!.isAlive).toBe(true);
+    expect(enc.turnOrder).toHaveLength(0); // the reset cleared the stale order
+  });
+
+  it('monster_spawn with a LIVE monster present APPENDS (reinforcement, not reset)', async () => {
+    const { projector } = await importModules('/tmp/test-vault');
+    const spawnM3 = makeEnv('monster_spawn', { id: 'm3', name: 'Drake', hpMax: 20 }, 'm3b');
+    const enc = projector.replayEvents([cs, spawnM1, spawnM2, killM1, spawnM3]).encounter; // m2 alive
+    expect(enc.monsters.map((m) => m.id).sort()).toEqual(['m1', 'm2', 'm3']);
+  });
+});
+
+// -------------------------------------------------------------------------
 // Suite B — defensive / edge cases
 // -------------------------------------------------------------------------
 

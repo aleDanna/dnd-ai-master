@@ -733,9 +733,17 @@ export function applyEncounterEvent(state: EncounterState, event: VaultEvent): E
       // initiative_set but omits combat_start → encounter stayed inactive and
       // the tracker never showed). The first combat event resets to a fresh
       // active encounter; subsequent spawns append to the running one.
-      const base: EncounterState = state.active
-        ? next
-        : { active: true, round: 1, currentIdx: 0, turnOrder: [], monsters: [] };
+      // Reset when starting a NEW fight: inactive, OR "active" but every monster
+      // is already dead (the previous fight ended yet combat_end never fired — the
+      // local model emits it as narration text, not a tool call). Spawning a fresh
+      // enemy into an all-dead encounter means a new combat → discard the corpses.
+      // Otherwise (active with ≥1 live monster) append — a reinforcement.
+      const allMonstersDead =
+        state.monsters.length > 0 && state.monsters.every((m) => !m.isAlive);
+      const base: EncounterState =
+        state.active && !allMonstersDead
+          ? next
+          : { active: true, round: 1, currentIdx: 0, turnOrder: [], monsters: [] };
       const { id, name, hpMax, ac, initiativeBonus } = event.payload;
       // Idempotent: skip duplicate spawns (deterministic replay invariant).
       if (base.monsters.some((m) => m.id === id)) return base;
@@ -767,13 +775,31 @@ export function applyEncounterEvent(state: EncounterState, event: VaultEvent): E
     case 'turn_advance': {
       if (!state.active) return next; // defensive
       if (state.turnOrder.length === 0) return next; // edge case: no actors yet
-      const newIdx = state.currentIdx + 1;
-      if (newIdx >= state.turnOrder.length) {
-        next.currentIdx = 0;
-        next.round = state.round + 1;
-      } else {
-        next.currentIdx = newIdx;
+      // Advance to the next actor, SKIPPING dead monster actors. A dead monster
+      // left in the turnOrder (the model puts them there, and monsters die
+      // mid-combat) would otherwise STALL the turn — the handoff hands it a
+      // "monster turn" it can never take. PCs are never in `monsters`, so they
+      // are never skipped; live monsters are not skipped. Bounded by
+      // turnOrder.length so an all-dead order cannot loop forever (it lands and
+      // combat_end / v3 takes over).
+      const isDeadMonster = (actorId: string): boolean => {
+        const m = state.monsters.find((mm) => mm.id === actorId);
+        return m !== undefined && !m.isAlive;
+      };
+      let idx = state.currentIdx;
+      let wrapped = false;
+      for (let step = 0; step < state.turnOrder.length; step++) {
+        const adv = idx + 1;
+        if (adv >= state.turnOrder.length) {
+          idx = 0;
+          wrapped = true;
+        } else {
+          idx = adv;
+        }
+        if (!isDeadMonster(state.turnOrder[idx]!.actorId)) break;
       }
+      next.currentIdx = idx;
+      if (wrapped) next.round = state.round + 1;
       return next;
     }
 
