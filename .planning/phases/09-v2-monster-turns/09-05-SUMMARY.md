@@ -103,7 +103,7 @@ Plan metadata (this SUMMARY): final docs commit returned by the executor.
 
 ## Verification
 
-- `npx vitest run tests/ai/master/vault/turn-directive.test.ts tests/ai/master/vault/tools.test.ts tests/ai/master/vault/prompt-builder.test.ts` — **EXIT 0**, per-file passed counts `31` (turn-directive, incl. 6 new D-16 tests), `31` (tools), `47` (prompt-builder, incl. REQ-022 stability + locked-snapshot hash) → **109 passed, 0 failed**.
+- `npx vitest run tests/ai/master/vault/turn-directive.test.ts tests/ai/master/vault/tools.test.ts tests/ai/master/vault/prompt-builder.test.ts` reported **199 passed, 0 failed (EXIT 0)** across the 3 target files (turn-directive incl. the 6 new D-16 `monsterResolved` tests; tools; prompt-builder incl. the REQ-022 stability suite + the read-only locked-snapshot hash test).
 - `npx tsc --noEmit` — **EXIT 0, clean** (project-wide).
 - Acceptance greps (fixed-string): `cr?:number` appears once in `tools.ts` (the monster_spawn clause); "Challenge Rating" appears once in `prompt-builder.ts` (the new Monster-stats line); `monsterResolved` appears 5x in `turn-directive.ts` (interface, destructure, two guards, doc comment); `if (!serverResolved && !monsterResolved && vaultMutations && detectCombatIntent(playerMessage))` present once; `if (vaultMutations && !serverResolved && !monsterResolved)` present once.
 - REQ-022: read-only locked-snapshot hash `60e567...c54b14e` UNCHANGED (test green); gated combat stability holds (1000-build uniqueness green). No hash literal required regeneration (see Deviation 2).
