@@ -244,12 +244,24 @@ Plans:
 
 ## Phase 09: v2 Monster Turns
 
-**Goal:** [To be planned]
-**Requirements:** TBD
+**Goal:** Move MONSTER-turn mechanical resolution server-side (extends the Phase 08 v1 player-attack resolver). When the active actor in an active vault encounter is a monster, the server rolls its attack via an injectable RNG seam, picks a random live PC, pulls the PC's AC from Postgres, applies damage via `hp_change`, advances the turn, and loops consecutive monster turns in one request — stopping cleanly on a PC turn / party-KO / safety cap. Monster attack stats come from a 3-level fallback (bestiary prose parse -> LLM `cr`-hint table -> named-constant default). The LLM only NARRATES the server-determined outcomes in one combined pass.
+
+**Requirements:** No REQ-IDs mapped; tracked against the 16 LOCKED decisions D-01..D-16 in 09-CONTEXT.md (this phase's de-facto requirement set).
 **Depends on:** Phase 08
-**Plans:** 0 plans
+**Plans:** 6 plans in 3 waves
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 09 to break down)
+
+**Wave 1** *(parallel, autonomous)*
+- [ ] 09-01-PLAN.md — Additive `cr?` on the monster_spawn event + validator + projector propagation into EncounterState.monsters[] (D-08; closes state-gap 2)
+- [ ] 09-02-PLAN.md — CR->stats table + named-constant defaults + pure `resolveMonsterTurn` (v1 hit rule, injected RNG, random live-PC target) (D-05, D-06, D-09, D-10, D-11)
+- [ ] 09-03-PLAN.md — Isolated SRD bestiary attack-prose parser via the path-safe vault reader (D-04, D-07; non-blocking to the smoke)
+
+**Wave 2** *(parallel, autonomous)*
+- [ ] 09-04-PLAN.md — `runMonsterTurnLoop` driver (3-level stat fallback, stop conditions, safety cap, in-memory event application) + single combined Italian narration directive (D-03, D-03c, D-14, D-15)
+- [ ] 09-05-PLAN.md — Advertise `cr` in the apply_event tool/prompt + `monsterResolved` directive suppression (D-08, D-16; REQ-022 byte-stability preserved)
+
+**Wave 3** *(has checkpoint)*
+- [ ] 09-06-PLAN.md — Route vault-branch wiring: monster-loop hook, PC-AC/PC-HP maps, server-side emission, suppression + combined narration, 07-03 handoff preserved + operator smoke (D-01, D-02, D-12, D-13, D-16)
 
 ---
