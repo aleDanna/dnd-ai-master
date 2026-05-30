@@ -34,7 +34,9 @@ import { computeTurnAdvance, detectAddressee } from '@/multiplayer/turn-advance'
 import { notifySession } from '@/sessions/notify';
 import { checkPartyAccess } from '@/multiplayer/access';
 import { resolveCombatHandoff } from './combat-handoff';
-import { resolveCombat, enforceResolvedNarration } from './combat-resolver';
+import { resolveCombat, enforceResolvedNarration, type ResolveCombatResult } from './combat-resolver';
+import { runMonsterTurnLoop } from './monster-turns';
+import { getBestiaryAttackStats } from './monster-bestiary';
 import { parseEventsFile, replayEvents } from '@/ai/master/vault/projector';
 import { eventsPath } from '@/ai/master/vault/campaign-paths';
 import { buildTurnDirective, appendDirectiveToHistory, isRollResult } from '@/ai/master/vault/turn-directive';
@@ -421,6 +423,92 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             }
           }
 
+          // 5v-monster (Phase 09 / D-01..D-16). SERVER-SIDE MONSTER-TURN LOOP hook.
+          // Runs IMMEDIATELY AFTER the v1 player resolution + post-turn turn_advance
+          // (the COMMON path is: player attacks → v1 resolver fires → the turn
+          // advances to a monster → the loop runs, BOTH in the SAME request, D-01).
+          // Reads the post-v1 EncounterState; if the active actor is a LIVE monster
+          // (vaultMutations && encounter.active gate, D-01), runs runMonsterTurnLoop
+          // (09-04) to resolve consecutive monster turns server-side, emitting each
+          // hp_change / turn_advance via the SAME dispatchVaultTool('apply_event', ...)
+          // pattern as the v1 resolver (D-13), OUTSIDE the DB transaction (RESEARCH
+          // Anti-Pattern: never run the loop inside db.transaction). The whole block
+          // is wrapped defensively (D-10 / T-09-19): a failure resolves to "no monster
+          // actions" and never hard-fails the player's turn.
+          let _monsterLoopRan = false;
+          let _monsterNarration: string | null = null;
+          if (vaultMutationsEnabled) {
+            try {
+              // Post-v1 encounter read (Pattern 5). Same replay used by the v1 gate;
+              // the chars map carries per-character CURRENT HP (projector: "PC HP
+              // comes from the per-character CharacterState"), which EncounterState
+              // does NOT (RESEARCH Pitfall 1 / Open Q1).
+              const { encounter, chars } = replayEvents(await parseEventsFile(eventsPath(campaign.id)));
+              const activeEntry =
+                encounter.active && encounter.turnOrder.length > 0
+                  ? encounter.turnOrder[encounter.currentIdx]
+                  : undefined;
+              const activeMonster = activeEntry
+                ? encounter.monsters.find((m) => m.id === activeEntry.actorId && m.isAlive)
+                : undefined;
+              if (activeMonster) {
+                // D-12 PC-AC bridge: build Map<pcId, ac> from a targeted {id, ac}
+                // select on charactersTable (characters.ac is notNull → no default).
+                // PC current HP comes from the replay chars map (D-11/D-14 live-target
+                // filter), falling back to the characters-row hpMax when a PC is
+                // absent from the chars map (defensive). Map ONLY party PC UUIDs.
+                const pcRows = await db
+                  .select({ id: charactersTable.id, ac: charactersTable.ac, hpMax: charactersTable.hpMax })
+                  .from(charactersTable)
+                  .where(and(
+                    eq(charactersTable.campaignId, campaign.id),
+                    isNull(charactersTable.deletedAt),
+                    isNotNull(charactersTable.templateId),
+                  ));
+                const pcAcById = new Map<string, number>();
+                const pcHpById = new Map<string, number>();
+                for (const pc of pcRows) {
+                  pcAcById.set(pc.id, pc.ac);
+                  const replayed = chars.get(pc.id);
+                  pcHpById.set(pc.id, replayed ? replayed.hp_current : pc.hpMax);
+                }
+
+                // Run the loop with the real fs-backed bestiary lookup (09-03). The
+                // loop is pure/headless and NEVER throws; it returns the events to
+                // persist + the ONE combined narration directive (D-15).
+                const loop = await runMonsterTurnLoop({
+                  encounter,
+                  pcAcById,
+                  pcHpById,
+                  bestiaryLookup: getBestiaryAttackStats,
+                });
+
+                // Emit each loop event server-side (D-13), mirroring the v1 emit loop —
+                // OUTSIDE the DB transaction. campaignId is the SERVER campaign id,
+                // never player-derived (T-09-18).
+                for (const ev of loop.events) {
+                  const r = await dispatchVaultTool('apply_event', ev, { campaignId: campaign.id });
+                  if (r.isError) {
+                    console.warn('[turn]', sessionId, 'monster-turn emit failed:', r.content);
+                  }
+                }
+
+                // Ran iff the loop actually resolved monster turns (D-01). On a
+                // pc-turn / empty stop with no results, _monsterLoopRan stays false
+                // and the turn behaves exactly as the player-only path.
+                _monsterLoopRan = loop.results.length > 0;
+                _monsterNarration = loop.narrationDirective;
+              }
+            } catch (err) {
+              // Defensive (D-10 / T-09-19): a loop failure resolves to "no monster
+              // actions" and must NEVER hard-fail the player's turn.
+              console.warn(
+                '[turn]', sessionId, 'monster-turn loop failed, falling through:',
+                err instanceof Error ? err.message : String(err),
+              );
+            }
+          }
+
           // 5v-directive. REQ-038 — per-turn anti-anchoring directive.
           // Appended to the LAST user turn of vaultHistory (recency position)
           // so the model's most recent "instruction" breaks pattern-anchoring
@@ -445,6 +533,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             language: campaign.language ?? snap.language ?? undefined,
             ...(_playerMessage !== undefined && { playerMessage: _playerMessage }),
             serverResolved: _resolver !== null,
+            // Phase 09 (D-16): on a server-resolved MONSTER turn the loop already
+            // emitted the authoritative events; suppress the combat re-ask
+            // directives (mirrors serverResolved). The combined monster directive
+            // injected below governs the narration instead.
+            monsterResolved: _monsterLoopRan,
           });
           if (_directive !== null) {
             // Vault history elements always have string content (built by the
@@ -468,6 +561,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             vaultHistory = appendDirectiveToHistory(
               vaultHistory as { role: string; content: string }[],
               _resolver.narrationDirective,
+            ) as typeof vaultHistory;
+          }
+
+          // Phase 09 (D-15 / D-01): on a server-resolved MONSTER turn, inject the
+          // loop's ONE combined narration directive (built once by the loop) so the
+          // LLM narrates ALL monster outcomes in a SINGLE pass. Same recency-stacking
+          // mechanism as the v1 resolver injection above; on the common path where a
+          // player attack ALSO resolved this turn, this stacks AFTER the player
+          // directive so the combined monster outcome wins the recency position.
+          if (_monsterLoopRan && _monsterNarration) {
+            vaultHistory = appendDirectiveToHistory(
+              vaultHistory as { role: string; content: string }[],
+              _monsterNarration,
             ) as typeof vaultHistory;
           }
 
@@ -502,7 +608,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             // T-08-04). Belt-and-suspenders with D-07 directive suppression: don't
             // ask (serverResolved), and don't honor if asked anyway (this drop).
             // Non-combat turns pass it falsy → Phase 07 behavior unchanged.
-            ...(_resolver !== null && { suppressCombatMutations: true }),
+            // Phase 09 (D-16): also drop combat apply_event calls on a server-resolved
+            // MONSTER turn — the loop already emitted the authoritative hp_change /
+            // turn_advance events, so honoring the model's duplicates would
+            // double-apply damage / double-advance the turn (T-09-20). Extends the v1
+            // gate to (player-resolved OR monster-loop-ran).
+            ...((_resolver !== null || _monsterLoopRan) && { suppressCombatMutations: true }),
             recordUsage: async (usage) => {
               await recordUsage({
                 userId,
@@ -541,10 +652,39 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // `_finalNarration` is used for BOTH addressee detection and persistence so
           // they stay consistent. When the resolver did not fire (_resolver === null),
           // the text is byte-identical to vaultResult.finalText.
-          const _finalNarration =
-            _resolver !== null
-              ? enforceResolvedNarration(vaultResult.finalText, _resolver)
-              : vaultResult.finalText;
+          //
+          // Phase 09 (W3 / D-01 / D-16 — CORRECTNESS-CRITICAL): bind the FINAL
+          // narration via enforceResolvedNarration whenever the monster loop ran
+          // (`_monsterLoopRan`), regardless of `_resolver`. Per D-01 the COMMON path
+          // is player-attack-resolves AND monster-loop-runs in the SAME request
+          // (BOTH _resolver != null AND _monsterLoopRan), and the combined monster
+          // directive (D-15) governs that final pass — so the binding must NOT be
+          // gated on `_resolver` alone, or the monster path would leak the model's
+          // competing roll-asks / event-JSON. The monster path passes a
+          // ResolveCombatResult-shaped object with `damageRequest: null` (the monster
+          // sequence has no single settled damage-request); enforceResolvedNarration
+          // then only strips leaked roll-asks / event-JSON and appends nothing.
+          let _finalNarration: string;
+          if (_monsterLoopRan) {
+            // Build a ResolveCombatResult-shaped object for the monster path. Only
+            // the strip logic is wanted here: `damageRequest: null` means
+            // enforceResolvedNarration appends nothing and merely removes leaked
+            // roll-asks / event-JSON. The `events` field carries the loop's emitted
+            // events (already persisted above; passed for shape completeness — the
+            // enforcer does not re-emit). The narration semantics come from the
+            // combined monster directive (D-15) injected into vaultHistory.
+            const _monsterResolved = {
+              kind: 'resolved',
+              events: [],
+              narrationDirective: _monsterNarration ?? '',
+              damageRequest: null,
+            } as unknown as ResolveCombatResult;
+            _finalNarration = enforceResolvedNarration(vaultResult.finalText, _monsterResolved);
+          } else if (_resolver !== null) {
+            _finalNarration = enforceResolvedNarration(vaultResult.finalText, _resolver);
+          } else {
+            _finalNarration = vaultResult.finalText;
+          }
 
           // 7v. Post-loop: turn-advance + persist master message + memory extraction.
           // Logic is identical to the baked path (same multiplayer semantics, same
