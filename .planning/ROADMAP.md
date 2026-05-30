@@ -242,4 +242,14 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 - [x] 08-03-PLAN.md — Vault-branch wiring in `route.ts` (early read, gate, server-side emit, narration-only loop, safety-net append, 07-03 handoff preserved) + regression + operator smoke [Wave 2]
 
+## Phase 09: v2 Monster Turns
+
+**Goal:** [To be planned]
+**Requirements:** TBD
+**Depends on:** Phase 08
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 09 to break down)
+
 ---
