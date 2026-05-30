@@ -58,7 +58,9 @@ Real hashes, confirmed via `git log`.
 1. **Tasks 1 + 2 (TDD RED)** — `97b2c7d` `test(09-04): add failing tests for monster-turn loop + combined directive` (18 failing cases: missing `runMonsterTurnLoop` / `buildMonsterLoopNarrationDirective` / `MONSTER_LOOP_SAFETY_CAP`).
 2. **Tasks 1 + 2 (TDD GREEN)** — `64e0bb3` `feat(09-04): add runMonsterTurnLoop driver + combined narration directive`.
 
-**Plan metadata:** `18dccf1` `docs(09-04): complete monster-turn loop driver plan` (SUMMARY + ROADMAP).
+**Plan metadata:** `18dccf1` (initial) then re-committed (this SUMMARY + ROADMAP).
+
+**Post-GREEN test-fixture fix:** `5f9c4e2` `test(09-04): fix seed-fragile last-PC-KO fixture (seed 3 -> 0)` — see Deviations #2.
 
 _Both `tdd="true"` tasks share the same two interdependent files (the loop calls the directive builder), so the cycle is one RED commit (all failing cases) → one GREEN commit (full implementation), mirroring the sanctioned 09-02 shared-file approach. No REFACTOR pass needed._
 
@@ -136,9 +138,9 @@ No new security surface beyond the plan's threat_model. No stubs.
 - `.planning/phases/09-v2-monster-turns/09-04-SUMMARY.md` — FOUND on disk.
 - Commit `97b2c7d` (test 09-04 RED) — FOUND in git log.
 - Commit `64e0bb3` (feat 09-04 GREEN) — FOUND in git log.
-- Commit `18dccf1` (docs 09-04 metadata) — FOUND in git log.
-- `npx vitest run tests/app/api/sessions/[id]/turn/monster-turns.test.ts` → success=true, 54/54 passed, exit 0.
-- Full `turn/` dir → 139/139 passed.
+- Commit `5f9c4e2` (test 09-04 seed-fixture fix) — FOUND in git log.
+- `npx vitest run tests/app/api/sessions/[id]/turn/monster-turns.test.ts` → success=true, 54/54 passed, exit 0 (authoritative JSON `--outputFile`).
+- Full `turn/` dir → 96/96 passed.
 - `npx tsc --noEmit` → exit 0, clean.
 - Acceptance criteria (both tasks) all PASS: `runMonsterTurnLoop` exported; `MONSTER_LOOP_SAFETY_CAP` named cap in the while-guard (no inline magic number); all three stop reasons produced; 3-level fallback composed (getBestiaryAttackStats/lookup + getMonsterAttackStats); `buildMonsterLoopNarrationDirective` exported; `RESOLVED BY SYSTEM` header present; HP clamp `Math.max(0,...)`; `structuredClone` + PC-HP `new Map(...)` working copies; no `Math.random`.
 - Scope: each task commit touched exactly ONE plan file (test → test, feat → source); no deletions; no sibling Wave-2 files (tools.ts/prompt-builder.ts/turn-directive.ts) or route.ts touched.
