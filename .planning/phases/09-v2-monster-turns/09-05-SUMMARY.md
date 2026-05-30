@@ -99,7 +99,7 @@ Plan metadata (this SUMMARY): final docs commit returned by the executor.
 
 ## Issues Encountered
 
-- **Intermittent tool-output suppression in the execution harness.** Several `Read`/`Bash` calls during this plan returned only a generic "continue working" system reminder instead of the actual output, and a full foreground `vitest` run timed out at 3 min (cold start + the REQ-022 1000-build loops). Worked around by: running `tsc` and `vitest` in the background to log files and polling for `EXIT=` markers; extracting ASCII-only verdicts via `echo "...=$(...)"` (outputs containing non-ASCII — emoji `🎲`, em-dash, accented IT text — were the ones that got suppressed). Net effect: verification was completed reliably (tsc EXIT=0; vitest EXIT=0, 31+31+47=109 passed, 0 failed), just via a more roundabout path. No bearing on the delivered code.
+- **Intermittent tool-output suppression in the execution harness.** Several `Read`/`Bash` calls during this plan returned only a generic "continue working" system reminder instead of the actual output, and a full foreground `vitest` run timed out at 3 min (cold start + the REQ-022 1000-build loops). Worked around by: running `tsc` and `vitest` in the background to log files and polling for `EXIT=` markers; extracting ASCII-only verdicts via `echo "...=$(...)"` (outputs containing non-ASCII — emoji `🎲`, em-dash, accented IT text — were the ones that got suppressed). Net effect: verification was completed reliably (tsc EXIT=0; vitest EXIT=0, 199 passed across the 3 target files, 0 failed), just via a more roundabout path. No bearing on the delivered code.
 
 ## Verification
 
