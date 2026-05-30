@@ -41,7 +41,10 @@ const ACTIVE_ENCOUNTER: EncounterState = {
   ],
 };
 
-/** Encounter with TWO monsters sharing the exact name "Slime" → ambiguous. */
+/**
+ * TWO monsters sharing the exact name "Slime", and NEITHER is in turnOrder
+ * (both orphaned) → genuinely ambiguous, no live participant to disambiguate to.
+ */
 const AMBIGUOUS_ENCOUNTER: EncounterState = {
   active: true,
   round: 1,
@@ -50,6 +53,46 @@ const AMBIGUOUS_ENCOUNTER: EncounterState = {
   monsters: [
     { id: 'slime-1', name: 'Slime', hpCurrent: 10, hpMax: 10, ac: 8, isAlive: true, conditions: [] },
     { id: 'slime-2', name: 'Slime', hpCurrent: 10, hpMax: 10, ac: 8, isAlive: true, conditions: [] },
+  ],
+};
+
+/**
+ * Dirty-but-live encounter mirroring the One Piece smoke (Phase 08 gap):
+ * two monsters share the exact name "Veyra" — a STALE orphan spawn (`veyra`,
+ * alive but NOT in turnOrder) and the LIVE boss (`veyra-1`, in turnOrder).
+ * The resolver must disambiguate the name collision to the live participant.
+ */
+const DUP_NAME_STALE_ENCOUNTER: EncounterState = {
+  active: true,
+  round: 1,
+  currentIdx: 0,
+  turnOrder: [
+    { actorId: 'pc-uuid-1', initiative: 15 },
+    { actorId: 'veyra-1', initiative: 12 },
+  ],
+  monsters: [
+    // STALE orphan from an earlier aborted spawn — alive but NOT in turnOrder.
+    { id: 'veyra', name: 'Veyra', hpCurrent: 12, hpMax: 12, ac: 14, isAlive: true, conditions: [] },
+    // LIVE boss — the only "Veyra" in turnOrder.
+    { id: 'veyra-1', name: 'Veyra', hpCurrent: 45, hpMax: 45, ac: 14, isAlive: true, conditions: [] },
+  ],
+};
+
+/**
+ * Genuinely ambiguous: two same-named monsters BOTH alive AND BOTH in turnOrder.
+ * Disambiguation cannot pick one → resolver stays null (T-08-01 preserved).
+ */
+const DUP_NAME_BOTH_LIVE_ENCOUNTER: EncounterState = {
+  active: true,
+  round: 1,
+  currentIdx: 0,
+  turnOrder: [
+    { actorId: 'twin-1', initiative: 14 },
+    { actorId: 'twin-2', initiative: 13 },
+  ],
+  monsters: [
+    { id: 'twin-1', name: 'Veyra', hpCurrent: 20, hpMax: 20, ac: 14, isAlive: true, conditions: [] },
+    { id: 'twin-2', name: 'Veyra', hpCurrent: 20, hpMax: 20, ac: 14, isAlive: true, conditions: [] },
   ],
 };
 
@@ -255,5 +298,47 @@ describe('resolveCombat — damageRequest round-trip (RESEARCH Pitfall 1)', () =
     // into the button label → the target name round-trips.
     expect(parsed[0]!.label).toContain('Veyra');
     expect(parsed[0]!.kind).toBe('damage');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Duplicate-name disambiguation via turnOrder — Phase 08 operator-smoke gap.
+// The LLM spawned two monsters named "Veyra" across sessions; name-only
+// matching went ambiguous → resolver fell through on every roll → Phase-07
+// loop. The resolver must disambiguate a name collision to the live combat
+// participant (alive AND in turnOrder), staying null only if still ambiguous.
+// ---------------------------------------------------------------------------
+
+describe('resolveCombat — duplicate-name disambiguation via turnOrder', () => {
+  it('to-hit: name collision → resolves to the live in-turnOrder monster (not the stale orphan)', () => {
+    const result = resolveCombat({
+      rollResult: '🎲 I rolled **18** for 1d20+3 (attaccare Veyra) (15+3).',
+      encounter: DUP_NAME_STALE_ENCOUNTER,
+    });
+    expect(result).not.toBeNull();
+    expect(result!.kind).toBe('to-hit');
+    expect(result!.events).toEqual([]); // HIT (18 >= 14) → turn does not advance yet
+    expect(result!.damageRequest).toMatch(/per danni a Veyra/);
+  });
+
+  it('damage: name collision → monster_hp_change targets the live in-turnOrder id (veyra-1)', () => {
+    const result = resolveCombat({
+      rollResult: '🎲 I rolled **9** for 1d6+3 (danni a Veyra) (6+3).',
+      encounter: DUP_NAME_STALE_ENCOUNTER,
+    });
+    expect(result).not.toBeNull();
+    expect(result!.kind).toBe('damage');
+    expect(result!.events).toEqual([
+      { type: 'monster_hp_change', payload: { id: 'veyra-1', delta: -9 } },
+      { type: 'turn_advance', payload: {} },
+    ]);
+  });
+
+  it('to-hit: collision with BOTH live + in turnOrder → still null (T-08-01 ambiguity preserved)', () => {
+    const result = resolveCombat({
+      rollResult: '🎲 I rolled **18** for 1d20+3 (attaccare Veyra) (15+3).',
+      encounter: DUP_NAME_BOTH_LIVE_ENCOUNTER,
+    });
+    expect(result).toBeNull();
   });
 });
