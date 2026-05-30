@@ -1398,3 +1398,93 @@ describe('events-schema', () => {
     });
   });
 });
+
+// =====================================================================
+// D-08 (Plan 09-01): monster_spawn.cr validation — additive optional
+// difficulty hint (lean numeric CR, NOT a tier enum). Fractions are valid
+// CRs (0.25 = CR 1/4, 0.5 = CR 1/2); CR 0 is valid; bad values rejected.
+// Appended as a top-level describe (the rejection-cases anchors the plan
+// cited did not exist on disk — see 09-01-SUMMARY deviation note).
+// =====================================================================
+describe('validateEvent — monster_spawn.cr (D-08)', () => {
+  it('accepts monster_spawn with integer cr', () => {
+    const r = validateEvent({
+      type: 'monster_spawn',
+      payload: { id: 'veyra-1', name: 'Veyra', hpMax: 30, cr: 3 },
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok && r.value.type === 'monster_spawn') {
+      expect(r.value.payload.cr).toBe(3);
+    }
+  });
+
+  it('accepts monster_spawn with fractional cr (CR 1/4 = 0.25)', () => {
+    const r = validateEvent({
+      type: 'monster_spawn',
+      payload: { id: 'x', name: 'X', hpMax: 5, cr: 0.25 },
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok && r.value.type === 'monster_spawn') {
+      expect(r.value.payload.cr).toBe(0.25);
+    }
+  });
+
+  it('accepts monster_spawn with cr 0 (CR 0 is valid)', () => {
+    const r = validateEvent({
+      type: 'monster_spawn',
+      payload: { id: 'x', name: 'X', hpMax: 5, cr: 0 },
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok && r.value.type === 'monster_spawn') {
+      expect(r.value.payload.cr).toBe(0);
+    }
+  });
+
+  it('rejects monster_spawn with negative cr', () => {
+    const r = validateEvent({
+      type: 'monster_spawn',
+      payload: { id: 'x', name: 'X', hpMax: 5, cr: -1 },
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error).toContain('monster_spawn.cr must be a non-negative finite number');
+    }
+  });
+
+  it('rejects monster_spawn with NaN cr', () => {
+    const r = validateEvent({
+      type: 'monster_spawn',
+      payload: { id: 'x', name: 'X', hpMax: 5, cr: NaN },
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects monster_spawn with Infinity cr', () => {
+    const r = validateEvent({
+      type: 'monster_spawn',
+      payload: { id: 'x', name: 'X', hpMax: 5, cr: Infinity },
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects monster_spawn with string cr', () => {
+    const r = validateEvent({
+      type: 'monster_spawn',
+      payload: { id: 'x', name: 'X', hpMax: 5, cr: '3' as unknown as number },
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it('accepts monster_spawn with NO cr and produces no cr key (back-compat)', () => {
+    const r = validateEvent({
+      type: 'monster_spawn',
+      payload: { id: 'goblin-1', name: 'Goblin', hpMax: 7 },
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      // cr-absent payload is byte-identical to the pre-change shape (no cr key).
+      expect(r.value.payload).toEqual({ id: 'goblin-1', name: 'Goblin', hpMax: 7 });
+      expect('cr' in r.value.payload).toBe(false);
+    }
+  });
+});
