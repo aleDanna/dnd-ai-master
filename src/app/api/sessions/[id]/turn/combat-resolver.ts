@@ -105,17 +105,31 @@ function parseRoll(rollResult: string): ParsedRoll | null {
 
 /**
  * Match a player-named target to exactly one monster, CASE-INSENSITIVE EXACT
- * (T-08-01 mitigation, RESEARCH Open Q1). 0 or >1 matches → `null`
- * (unknown/ambiguous → fall through to the normal turn).
+ * (T-08-01 mitigation, RESEARCH Open Q1).
+ *
+ * A single exact name match resolves directly. On a NAME COLLISION (>1 exact
+ * match — the LLM can spawn duplicate-named monsters across sessions, e.g. a
+ * stale orphan plus the live boss, observed in the Phase 08 operator smoke),
+ * disambiguate to the live combat participant: ALIVE **and** present in
+ * `turnOrder`. This rescues the common stale/orphan-spawn case WITHOUT weakening
+ * T-08-01 — if >1 live participants still share the name (genuine ambiguity, or
+ * 0 matches), return `null` → fall through to the normal turn.
  */
 function matchMonster(
-  monsters: EncounterState['monsters'],
+  encounter: EncounterState,
   target: string,
 ): EncounterState['monsters'][number] | null {
   const needle = target.trim().toLowerCase();
   if (!needle) return null;
-  const matches = monsters.filter((m) => m.name.toLowerCase() === needle);
-  return matches.length === 1 ? matches[0]! : null;
+  const matches = encounter.monsters.filter((m) => m.name.toLowerCase() === needle);
+  if (matches.length === 1) return matches[0]!;
+  if (matches.length > 1) {
+    // Collision → narrow to the live combat participant(s): alive AND in turnOrder.
+    const inOrder = new Set(encounter.turnOrder.map((t) => t.actorId));
+    const live = matches.filter((m) => m.isAlive && inOrder.has(m.id));
+    if (live.length === 1) return live[0]!;
+  }
+  return null;
 }
 
 /**
@@ -157,7 +171,7 @@ export function resolveCombat(input: {
     // Target is the name after "attaccare"/"colpire".
     const tgtM = /(?:attaccare|attacca|colpire|colpisci)\s+([^.;:!?\n)]+)/i.exec(rollResult);
     if (!tgtM) return null;
-    const monster = matchMonster(encounter.monsters, tgtM[1]!);
+    const monster = matchMonster(encounter, tgtM[1]!);
     if (!monster) return null;
 
     // Hit rule MIRRORED from attack.ts:345/361/365 on the ROLLED total (D-09):
@@ -190,7 +204,7 @@ export function resolveCombat(input: {
     // Target is the name after "danni a".
     const tgtM = /danni\s+a\s+([^.;:!?\n)]+)/i.exec(rollResult);
     if (!tgtM) return null;
-    const monster = matchMonster(encounter.monsters, tgtM[1]!);
+    const monster = matchMonster(encounter, tgtM[1]!);
     if (!monster) return null;
 
     return {

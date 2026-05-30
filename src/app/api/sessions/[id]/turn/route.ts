@@ -384,6 +384,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 // resolveCombat NEVER throws (D-05/D-10): a non-combat / unparseable /
                 // ambiguous roll returns null → fall through to today's prompt path.
                 _resolver = resolveCombat({ rollResult: _playerMessage!, encounter });
+                if (_resolver === null) {
+                  // Observability: the gate fired (active combat + roll-result) but the
+                  // resolver disengaged (unparseable / wrong dice+keyword / unknown or
+                  // still-ambiguous target) and silently falls through to the Phase-07
+                  // prompt path. Log it — the Phase 08 duplicate-named-monster gap was
+                  // hard to diagnose precisely because this fall-through was silent.
+                  console.warn(
+                    '[turn]', sessionId,
+                    'combat-resolver fell through on a roll-result during ACTIVE combat (no server resolution) — roll:',
+                    _playerMessage?.slice(0, 80),
+                  );
+                }
               }
             } catch (err) {
               // D-10 — never hard-fail the turn on the gate read. A read error falls
