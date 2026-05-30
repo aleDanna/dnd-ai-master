@@ -315,6 +315,9 @@ export type VaultEvent =
         hpMax: number;
         ac?: number;
         initiativeBonus?: number;
+        // D-08: optional difficulty hint (lean numeric CR, not a tier enum).
+        // Additive after initiativeBonus; fractions (0.25/0.5) are valid CRs.
+        cr?: number;
       };
     }
   | { type: 'initiative_set'; payload: { order: Array<{ actorId: string; initiative: number }> } }
@@ -1023,7 +1026,7 @@ export function validateEvent(input: { type: string; payload: unknown }): Valida
       ) {
         return { ok: false, error: 'monster_spawn requires {id: non-empty string, name: non-empty string, hpMax: positive integer, ac?: positive integer, initiativeBonus?: integer}' };
       }
-      const spawnPayload: { id: string; name: string; hpMax: number; ac?: number; initiativeBonus?: number } = {
+      const spawnPayload: { id: string; name: string; hpMax: number; ac?: number; initiativeBonus?: number; cr?: number } = {
         id: p.id,
         name: p.name,
         hpMax: p.hpMax,
@@ -1047,6 +1050,19 @@ export function validateEvent(input: { type: string; payload: unknown }): Valida
           return { ok: false, error: 'monster_spawn.initiativeBonus must be an integer when provided' };
         }
         spawnPayload.initiativeBonus = p.initiativeBonus;
+      }
+      if (p.cr !== undefined) {
+        // D-08: CR is a non-negative finite number. Unlike ac, fractions are
+        // valid (CR 1/4 = 0.25, CR 1/2 = 0.5), so the integer constraint is
+        // relaxed — reject only non-numbers, NaN, Infinity, and negatives.
+        if (
+          typeof p.cr !== 'number' ||
+          !Number.isFinite(p.cr) ||
+          p.cr < 0
+        ) {
+          return { ok: false, error: 'monster_spawn.cr must be a non-negative finite number when provided' };
+        }
+        spawnPayload.cr = p.cr;
       }
       return { ok: true, value: { type: 'monster_spawn', payload: spawnPayload } };
     }
