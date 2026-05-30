@@ -34,11 +34,10 @@ import { computeTurnAdvance, detectAddressee } from '@/multiplayer/turn-advance'
 import { notifySession } from '@/sessions/notify';
 import { checkPartyAccess } from '@/multiplayer/access';
 import { resolveCombatHandoff } from './combat-handoff';
-import { resolveCombat } from './combat-resolver';
+import { resolveCombat, enforceResolvedNarration } from './combat-resolver';
 import { parseEventsFile, replayEvents } from '@/ai/master/vault/projector';
 import { eventsPath } from '@/ai/master/vault/campaign-paths';
 import { buildTurnDirective, appendDirectiveToHistory, isRollResult } from '@/ai/master/vault/turn-directive';
-import { parseRollRequests } from '@/lib/roll-parser';
 
 /**
  * Synthetic user instruction injected on the very first turn of a campaign,
@@ -530,30 +529,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             },
           });
 
-          // 6v-safetynet (Phase 08 / D-06 / RESEARCH Open Q3). On a HIT the resolver
-          // returns a `damageRequest` ("Tira <die>+<bonus> per danni a <monster>").
-          // The narration-only LLM is supposed to surface that 🎲 damage button, but a
-          // weaker local model may omit it. SAFETY NET: if the resolver wants a damage
-          // request AND the model's output carries no damage roll-request, append the
-          // resolver's damageRequest to the narration so the button reliably appears.
-          //
-          // Detection uses parseRollRequests — the SAME parser the client renders
-          // buttons from (RESEARCH Open Q3) — NOT an ad-hoc regex. Note parseRollRequests
-          // has a built-in filter that DROPS damage requests whenever an attack request
-          // is also present in the same text; that only strengthens this net (if the
-          // model emitted both an attack and a damage ask, `.some(damage)` is false and
-          // we still append the authoritative damage request). `_finalNarration` is then
-          // used for BOTH addressee detection and persistence so they stay consistent
-          // (today's invariant). When the resolver did not fire, this is a no-op and the
-          // text is byte-identical to vaultResult.finalText.
-          let _finalNarration = vaultResult.finalText;
-          if (
-            _resolver?.damageRequest &&
-            !parseRollRequests(_finalNarration).some((r) => r.kind === 'damage')
-          ) {
-            const _sep = _finalNarration.trim() ? '\n\n' : '';
-            _finalNarration = `${_finalNarration}${_sep}${_resolver.damageRequest}`;
-          }
+          // 6v-enforce (Phase 08 gap fix — operator smoke 2026-05-30). On a
+          // server-resolved turn the resolver is AUTHORITATIVE over the mechanical
+          // channel. The local model is unreliable and COMPETES: it emits its own
+          // roll-request prose ("Tira 2d6 danni …") — which the previous
+          // append-if-missing safety-net DEFERRED to, so the player rolled the
+          // model's malformed ask (no `danni a <target>`) and the resolver fell
+          // through (no HP applied, turn never advanced) — and it leaks apply_event
+          // calls as TEXT ("monster_hp_change" {…}). enforceResolvedNarration STRIPS
+          // both and appends the resolver's authoritative damageRequest (hit only).
+          // `_finalNarration` is used for BOTH addressee detection and persistence so
+          // they stay consistent. When the resolver did not fire (_resolver === null),
+          // the text is byte-identical to vaultResult.finalText.
+          const _finalNarration =
+            _resolver !== null
+              ? enforceResolvedNarration(vaultResult.finalText, _resolver)
+              : vaultResult.finalText;
 
           // 7v. Post-loop: turn-advance + persist master message + memory extraction.
           // Logic is identical to the baked path (same multiplayer semantics, same

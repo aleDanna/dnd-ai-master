@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { EncounterState } from '@/ai/master/vault/projector';
-import { resolveCombat } from '@/app/api/sessions/[id]/turn/combat-resolver';
+import { resolveCombat, enforceResolvedNarration } from '@/app/api/sessions/[id]/turn/combat-resolver';
 import { parseRollRequests } from '@/lib/roll-parser';
 
 /**
@@ -340,5 +340,80 @@ describe('resolveCombat — duplicate-name disambiguation via turnOrder', () => 
       encounter: DUP_NAME_BOTH_LIVE_ENCOUNTER,
     });
     expect(result).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// enforceResolvedNarration — server authority on resolution turns (Phase 08
+// operator-smoke gap, 2026-05-30). The local model competes for the mechanical
+// channel: it emits its OWN "Tira 2d6 danni …" request (which the old
+// safety-net deferred to) and leaks apply_event JSON as text. On a resolution
+// turn the resolver must be authoritative: strip both, enforce its request.
+// ---------------------------------------------------------------------------
+
+const HIT_RESULT = {
+  kind: 'to-hit' as const,
+  events: [],
+  narrationDirective: '[RESOLVED BY SYSTEM: …]',
+  damageRequest: 'Tira 1d6+3 per danni a Veyra',
+};
+const DAMAGE_RESULT = {
+  // enforceResolvedNarration only reads `damageRequest`; events are irrelevant
+  // here (the resolver's damage events are emitted by the route, not this helper).
+  kind: 'damage' as const,
+  events: [],
+  narrationDirective: '[RESOLVED BY SYSTEM: …]',
+  damageRequest: null,
+};
+
+describe('enforceResolvedNarration — server authority', () => {
+  it('HIT: strips the model’s competing roll-request and enforces the resolver’s', () => {
+    const llm = [
+      'Il tuo pugno di energia si infila nell’ombra di Veyra.',
+      '',
+      '**"Tira 2d6+3 danni fisici."**',
+    ].join('\n');
+    const out = enforceResolvedNarration(llm, HIT_RESULT);
+    expect(out).not.toMatch(/2d6/); // the model's malformed request is gone
+    expect(out).toContain('Il tuo pugno di energia si infila'); // flavor kept
+    expect(out).toContain('Tira 1d6+3 per danni a Veyra'); // resolver's request enforced
+    expect((out.match(/\bTira\b/g) ?? []).length).toBe(1); // exactly one roll-request
+  });
+
+  it('DAMAGE turn: strips leaked apply_event JSON-as-text, appends nothing', () => {
+    const llm = [
+      'Il colpo si infila nel cuore dell’ombra, e il dolore si espande.',
+      '',
+      '**"monster_hp_change"**',
+      '{"id":"veyra","delta":-12}',
+      '',
+      'Il suo corpo si contorce, l’ombra che si ritrae.',
+      '',
+      '**"turn_advance"**',
+    ].join('\n');
+    const out = enforceResolvedNarration(llm, DAMAGE_RESULT);
+    expect(out).not.toMatch(/monster_hp_change|turn_advance/);
+    expect(out).not.toMatch(/"delta"|\{.*\}/);
+    expect(out).toContain('Il colpo si infila nel cuore');
+    expect(out).toContain('Il suo corpo si contorce');
+    expect(out).not.toMatch(/\bTira\b/); // no roll-request on a damage turn
+  });
+
+  it('strips a leaked combat_end label + JSON block', () => {
+    const llm = 'Veyra non c’è più.\n\n**"combat_end"**\n{"type":"combat_end"}';
+    const out = enforceResolvedNarration(llm, DAMAGE_RESULT);
+    expect(out).toBe('Veyra non c’è più.');
+  });
+
+  it('keeps narrative prose that merely contains the word "Tira" (no dice formula)', () => {
+    const out = enforceResolvedNarration('Tira un respiro profondo prima del colpo.', HIT_RESULT);
+    expect(out).toContain('Tira un respiro profondo'); // narrative survives
+    expect(out).toContain('Tira 1d6+3 per danni a Veyra'); // request still appended
+  });
+
+  it('idempotent: no duplicate if the model already surfaced the resolver’s exact request', () => {
+    const llm = 'Colpito!\n\nTira 1d6+3 per danni a Veyra';
+    const out = enforceResolvedNarration(llm, HIT_RESULT);
+    expect((out.match(/Tira 1d6\+3 per danni a Veyra/g) ?? []).length).toBe(1);
   });
 });

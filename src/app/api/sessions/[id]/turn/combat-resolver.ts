@@ -183,7 +183,7 @@ export function resolveCombat(input: {
       return {
         kind: 'to-hit',
         events: [{ type: 'turn_advance', payload: {} }],
-        narrationDirective: `[RESOLVED BY SYSTEM: l'attacco contro ${monster.name} ha MANCATO (${total} vs CA ${ac})] narra questo mancato in seconda persona, senza inventare danni.`,
+        narrationDirective: `[RESOLVED BY SYSTEM: l'attacco contro ${monster.name} ha MANCATO (${total} vs CA ${ac})] narra questo mancato in seconda persona, senza inventare danni; NON chiedere tiri e NON scrivere eventi — il sistema gestisce il turno.`,
         damageRequest: null,
       };
     }
@@ -194,7 +194,7 @@ export function resolveCombat(input: {
     return {
       kind: 'to-hit',
       events: [],
-      narrationDirective: `[RESOLVED BY SYSTEM: l'attacco contro ${monster.name} ha COLPITO (${total} vs CA ${ac}); ora tira i danni] narra questo colpo a segno in seconda persona.`,
+      narrationDirective: `[RESOLVED BY SYSTEM: l'attacco contro ${monster.name} ha COLPITO (${total} vs CA ${ac})] narra SOLO il colpo a segno in seconda persona; NON chiedere tiri e NON scrivere eventi — il sistema gestisce la richiesta danni e l'avanzamento del turno.`,
       damageRequest: `Tira ${defaultDie}+${bonus} per danni a ${monster.name}`,
     };
   }
@@ -213,7 +213,7 @@ export function resolveCombat(input: {
         { type: 'monster_hp_change', payload: { id: monster.id, delta: -total } },
         { type: 'turn_advance', payload: {} },
       ],
-      narrationDirective: `[RESOLVED BY SYSTEM: ${monster.name} subisce ${total} danni] narra questo colpo e i suoi effetti in seconda persona.`,
+      narrationDirective: `[RESOLVED BY SYSTEM: ${monster.name} subisce ${total} danni] narra questo colpo e i suoi effetti in seconda persona; NON chiedere tiri e NON scrivere eventi — il sistema ha già applicato danni e turno.`,
       damageRequest: null,
     };
   }
@@ -221,4 +221,57 @@ export function resolveCombat(input: {
   // Fall-through (D-05/D-10): wrong dice+keyword combo, bare 1d20 with no attack
   // keyword, non-combat roll, etc. → normal LLM turn.
   return null;
+}
+
+/**
+ * Enforce the resolver's authority over the mechanical channel on a
+ * SERVER-RESOLVED combat turn (Phase 08 gap — operator smoke 2026-05-30).
+ *
+ * The local model is unreliable (the whole reason combat is resolved
+ * server-side). Even told to narrate only, it tends to:
+ *   (a) emit its OWN roll-request prose (`"Tira 2d6+3 danni fisici."`) that
+ *       competes with the resolver's damage request. The previous
+ *       append-if-missing safety-net DEFERRED to it (a damage request was
+ *       "already present"), so the player rolled the model's malformed ask
+ *       (no `danni a <target>` label) and the resolver fell through → no HP
+ *       applied, turn never advanced.
+ *   (b) leak `apply_event` calls as TEXT (`"monster_hp_change"` `{…}`,
+ *       `"turn_advance"`, `"combat_end"`) — the loop drops the tool CALLS but
+ *       not the prose, so the raw JSON shows on screen.
+ *
+ * On a resolution turn the server already emitted the authoritative events and
+ * KNOWS the exact roll-request the player needs. So strip the model's
+ * roll-request lines + leaked event-JSON, then append the resolver's
+ * authoritative `damageRequest` (on a hit; `null` on miss/damage → nothing
+ * appended). The model keeps the FLAVOR (prose); the server owns the mechanics.
+ *
+ * Pure, line-based (the model formats these as standalone lines), never throws.
+ * Only call this when the resolver fired (`resolver !== null`); on a
+ * non-resolution turn the caller leaves the narration byte-identical.
+ */
+export function enforceResolvedNarration(
+  finalText: string,
+  resolver: ResolveCombatResult,
+): string {
+  // A line that is only a (optionally **bold** / "quoted") encounter-event label.
+  const EVENT_LABEL =
+    /^[*\s"']*(?:monster_hp_change|turn_advance|combat_start|combat_end|monster_spawn|initiative_set)[*\s"':]*$/i;
+  // A line that is only a leaked event JSON payload (flat — encounter payloads never nest).
+  const EVENT_JSON = /^\s*\{[^{}]*"(?:id|delta|type|actorId)"[^{}]*\}\s*$/;
+  // A line carrying a roll-request: "Tira … <NdM> …" (requires a dice formula so
+  // narrative prose that merely contains the word "Tira" survives).
+  const ROLL_REQUEST = /\bTira\b[^"\n]*?\b\d+\s*[dD]\s*\d+/i;
+
+  const kept = finalText
+    .split('\n')
+    .filter((line) => {
+      const t = line.trim();
+      return !EVENT_LABEL.test(t) && !EVENT_JSON.test(t) && !ROLL_REQUEST.test(t);
+    });
+
+  let text = kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  if (resolver.damageRequest) {
+    text = text ? `${text}\n\n${resolver.damageRequest}` : resolver.damageRequest;
+  }
+  return text;
 }
