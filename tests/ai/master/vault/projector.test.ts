@@ -2637,9 +2637,10 @@ describe('applyEncounterEvent — monster_spawn cr propagation (D-08)', () => {
     }
     // cr is purely additive: a cr-less log must serialize exactly as before —
     // no spurious cr key anywhere in the tree (proves no migration needed).
+    // turn_advance over a length-1 turnOrder wraps: currentIdx 0->0, round 1->2.
     const expected = {
       active: true,
-      round: 1,
+      round: 2,
       currentIdx: 0,
       turnOrder: [{ actorId: 'goblin-1', initiative: 12 }],
       monsters: [
