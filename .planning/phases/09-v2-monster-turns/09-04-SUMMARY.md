@@ -138,7 +138,7 @@ No new security surface beyond the plan's threat_model. No stubs.
 - `.planning/phases/09-v2-monster-turns/09-04-SUMMARY.md` — FOUND on disk.
 - Commit `97b2c7d` (test 09-04 RED) — FOUND in git log.
 - Commit `64e0bb3` (feat 09-04 GREEN) — FOUND in git log.
-- Commit `5f9c4e2` (test 09-04 seed-fixture fix) — FOUND in git log.
+- Commit `3290572` then `8e3c9d1` (test 09-04 seed-fixture fixes) — FOUND in git log.
 - `npx vitest run tests/app/api/sessions/[id]/turn/monster-turns.test.ts` → success=true, 54/54 passed, exit 0 (authoritative JSON `--outputFile`).
 - Full `turn/` dir → 96/96 passed.
 - `npx tsc --noEmit` → exit 0, clean.
