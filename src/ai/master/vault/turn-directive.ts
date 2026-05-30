@@ -52,6 +52,21 @@ export interface TurnDirectiveOpts {
    * is emitted byte-identically to Phase 07 (regression-protected).
    */
   serverResolved?: boolean;
+  /**
+   * Phase 09 (D-16) — when `true`, the SERVER already resolved this MONSTER turn
+   * (the monster-turn loop emitted the authoritative monster_hp_change /
+   * hp_change / turn_advance events server-side) and is injecting its own
+   * narration directive. Mirrors `serverResolved` (the v1 player-side analog):
+   * the combat re-ask directives (the combat-intent strong directive and the
+   * vaultMutations combat-event catalog) are SUPPRESSED so the model is not told
+   * to emit hp_change / turn_advance / combat events the loop already emitted
+   * (double-apply re-ask, RESEARCH Pitfall 3 / T-09-15). Belt-and-suspenders
+   * with the loop's suppressCombatMutations drop. When this flag is absent the
+   * directive output is byte-identical to its Phase-08 behavior
+   * (regression-protected). The POV / 2nd-person line is NOT suppressed — only
+   * the combat re-asks are; the server injects its own narration directive.
+   */
+  monsterResolved?: boolean;
 }
 
 /**
@@ -97,7 +112,7 @@ export function isRollResult(playerMessage?: string): boolean {
  *   4. Roll line (only when manualRolls)
  */
 export function buildTurnDirective(opts: TurnDirectiveOpts): string | null {
-  const { vaultMutations, manualRolls, playerMessage, serverResolved } = opts;
+  const { vaultMutations, manualRolls, playerMessage, serverResolved, monsterResolved } = opts;
 
   if (!vaultMutations && !manualRolls) {
     return null;
@@ -142,7 +157,13 @@ export function buildTurnDirective(opts: TurnDirectiveOpts): string | null {
   // a server-resolved turn both re-ask directives are suppressed; the route
   // injects the server's authoritative narration directive instead, and the
   // general POV directive below supplies the 2nd-person guidance.
-  if (!serverResolved && vaultMutations && detectCombatIntent(playerMessage)) {
+  //
+  // Phase 09 (D-16): also gated on `!monsterResolved` — mirrors serverResolved.
+  // On a server-resolved MONSTER turn the loop already emitted the authoritative
+  // monster_hp_change / hp_change / turn_advance events; re-asking the model to
+  // emit combat_start / monster_spawn / monster_hp_change / turn_advance here
+  // would re-ask the very events the loop dropped (double-apply, T-09-15).
+  if (!serverResolved && !monsterResolved && vaultMutations && detectCombatIntent(playerMessage)) {
     return [
       '[ISTRUZIONE PRIORITARIA — il giocatore sta attaccando]',
       '',
@@ -176,7 +197,14 @@ export function buildTurnDirective(opts: TurnDirectiveOpts): string | null {
   // is dropping (suppressCombatMutations) — the same double-apply re-ask D-07
   // guards against (T-08-04). The POV line above still anchors 2nd-person
   // narration; the server's directive carries the combat semantics.
-  if (vaultMutations && !serverResolved) {
+  //
+  // Phase 09 (D-16): also gated on `!monsterResolved` — mirrors serverResolved.
+  // On a server-resolved MONSTER turn the loop already emitted the combat events;
+  // re-listing the combat apply_event catalog here would re-ask for the very
+  // events the loop dropped (double-apply, T-09-15). The POV line still anchors
+  // 2nd-person narration; the server's narration directive carries the combat
+  // semantics for that turn.
+  if (vaultMutations && !serverResolved && !monsterResolved) {
     lines.push('Quando lo stato di gioco cambia (danni, condizioni, inizio/fine scontro,');
     lines.push('turni in combattimento), USA apply_event — non limitarti alla narrazione.');
     lines.push('Tipi di evento per il combattimento:');

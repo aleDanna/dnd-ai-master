@@ -227,6 +227,109 @@ describe('D-07 — server-resolved suppression', () => {
   });
 });
 
+// D-16 / Phase 09 — server-resolved MONSTER-turn suppression. Mirrors D-07's
+// serverResolved (the v1 player-side analog). On a turn the server already
+// resolved the monster actions (the monster-turn loop emitted the authoritative
+// monster_hp_change / hp_change / turn_advance events), the combat re-ask
+// directives (the combat-intent strong directive + the vaultMutations combat
+// catalog) MUST be suppressed: the server injects its own narration directive
+// and re-asking would tell the model to emit the very events the loop already
+// emitted (double-apply re-ask, RESEARCH Pitfall 3 / T-09-15). Belt-and-
+// suspenders with the loop's suppressCombatMutations drop. Gated, not a
+// deletion: when the flag is absent the Phase-08 output is byte-identical.
+describe('D-16 — server-resolved monster-turn suppression (monsterResolved)', () => {
+  it('suppresses the combat-intent strong directive when monsterResolved is true (+vaultMutations)', () => {
+    // 'attacco il goblin' trips detectCombatIntent → without the gate this would
+    // return the STRONG combat-first directive (combat_start / monster_spawn …).
+    const result = buildTurnDirective({ vaultMutations: true, monsterResolved: true, playerMessage: 'attacco il goblin' });
+    expect(result).not.toBeNull();
+    // The combat-intent strong directive (which re-asks combat events) is gone.
+    expect(result!).not.toContain('il giocatore sta attaccando');
+    expect(result!).not.toContain('combat_start');
+    expect(result!).not.toContain('monster_spawn');
+    // The POV / 2nd-person line is still present (only the re-asks are suppressed).
+    expect(result!.toLowerCase()).toMatch(/seconda persona/);
+  });
+
+  it('suppresses the vaultMutations combat-event catalog block when monsterResolved is true', () => {
+    // No combat intent in the message → the general directive path. Without the
+    // gate this emits the combat catalog (combat_start … monster_hp_change …
+    // turn_advance re-ask). With monsterResolved it must be suppressed.
+    const result = buildTurnDirective({ vaultMutations: true, monsterResolved: true });
+    expect(result).not.toBeNull();
+    expect(result!).not.toContain('combat_start');
+    expect(result!).not.toContain('monster_hp_change');
+    expect(result!).not.toContain('turn_advance');
+    // POV line preserved.
+    expect(result!.toLowerCase()).toMatch(/seconda persona/);
+  });
+
+  it('regression: monsterResolved ABSENT → byte-identical to current Phase-08 output (combat-intent path)', () => {
+    const opts = { vaultMutations: true, manualRolls: true, playerMessage: 'attacco Veyra con un pugno' };
+    const withFlagAbsent = buildTurnDirective(opts);
+    const withFlagFalse = buildTurnDirective({ ...opts, monsterResolved: false });
+    const withFlagUndefined = buildTurnDirective({ ...opts, monsterResolved: undefined });
+    // The pre-change Phase-08 combat-intent directive (locked byte-for-byte).
+    const PHASE_08_COMBAT_INTENT = [
+      '[ISTRUZIONE PRIORITARIA — il giocatore sta attaccando]',
+      '',
+      'PRIMA di narrare l\'esito DEVI usare gli strumenti (apply_event):',
+      '- Se il combattimento NON è ancora iniziato: chiama combat_start, poi monster_spawn per ogni nemico presente, poi initiative_set.',
+      '- Se è già in corso: usa monster_hp_change e turn_advance secondo il turno.',
+      'Poi chiedi il tiro al giocatore: "Tira 1d20+<bonus> per attaccare <nemico>."',
+      'Narra l\'esito SOLO dopo che il giocatore ha tirato. Scrivi sempre in seconda persona ("tu").',
+    ].join('\n');
+    expect(withFlagAbsent).toBe(PHASE_08_COMBAT_INTENT);
+    expect(withFlagFalse).toBe(PHASE_08_COMBAT_INTENT);
+    expect(withFlagUndefined).toBe(PHASE_08_COMBAT_INTENT);
+  });
+
+  it('regression: monsterResolved ABSENT → byte-identical to current Phase-08 output (general/catalog path)', () => {
+    const opts = { vaultMutations: true, manualRolls: true };
+    const withFlagAbsent = buildTurnDirective(opts);
+    const withFlagFalse = buildTurnDirective({ ...opts, monsterResolved: false });
+    // The pre-change Phase-08 general directive (header + POV + combat catalog + roll).
+    const PHASE_08_GENERAL = [
+      '[Promemoria di sistema — IMPORTANTE]',
+      '',
+      'Narra sempre in seconda persona ("tu"): il soggetto delle azioni',
+      'è sempre il personaggio giocante, non il suo nome proprio come soggetto.',
+      '',
+      'Quando lo stato di gioco cambia (danni, condizioni, inizio/fine scontro,',
+      'turni in combattimento), USA apply_event — non limitarti alla narrazione.',
+      'Tipi di evento per il combattimento:',
+      '  combat_start, monster_spawn, initiative_set,',
+      '  monster_hp_change, turn_advance, combat_end.',
+      'Ogni cambiamento di stato DEVE passare per apply_event, poi narra il risultato.',
+      '',
+      'Quando l\'esito di un\'azione è incerto, chiedi un tiro al giocatore.',
+      'Formula per attacchi: "Tira 1d20+<bonus> per attaccare <BERSAGLIO>."',
+      'Formula per prove: "Tira una prova di <Abilità> (CD <n>)."',
+      'Non inventare risultati: aspetta il messaggio del giocatore col numero in grassetto.',
+      '',
+    ].join('\n');
+    expect(withFlagAbsent).toBe(PHASE_08_GENERAL);
+    expect(withFlagFalse).toBe(PHASE_08_GENERAL);
+  });
+
+  it('monsterResolved still emits the manualRolls roll line (only combat re-asks are suppressed)', () => {
+    // A monster-resolved turn with manualRolls on must still carry the roll
+    // surface (the next PC turn may need it) and the POV line.
+    const result = buildTurnDirective({ vaultMutations: true, manualRolls: true, monsterResolved: true });
+    expect(result).not.toBeNull();
+    expect(result!.toLowerCase()).toMatch(/seconda persona/);
+    expect(result!).toMatch(/[Tt]ira 1d20/);
+    // But NOT the combat catalog re-ask.
+    expect(result!).not.toContain('combat_start');
+  });
+
+  it('monsterResolved suppression is deterministic across 100 calls', () => {
+    const opts = { vaultMutations: true, monsterResolved: true, playerMessage: 'attacco il goblin' };
+    const first = buildTurnDirective(opts);
+    for (let i = 0; i < 99; i++) expect(buildTurnDirective(opts)).toBe(first);
+  });
+});
+
 describe('detectCombatIntent', () => {
   it('returns false for undefined / empty', () => {
     expect(detectCombatIntent(undefined)).toBe(false);
