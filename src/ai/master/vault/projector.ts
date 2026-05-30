@@ -670,6 +670,9 @@ export interface EncounterState {
     hpMax: number;
     ac?: number;
     initiativeBonus?: number;
+    // D-08: optional difficulty hint sourced ONLY from the server-controlled
+    // monster_spawn event; the resolver reads it at attack time (CR table).
+    cr?: number;
     isAlive: boolean;
     conditions: string[];
   }>;
@@ -744,7 +747,7 @@ export function applyEncounterEvent(state: EncounterState, event: VaultEvent): E
         state.active && !allMonstersDead
           ? next
           : { active: true, round: 1, currentIdx: 0, turnOrder: [], monsters: [] };
-      const { id, name, hpMax, ac, initiativeBonus } = event.payload;
+      const { id, name, hpMax, ac, initiativeBonus, cr } = event.payload;
       // Idempotent: skip duplicate spawns (deterministic replay invariant).
       if (base.monsters.some((m) => m.id === id)) return base;
       const monster: EncounterState['monsters'][number] = {
@@ -757,6 +760,7 @@ export function applyEncounterEvent(state: EncounterState, event: VaultEvent): E
       };
       if (ac !== undefined) monster.ac = ac;
       if (initiativeBonus !== undefined) monster.initiativeBonus = initiativeBonus;
+      if (cr !== undefined) monster.cr = cr;
       base.monsters.push(monster);
       return base;
     }
