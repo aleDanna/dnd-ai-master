@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: milestone_complete
-last_updated: "2026-05-30T19:30:52.769Z"
+last_updated: "2026-05-31T21:43:25.472Z"
 progress:
-  total_phases: 9
-  completed_phases: 3
-  total_plans: 17
-  completed_plans: 31
+  total_phases: 10
+  completed_phases: 4
+  total_plans: 21
+  completed_plans: 35
   percent: 100
 ---
 
@@ -84,3 +84,9 @@ progress:
 - Decisions: cr validator uses RELAXED integer constraint vs ac (Number.isFinite + >= 0, NOT Number.isInteger) so CR 1/4 (0.25) / 1/2 (0.5) / 0 are valid; cr strictly additive on BOTH the monster_spawn event type AND EncounterState.monsters[] with byte-stable cr-less replay (D-08, no migration); error msg 'monster_spawn.cr must be a non-negative finite number when provided' mirrors the ac phrasing
 - Deviation [Rule 3]: the plan's TEST-file read_first anchors were stale (events-schema.test.ts had no monster_spawn validateEvent tests; projector.test.ts had no encounter-reducer tests — those live in combat-reducer.test.ts). Source Edits committed first; cr tests then appended as new top-level describe blocks to the plan's named test files. Non-vacuousness proven by negative control (tests fail when the reducer cr-copy is removed). TDD feat-before-test order compromised — documented honestly in SUMMARY.
 - 13 new cr tests (8 schema + 5 projector); full vault suite 725 passing (16 files, 0 failed); pnpm tsc --noEmit clean project-wide.
+
+### Phase 10 — Plan 01 Execution (2026-05-31)
+
+- All tasks completed (strict TDD RED→GREEN): 2fdcf84 (test — 14-case encounter-opener RED suite), 37382fd (feat — runEncounterOpener pure implementation GREEN)
+- Decisions: runEncounterOpener is pure (node:crypto randomUUID only import; no v1/v2 deps); BestiaryStats all-optional interface degrades gracefully on null/partial lookup (T-10-02); HP fallback uses CR-to-HP table nearest-floor (0→7 goblin tier … 17→218 dragon tier); initiative is 1d20+0 for PCs and monster (INFO-9: no initiativeBonus in characters schema); initiative_set sorted descending; CR string fractions parsed to numeric and forwarded in monster_spawn.cr; ac forwarded when present (v1 reads monster.ac ?? 12)
+- 14 new tests; tsc --noEmit clean; no new test failures (6 pre-existing failures: applicator/gp-stack, scene-image-coalesce, tts-coalesce, preferences-local-validation, job-claims, game-client-begin-stuck — all pre-dating Phase 10)

@@ -282,12 +282,12 @@ Plans:
 - The combat tracker recovers via snapshot refetch when the completion SSE is dropped, with no manual page refresh
 - Non-combat turns and the existing v1/v2 resolver behavior show no regression (full suite green, tsc clean)
 
-**Plans:** 4 plans (3 waves)
+**Plans:** 1/4 plans executed
 
 Plans:
 
 **Wave 1** *(parallel, autonomous)*
-- [ ] 10-01-PLAN.md — Pure `runEncounterOpener` (monster_spawn + initiative_set; empty party -> []; REQ-047 no damage on open; injected bestiaryLookup for option-A swap) + headless TDD suite [REQ-045, REQ-047]
+- [x] 10-01-PLAN.md — Pure `runEncounterOpener` (monster_spawn + initiative_set; empty party -> []; REQ-047 no damage on open; injected bestiaryLookup for option-A swap) + headless TDD suite [REQ-045, REQ-047]
 - [ ] 10-02-PLAN.md — SRD statblock reader `getBestiaryStatblock(name)` -> {hpMax,ac,cr} (goblin -> hpMax 7) via safeVaultPath; path-safe, null on miss/traversal + TDD against the real seeded goblin [REQ-045]
 
 **Wave 2** *(blocked on Wave 1)*
