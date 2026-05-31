@@ -13,6 +13,7 @@ import {
 import { stripReasoningPreamble } from '@/ai/master/reasoning-strip';
 import { VAULT_TOOL_DEFINITIONS, dispatchVaultTool } from './tools';
 import { ENCOUNTER_EVENT_TYPES } from './events-schema';
+import { parseInlineEvents } from './inline-events';
 import { maybeCondense } from './condense';
 import { db } from '@/db/client';
 import { sessionState } from '@/db/schema';
@@ -280,9 +281,58 @@ export async function runVaultToolLoop(input: VaultLoopInput): Promise<VaultLoop
       }
     }
 
-    // Terminator 1 — no_tool_calls + content. The model returned only
-    // text; `finalText` is already populated. (REQ-013)
-    if (toolUses.length === 0) break;
+    // Terminator 1 — no_tool_calls + content. The model returned only text;
+    // `finalText` is already populated. (REQ-013)
+    //
+    // Option C FALLBACK (combat reliability) — local models (notably
+    // qwen3:30b-a3b) frequently DESCRIBE combat by writing the event markers
+    // as **markdown text** in their narration (`**monster_spawn** {…}`) with
+    // ZERO structured tool calls, so combat never applies and the tracker
+    // never opens. Recover those leaked ENCOUNTER events from the text and
+    // dispatch them through the normal apply_event path, then show the player
+    // the narration with the markers stripped (`cleanedText`). Gated on:
+    //   - campaignId set            → a mutation target exists (read-only
+    //                                  Phase-01 flows omit it; apply_event
+    //                                  would isError without it).
+    //   - offeredTools non-empty    → apply_event was actually offered this
+    //                                  turn (not the narration-only begin turn).
+    //   - !suppressCombatMutations  → NOT a server-resolved combat turn; the
+    //                                  resolver already owns the encounter
+    //                                  events there, so recovering the model's
+    //                                  duplicates would double-apply (mirror of
+    //                                  the Phase 08 drop logic below).
+    if (toolUses.length === 0) {
+      if (campaignId && offeredTools.length > 0 && !suppressCombatMutations && finalText.length > 0) {
+        const recovered = parseInlineEvents(finalText, ENCOUNTER_EVENT_TYPES);
+        if (recovered.events.length > 0) {
+          for (let r = 0; r < recovered.events.length; r += 1) {
+            const ev = recovered.events[r]!;
+            const toolUseId = `inline-${iter}-${r}`;
+            const evInput: Record<string, unknown> = { type: ev.type, payload: ev.payload };
+            toolCallCount += 1;
+            emit({ type: 'tool_use_start', toolUseId, name: 'apply_event', input: evInput });
+            const result = await dispatchVaultTool('apply_event', evInput, {
+              vaultRoot,
+              campaignId,
+              dualWrite,
+              sessionId,
+              characterId: extractCharacterIdFromToolInput('apply_event', evInput),
+            });
+            emit({
+              type: 'tool_use_end',
+              toolUseId,
+              ok: !result.isError,
+              ...(result.isError && { error: result.content }),
+              rolls: [],
+              mutationCount: 0,
+            });
+          }
+          // Player sees the narration with the leaked event markers removed.
+          finalText = recovered.cleanedText;
+        }
+      }
+      break;
+    }
 
     // Terminator 2 — end_turn tool call (REQ-013 / REQ-010).
     const endTurnCall = toolUses.find((t) => t.name === 'end_turn');

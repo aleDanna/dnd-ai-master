@@ -182,6 +182,13 @@ function combatLifecycleBlock(): string[] {
   lines.push('');
   lines.push('Drive combat by emitting encounter events via `apply_event` in this sequence:');
   lines.push('');
+  lines.push('CRITICAL — emit every event by actually CALLING the `apply_event` tool. NEVER');
+  lines.push('write an event name or its JSON in your narration. Prose like');
+  lines.push('"**monster_spawn** {…}", "combat_start", or a raw `{"type": …}` object is NOT');
+  lines.push('executed — the encounter never opens, no HP changes, and the player just sees');
+  lines.push('leaked JSON. Your narration text must be IN-CHARACTER prose only; ALL mechanics');
+  lines.push('go through tool calls.');
+  lines.push('');
   lines.push('1. `combat_start` — call once at the beginning of a fight to open the encounter.');
   lines.push('2. `monster_spawn` — one call per enemy. Payload: `{ id, name, hpMax, ac?, initiativeBonus? }`.');
   lines.push('   Invent a stable id for the monster (e.g. "goblin-1", "orc-2") — not a UUID.');
