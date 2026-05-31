@@ -625,9 +625,14 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
               {sendError ?? streamError ?? turnError?.message ?? 'Errore turno.'}
             </span>
             {turnError && (
-              <button type="button" onClick={clearTurnError} style={{ background: 'transparent', border: '1px solid var(--ember)', color: 'var(--ember)', padding: '2px 8px', borderRadius: 999, fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer' }}>
-                Chiudi
-              </button>
+              <span style={{ display: 'inline-flex', gap: 6 }}>
+                <button type="button" onClick={retryTurn} style={{ background: 'var(--ember)', border: '1px solid var(--ember)', color: 'var(--bone)', padding: '2px 8px', borderRadius: 999, fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer' }}>
+                  Riprova
+                </button>
+                <button type="button" onClick={clearTurnError} style={{ background: 'transparent', border: '1px solid var(--ember)', color: 'var(--ember)', padding: '2px 8px', borderRadius: 999, fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer' }}>
+                  Chiudi
+                </button>
+              </span>
             )}
           </div>
         )}
