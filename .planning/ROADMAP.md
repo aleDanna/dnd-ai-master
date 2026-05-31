@@ -265,3 +265,21 @@ Plans:
 - [x] 09-06-PLAN.md — Route vault-branch wiring: monster-loop hook, PC-AC/PC-HP maps, server-side emission, suppression + combined narration, 07-03 handoff preserved + operator smoke (D-01, D-02, D-12, D-13, D-16)
 
 ---
+
+## Phase 10: Server-Authoritative Combat & Tracker Refresh
+
+**Goal:** Make combat encounter events server-authoritative (independent of local-model tool-calling) and keep the vault combat tracker fresh, so fights reliably start, apply damage only after the damage roll, advance turns, and update the right-pane tracker without a manual refresh.
+
+**Requirements:** REQ-045, REQ-046, REQ-047
+**Depends on:** Phase 09
+
+**Why:** Live smokes proved qwen3:30b-a3b emits zero structured tool calls mid-conversation (`tool_calls=0`) and leaks combat events as markdown text. The server already owns the entire mechanical loop (v1 player-attack resolver, v2 monster-turn loop, CR→stats table, 180-monster SRD bestiary, `resolveCombatHandoff`) — but ALL of it is gated on an encounter already being open, and opening the encounter (`combat_start`/`monster_spawn`/`initiative_set`) still depends on the model. So encounters silently never open, HP never applies, and the tracker shows "No active combat". This phase moves the encounter OPENER server-side (deterministic, SRD/CR-sourced stats — option B), triggered by rule-faithful combat-intent detection (initiative is rolled "when violence starts" per master_handbook.md:174 / rules.md:155-159), and closes the tracker-staleness gap on dropped SSE (REQ-046). A later phase may add a constrained-JSON LLM opener for bespoke monster stats (option A enhancement) on the same hook.
+
+**Success Criteria:**
+- A player attacking an NPC reliably opens an encounter (combat_start applied) and the tracker shows active combat even when qwen3 emits zero tool calls
+- Damage is applied only after the damage roll; no damage number appears in narration before the d6 is rolled
+- Monster turns resolve server-side and the tracker reflects PC and monster HP plus the turn pointer within one turn
+- The combat tracker recovers via snapshot refetch when the completion SSE is dropped, with no manual page refresh
+- Non-combat turns and the existing v1/v2 resolver behavior show no regression (full suite green, tsc clean)
+
+---
