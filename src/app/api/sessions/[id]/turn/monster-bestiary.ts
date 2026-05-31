@@ -135,6 +135,102 @@ function extractActionsSection(markdown: string): string | null {
   return text.length > 0 ? text : null;
 }
 
+export interface BestiaryStatblock {
+  hpMax?: number;
+  ac?: number;
+  cr?: string;
+}
+
+/**
+ * Look up a monster's statblock fields (hpMax, ac, cr) from the SRD bestiary
+ * frontmatter.
+ *
+ * Slug-normalizes `name` via the same `slugify` call `getBestiaryAttackStats`
+ * uses, reads `handbook/monsters/<slug>.md` through the path-safe
+ * `readVaultFile` (→ `safeVaultPath` — traversal/symlink/null-byte guarded),
+ * then performs a small inline parse of the leading `---`-delimited YAML
+ * frontmatter block to read the `hpMax`, `ac`, and `cr` keys.
+ *
+ * Returns `null` on ANY miss — empty/unsafe name, file not found (readVaultFile
+ * returns an `ERROR` marker), no recognizable frontmatter block, or no
+ * hpMax/ac/cr fields found. NEVER throws.
+ *
+ * Security: path is never string-concatenated from raw input — `slugify` +
+ * `readVaultFile` (safeVaultPath) handle T-10-04/T-10-06. Bad frontmatter
+ * returns null, not a thrown exception (T-10-05).
+ */
+export async function getBestiaryStatblock(name: string): Promise<BestiaryStatblock | null> {
+  if (typeof name !== 'string' || !name.trim()) return null;
+  let slug: string;
+  try {
+    slug = slugify(name);
+  } catch {
+    return null;
+  }
+  const contents = await readVaultFile(`handbook/monsters/${slug}.md`);
+  // readVaultFile never throws — returns an `ERROR: ...` marker on miss/unsafe.
+  if (contents.startsWith('ERROR')) return null;
+
+  // Parse the leading frontmatter block: text between the first `---` line and
+  // the closing `---` line. Bounded scan — no backtracking regex.
+  const lines = contents.split(/\r?\n/);
+  let inFrontmatter = false;
+  let opened = false;
+  const fmLines: string[] = [];
+  for (const line of lines) {
+    if (line.trim() === '---') {
+      if (!opened) {
+        // Opening delimiter — must be the very first non-empty line.
+        opened = true;
+        inFrontmatter = true;
+        continue;
+      }
+      // Closing delimiter.
+      inFrontmatter = false;
+      break;
+    }
+    if (!opened) {
+      // Content before the opening `---` — not a frontmatter file.
+      return null;
+    }
+    if (inFrontmatter) fmLines.push(line);
+  }
+  if (fmLines.length === 0) return null;
+
+  // Extract hpMax, ac, cr from the frontmatter lines.
+  // Format: `key: value` or `key: "value"` (YAML simple scalars).
+  let hpMax: number | undefined;
+  let ac: number | undefined;
+  let cr: string | undefined;
+
+  for (const fmLine of fmLines) {
+    const kv = /^(\w+):\s*(.+?)\s*$/.exec(fmLine);
+    if (!kv) continue;
+    const key = kv[1]!;
+    const raw = kv[2]!;
+
+    if (key === 'hpMax') {
+      const n = Number(raw);
+      if (!Number.isNaN(n)) hpMax = n;
+    } else if (key === 'ac') {
+      const n = Number(raw);
+      if (!Number.isNaN(n)) ac = n;
+    } else if (key === 'cr') {
+      // Strip surrounding quotes so `"1/4"` becomes the string '1/4'.
+      cr = raw.replace(/^["']|["']$/g, '');
+    }
+  }
+
+  // Only return an object when at least one recognizable field was found.
+  if (hpMax === undefined && ac === undefined && cr === undefined) return null;
+
+  const result: BestiaryStatblock = {};
+  if (hpMax !== undefined) result.hpMax = hpMax;
+  if (ac !== undefined) result.ac = ac;
+  if (cr !== undefined) result.cr = cr;
+  return result;
+}
+
 /**
  * Look up a monster's first-attack profile from the SRD bestiary by name.
  *
