@@ -282,4 +282,11 @@ Plans:
 - The combat tracker recovers via snapshot refetch when the completion SSE is dropped, with no manual page refresh
 - Non-combat turns and the existing v1/v2 resolver behavior show no regression (full suite green, tsc clean)
 
+**Plans:** 3 plans (3 waves)
+
+Plans:
+- [ ] 10-01-PLAN.md — Pure deterministic encounter-opener helper (option B): combat_start + monster_spawn[] + initiative_set from combat intent, SRD-bestiary/CR stats, injectable RNG, headless TDD suite [Wave 1]
+- [ ] 10-02-PLAN.md — Wire the opener into the vault turn route before the v1/v2 gates (gate ordered after isRollResult; sessionId dispatch; no damage on open) + headless route integration test seeding an encounter-less events.md [Wave 2]
+- [ ] 10-03-PLAN.md — Close the REQ-046 empty-narration tracker-staleness gap (smallest-correct: server state notify and/or client snapshot refetch on recovery, dropped-SSE durable) + regression test [Wave 3]
+
 ---
