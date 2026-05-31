@@ -435,7 +435,7 @@ describe('buildVaultSystemPrompt — Phase 05 rolls block (REQ-036)', () => {
     expect(prompt).toContain('PROACTIVE');
     expect(prompt).toContain('BEFORE narrating the outcome');
     expect(prompt).toMatch(/do NOT (just )?narrate what they (discover|find|deduce|learn)/i);
-    expect(prompt).toContain('Perception or Insight');
+    expect(prompt).toContain('Perception or Investigation');
   });
 
   // (c2b) Skill SELECTION must be approach-driven, not reflexive Persuasion.
@@ -456,7 +456,7 @@ describe('buildVaultSystemPrompt — Phase 05 rolls block (REQ-036)', () => {
   // player's actual attempt to read the goblin.
   it('manualRolls:true → ## Rolls block tells the master to narrate the PC attempt before the roll', () => {
     const prompt = buildVaultSystemPrompt({ ...BASE_INPUT, manualRolls: true });
-    expect(prompt).toMatch(/narrate (the|their) (PC'?s )?attempt|depict what the (player|character) is (doing|attempting)/i);
+    expect(prompt).toMatch(/narrate the (PC'?s? )?attempt|what the character is (doing|attempting)/i);
   });
 
   // (c3) the proactive directive must NOT leak into the read-only / no-rolls
