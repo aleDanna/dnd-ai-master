@@ -416,7 +416,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // defensively (D-10): a dispatcher error logs + continues, never hard-fails.
           if (_resolver !== null) {
             for (const ev of _resolver.events) {
-              const r = await dispatchVaultTool('apply_event', ev, { campaignId: campaign.id });
+              // Phase 04 SSE hand-off — pass sessionId so each server-resolved
+              // emission drives a `state` UI refresh independently of the
+              // Postgres applicator (which won't run post-legacy-drop).
+              const r = await dispatchVaultTool('apply_event', ev, { campaignId: campaign.id, sessionId });
               if (r.isError) {
                 console.warn('[turn]', sessionId, 'resolver emit failed:', r.content);
               }
@@ -487,7 +490,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 // OUTSIDE the DB transaction. campaignId is the SERVER campaign id,
                 // never player-derived (T-09-18).
                 for (const ev of loop.events) {
-                  const r = await dispatchVaultTool('apply_event', ev, { campaignId: campaign.id });
+                  // Phase 04 SSE hand-off — pass sessionId so monster-turn
+                  // emissions refresh the UI on the vault path (post-legacy-drop
+                  // the Postgres applicator no longer fires the `state` event).
+                  const r = await dispatchVaultTool('apply_event', ev, { campaignId: campaign.id, sessionId });
                   if (r.isError) {
                     console.warn('[turn]', sessionId, 'monster-turn emit failed:', r.content);
                   }

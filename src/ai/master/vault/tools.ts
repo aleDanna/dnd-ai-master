@@ -5,6 +5,7 @@ import { validateEvent, EVENT_SCHEMA_VERSION, ENCOUNTER_EVENT_TYPES, type VaultE
 import { EventsWriter } from './events-writer';
 import { regenerateAffectedViews } from './projector';
 import { eventsPath, UUID_REGEX } from './campaign-paths';
+import { notifySession } from '@/sessions/notify';
 
 /**
  * REQ-010 — Fixed 4-tool surface. Phase 02 closed the 4th tool — REQ-010 fully
@@ -156,6 +157,16 @@ export interface VaultDispatchContext {
    * `sessionId` is absent, the dispatcher falls back to Phase 02
    * single-write (the gate fails closed, no fan-out attempted).
    *
+   * Phase 04 (SSE hand-off) — sessionId ALSO drives the UI refresh: after a
+   * successful `apply_event`, the dispatcher fires
+   * `notifySession(sessionId, { type: 'state' })` so the SSE stream pushes a
+   * `state` event and the client refetches. This makes the vault path drive
+   * the same UI refresh the Postgres applicator emits (`applicator.ts`),
+   * which the Phase 03 cutover hand-off deferred (RESEARCH Pitfall 3): without
+   * it, after the legacy-state drop a vault mutation would never refresh the
+   * UI. Gated on sessionId, so headless/test callers and the read-only Phase 01
+   * tools are unaffected.
+   *
    * Server-side from the validated Clerk session row — never LLM-supplied.
    */
   sessionId?: string;
@@ -176,6 +187,21 @@ export interface VaultDispatchResult {
   isError: boolean;
   /** Only set for `end_turn` — the final narrative the loop should commit. */
   endTurnResponse?: string;
+}
+
+/**
+ * Phase 04 (SSE hand-off) — fire the UI-refresh notify after a successful
+ * vault mutation. Fire-and-forget: a NOTIFY failure (DB blip, no LISTEN
+ * client) must never fail the turn — the mutation already landed in
+ * `events.md`. No-op when `sessionId` is absent (headless / read-only /
+ * server-resolver-without-session callers). Mirrors `applicator.ts`'s
+ * `notifySession(sessionId, { type: 'state' })` on the Postgres path.
+ */
+function emitStateRefresh(sessionId: string | undefined): void {
+  if (!sessionId) return;
+  void notifySession(sessionId, { type: 'state' }).catch((e) =>
+    console.warn('notifySession(state) failed (vault apply_event):', e instanceof Error ? e.message : String(e)),
+  );
 }
 
 /**
@@ -345,6 +371,10 @@ export async function dispatchVaultTool(
             characterId,
           },
         );
+        // SSE hand-off — push a UI refresh (the dual-write path also updates
+        // Postgres, but the vault read pivot means the client must refetch the
+        // materialized vault state, not the PG row). Fire-and-forget.
+        emitStateRefresh(ctx.sessionId);
         return {
           // Carry the divergence reason back to the LLM in the success
           // envelope (only when divergence detected). The LLM does NOT
@@ -377,6 +407,11 @@ export async function dispatchVaultTool(
       const message = err instanceof Error ? err.message : String(err);
       return { content: `ERROR: apply_event failed during persist: ${message}`, isError: true };
     }
+
+    // SSE hand-off (Phase 04) — the vault single-write succeeded; push a
+    // `state` event so the client refetches the materialized vault state.
+    // Fire-and-forget, gated on sessionId (headless callers skip it).
+    emitStateRefresh(ctx.sessionId);
 
     // Minimal success envelope (Decision 3 — preserves prefix-cache hygiene).
     return { content: JSON.stringify({ ok: true, event_id: envelope.id }), isError: false };
