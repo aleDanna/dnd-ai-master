@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: milestone_complete
-last_updated: "2026-05-31T21:50:18.332Z"
+last_updated: "2026-05-31T22:09:06.901Z"
 progress:
   total_phases: 10
   completed_phases: 4
   total_plans: 21
-  completed_plans: 36
+  completed_plans: 37
   percent: 100
 ---
 
@@ -96,3 +96,9 @@ progress:
 - All tasks completed (strict TDD RED→GREEN): 71ca7fb (test — 5-case getBestiaryStatblock RED suite), bd84594 (feat — inline frontmatter reader GREEN)
 - Decisions: BestiaryStatblock all-optional {hpMax?,ac?,cr?} interface for graceful partial-frontmatter handling; inline ---…--- frontmatter parser (bounded per-line scan, no YAML library); cr stored as quote-stripped string '1/4' not numeric 0.25; returns null (not empty object) when no recognizable fields found; getBestiaryAttackStats and all v1/v2 files byte-identical
 - 5 new tests; tsc --noEmit clean; no new test failures (same 4 pre-existing: applicator/gp-stack, scene-image-coalesce, tts-coalesce, preferences-local-validation)
+
+### Phase 10 — Plan 03 Execution (2026-06-01)
+
+- All tasks completed: 08ebd68 (feat — opener wiring in route.ts), c70696c (test — headless wiring proof)
+- Decisions: async/sync bridge via pre-await getBestiaryStatblock + sync closure () => stats injected into runEncounterOpener; openerRan declared at vault-branch scope (cross-plan signal for 10-04 combatStateChanged guard); opener gate ordered after isRollResult (loop-avoidance + REQ-047); Option B monster-name extraction isolated in _extractMonsterName so option A drops in later; dispatch passes { campaignId: campaign.id, sessionId } for emitStateRefresh in production; try/catch wraps opener (D-10/T-10-09)
+- 5 wiring test assertions GREEN; tsc --noEmit clean; no new test failures (same 5 pre-existing: applicator/gp-stack, scene-image-coalesce, tts-coalesce, preferences-local-validation, game-client-begin-stuck)
