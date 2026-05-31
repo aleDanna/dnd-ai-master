@@ -88,7 +88,7 @@ beforeEach(() => {
 describe('runVaultToolLoop — inline-event fallback (Option C)', () => {
   it('recovers leaked combat events from text and dispatches them as apply_event', async () => {
     const provider = makeProvider([textOutput(LEAKED_COMBAT)]);
-    const res = await runVaultToolLoop({
+    await runVaultToolLoop({
       provider,
       systemBlocks: [],
       history: [{ role: 'user', content: 'attacco' }],
