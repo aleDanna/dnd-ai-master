@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: milestone_complete
-last_updated: "2026-05-31T22:09:06.901Z"
+last_updated: "2026-06-01T00:22:00.000Z"
 progress:
   total_phases: 10
   completed_phases: 4
@@ -102,3 +102,9 @@ progress:
 - All tasks completed: 08ebd68 (feat — opener wiring in route.ts), c70696c (test — headless wiring proof)
 - Decisions: async/sync bridge via pre-await getBestiaryStatblock + sync closure () => stats injected into runEncounterOpener; openerRan declared at vault-branch scope (cross-plan signal for 10-04 combatStateChanged guard); opener gate ordered after isRollResult (loop-avoidance + REQ-047); Option B monster-name extraction isolated in _extractMonsterName so option A drops in later; dispatch passes { campaignId: campaign.id, sessionId } for emitStateRefresh in production; try/catch wraps opener (D-10/T-10-09)
 - 5 wiring test assertions GREEN; tsc --noEmit clean; no new test failures (same 5 pre-existing: applicator/gp-stack, scene-image-coalesce, tts-coalesce, preferences-local-validation, game-client-begin-stuck)
+
+### Phase 10 — Plan 04 Execution (2026-06-01)
+
+- All tasks completed: 2cbc52c (feat — combatStateChanged XOR branch in route.ts empty-narration else), a69c17d (test — 15-case branch-decision unit suite)
+- Decisions: BRANCH the existing turn-error emit (state XOR turn-error, never both — T-10-10 DoS prevention); combatStateChanged reads _resolver/_monsterLoopRan/openerRan (all already in vault-branch scope); test models decision as local helper (route has no unit-test harness) mirroring combat-resolver.test.ts convention; client durable recovery (game-client.tsx void refetch() at ~238/297) confirmed already shipped — no client extension needed
+- 15 branch-decision tests GREEN; tsc --noEmit clean; no new test failures (same 5 pre-existing: applicator/gp-stack, scene-image-coalesce, tts-coalesce, preferences-local-validation, game-client-begin-stuck); Phase 10 complete (REQ-045, REQ-046, REQ-047 all closed)

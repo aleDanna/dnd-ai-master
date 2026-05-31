@@ -282,7 +282,7 @@ Plans:
 - The combat tracker recovers via snapshot refetch when the completion SSE is dropped, with no manual page refresh
 - Non-combat turns and the existing v1/v2 resolver behavior show no regression (full suite green, tsc clean)
 
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 
@@ -294,6 +294,6 @@ Plans:
 - [x] 10-03-PLAN.md — Wire the opener into the vault turn route (gate ordered after isRollResult; dispatch with campaignId+sessionId; goblin spawns REAL hpMax 7; `openerRan` signal for 10-04; no damage on open) + headless wiring test (no real NOTIFY) [REQ-045, REQ-047]
 
 **Wave 3** *(blocked on Wave 2)*
-- [ ] 10-04-PLAN.md — Close the REQ-046 empty-narration tracker gap: guarded `notifySession({type:'state'})` in the empty-narration else branch (combatStateChanged = _resolver || _monsterLoopRan || openerRan); client recovery already shipped (verify only) + test [REQ-046]
+- [x] 10-04-PLAN.md — Close the REQ-046 empty-narration tracker gap: guarded `notifySession({type:'state'})` in the empty-narration else branch (combatStateChanged = _resolver || _monsterLoopRan || openerRan); client recovery already shipped (verify only) + test [REQ-046]
 
 ---
