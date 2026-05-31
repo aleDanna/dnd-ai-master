@@ -438,6 +438,27 @@ describe('buildVaultSystemPrompt — Phase 05 rolls block (REQ-036)', () => {
     expect(prompt).toContain('Perception or Insight');
   });
 
+  // (c2b) Skill SELECTION must be approach-driven, not reflexive Persuasion.
+  // Live smoke (session cea24234): "Cerco di capire le intenzioni del goblin"
+  // (reading a creature) was mis-asked as a Persuasion check. The handbook is
+  // explicit: reading intentions / sensing a lie = Insight, not Persuasion.
+  it('manualRolls:true → ## Rolls block warns against reflexive Persuasion and maps "read intentions" to Insight', () => {
+    const prompt = buildVaultSystemPrompt({ ...BASE_INPUT, manualRolls: true });
+    expect(prompt).toMatch(/read(ing)? (a creature'?s )?intentions/i);
+    expect(prompt).toContain('Insight');
+    // The approach picks the ability — not Persuasion-for-everything.
+    expect(prompt).toMatch(/NOT.*reflexive|do not default to Persuasion/i);
+  });
+
+  // (c2c) When a social/perception check IS warranted, the master must still
+  // narrate the PC's ATTEMPT (the action the player declared) before the roll —
+  // live smoke showed it narrating around the action without depicting the
+  // player's actual attempt to read the goblin.
+  it('manualRolls:true → ## Rolls block tells the master to narrate the PC attempt before the roll', () => {
+    const prompt = buildVaultSystemPrompt({ ...BASE_INPUT, manualRolls: true });
+    expect(prompt).toMatch(/narrate (the|their) (PC'?s )?attempt|depict what the (player|character) is (doing|attempting)/i);
+  });
+
   // (c3) the proactive directive must NOT leak into the read-only / no-rolls
   // prompt (it lives inside the manualRolls-gated block).
   it('manualRolls:false → PROACTIVE-roll directive ABSENT (gated with the block)', () => {
