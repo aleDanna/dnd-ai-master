@@ -25,8 +25,12 @@ export interface BakedTipInput {
   provider: ProviderName;
   /** Whether the local Ollama engine is reachable. */
   aiReachable: boolean;
-  /** Installed local models; only the `kind` discriminator is consulted. */
-  models: ReadonlyArray<{ kind?: 'baked' | 'raw' }>;
+  /**
+   * Installed models; only the optional `kind` discriminator is consulted.
+   * Typed loosely (the cloud-provider option objects carry no `kind` field at
+   * all) — `kind` is read defensively.
+   */
+  models: ReadonlyArray<{ kind?: 'baked' | 'raw' } | Record<string, unknown>>;
   /** Campaign master backend (`'vault'` once cut over; `'baked'`/undefined legacy). */
   masterBackend?: 'vault' | 'baked';
 }
@@ -49,7 +53,9 @@ export function shouldShowBakedBuildTip(input: BakedTipInput): boolean {
   if (!input.aiReachable) return false;
   if (input.masterBackend === 'vault') return false;
   if (input.models.length === 0) return false;
-  const anyBaked = input.models.some((m) => m.kind === 'baked');
+  const anyBaked = input.models.some(
+    (m) => (m as { kind?: unknown }).kind === 'baked',
+  );
   return !anyBaked;
 }
 
