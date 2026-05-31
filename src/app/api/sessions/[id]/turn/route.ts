@@ -36,10 +36,11 @@ import { checkPartyAccess } from '@/multiplayer/access';
 import { resolveCombatHandoff } from './combat-handoff';
 import { resolveCombat, enforceResolvedNarration, type ResolveCombatResult } from './combat-resolver';
 import { runMonsterTurnLoop } from './monster-turns';
-import { getBestiaryAttackStats } from './monster-bestiary';
+import { getBestiaryAttackStats, getBestiaryStatblock } from './monster-bestiary';
+import { runEncounterOpener } from './encounter-opener';
 import { parseEventsFile, replayEvents } from '@/ai/master/vault/projector';
 import { eventsPath } from '@/ai/master/vault/campaign-paths';
-import { buildTurnDirective, appendDirectiveToHistory, isRollResult } from '@/ai/master/vault/turn-directive';
+import { buildTurnDirective, appendDirectiveToHistory, isRollResult, detectCombatIntent } from '@/ai/master/vault/turn-directive';
 import { buildBeginUserMessage } from '@/ai/master/begin-message';
 
 // buildBeginUserMessage moved to @/ai/master/begin-message (shared baked+vault).
@@ -316,6 +317,107 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           const _lastUserTurn = [...vaultHistory].reverse().find((m) => m.role === 'user');
           const _playerMessage =
             typeof _lastUserTurn?.content === 'string' ? _lastUserTurn.content : undefined;
+
+          // 5v-opener (Phase 10 / REQ-045 / D-01). SERVER-AUTHORITATIVE ENCOUNTER
+          // OPENER hook. BEFORE the v1 resolver gate, on a real player turn where
+          // combat intent is detected AND no encounter is active AND the message is
+          // NOT a roll-result, the server deterministically opens the encounter
+          // (monster_spawn + initiative_set) via the pure runEncounterOpener helper
+          // (10-01) with the real SRD bestiary reader (10-02) injected as the lookup.
+          //
+          // Gate ordering: isRollResult is checked BEFORE detectCombatIntent because
+          // a roll-result message echoes the attack verb (e.g. "attaccare Goblin")
+          // and would otherwise re-trip detectCombatIntent → re-open an already-
+          // active encounter (REQ-047 sequencing invariant + loop-avoidance).
+          //
+          // Monster-name derivation: Option B (CONTEXT.md LOCKED) — extract the
+          // likely target name from the player message by stripping common attack-
+          // verb prefixes and keeping the remainder. This step is intentionally
+          // isolated in _extractMonsterName so the future option-A constrained-JSON
+          // path can replace ONLY this step without touching the opener call or
+          // dispatch loop.
+          //
+          // Async/sync bridge: getBestiaryStatblock is async (it awaits readVaultFile
+          // on the vault filesystem); runEncounterOpener is pure/synchronous. We
+          // pre-await the statblock, then inject a synchronous closure () => stats so
+          // the opener contract is satisfied and the REAL bestiary values reach the
+          // opener (goblin → hpMax 7 from SRD, not a CR-default).
+          //
+          // openerRan (cross-plan signal): declared at the vault-branch scope
+          // alongside _resolver and _monsterLoopRan so the empty-narration guard
+          // in the 10-04 notify branch can read it (combatStateChanged = _resolver
+          // !== null || _monsterLoopRan || openerRan).
+          let openerRan = false;
+          if (!isBegin && vaultMutationsEnabled && detectCombatIntent(_playerMessage) && !isRollResult(_playerMessage)) {
+            try {
+              const { encounter: encounterForOpener } = replayEvents(await parseEventsFile(eventsPath(campaign.id)));
+              if (!encounterForOpener.active) {
+                // Option B monster-name extraction: trim common attack-verb prefixes
+                // from the player message and use the remainder as the monster name.
+                // Heuristic — the intent signal (combat verb) is already confirmed;
+                // we pick the nominal target as the first non-verb word group.
+                // This seam is intentionally isolated: option A (constrained-JSON
+                // Ollama format call) will replace ONLY the _extractMonsterName step.
+                const _extractMonsterName = (msg: string): string => {
+                  // Strip leading attack verbs and punctuation; take the first
+                  // substantial word group remaining. Falls back to the first
+                  // capitalized word, then to "Unknown Enemy".
+                  const cleaned = msg
+                    .replace(/[!?.,;:]/g, ' ')
+                    .replace(
+                      /\b(attacc\w*|colpisc\w*|colpir\w*|combatt\w*|ingagg\w*|sferr\w*|assal\w*|scagli\w*|menar\w*|pugn\w*|calci\w*|affront\w*|carica|uccid\w*|ammazz\w*|attack\w*|strik\w*|fight\w*|punch\w*|engage\w*|slash\w*|stab\w*|il|lo|la|un|uno|una|i|gli|le|con|a|ad)\b/gi,
+                      ' ',
+                    )
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                  // Prefer the first capitalized word group (proper noun = monster name).
+                  const capMatch = /([A-ZÀÈÌÒÙ][a-zàèìòùA-ZÀÈÌÒÙ\s'-]{1,30}?)(?:\s|$)/.exec(cleaned);
+                  if (capMatch?.[1] && capMatch[1].trim().length > 1) return capMatch[1].trim();
+                  // Fallback: first non-empty word.
+                  const firstWord = cleaned.split(/\s+/).find((w) => w.length > 1);
+                  if (firstWord) return firstWord;
+                  return 'Unknown Enemy';
+                };
+                const monsterName = _extractMonsterName(_playerMessage ?? '');
+
+                // Pre-await the async statblock, then inject a sync closure so
+                // runEncounterOpener (pure/sync contract) reads the REAL SRD values.
+                // This bridges the async getBestiaryStatblock → sync bestiaryLookup
+                // seam: goblin → { hpMax: 7, ac: 15, cr: '1/4' } from the vault FS.
+                // INFO-9: snap.party rows carry no initiativeBonus/initiative field
+                // (characters schema has ac/hpMax only) — PC initiative is 1d20+0 by
+                // design inside the opener; not dropped wiring.
+                const _bestiaryStats = await getBestiaryStatblock(monsterName);
+                const openerEvents = runEncounterOpener(snap, monsterName, () => _bestiaryStats);
+
+                for (const ev of openerEvents) {
+                  // Pass BOTH campaignId (server UUID, never player-derived — T-10-07)
+                  // AND sessionId so emitStateRefresh fires in production (tools.ts:200)
+                  // and the combat tracker refreshes client-side. Mirror the v1 emit
+                  // loop pattern (route.ts ~381-383).
+                  const r = await dispatchVaultTool('apply_event', ev, { campaignId: campaign.id, sessionId });
+                  if (r.isError) {
+                    console.warn('[turn]', sessionId, 'encounter opener emit failed:', r.content);
+                  }
+                }
+
+                // openerRan: cross-plan boolean signal for 10-04's empty-narration
+                // guard (combatStateChanged = _resolver !== null || _monsterLoopRan
+                // || openerRan). Set AFTER dispatch so it is true only on success.
+                if (openerEvents.length > 0) {
+                  openerRan = true;
+                }
+              }
+            } catch (err) {
+              // D-10 / T-10-09 — never hard-fail the turn on an opener error.
+              // Log + fall through; openerRan stays false → turn continues as
+              // a normal non-combat vault turn (narrative path).
+              console.warn(
+                '[turn]', sessionId, 'encounter opener failed, falling through:',
+                err instanceof Error ? err.message : String(err),
+              );
+            }
+          }
 
           // 5v-combat (Phase 08 / REQ-039 / D-01). SERVER-SIDE COMBAT RESOLVER hook.
           // BEFORE the LLM loop, on a roll-result during an active vault encounter,
@@ -746,7 +848,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               }),
             );
           } else {
-            console.warn('turn produced empty response (vault path)', { sessionId });
+            // 10-04 will gate a state-refresh NOTIFY here on combatStateChanged:
+            //   const combatStateChanged = _resolver !== null || _monsterLoopRan || openerRan;
+            // openerRan is declared above at this scope so 10-04 can read it.
+            console.warn('turn produced empty response (vault path)', { sessionId, openerRan });
             notifySession(sessionId, {
               type: 'turn-error',
               reason: 'empty_response',
