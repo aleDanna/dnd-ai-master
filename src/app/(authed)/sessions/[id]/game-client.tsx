@@ -315,7 +315,7 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
         if (Date.now() - startedAt > 180_000) clearSafetyPoll();
       }).catch(() => { /* network blip — keep polling */ });
     }, 3000);
-  }, [messages, fetchSessionData, clearSafetyPoll, clearStreamingMessage, refetch]);
+  }, [messages, fetchSessionData, clearSafetyPoll, clearStreamingMessage, refetch, setTurnStatus]);
 
   React.useEffect(() => () => clearSafetyPoll(), [clearSafetyPoll]);
 
