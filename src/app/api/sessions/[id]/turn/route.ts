@@ -40,58 +40,12 @@ import { getBestiaryAttackStats } from './monster-bestiary';
 import { parseEventsFile, replayEvents } from '@/ai/master/vault/projector';
 import { eventsPath } from '@/ai/master/vault/campaign-paths';
 import { buildTurnDirective, appendDirectiveToHistory, isRollResult } from '@/ai/master/vault/turn-directive';
+import { buildBeginUserMessage } from '@/ai/master/begin-message';
 
-/**
- * Synthetic user instruction injected on the very first turn of a campaign,
- * when the player has not written anything yet. Localized to the campaign
- * language so the model sees the cue in its own output distribution from
- * the first attention pass — fully-English baked SYSTEM otherwise drags
- * Italian campaigns back to English output. English is the fallback.
- */
-const BEGIN_INSTRUCTION: Record<string, string> = {
-  en: '[Begin the campaign now. Open the scene by narrating, in second person, the player character\'s immediate surroundings and the situation that draws them in — strictly grounded in the Campaign premise above. Voice any NPCs in earshot. Do NOT call any state-mutating tool (no add_item, award_xp, apply_damage, roll_initiative, etc.) on this opening turn — just establish the scene. End with an open-ended cue inviting the player\'s first action.]',
-  it: '[Inizia la campagna ora. Apri la scena narrando, in seconda persona, ciò che il personaggio giocante percepisce nell\'ambiente circostante e la situazione che lo coinvolge — strettamente ancorato alla Premessa della campagna sopra. Dai voce a qualunque PNG a portata d\'orecchio. NON chiamare alcun tool che muta lo stato (niente add_item, award_xp, apply_damage, roll_initiative, ecc.) in questo turno di apertura — limita a stabilire la scena. Concludi con uno spunto aperto che inviti la prima azione del giocatore.]',
-  es: '[Comienza la campaña ahora. Abre la escena narrando, en segunda persona, lo que el personaje jugador percibe a su alrededor y la situación que lo involucra — estrictamente anclado a la Premisa de la campaña arriba. Da voz a cualquier PNJ al alcance. NO llames a ninguna herramienta que mute el estado en este turno de apertura — solo establece la escena. Termina con un cierre abierto que invite a la primera acción del jugador.]',
-  fr: '[Commence la campagne maintenant. Ouvre la scène en narrant, à la deuxième personne, ce que le personnage perçoit autour de lui et la situation qui le concerne — strictement ancrée dans la Prémisse de la campagne ci-dessus. Donne voix aux PNJ à portée. N\'appelle AUCUN outil qui mute l\'état pendant ce tour d\'ouverture — établis simplement la scène. Termine par une invite ouverte appelant la première action du joueur.]',
-  de: '[Beginne die Kampagne jetzt. Eröffne die Szene, indem du in der zweiten Person erzählst, was die Spielfigur in der unmittelbaren Umgebung wahrnimmt und welche Situation sie hineinzieht — streng verankert in der obenstehenden Kampagnen-Prämisse. Verleihe etwaigen NSCs in Hörweite eine Stimme. Rufe in dieser Eröffnungsrunde KEIN zustandsänderndes Werkzeug auf — etabliere nur die Szene. Schließe mit einem offenen Hinweis, der die erste Aktion der Spielerin einlädt.]',
-  pt: '[Comece a campanha agora. Abra a cena narrando, na segunda pessoa, o que o personagem percebe no entorno imediato e a situação que o envolve — estritamente ancorada na Premissa da campanha acima. Dê voz a quaisquer NPCs ao alcance. NÃO chame nenhuma ferramenta que mute o estado neste turno de abertura — apenas estabeleça a cena. Termine com um gancho aberto convidando a primeira ação do jogador.]',
-};
-
-/**
- * Mandatory tool-call instruction prefixed to the begin user message. Anchors
- * the tonal register on opening so weaker non-thinking MoE models (notably
- * qwen3:30b-a3b-instruct-2507, baked as Max 2) commit to a frame instead of
- * drifting into whatever stylistic pattern the premise pattern-matches to.
- * Paired with server-side enforcement in tool-loop.ts (requiredToolsBeforeEnd).
- * Localized for the same reason as BEGIN_INSTRUCTION above.
- */
-const BEGIN_TONAL_MANDATE: Record<string, string> = {
-  en: '[MANDATORY OPENING STEP] Before writing any narration, you MUST call the meta_action tool with subaction="set_tonal_frame" and a frame value exactly once. Choose the frame that best fits the campaign premise from: high_heroic, sword_sorcery, dark, mythic, cosmic_horror, swashbuckling, wuxia, steampunk. The server will reject the opening turn and re-prompt you if this tool is not called first.',
-  it: '[PASSO DI APERTURA OBBLIGATORIO] Prima di scrivere qualsiasi narrazione, DEVI chiamare il tool meta_action con subaction="set_tonal_frame" e un valore frame esattamente una volta. Scegli il frame che meglio si adatta alla premessa della campagna fra: high_heroic, sword_sorcery, dark, mythic, cosmic_horror, swashbuckling, wuxia, steampunk. Il server rifiuterà il turno di apertura e ti riassegnerà il prompt se questo tool non viene chiamato per primo.',
-  es: '[PASO DE APERTURA OBLIGATORIO] Antes de escribir cualquier narración, DEBES llamar al tool meta_action con subaction="set_tonal_frame" y un valor frame exactamente una vez. Elige el frame que mejor encaje con la premisa de la campaña entre: high_heroic, sword_sorcery, dark, mythic, cosmic_horror, swashbuckling, wuxia, steampunk. El servidor rechazará el turno de apertura y volverá a pedirte el prompt si esta herramienta no se llama primero.',
-  fr: '[ÉTAPE D\'OUVERTURE OBLIGATOIRE] Avant d\'écrire toute narration, tu DOIS appeler le tool meta_action avec subaction="set_tonal_frame" et une valeur frame exactement une fois. Choisis le frame qui correspond le mieux à la prémisse parmi : high_heroic, sword_sorcery, dark, mythic, cosmic_horror, swashbuckling, wuxia, steampunk. Le serveur rejettera le tour d\'ouverture si cet outil n\'est pas appelé en premier.',
-  de: '[OBLIGATORISCHER ERÖFFNUNGSSCHRITT] Bevor du irgendeine Erzählung schreibst, MUSST du das Werkzeug meta_action mit subaction="set_tonal_frame" und einem frame-Wert genau einmal aufrufen. Wähle den Frame, der am besten zur Prämisse passt, aus: high_heroic, sword_sorcery, dark, mythic, cosmic_horror, swashbuckling, wuxia, steampunk. Der Server lehnt die Eröffnungsrunde ab und stellt die Anfrage erneut, wenn dieses Werkzeug nicht zuerst aufgerufen wird.',
-  pt: '[PASSO DE ABERTURA OBRIGATÓRIO] Antes de escrever qualquer narração, você DEVE chamar a ferramenta meta_action com subaction="set_tonal_frame" e um valor frame exatamente uma vez. Escolha o frame que melhor combine com a premissa entre: high_heroic, sword_sorcery, dark, mythic, cosmic_horror, swashbuckling, wuxia, steampunk. O servidor rejeitará o turno de abertura se esta ferramenta não for chamada primeiro.',
-};
-
-/**
- * Build the synthetic first-turn user message. Prepends the campaign premise
- * verbatim (so the model attends to it directly — non-thinking MoE models
- * weight recent user content far more than system blocks) and stacks the
- * tonal-frame mandate ahead of the legacy BEGIN_INSTRUCTION. Both stacks are
- * picked in the campaign language when known so the model sees the cue in
- * its own output distribution, not in English.
- */
-function buildBeginUserMessage(premise: string | null | undefined, language: string | null | undefined): string {
-  const lang = language ?? 'en';
-  const blocks: string[] = [];
-  if (premise && premise.trim()) {
-    blocks.push(`Campaign premise:\n\n${premise.trim()}`);
-  }
-  blocks.push(BEGIN_TONAL_MANDATE[lang] ?? BEGIN_TONAL_MANDATE.en!);
-  blocks.push(BEGIN_INSTRUCTION[lang] ?? BEGIN_INSTRUCTION.en!);
-  return blocks.join('\n\n');
-}
+// buildBeginUserMessage moved to @/ai/master/begin-message (shared baked+vault).
+// The vault begin call passes { tonalMandate: false } — the vault path has no
+// meta_action tool / tonalFrame / requiredToolsBeforeEnd enforcement, so the
+// mandate only made local models emit the tool call as text and stall the open.
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
@@ -323,7 +277,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           let vaultHistory: Anthropic.Messages.MessageParam[];
           if (isBegin) {
             vaultHistory = [
-              { role: 'user', content: buildBeginUserMessage(campaign.premise, campaign.language) },
+              // tonalMandate:false — the vault path has no meta_action tool /
+              // tonalFrame / requiredToolsBeforeEnd enforcement, so the mandate
+              // only makes local models emit `meta_action: {...}` as text and
+              // stall the opener. Vault begin is narration-only (offerTools:false).
+              { role: 'user', content: buildBeginUserMessage(campaign.premise, campaign.language, { tonalMandate: false }) },
             ];
           } else {
             const HISTORY_LIMIT = envPositiveInt('MASTER_HISTORY_LIMIT', 10);
