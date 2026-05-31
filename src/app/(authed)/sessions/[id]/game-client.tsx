@@ -333,6 +333,7 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     // "generating the campaign…" copy without waiting for the server's
     // turn-status event (which arrives ~100-300ms later via SSE).
     // isLocalProvider stays false here; the server event refines it.
+    lastTurnRef.current = { begin: true };
     setTurnStatus({ isBegin: true, isLocalProvider: false });
     setPendingTurn(true);
     void postTurn({ begin: true });
@@ -381,7 +382,14 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     }
   }, [finalizedSeq]);
 
+  // Remember the last dispatched turn so a failed turn (e.g. the local model
+  // returned an empty response — only <think> tokens, stripped to nothing) can
+  // be retried. `null` = a begin-turn (campaign opener); a string = the player
+  // message to replay.
+  const lastTurnRef = React.useRef<{ message: string } | { begin: true } | null>(null);
+
   const send = (text: string): void => {
+    lastTurnRef.current = { message: text };
     setMessages((prev) => [
       ...prev,
       { id: `temp-${Date.now()}`, sessionId, role: 'player', content: text, createdAt: new Date().toISOString() },
@@ -390,6 +398,25 @@ export function GameClient({ sessionId, session, campaign, character: initialCha
     void postTurn({ message: text });
     startSafetyPoll();
   };
+
+  // Retry the last turn after a turn-error. Critical for the opening begin-turn:
+  // `beganRef` is latched true before the POST, so the auto-open effect never
+  // re-fires on its own — without an explicit retry an empty opening response
+  // leaves the UI pinned on "responding" until reload. Re-arms the indicator +
+  // safety poll exactly like the original dispatch.
+  const retryTurn = React.useCallback((): void => {
+    const last = lastTurnRef.current;
+    clearTurnError();
+    setTurnStatus(last && 'begin' in last ? { isBegin: true, isLocalProvider: false } : null);
+    setPendingTurn(true);
+    if (last && 'message' in last) {
+      void postTurn({ message: last.message });
+    } else {
+      // begin-turn (or unknown) → replay the opener.
+      void postTurn({ begin: true });
+    }
+    startSafetyPoll();
+  }, [clearTurnError, postTurn, setTurnStatus, startSafetyPoll]);
 
   const handleMemoryReady = React.useCallback(() => {
     setMemoryReady(true);
