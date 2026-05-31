@@ -94,6 +94,18 @@ export interface VaultLoopInput {
    */
   sessionId?: string;
   campaignLanguage?: string;
+  /**
+   * When `false`, the loop passes NO tools to the provider (`tools: []`) — the
+   * model can only narrate, never tool-call. Default `true` (full vault surface).
+   *
+   * The route sets this `false` for the BEGIN-turn (campaign opener): there is
+   * nothing to read or mutate at the opening, but local models (qwen3) handed
+   * the 4 tools reach for one (observed: `list_vault`) instead of narrating →
+   * empty content → "turn produced empty response" → the UI stalls. Verified
+   * live: the same 4816-char vault prompt narrates ~800 chars with zero tools
+   * but returns empty + 1 tool_call with the tools present.
+   */
+  offerTools?: boolean;
   /** Test override; production omits and uses `VAULT_TURN_TOOL_CALL_CAP`. */
   toolCallCap?: number;
   /** Test override; production omits and uses `TURN_TIMEOUT_MS`. */
@@ -147,6 +159,8 @@ export async function runVaultToolLoop(input: VaultLoopInput): Promise<VaultLoop
     sessionId,
     campaignLanguage,
   } = input;
+  // Begin-turn passes offerTools:false → narration-only (no tool surface).
+  const offeredTools = input.offerTools === false ? [] : VAULT_TOOL_DEFINITIONS;
   const toolCallCap = input.toolCallCap ?? VAULT_TURN_TOOL_CALL_CAP;
   const turnTimeoutMs = input.turnTimeoutMs ?? TURN_TIMEOUT_MS;
 
@@ -239,7 +253,7 @@ export async function runVaultToolLoop(input: VaultLoopInput): Promise<VaultLoop
     const response = await provider.completeMessage({
       systemBlocks,
       messages,
-      tools: VAULT_TOOL_DEFINITIONS,
+      tools: offeredTools,
       ...(model !== undefined && { model }),
       ...(sessionId !== undefined && { sessionId }),
       ...(campaignLanguage !== undefined && { campaignLanguage }),

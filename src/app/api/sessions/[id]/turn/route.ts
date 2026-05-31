@@ -595,6 +595,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             history: vaultHistory,
             sessionId,
             campaignLanguage: campaign.language ?? snap.language ?? undefined,
+            // Begin-turn = narration-only: do NOT offer tools at the opener.
+            // Local models (qwen3) handed the vault tools reach for one
+            // (list_vault) instead of narrating the first scene → empty content
+            // → "turn produced empty response" → stuck UI. There is nothing to
+            // read/mutate on the opener; the scene is invented from the premise.
+            ...(isBegin && { offerTools: false }),
             // Phase 02 — only forward campaignId when the vaultMutations gate
             // is true. Without it, dispatchVaultTool('apply_event', ...) returns
             // isError on any LLM hallucination, preserving Phase 01 read-only
