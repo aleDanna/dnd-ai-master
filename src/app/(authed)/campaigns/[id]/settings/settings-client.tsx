@@ -20,6 +20,7 @@ import {
   defaultModelForProvider,
   imageModelsForProvider,
   defaultImageModelForProvider,
+  shouldShowBakedBuildTip,
   type ProviderName,
   type ImageProviderName,
 } from '@/lib/ai-models';
@@ -390,12 +391,14 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
           );
         })()}
 
-        {settings.aiProvider === 'local'
-          && localServices.ai.reachable
-          && availableModels.length > 0
-          && availableModels.every((m) => !('kind' in m) || m.kind !== 'baked') && (
+        {shouldShowBakedBuildTip({
+          provider: settings.aiProvider as ProviderName,
+          aiReachable: localServices.ai.reachable,
+          models: availableModels,
+          masterBackend: settings.masterBackend,
+        }) && (
           <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginLeft: 70 }}>
-            💡 Run <code style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-elev)', padding: '0 4px', borderRadius: 3 }}>pnpm build-local-models</code> in your terminal to enable optimized variants (~30s build, much faster turns).
+            💡 On the legacy baked path you can run <code style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-elev)', padding: '0 4px', borderRadius: 3 }}>pnpm build-local-models</code> to pre-bake the prompt (~30s build, faster turns). Not needed on the vault path — the prompt is already minimal there.
           </div>
         )}
       </Card>

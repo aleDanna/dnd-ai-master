@@ -16,6 +16,43 @@ export interface ModelOption {
   recommended?: boolean;
 }
 
+/**
+ * Input for {@link shouldShowBakedBuildTip}. Browser-safe (no DB types) — the
+ * settings client passes its already-resolved values.
+ */
+export interface BakedTipInput {
+  /** Active campaign master provider. */
+  provider: ProviderName;
+  /** Whether the local Ollama engine is reachable. */
+  aiReachable: boolean;
+  /** Installed local models; only the `kind` discriminator is consulted. */
+  models: ReadonlyArray<{ kind?: 'baked' | 'raw' }>;
+  /** Campaign master backend (`'vault'` once cut over; `'baked'`/undefined legacy). */
+  masterBackend?: 'vault' | 'baked';
+}
+
+/**
+ * Should the settings UI show the "Run `pnpm build-local-models` to enable
+ * optimized variants (faster turns)" tip?
+ *
+ * Post-cutover staleness fix: baked variants only speed up the LEGACY baked
+ * path (they pre-bake the big static blocks — MASTER_TOOL_CONTRACT, SRD,
+ * handbook). On the VAULT path the system prompt is already minimal, so a
+ * baked variant gives no speed-up and the tip is misleading. Gate it off when
+ * `masterBackend === 'vault'`.
+ *
+ * Shows only when ALL hold: provider is local, Ollama reachable, ≥1 model
+ * installed, none already baked, and the campaign is not on the vault path.
+ */
+export function shouldShowBakedBuildTip(input: BakedTipInput): boolean {
+  if (input.provider !== 'local') return false;
+  if (!input.aiReachable) return false;
+  if (input.masterBackend === 'vault') return false;
+  if (input.models.length === 0) return false;
+  const anyBaked = input.models.some((m) => m.kind === 'baked');
+  return !anyBaked;
+}
+
 export const ANTHROPIC_MASTER_MODELS: ModelOption[] = [
   {
     slug: 'claude-opus-4-5',
