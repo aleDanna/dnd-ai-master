@@ -101,12 +101,17 @@ export function evaluateDecommissionReadiness(args: {
 
   for (const c of campaigns) {
     const tag = `${c.id.slice(0, 8)} "${c.name}"`;
-    if (c.sourceOfTruth !== 'vault') {
-      blockers.push(`Campaign ${tag} is still sourceOfTruth=postgres — cut it over before decommissioning.`);
-      continue; // a postgres campaign's window/dualWrite checks are moot
-    }
+    // dualWrite is an independent blocker — a campaign that is BOTH still
+    // postgres AND still dual-writing has two distinct problems; report both.
     if (c.dualWrite) {
       blockers.push(`Campaign ${tag} still has dualWrite=on — disable coexistence before decommissioning.`);
+    }
+    if (c.sourceOfTruth !== 'vault') {
+      blockers.push(`Campaign ${tag} is still sourceOfTruth=postgres — cut it over before decommissioning.`);
+      // The rollback-window checks below are vault-only (they need cutoverAt);
+      // skip them for a postgres campaign — its postgres+dualWrite blockers
+      // already stand.
+      continue;
     }
     if (!c.cutoverAt) {
       blockers.push(`Campaign ${tag} is vault but has no cutoverAt timestamp — cannot verify the rollback window elapsed.`);
@@ -183,7 +188,7 @@ async function main(): Promise<void> {
 
   // Lazy imports so importing the pure exports (tests) never pulls in the DB client.
   await import('./_env-loader');
-  const { eq, isNull } = await import('drizzle-orm');
+  const { isNull } = await import('drizzle-orm');
   const { db, pool } = await import('@/db/client');
   const { campaigns } = await import('@/db/schema');
   const { resolveSourceOfTruth } = await import('@/lib/preferences');

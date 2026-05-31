@@ -37,6 +37,7 @@
     "vault:flip": "tsx scripts/vault-flip.ts",
     "vault:rebuild-views": "tsx scripts/vault-rebuild-views.ts",
     "decommission-baked": "tsx scripts/decommission-baked.ts",
+    "decommission-legacy-state": "tsx scripts/decommission-legacy-state.ts",
     "tunnel:proxy": "tsx scripts/tunnel-proxy.ts"
   },
   "dependencies": {
