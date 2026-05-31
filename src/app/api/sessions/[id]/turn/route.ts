@@ -848,15 +848,40 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               }),
             );
           } else {
-            // 10-04 will gate a state-refresh NOTIFY here on combatStateChanged:
-            //   const combatStateChanged = _resolver !== null || _monsterLoopRan || openerRan;
-            // openerRan is declared above at this scope so 10-04 can read it.
-            console.warn('turn produced empty response (vault path)', { sessionId, openerRan });
-            notifySession(sessionId, {
-              type: 'turn-error',
-              reason: 'empty_response',
-              message: 'Il Master non ha prodotto una risposta. Riprova o riformula.',
-            }).catch((e) => console.warn('notifySession(turn-error) failed:', e instanceof Error ? e.message : String(e)));
+            // REQ-046 empty-narration guard (10-04): when a server-authoritative
+            // combat turn ran (resolver fired / monster loop ran / opener ran) but
+            // produced no narration, the turn LEGITIMATELY ADVANCED STATE — HP
+            // changed, initiative moved, an encounter opened. Emitting the normal
+            // {type:'turn-error'} notify here would trigger a spurious "no response /
+            // retry" toast even though the turn succeeded. Instead, emit a silent
+            // {type:'state'} notify so the client refetches and the tracker updates
+            // with NO error toast.
+            //
+            // Only the GENUINE non-combat empty case (all three signals falsy — a
+            // real model failure) keeps the original {type:'turn-error'} emit so
+            // the player still sees the retry toast.
+            //
+            // Exactly ONE notify fires per empty turn (state XOR turn-error) — no
+            // refresh storm (T-10-10). notifySession is already imported above
+            // (it is the call we are branching, not duplicating).
+            const combatStateChanged = _resolver !== null || _monsterLoopRan || openerRan;
+            console.warn('turn produced empty response (vault path)', { sessionId, combatStateChanged, openerRan });
+            if (combatStateChanged) {
+              // A real server-resolved combat turn that legitimately advanced state.
+              // Emit a silent refresh so the tracker updates; do NOT emit turn-error
+              // (that would show a bogus "no response / retry" toast — T-10-14).
+              notifySession(sessionId, { type: 'state' }).catch(
+                (e) => console.warn('notifySession(state) failed:', e instanceof Error ? e.message : String(e)),
+              );
+            } else {
+              // Genuine non-combat empty: the model produced nothing and no server
+              // logic changed state. Surface the retry toast so the player can re-prompt.
+              notifySession(sessionId, {
+                type: 'turn-error',
+                reason: 'empty_response',
+                message: 'Il Master non ha prodotto una risposta. Riprova o riformula.',
+              }).catch((e) => console.warn('notifySession(turn-error) failed:', e instanceof Error ? e.message : String(e)));
+            }
           }
 
           // Early return: baked path below is skipped on vault-flagged campaigns.
