@@ -33,7 +33,10 @@ describe('buildBeginUserMessage', () => {
 
   it('omits the premise block when premise is empty/null', () => {
     const msg = buildBeginUserMessage('   ', 'en', { tonalMandate: false });
-    expect(msg).not.toMatch(/Campaign premise/);
+    // Assert on the block header (colon) — the instruction prose itself says
+    // "...grounded in the Campaign premise above" (no colon), so a bare
+    // /Campaign premise/ would false-match even when no premise block exists.
+    expect(msg).not.toMatch(/Campaign premise:/);
   });
 
   it('uses the Italian opener for language "it"', () => {
