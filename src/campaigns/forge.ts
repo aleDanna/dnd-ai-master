@@ -1,7 +1,8 @@
 import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { campaigns, characters, sessions, sessionState, users, type Campaign, type CampaignSettings, type UserPreferences } from '@/db/schema';
+import { campaigns, characters, sessions, sessionState, users, type Campaign, type UserPreferences } from '@/db/schema';
 import { forkTemplateForCampaign } from './fork';
+import { initialCampaignSettings } from './initial-settings';
 
 export type CreateCampaignInput = {
   userId: string;
@@ -53,12 +54,13 @@ export async function createCampaign(input: CreateCampaignInput): Promise<Create
       .from(users)
       .where(eq(users.id, input.userId))
       .limit(1);
-    const settingsSnapshot: CampaignSettings = (() => {
-      const prefs = (hostRow?.preferences ?? {}) as UserPreferences;
-      const { ttsAutoplay: _autoplay, ...rest } = prefs;
-      void _autoplay;
-      return rest;
-    })();
+    // New campaigns are born on the vault path by default (unless the host
+    // explicitly chose a backend) — see initialCampaignSettings. NOTE: the
+    // vault read path also needs events.md seeded (campaign_initialized); that
+    // filesystem seed runs in the API caller AFTER this transaction commits
+    // (it must not run inside the DB tx). Until the seed lands, buildClientSnapshot
+    // falls back to Postgres, so the campaign is never broken in between.
+    const settingsSnapshot = initialCampaignSettings((hostRow?.preferences ?? {}) as UserPreferences);
 
     const [campaign] = await tx
       .insert(campaigns)
