@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: milestone_complete
-last_updated: "2026-05-31T21:43:25.472Z"
+last_updated: "2026-05-31T21:50:18.332Z"
 progress:
   total_phases: 10
   completed_phases: 4
   total_plans: 21
-  completed_plans: 35
+  completed_plans: 36
   percent: 100
 ---
 
@@ -90,3 +90,9 @@ progress:
 - All tasks completed (strict TDD RED→GREEN): 2fdcf84 (test — 14-case encounter-opener RED suite), 37382fd (feat — runEncounterOpener pure implementation GREEN)
 - Decisions: runEncounterOpener is pure (node:crypto randomUUID only import; no v1/v2 deps); BestiaryStats all-optional interface degrades gracefully on null/partial lookup (T-10-02); HP fallback uses CR-to-HP table nearest-floor (0→7 goblin tier … 17→218 dragon tier); initiative is 1d20+0 for PCs and monster (INFO-9: no initiativeBonus in characters schema); initiative_set sorted descending; CR string fractions parsed to numeric and forwarded in monster_spawn.cr; ac forwarded when present (v1 reads monster.ac ?? 12)
 - 14 new tests; tsc --noEmit clean; no new test failures (6 pre-existing failures: applicator/gp-stack, scene-image-coalesce, tts-coalesce, preferences-local-validation, job-claims, game-client-begin-stuck — all pre-dating Phase 10)
+
+### Phase 10 — Plan 02 Execution (2026-05-31)
+
+- All tasks completed (strict TDD RED→GREEN): 71ca7fb (test — 5-case getBestiaryStatblock RED suite), bd84594 (feat — inline frontmatter reader GREEN)
+- Decisions: BestiaryStatblock all-optional {hpMax?,ac?,cr?} interface for graceful partial-frontmatter handling; inline ---…--- frontmatter parser (bounded per-line scan, no YAML library); cr stored as quote-stripped string '1/4' not numeric 0.25; returns null (not empty object) when no recognizable fields found; getBestiaryAttackStats and all v1/v2 files byte-identical
+- 5 new tests; tsc --noEmit clean; no new test failures (same 4 pre-existing: applicator/gp-stack, scene-image-coalesce, tts-coalesce, preferences-local-validation)
