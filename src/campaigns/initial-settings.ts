@@ -65,5 +65,14 @@ export function initialCampaignSettings(hostPreferences: UserPreferences): Campa
     settings.manualRolls = true;
   }
 
+  // Hide difficulty numbers by default: the DC/AC is the DM's secret (DM-screen
+  // convention) — players shouldn't see "(CD 12)" on the roll chip. The
+  // manual-rolls block honours this (showDifficultyNumbers:false → the master
+  // omits the numeric DC/AC from roll requests while still using it to judge
+  // the result). An explicit host choice (true OR false) is preserved.
+  if (settings.showDifficultyNumbers === undefined) {
+    settings.showDifficultyNumbers = false;
+  }
+
   return settings;
 }

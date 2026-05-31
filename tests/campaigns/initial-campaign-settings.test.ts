@@ -86,6 +86,16 @@ describe('initialCampaignSettings', () => {
     expect(s.manualRolls).toBe(false);
   });
 
+  it('hides difficulty numbers by default (DCs are secret, DM-screen convention)', () => {
+    const s = initialCampaignSettings(prefs());
+    expect(s.showDifficultyNumbers).toBe(false);
+  });
+
+  it('preserves an explicit host showDifficultyNumbers:true (does not override it)', () => {
+    const s = initialCampaignSettings(prefs({ showDifficultyNumbers: true } as Partial<UserPreferences>));
+    expect(s.showDifficultyNumbers).toBe(true);
+  });
+
   it('drops the per-viewer ttsAutoplay flag from the snapshot', () => {
     const s = initialCampaignSettings(prefs({ ttsAutoplay: true } as Partial<UserPreferences>));
     expect('ttsAutoplay' in s).toBe(false);
