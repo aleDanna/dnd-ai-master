@@ -423,6 +423,28 @@ describe('buildVaultSystemPrompt — Phase 05 rolls block (REQ-036)', () => {
     expect(prompt).toContain('AUTHORITATIVE');
   });
 
+  // (c2) PROACTIVE-roll directive — the master must call for a check BEFORE
+  // narrating an uncertain perception/knowledge/social outcome. Added after a
+  // live smoke (session 0b1e2692, The Iron Pass Caravan) where qwen3 narrated
+  // the result of "I study the two men to figure out who they are" — including
+  // an inference ("forse un segno di comando") — instead of asking for a
+  // Perception/Insight check. The permissive original wording ("when uncertain
+  // AND failure would be interesting") was under-applied by the local model.
+  it('manualRolls:true → ## Rolls block carries the PROACTIVE-roll directive + concrete triggers', () => {
+    const prompt = buildVaultSystemPrompt({ ...BASE_INPUT, manualRolls: true });
+    expect(prompt).toContain('PROACTIVE');
+    expect(prompt).toContain('BEFORE narrating the outcome');
+    expect(prompt).toMatch(/do NOT (just )?narrate what they (discover|find|deduce|learn)/i);
+    expect(prompt).toContain('Perception or Insight');
+  });
+
+  // (c3) the proactive directive must NOT leak into the read-only / no-rolls
+  // prompt (it lives inside the manualRolls-gated block).
+  it('manualRolls:false → PROACTIVE-roll directive ABSENT (gated with the block)', () => {
+    const prompt = buildVaultSystemPrompt({ ...BASE_INPUT, manualRolls: false });
+    expect(prompt).not.toContain('PROACTIVE');
+  });
+
   // (d) language:'it' → Italian phrasings + anti-mixing clause
   it('language:it + manualRolls:true → Italian phrasings and anti-mixing clause', () => {
     const prompt = buildVaultSystemPrompt({ ...BASE_INPUT, manualRolls: true, language: 'it' });
