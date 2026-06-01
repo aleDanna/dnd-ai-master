@@ -2657,3 +2657,124 @@ describe('applyEncounterEvent — monster_spawn cr propagation (D-08)', () => {
     expect(JSON.stringify(enc)).toBe(JSON.stringify(expected));
   });
 });
+
+
+// =====================================================================
+// Phase 08-02 — deduplicateMonsterNames (RED tests, 2026-06-01)
+//
+// When >=2 monsters in an encounter share the same base name, they must
+// ALL be numbered: "Base 1", "Base 2", "Base 3" (the first is numbered
+// too — never "Base", "Base 2", "Base 3").
+// A lone monster with a unique base name stays unnumbered.
+// The function is PURE and does NOT mutate the EncounterState.
+// Ids are left untouched — only the name field is deduped.
+// =====================================================================
+describe("deduplicateMonsterNames — unique naming (Phase 08-02)", () => {
+  type EncState = typeof import("@/ai/master/vault/projector")["INITIAL_ENCOUNTER_STATE"];
+
+  it("3 same-base spawns → name 1 / name 2 / name 3 (first also numbered)", async () => {
+    const { projector } = await importWithRoot("/tmp/test-dedup");
+    const enc: EncState = {
+      active: true,
+      round: 1,
+      currentIdx: 0,
+      turnOrder: [],
+      monsters: [
+        { id: "pirata-buggy-1", name: "Pirata di Buggy", hpCurrent: 20, hpMax: 20, isAlive: true, conditions: [] },
+        { id: "pirata-buggy-2", name: "Pirata di Buggy", hpCurrent: 20, hpMax: 20, isAlive: true, conditions: [] },
+        { id: "pirata-buggy-3", name: "Pirata di Buggy", hpCurrent: 20, hpMax: 20, isAlive: true, conditions: [] },
+      ],
+    };
+    const result = projector.deduplicateMonsterNames(enc);
+    expect(result.monsters.map((m) => m.name)).toEqual([
+      "Pirata di Buggy 1",
+      "Pirata di Buggy 2",
+      "Pirata di Buggy 3",
+    ]);
+  });
+
+  it("single monster with unique name → stays unnumbered", async () => {
+    const { projector } = await importWithRoot("/tmp/test-dedup");
+    const enc: EncState = {
+      active: true,
+      round: 1,
+      currentIdx: 0,
+      turnOrder: [],
+      monsters: [
+        { id: "goblin-1", name: "Goblin", hpCurrent: 7, hpMax: 7, isAlive: true, conditions: [] },
+      ],
+    };
+    const result = projector.deduplicateMonsterNames(enc);
+    expect(result.monsters[0]!.name).toBe("Goblin");
+  });
+
+  it("mixed: 2 Goblin + 1 Orc → Goblin 1, Goblin 2, Orc (Orc stays unnumbered)", async () => {
+    const { projector } = await importWithRoot("/tmp/test-dedup");
+    const enc: EncState = {
+      active: true,
+      round: 1,
+      currentIdx: 0,
+      turnOrder: [],
+      monsters: [
+        { id: "goblin-1", name: "Goblin", hpCurrent: 7, hpMax: 7, isAlive: true, conditions: [] },
+        { id: "goblin-2", name: "Goblin", hpCurrent: 7, hpMax: 7, isAlive: true, conditions: [] },
+        { id: "orc-1", name: "Orc", hpCurrent: 15, hpMax: 15, isAlive: true, conditions: [] },
+      ],
+    };
+    const result = projector.deduplicateMonsterNames(enc);
+    expect(result.monsters.map((m) => m.name)).toEqual(["Goblin 1", "Goblin 2", "Orc"]);
+  });
+
+  it("ids are left untouched after deduplication", async () => {
+    const { projector } = await importWithRoot("/tmp/test-dedup");
+    const enc: EncState = {
+      active: true,
+      round: 1,
+      currentIdx: 0,
+      turnOrder: [],
+      monsters: [
+        { id: "pirata-buggy-1", name: "Pirata di Buggy", hpCurrent: 20, hpMax: 20, isAlive: true, conditions: [] },
+        { id: "pirata-buggy-2", name: "Pirata di Buggy", hpCurrent: 20, hpMax: 20, isAlive: true, conditions: [] },
+      ],
+    };
+    const result = projector.deduplicateMonsterNames(enc);
+    expect(result.monsters[0]!.id).toBe("pirata-buggy-1");
+    expect(result.monsters[1]!.id).toBe("pirata-buggy-2");
+  });
+
+  it("does NOT mutate the original encounter state", async () => {
+    const { projector } = await importWithRoot("/tmp/test-dedup");
+    const enc: EncState = {
+      active: true,
+      round: 1,
+      currentIdx: 0,
+      turnOrder: [],
+      monsters: [
+        { id: "rat-1", name: "Rat", hpCurrent: 5, hpMax: 5, isAlive: true, conditions: [] },
+        { id: "rat-2", name: "Rat", hpCurrent: 5, hpMax: 5, isAlive: true, conditions: [] },
+      ],
+    };
+    projector.deduplicateMonsterNames(enc);
+    // original names must be unchanged
+    expect(enc.monsters[0]!.name).toBe("Rat");
+    expect(enc.monsters[1]!.name).toBe("Rat");
+  });
+
+  it("applyEncounterEvent monster_spawn: 3 same-base spawns produce unique names in state", async () => {
+    const { projector } = await importWithRoot("/tmp/test-dedup");
+    type EncEvent = Parameters<typeof projector.applyEncounterEvent>[1];
+    const spawn = (id: string, name: string): EncEvent =>
+      ({ type: "monster_spawn", payload: { id, name, hpMax: 20 } } as unknown as EncEvent);
+
+    let enc = projector.INITIAL_ENCOUNTER_STATE;
+    enc = projector.applyEncounterEvent(enc, spawn("pirata-buggy-1", "Pirata di Buggy"));
+    enc = projector.applyEncounterEvent(enc, spawn("pirata-buggy-2", "Pirata di Buggy"));
+    enc = projector.applyEncounterEvent(enc, spawn("pirata-buggy-3", "Pirata di Buggy"));
+
+    expect(enc.monsters.map((m) => m.name)).toEqual([
+      "Pirata di Buggy 1",
+      "Pirata di Buggy 2",
+      "Pirata di Buggy 3",
+    ]);
+  });
+});

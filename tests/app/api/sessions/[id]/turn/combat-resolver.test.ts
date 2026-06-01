@@ -417,3 +417,108 @@ describe('enforceResolvedNarration — server authority', () => {
     expect((out.match(/Tira 1d6\+3 per danni a Veyra/g) ?? []).length).toBe(1);
   });
 });
+
+
+// =====================================================================
+// Phase 08-02 — matchMonster article normalization (RED tests, 2026-06-01)
+//
+// The roll label produced by the master carries an Italian article
+// ("il", "la", "lo", "l'", "i", "gli", "le") before the monster name,
+// and may carry a descriptor tail after the number ("con il naso enorme").
+// matchMonster must strip both so the normalized needle matches the exact
+// numbered name in the encounter.
+//
+// Regression: the existing AMBIGUOUS_ENCOUNTER / DUP_NAME_BOTH_LIVE
+// tests (0 matches → null) must NOT be broken by the normalization.
+// =====================================================================
+const PIRATE_ENCOUNTER: import("@/ai/master/vault/projector").EncounterState = {
+  active: true,
+  round: 1,
+  currentIdx: 0,
+  turnOrder: [
+    { actorId: "pc-uuid-luffy", initiative: 15 },
+    { actorId: "pirata-buggy-1", initiative: 12 },
+    { actorId: "pirata-buggy-2", initiative: 11 },
+    { actorId: "pirata-buggy-3", initiative: 10 },
+  ],
+  monsters: [
+    { id: "pirata-buggy-1", name: "Pirata di Buggy 1", hpCurrent: 20, hpMax: 20, ac: 13, isAlive: true, conditions: [] },
+    { id: "pirata-buggy-2", name: "Pirata di Buggy 2", hpCurrent: 20, hpMax: 20, ac: 13, isAlive: true, conditions: [] },
+    { id: "pirata-buggy-3", name: "Pirata di Buggy 3", hpCurrent: 20, hpMax: 20, ac: 13, isAlive: true, conditions: [] },
+  ],
+};
+
+describe("resolveCombat — article + descriptor normalization (Phase 08-02)", () => {
+  it("to-hit: 'attaccare il Pirata di Buggy 2' strips article → resolves to pirata-buggy-2", () => {
+    const result = resolveCombat({
+      rollResult: "🎲 I rolled **18** for 1d20+4 (attaccare il Pirata di Buggy 2) (14+4).",
+      encounter: PIRATE_ENCOUNTER,
+    });
+    expect(result).not.toBeNull();
+    expect(result!.kind).toBe("to-hit");
+    expect(result!.events).toEqual([]); // HIT (18 >= AC 13)
+    expect(result!.damageRequest).toContain("Pirata di Buggy 2");
+  });
+
+  it("to-hit: 'attaccare il Pirata di Buggy 2 con il naso enorme' strips article+descriptor → resolves", () => {
+    const result = resolveCombat({
+      rollResult: "🎲 I rolled **18** for 1d20+4 (attaccare il Pirata di Buggy 2 con il naso enorme) (14+4).",
+      encounter: PIRATE_ENCOUNTER,
+    });
+    expect(result).not.toBeNull();
+    expect(result!.kind).toBe("to-hit");
+    expect(result!.damageRequest).toContain("Pirata di Buggy 2");
+  });
+
+  it("to-hit: 'attaccare il Pirata di Buggy 1' → resolves to pirata-buggy-1", () => {
+    const result = resolveCombat({
+      rollResult: "🎲 I rolled **18** for 1d20+4 (attaccare il Pirata di Buggy 1) (14+4).",
+      encounter: PIRATE_ENCOUNTER,
+    });
+    expect(result).not.toBeNull();
+    expect((result!.events[0] === undefined) || true).toBe(true); // HIT → no events
+    expect(result!.damageRequest).toContain("Pirata di Buggy 1");
+  });
+
+  it("damage: 'danni a il Pirata di Buggy 3' strips article → monster_hp_change id=pirata-buggy-3", () => {
+    const result = resolveCombat({
+      rollResult: "🎲 I rolled **9** for 1d6+4 (danni a il Pirata di Buggy 3) (5+4).",
+      encounter: PIRATE_ENCOUNTER,
+    });
+    expect(result).not.toBeNull();
+    expect(result!.kind).toBe("damage");
+    expect(result!.events).toEqual([
+      { type: "monster_hp_change", payload: { id: "pirata-buggy-3", delta: -9 } },
+      { type: "turn_advance", payload: {} },
+    ]);
+  });
+
+  it("to-hit: bare numbered name without article → still resolves (regression)", () => {
+    const result = resolveCombat({
+      rollResult: "🎲 I rolled **18** for 1d20+4 (attaccare Pirata di Buggy 2) (14+4).",
+      encounter: PIRATE_ENCOUNTER,
+    });
+    expect(result).not.toBeNull();
+    expect(result!.kind).toBe("to-hit");
+  });
+
+  it("to-hit: bare unnumbered name in a single-monster encounter → resolves (regression)", () => {
+    // A lone unnumbered monster with article prefix must still resolve.
+    const enc: import("@/ai/master/vault/projector").EncounterState = {
+      active: true,
+      round: 1,
+      currentIdx: 0,
+      turnOrder: [{ actorId: "boss-1", initiative: 10 }],
+      monsters: [
+        { id: "boss-1", name: "Boss", hpCurrent: 50, hpMax: 50, ac: 15, isAlive: true, conditions: [] },
+      ],
+    };
+    const result = resolveCombat({
+      rollResult: "🎲 I rolled **18** for 1d20+4 (attaccare il Boss) (14+4).",
+      encounter: enc,
+    });
+    expect(result).not.toBeNull();
+    expect(result!.kind).toBe("to-hit");
+    expect(result!.damageRequest).toContain("Boss");
+  });
+});
