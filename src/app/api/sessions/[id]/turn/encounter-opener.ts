@@ -288,3 +288,40 @@ export function runEncounterOpener(
   // -------------------------------------------------------------------------
   return [monsterSpawnEvent, initiativeSetEvent];
 }
+
+// ---------------------------------------------------------------------------
+// extractMonsterName
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive a monster display name / bestiary lookup key from a player's
+ * combat-intent message. Heuristic seam (T-10-01 / D-02): the combat verb is
+ * already confirmed by detectCombatIntent upstream, so we pick the nominal
+ * target as the first substantial non-verb word group.
+ *
+ * Intentionally isolated so the future option-A constrained-JSON LLM path can
+ * replace ONLY this step. Exported (vs. the original inline closure) so the
+ * extraction heuristic is directly unit-testable.
+ *
+ * NEVER throws — falls back to 'Unknown Enemy'.
+ *
+ * @param msg  Raw player message (may carry a leading `[Author]` speaker
+ *             prefix in multi-PC sessions — see route.ts `usePrefix`).
+ */
+export function extractMonsterName(msg: string): string {
+  const cleaned = msg
+    .replace(/[!?.,;:]/g, ' ')
+    .replace(
+      /\b(attacc\w*|colpisc\w*|colpir\w*|combatt\w*|ingagg\w*|sferr\w*|assal\w*|scagli\w*|menar\w*|pugn\w*|calci\w*|affront\w*|carica|uccid\w*|ammazz\w*|attack\w*|strik\w*|fight\w*|punch\w*|engage\w*|slash\w*|stab\w*|il|lo|la|un|uno|una|i|gli|le|con|a|ad)\b/gi,
+      ' ',
+    )
+    .replace(/\s+/g, ' ')
+    .trim();
+  // Prefer the first capitalized word group (proper noun = monster name).
+  const capMatch = /([A-ZÀÈÌÒÙ][a-zàèìòùA-ZÀÈÌÒÙ\s'-]{1,30}?)(?:\s|$)/.exec(cleaned);
+  if (capMatch?.[1] && capMatch[1].trim().length > 1) return capMatch[1].trim();
+  // Fallback: first non-empty word.
+  const firstWord = cleaned.split(/\s+/).find((w) => w.length > 1);
+  if (firstWord) return firstWord;
+  return 'Unknown Enemy';
+}

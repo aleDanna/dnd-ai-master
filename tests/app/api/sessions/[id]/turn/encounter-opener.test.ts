@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { runEncounterOpener } from '../../../../../../src/app/api/sessions/[id]/turn/encounter-opener';
+import {
+  runEncounterOpener,
+  extractMonsterName,
+} from '../../../../../../src/app/api/sessions/[id]/turn/encounter-opener';
 
 /**
  * Phase 10 Plan 01 — RED tests for the pure encounter-opener contract.
@@ -195,5 +198,45 @@ describe('runEncounterOpener — null bestiary fallback', () => {
     const lookup = vi.fn().mockReturnValue(null);
     runEncounterOpener(SNAPSHOT_ONE_PC, 'goblin', lookup);
     expect(lookup).toHaveBeenCalledWith('goblin');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5. extractMonsterName — author-prefix + article robustness (CR-01 / WR-01)
+// ---------------------------------------------------------------------------
+
+describe('extractMonsterName', () => {
+  // Controls — these pass with the original heuristic and must keep passing.
+  it('extracts the monster from a plain single-PC Italian message', () => {
+    expect(extractMonsterName('attacco il goblin')).toBe('goblin');
+  });
+
+  it('extracts the monster from a plain single-PC Italian message (skeleton)', () => {
+    expect(extractMonsterName('colpisci lo scheletro')).toBe('scheletro');
+  });
+
+  it('falls back to "Unknown Enemy" on an empty message (never throws)', () => {
+    expect(extractMonsterName('')).toBe('Unknown Enemy');
+  });
+
+  // CR-01 — multi-PC sessions prefix history lines with `[CharName] `. The
+  // extractor MUST ignore the speaker prefix and still return the monster,
+  // NOT the PC's own bracketed name.
+  it('ignores a leading [Author] speaker prefix (multi-PC) — Italian', () => {
+    expect(extractMonsterName('[Aria] attacco il goblin')).toBe('goblin');
+  });
+
+  it('ignores a leading [Author] speaker prefix (multi-PC) — English', () => {
+    expect(extractMonsterName('[Bryn] attack the goblin')).toBe('goblin');
+  });
+
+  // WR-01 — detectCombatIntent matches English verbs, so English articles
+  // (the/a/an) must be stripped too, or the extractor returns the article.
+  it('strips the English article "the"', () => {
+    expect(extractMonsterName('attack the goblin')).toBe('goblin');
+  });
+
+  it('strips the English article "an"', () => {
+    expect(extractMonsterName('strike an ogre')).toBe('ogre');
   });
 });
