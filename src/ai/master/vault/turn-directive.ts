@@ -218,6 +218,13 @@ export function buildTurnDirective(opts: TurnDirectiveOpts): string | null {
   if (manualRolls) {
     lines.push('Quando l\'esito di un\'azione è incerto, chiedi un tiro al giocatore.');
     lines.push('Formula per attacchi: "Tira 1d20+<bonus> per attaccare <BERSAGLIO>."');
+    // Phase 08-02: when numbered monsters exist (e.g. "Pirata di Buggy 1/2/3"),
+    // the master MUST use the exact name from combat.md — including the number —
+    // in the attack-roll request so the server resolver can match it precisely.
+    // Without this, a bare base name ("Pirata di Buggy") matches none of the
+    // numbered names and the server falls through to the unreliable LLM fallback.
+    lines.push('IMPORTANTE: usa sempre il NOME ESATTO dal tracker (combat.md), numero incluso.');
+    lines.push('Esempio: "Tira 1d20+4 per attaccare Pirata di Buggy 2." — non "il pirata" o solo "Pirata di Buggy".');
     lines.push('Formula per prove: "Tira una prova di <Abilità> (CD <n>)."');
     lines.push('Non inventare risultati: aspetta il messaggio del giocatore col numero in grassetto.');
     lines.push('');

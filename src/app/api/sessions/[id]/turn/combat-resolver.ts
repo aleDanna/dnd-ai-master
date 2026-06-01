@@ -104,8 +104,39 @@ function parseRoll(rollResult: string): ParsedRoll | null {
 }
 
 /**
+ * Normalize a raw target string from a roll label into a clean monster name for
+ * case-insensitive comparison.
+ *
+ * Strips:
+ *   1. Leading Italian articles: il, lo, la, l\'  (elided), i, gli, le
+ *      and English articles: the, a, an  (EN roll labels from bilingual sessions)
+ *   2. Descriptor tails introduced by "con" / "with" / a comma — the master may
+ *      qualify "il Pirata di Buggy 2 con il naso enorme"; only the name portion
+ *      before the qualifier is relevant for matching.
+ *
+ * PRECEDENT: commit 6875b9f used the same pattern for extractMonsterName.
+ * Purely textual — never throws; applied BEFORE the exact-match comparison so
+ * T-08-01 (strict 0-or->1→null) is unchanged.
+ */
+function normalizeTargetName(raw: string): string {
+  // Step 1: strip leading IT/EN articles (word-boundary-aware).
+  // Pattern: ^(article)\s+ where article is one of the above.
+  // L\' (elided) is special: no \s+ needed after the apostrophe.
+  let s = raw.trim();
+  s = s.replace(/^(?:il|lo|la|l[’\'`]|i|gli|le|the|un|uno|una|a|an)\s+/i, '').trim();
+  // Step 2: strip descriptor tail starting with "con ", "with ", or a comma.
+  s = s.replace(/\s+(?:con|with)\s.+$/i, '').trim();
+  s = s.replace(/,.*$/, '').trim();
+  return s;
+}
+
+/**
  * Match a player-named target to exactly one monster, CASE-INSENSITIVE EXACT
  * (T-08-01 mitigation, RESEARCH Open Q1).
+ *
+ * The raw target string is first normalized (leading article + descriptor tail
+ * stripped) so roll labels like "il Pirata di Buggy 2 con il naso enorme" reduce
+ * to "Pirata di Buggy 2" before comparison (Phase 08-02).
  *
  * A single exact name match resolves directly. On a NAME COLLISION (>1 exact
  * match — the LLM can spawn duplicate-named monsters across sessions, e.g. a
@@ -119,7 +150,7 @@ function matchMonster(
   encounter: EncounterState,
   target: string,
 ): EncounterState['monsters'][number] | null {
-  const needle = target.trim().toLowerCase();
+  const needle = normalizeTargetName(target).toLowerCase();
   if (!needle) return null;
   const matches = encounter.monsters.filter((m) => m.name.toLowerCase() === needle);
   if (matches.length === 1) return matches[0]!;

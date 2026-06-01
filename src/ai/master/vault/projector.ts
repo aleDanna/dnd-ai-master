@@ -692,6 +692,58 @@ export const INITIAL_ENCOUNTER_STATE: EncounterState = {
 };
 
 /**
+ * Deterministic unique-name deduplication for EncounterState.monsters (Phase 08-02).
+ *
+ * When ≥2 monsters share the same base name, ALL of them are numbered in
+ * encounter order: "Pirata di Buggy 1", "Pirata di Buggy 2", "Pirata di Buggy 3".
+ * The FIRST collider is also numbered — never "Base", "Base 2", "Base 3".
+ * A lone monster with a unique base name stays unnumbered.
+ *
+ * Ids are left untouched — only the `name` field is modified.
+ * Pure: returns a structuredClone of `state` with updated names; never mutates input.
+ *
+ * IDEMPOTENT / INCREMENTAL: the function first strips any previously-appended
+ * numeric suffix (` N`) to recover the original base name, then renumbers the
+ * full monsters array from scratch. This makes it safe to call after every
+ * monster_spawn without accumulating double-suffixes (e.g. spawn 1→ "X 1",
+ * spawn 2 → "X 1", "X 2"; spawn 3 → "X 1", "X 2", "X 3").
+ *
+ * Called from the `monster_spawn` reducer so that every replay produces
+ * deterministically unique names in `EncounterState.monsters`.
+ */
+export function deduplicateMonsterNames(state: EncounterState): EncounterState {
+  const result = structuredClone(state);
+
+  // Step 1: extract base names by stripping a trailing " N" suffix that may
+  // have been appended by a previous call (idempotency / incremental spawns).
+  const NUMERIC_SUFFIX = / \d+$/;
+  const baseNames: string[] = result.monsters.map((m) =>
+    NUMERIC_SUFFIX.test(m.name) ? m.name.replace(NUMERIC_SUFFIX, '') : m.name,
+  );
+
+  // Step 2: count occurrences of each base name.
+  const counts = new Map<string, number>();
+  for (const base of baseNames) {
+    counts.set(base, (counts.get(base) ?? 0) + 1);
+  }
+
+  // Step 3: assign sequential numbers only to names with ≥2 occurrences.
+  const seen = new Map<string, number>();
+  for (let i = 0; i < result.monsters.length; i++) {
+    const base = baseNames[i]!;
+    if ((counts.get(base) ?? 0) >= 2) {
+      const n = (seen.get(base) ?? 0) + 1;
+      seen.set(base, n);
+      result.monsters[i]!.name = `${base} ${n}`;
+    } else {
+      // Unique base name — ensure any stale suffix from a prior state is removed.
+      result.monsters[i]!.name = base;
+    }
+  }
+  return result;
+}
+
+/**
  * PURE reducer over the 6 encounter-scoped event types (Phase 06 D1).
  *
  * Determinism contract (same as `applyEvent`):
@@ -762,7 +814,9 @@ export function applyEncounterEvent(state: EncounterState, event: VaultEvent): E
       if (initiativeBonus !== undefined) monster.initiativeBonus = initiativeBonus;
       if (cr !== undefined) monster.cr = cr;
       base.monsters.push(monster);
-      return base;
+      // Deterministic unique naming: when ≥2 monsters share a base name,
+      // number them ALL (e.g. "X 1", "X 2") so every name in the tracker is unique.
+      return deduplicateMonsterNames(base);
     }
 
     case 'initiative_set': {
