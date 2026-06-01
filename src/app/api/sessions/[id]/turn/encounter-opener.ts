@@ -303,6 +303,11 @@ export function runEncounterOpener(
  * replace ONLY this step. Exported (vs. the original inline closure) so the
  * extraction heuristic is directly unit-testable.
  *
+ * Robustness (Phase 10 gap fix):
+ *   - CR-01: strips a leading `[Author]` speaker prefix so multi-PC history
+ *     lines (`[CharName] message`) yield the monster, not the speaker.
+ *   - WR-01: strips English articles (the/a/an) as well as Italian ones.
+ *
  * NEVER throws — falls back to 'Unknown Enemy'.
  *
  * @param msg  Raw player message (may carry a leading `[Author]` speaker
@@ -310,9 +315,19 @@ export function runEncounterOpener(
  */
 export function extractMonsterName(msg: string): string {
   const cleaned = msg
+    // CR-01: strip a leading `[Author]` speaker prefix FIRST. In multi-PC
+    // sessions the route prefixes each history line `[CharName] message`
+    // (route.ts `usePrefix = party.length > 1`); without this the extractor
+    // returned the PC's own bracketed name (e.g. "[Aria]") instead of the
+    // monster, defeating REQ-045's real-SRD-stats guarantee for the common
+    // multiplayer case. Anchored at start, single group, brackets only here.
+    .replace(/^\s*\[[^\]]*\]\s*/, '')
     .replace(/[!?.,;:]/g, ' ')
+    // Strip attack verbs + articles. WR-01: English articles (the/an) are
+    // stripped alongside the Italian set, since detectCombatIntent matches
+    // English attack verbs too ("attack the goblin" must not yield "the").
     .replace(
-      /\b(attacc\w*|colpisc\w*|colpir\w*|combatt\w*|ingagg\w*|sferr\w*|assal\w*|scagli\w*|menar\w*|pugn\w*|calci\w*|affront\w*|carica|uccid\w*|ammazz\w*|attack\w*|strik\w*|fight\w*|punch\w*|engage\w*|slash\w*|stab\w*|il|lo|la|un|uno|una|i|gli|le|con|a|ad)\b/gi,
+      /\b(attacc\w*|colpisc\w*|colpir\w*|combatt\w*|ingagg\w*|sferr\w*|assal\w*|scagli\w*|menar\w*|pugn\w*|calci\w*|affront\w*|carica|uccid\w*|ammazz\w*|attack\w*|strik\w*|fight\w*|punch\w*|engage\w*|slash\w*|stab\w*|il|lo|la|un|uno|una|i|gli|le|con|a|ad|the|an)\b/gi,
       ' ',
     )
     .replace(/\s+/g, ' ')

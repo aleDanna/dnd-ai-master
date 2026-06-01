@@ -37,7 +37,7 @@ import { resolveCombatHandoff } from './combat-handoff';
 import { resolveCombat, enforceResolvedNarration, type ResolveCombatResult } from './combat-resolver';
 import { runMonsterTurnLoop } from './monster-turns';
 import { getBestiaryAttackStats, getBestiaryStatblock } from './monster-bestiary';
-import { runEncounterOpener } from './encounter-opener';
+import { runEncounterOpener, extractMonsterName } from './encounter-opener';
 import { parseEventsFile, replayEvents } from '@/ai/master/vault/projector';
 import { eventsPath } from '@/ai/master/vault/campaign-paths';
 import { buildTurnDirective, appendDirectiveToHistory, isRollResult, detectCombatIntent } from '@/ai/master/vault/turn-directive';
@@ -358,27 +358,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 // we pick the nominal target as the first non-verb word group.
                 // This seam is intentionally isolated: option A (constrained-JSON
                 // Ollama format call) will replace ONLY the _extractMonsterName step.
-                const _extractMonsterName = (msg: string): string => {
-                  // Strip leading attack verbs and punctuation; take the first
-                  // substantial word group remaining. Falls back to the first
-                  // capitalized word, then to "Unknown Enemy".
-                  const cleaned = msg
-                    .replace(/[!?.,;:]/g, ' ')
-                    .replace(
-                      /\b(attacc\w*|colpisc\w*|colpir\w*|combatt\w*|ingagg\w*|sferr\w*|assal\w*|scagli\w*|menar\w*|pugn\w*|calci\w*|affront\w*|carica|uccid\w*|ammazz\w*|attack\w*|strik\w*|fight\w*|punch\w*|engage\w*|slash\w*|stab\w*|il|lo|la|un|uno|una|i|gli|le|con|a|ad)\b/gi,
-                      ' ',
-                    )
-                    .replace(/\s+/g, ' ')
-                    .trim();
-                  // Prefer the first capitalized word group (proper noun = monster name).
-                  const capMatch = /([A-ZÀÈÌÒÙ][a-zàèìòùA-ZÀÈÌÒÙ\s'-]{1,30}?)(?:\s|$)/.exec(cleaned);
-                  if (capMatch?.[1] && capMatch[1].trim().length > 1) return capMatch[1].trim();
-                  // Fallback: first non-empty word.
-                  const firstWord = cleaned.split(/\s+/).find((w) => w.length > 1);
-                  if (firstWord) return firstWord;
-                  return 'Unknown Enemy';
-                };
-                const monsterName = _extractMonsterName(_playerMessage ?? '');
+                // Monster-name extraction is an isolated, unit-tested seam in
+                // encounter-opener.ts (extractMonsterName) — option A will
+                // replace ONLY that step. It strips the multi-PC `[Author]`
+                // history prefix (CR-01) and IT/EN articles (WR-01) before
+                // picking the nominal target.
+                const monsterName = extractMonsterName(_playerMessage ?? '');
 
                 // Pre-await the async statblock, then inject a sync closure so
                 // runEncounterOpener (pure/sync contract) reads the REAL SRD values.
