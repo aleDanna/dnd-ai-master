@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { EncounterState } from '@/ai/master/vault/projector';
-import { resolveCombat, enforceResolvedNarration } from '@/app/api/sessions/[id]/turn/combat-resolver';
+import { resolveCombat, enforceResolvedNarration, canonicalizeToHitTarget } from '@/app/api/sessions/[id]/turn/combat-resolver';
 import { parseRollRequests } from '@/lib/roll-parser';
 
 /**
@@ -520,5 +520,131 @@ describe("resolveCombat — article + descriptor normalization (Phase 08-02)", (
     expect(result).not.toBeNull();
     expect(result!.kind).toBe("to-hit");
     expect(result!.damageRequest).toContain("Boss");
+  });
+});
+
+
+// =====================================================================
+// Phase 08-03 — canonicalizeToHitTarget (RED tests, 2026-06-02)
+//
+// The TO-HIT roll request is LLM-authored. qwen3 writes the attack target
+// as a prose descriptor instead of the canonical numbered name from combat.md
+// (e.g. "Tira 1d20+4 per attaccare il Pirata di Buggy con il naso enorme"
+// instead of "Tira 1d20+4 per attaccare Pirata di Buggy 1"). The roll-result
+// label then carries the prose name, which normalizeTargetName strips to the
+// bare base name "Pirata di Buggy" — which no longer matches the now-numbered
+// names "Pirata di Buggy 1/2/3" — so resolveCombat returns null.
+//
+// Fix: canonicalizeToHitTarget(finalText, playerMessage, encounter) is a pure
+// server-side rewrite helper that:
+//   1. Parses the PLAYER message to find the intended target (reusing
+//      normalizeTargetName + matchMonster from the resolver).
+//   2. If a unique live monster matches, rewrites the master's
+//      "Tira NdM+bonus per attaccare <whatever>" line(s) to
+//      "Tira NdM+bonus per attaccare <canonical name>".
+//      The BONUS (+N) is PRESERVED from the master's original line.
+//      Only the TARGET name is canonicalized.
+//   3. Also strips leaked apply_event tool-prose
+//      ("Applica il danno…", "chiama turn_advance", bare event labels/JSON)
+//      so the declaration turn can't carry mechanics as text.
+//   4. If no unique match OR no "Tira … 1d20 …" line → returns finalText
+//      unchanged (safe fall-through, never throws).
+//
+// These tests are RED until canonicalizeToHitTarget is exported from
+// combat-resolver.ts and the logic is implemented.
+// =====================================================================
+
+describe("canonicalizeToHitTarget (Phase 08-03)", () => {
+  it("rewrites the master's prose-target to the canonical numbered name", () => {
+    const finalText = "Luffy, vedo la determinazione nei tuoi occhi!\n\nTira 1d20+4 per attaccare il Pirata di Buggy con il naso enorme.";
+    const playerMessage = "attacco pirata di buggy 1 con un gum gum pistol";
+    const result = canonicalizeToHitTarget(finalText, playerMessage, PIRATE_ENCOUNTER);
+    // The canonical name must appear in the to-hit line
+    expect(result).toContain("Pirata di Buggy 1");
+    // The prose descriptor must be gone from the to-hit line
+    expect(result).not.toMatch(/con il naso enorme/);
+    // The bonus must be preserved
+    expect(result).toContain("+4");
+    // The narrative flavor must survive
+    expect(result).toContain("Luffy, vedo la determinazione");
+  });
+
+  it("preserves the master's bonus (+N) and only replaces the target", () => {
+    const finalText = "Tira 1d20+7 per attaccare il Pirata di Buggy sporco.";
+    const playerMessage = "colpisco pirata di buggy 2";
+    const result = canonicalizeToHitTarget(finalText, playerMessage, PIRATE_ENCOUNTER);
+    expect(result).toContain("Pirata di Buggy 2");
+    expect(result).toContain("+7");
+  });
+
+  it("strips leaked apply_event prose from a declaration turn", () => {
+    const finalText = [
+      "Luffy si lancia all'attacco!",
+      "",
+      "Tira 1d20+4 per attaccare il Pirata di Buggy con il naso enorme.",
+      "",
+      "Applica il danno: con id: \"pirata-buggy-1\" e delta: -8.",
+      "Poi, chiama turn_advance.",
+      "monster_hp_change",
+    ].join("\n");
+    const playerMessage = "attacco pirata di buggy 1";
+    const result = canonicalizeToHitTarget(finalText, playerMessage, PIRATE_ENCOUNTER);
+    // Leaked tool prose must be stripped
+    expect(result).not.toMatch(/Applica il danno/);
+    expect(result).not.toMatch(/chiama turn_advance/);
+    expect(result).not.toMatch(/monster_hp_change/);
+    // Canonical to-hit line must be present
+    expect(result).toContain("Pirata di Buggy 1");
+    // Flavor survives
+    expect(result).toContain("Luffy si lancia");
+  });
+
+  it("returns finalText unchanged when the player target is ambiguous (no unique match)", () => {
+    // AMBIGUOUS_ENCOUNTER has two 'Slime' monsters, both alive and in turnOrder
+    const finalText = "Tira 1d20+3 per attaccare lo Slime.";
+    const playerMessage = "attacco lo slime";
+    const result = canonicalizeToHitTarget(finalText, playerMessage, AMBIGUOUS_ENCOUNTER);
+    // No rewrite — fall through safely
+    expect(result).toBe(finalText);
+  });
+
+  it("returns finalText unchanged when no Tira-d20 line is present", () => {
+    const finalText = "Il master descrive la scena senza chiedere tiri.";
+    const playerMessage = "attacco pirata di buggy 1";
+    const result = canonicalizeToHitTarget(finalText, playerMessage, PIRATE_ENCOUNTER);
+    expect(result).toBe(finalText);
+  });
+
+  it("returns finalText unchanged when encounter is not active", () => {
+    const inactiveEncounter: EncounterState = { ...PIRATE_ENCOUNTER, active: false };
+    const finalText = "Tira 1d20+4 per attaccare il Pirata di Buggy con il naso enorme.";
+    const playerMessage = "attacco pirata di buggy 1";
+    const result = canonicalizeToHitTarget(finalText, playerMessage, inactiveEncounter);
+    expect(result).toBe(finalText);
+  });
+
+  it("does NOT throw on empty / undefined inputs", () => {
+    expect(() => canonicalizeToHitTarget("", "", PIRATE_ENCOUNTER)).not.toThrow();
+    expect(() => canonicalizeToHitTarget("", "attacco pirata di buggy 1", PIRATE_ENCOUNTER)).not.toThrow();
+    expect(canonicalizeToHitTarget("", "attacco pirata di buggy 1", PIRATE_ENCOUNTER)).toBe("");
+  });
+
+  it("end-to-end: rewritten finalText yields a resolvable roll label via resolveCombat", () => {
+    // Simulate the full pipe: canonical finalText → client parses roll label →
+    // server resolves. The client produces labels from formatResultText using
+    // the request text, so a canonical request "Tira 1d20+4 per attaccare Pirata
+    // di Buggy 1" → label "attaccare Pirata di Buggy 1" → resolveCombat matches.
+    const finalText = "Tira 1d20+4 per attaccare il Pirata di Buggy con il naso enorme.";
+    const playerMessage = "attacco pirata di buggy 1";
+    const rewritten = canonicalizeToHitTarget(finalText, playerMessage, PIRATE_ENCOUNTER);
+    // The rewritten text must contain a parseable request with the canonical name.
+    expect(rewritten).toContain("Tira 1d20+4 per attaccare Pirata di Buggy 1");
+    // Simulate what the client parser produces as a roll label:
+    const simulatedRollResult = "🎲 I rolled **18** for 1d20+4 (attaccare Pirata di Buggy 1) (14+4).";
+    const resolved = resolveCombat({ rollResult: simulatedRollResult, encounter: PIRATE_ENCOUNTER });
+    expect(resolved).not.toBeNull();
+    expect(resolved!.kind).toBe("to-hit");
+    expect(resolved!.events).toEqual([]); // HIT (18 >= AC 13)
+    expect(resolved!.damageRequest).toContain("Pirata di Buggy 1");
   });
 });
