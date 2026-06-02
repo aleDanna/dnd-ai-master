@@ -34,7 +34,7 @@ import { computeTurnAdvance, detectAddressee } from '@/multiplayer/turn-advance'
 import { notifySession } from '@/sessions/notify';
 import { checkPartyAccess } from '@/multiplayer/access';
 import { resolveCombatHandoff } from './combat-handoff';
-import { resolveCombat, enforceResolvedNarration, type ResolveCombatResult } from './combat-resolver';
+import { resolveCombat, enforceResolvedNarration, canonicalizeToHitTarget, type ResolveCombatResult } from './combat-resolver';
 import { runMonsterTurnLoop } from './monster-turns';
 import { getBestiaryAttackStats, getBestiaryStatblock } from './monster-bestiary';
 import { runEncounterOpener, extractMonsterName } from './encounter-opener';
@@ -740,7 +740,44 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           } else if (_resolver !== null) {
             _finalNarration = enforceResolvedNarration(vaultResult.finalText, _resolver);
           } else {
-            _finalNarration = vaultResult.finalText;
+            // 6v-canonicalize (Phase 08-03 / REQ-039 extension). On a combat
+            // DECLARATION turn (encounter active, player declares attack intent,
+            // but no roll-result yet), canonicalize the master's to-hit request
+            // target to the canonical (numbered) monster name derived from the
+            // PLAYER's message. This prevents qwen3 from writing a prose
+            // descriptor as the attack target (e.g. "il Pirata di Buggy con il
+            // naso enorme") instead of the exact tracker name ("Pirata di Buggy 1")
+            // — which would make the subsequent roll label unresolvable.
+            //
+            // Gate: vaultMutations && detectCombatIntent && !isRollResult
+            //   (same gate as the encounter opener — declaration turn).
+            //   Skipped when: encounter inactive, ambiguous/unknown player target,
+            //   no "Tira … 1d20 …" line present. Falls through to vaultResult.finalText
+            //   on any error (D-10: never hard-fail the turn).
+            //
+            // Reads events.md once (separate from the 5v-combat read) to avoid
+            // closing-over a stale encounter state from the opener block.
+            const _isCombatDeclaration =
+              vaultMutationsEnabled && detectCombatIntent(_playerMessage) && !isRollResult(_playerMessage);
+            if (_isCombatDeclaration && _playerMessage !== undefined) {
+              try {
+                const { encounter: _declEnc } = replayEvents(await parseEventsFile(eventsPath(campaign.id)));
+                if (_declEnc.active) {
+                  _finalNarration = canonicalizeToHitTarget(vaultResult.finalText, _playerMessage, _declEnc);
+                } else {
+                  _finalNarration = vaultResult.finalText;
+                }
+              } catch (err) {
+                // D-10: a read/replay error falls through to the unmodified text.
+                console.warn(
+                  '[turn]', sessionId, 'canonicalizeToHitTarget read failed, falling through:',
+                  err instanceof Error ? err.message : String(err),
+                );
+                _finalNarration = vaultResult.finalText;
+              }
+            } else {
+              _finalNarration = vaultResult.finalText;
+            }
           }
 
           // 7v. Post-loop: turn-advance + persist master message + memory extraction.

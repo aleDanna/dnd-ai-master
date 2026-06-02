@@ -2,7 +2,7 @@
 status: resolved
 trigger: "Phase 07-04 operator smoke: combat started + monsters spawned, but the player's attack applied no proper damage and the enemies never took their turn."
 created: "2026-06-01T12:15:00Z"
-updated: "2026-06-01T14:30:00Z"
+updated: "2026-06-02T21:30:00Z"
 phase: "07-04"
 key_files:
   - src/app/api/sessions/[id]/turn/combat-resolver.ts
@@ -148,6 +148,66 @@ Rules:
 - This blocks Phase 07-04 (operator smoke checkpoint) — 07-04 stays incomplete until the fix
   lands and the smoke re-passes.
 
+## Re-test 2026-06-02 — fix #1 necessary but INSUFFICIENT; refined root cause + new fix direction
+
+Fix #1 (unique naming + matchMonster normalization, commits d065851/5599cf2) shipped and
+WORKS at the data layer: combat.md now shows "Pirata di Buggy 1/2/3". But the live re-test
+smoke STILL failed. Evidence:
+
+- timestamp: 2026-06-02T18:53:00Z
+  finding: |
+    combat.md confirms dedup works — monsters render as "Pirata di Buggy 1/2/3". The player
+    even used the numbered name in the declaration ("attacco pirata di buggy 1 con un gum
+    gum pistol").
+- timestamp: 2026-06-02T18:54:00Z
+  finding: |
+    BUT the master (qwen3) authored the TO-HIT roll request with a PROSE DESCRIPTOR, not the
+    canonical name: "Tira 1d20+4 per attaccare il Pirata di Buggy con il naso enorme." So the
+    roll label became "attaccare il Pirata di Buggy con…" → normalizeTargetName strips article
+    + "con…" tail → "Pirata di Buggy" → which no longer matches the NOW-NUMBERED names
+    "Pirata di Buggy 1/2/3" → 0 exact matches → resolveCombat returns null → LLM fallback.
+    (Fix #1's unique naming is correct; the regression-of-convenience is that a bare base name
+    can no longer match — but the real defect is upstream: the LLM authored a non-canonical
+    target.)
+- timestamp: 2026-06-02T18:55:00Z
+  finding: |
+    AUTHORITATIVE: events.md after the 18:53 spawns/initiative shows NO monster_hp_change and
+    NO turn_advance from the attack. The master LEAKED the apply_event as PROSE — "Applica il
+    danno: con id: \"pirata-buggy-1\" e delta: -8. Poi, chiama turn_advance." — instead of
+    calling the tool. Nothing persisted. enforceResolvedNarration (which strips such leaked
+    tool-prose) only runs when the resolver FIRED; on the null fallback it never ran.
+
+REFINED ROOT CAUSE: the TO-HIT roll request is LLM-authored. qwen3 (a) puts a non-canonical
+prose descriptor as the target (defeating server matching) and (b) leaks apply_event as text.
+The DAMAGE request is already server-authored (resolveCombat builds "Tira XdY per danni a
+<canonical name>", combat-resolver.ts:198) and is reliable — the asymmetry IS the bug. Combat
+reliability requires removing the LLM from to-hit targeting too.
+
+NEW FIX DIRECTION (user-approved 2026-06-02 — "to-hit lato server"):
+1. Add a SERVER-AUTHORED TO-HIT step in route.ts on the attack-DECLARATION turn (gate:
+   vaultMutations && encounter.active && detectCombatIntent(playerMessage) &&
+   !isRollResult(playerMessage)). Parse the target from the PLAYER's message (reuse
+   normalizeTargetName + matchMonster from combat-resolver.ts). If a unique LIVE monster
+   matches, build the canonical to-hit request "Tira 1d20+<bonus> per attaccare <monster.name>"
+   and ENFORCE it on the master's reply (strip the master's own "Tira … 1dN …" roll-request
+   line(s) like enforceResolvedNarration does, then append the canonical one). This makes the
+   roll-result label carry the canonical (numbered) name → resolveCombat matches reliably.
+2. PC attack-bonus sourcing is a sub-problem to investigate: either read the PC stats, or
+   preserve the master's proposed "+N" bonus while canonicalizing ONLY the target name in the
+   roll request (smaller change). Pick the cleaner option; surface it only if it's a real fork.
+3. Extend the leaked-tool-prose stripping (enforceResolvedNarration-style) to run on these
+   combat declaration turns too, so "Applica il danno… chiama turn_advance" prose is removed
+   even before the resolver fires. (Once to-hit resolves server-side, the resolver fires on the
+   damage roll and enforceResolvedNarration cleans the rest — but the declaration turn needs
+   its own guard.)
+4. Verify end-to-end: declare attack on "pirata di buggy 1" → server emits canonical to-hit
+   request → roll → resolveCombat HITs "Pirata di Buggy 1" → server damage request → damage
+   roll → monster_hp_change + turn_advance → Phase-09 monster loop → monsters attack.
+5. TDD: RED first. Likely test seams: a route-level or extracted helper unit test that, given a
+   player declaration + active encounter with ["Pirata di Buggy 1/2/3"], produces a to-hit
+   request whose label carries "Pirata di Buggy 1"; plus a resolveCombat test that the resulting
+   label resolves to pirata-buggy-1. Keep resolveCombat pure.
+
 ## Resolution
 
 root_cause: |
@@ -162,42 +222,57 @@ root_cause: |
       turn_advance, stalling the fight.
 
 fix: |
+  FIX #1 (commits d065851/5599cf2 — necessary but insufficient):
   1. deduplicateMonsterNames() added to projector.ts (exported, pure, idempotent):
-     when ≥2 monsters share a base name, ALL are numbered ("X 1", "X 2", "X 3");
-     a lone unique-base-name monster stays unnumbered. Called at the end of the
-     monster_spawn reducer in applyEncounterEvent so every replay yields
-     deterministically unique names in the tracker. Ids untouched.
+     when ≥2 monsters share a base name, ALL are numbered ("X 1", "X 2", "X 3").
   2. normalizeTargetName() added to combat-resolver.ts: strips leading IT/EN
-     articles (il/lo/la/l'/i/gli/le/the/a/an) and descriptor tails
-     (con/with/comma) from the roll-label target before the exact-name lookup.
-     T-08-01 (strict 0-or->1→null) unchanged.
-  3. turn-directive.ts (manualRolls path, NOT hash-locked): added a reminder line
-     instructing the master to use the exact tracker name, number included, in
-     attack-roll requests — reduces the probability of bare-base-name references.
+     articles + descriptor tails from roll-label targets.
+  3. turn-directive.ts: added numbered-name reminder line.
+  RESULT: combat.md now shows "Pirata di Buggy 1/2/3". But live re-test showed
+  the TO-HIT request was still LLM-authored with a prose descriptor — so the
+  roll label carried "il Pirata di Buggy con il naso enorme" → normalizeTargetName
+  strips to "Pirata di Buggy" → matches NONE of the numbered names → still null.
+
+  FIX #2 (this session — server-authoritative TO-HIT, Phase 08-03):
+  4. canonicalizeToHitTarget() exported from combat-resolver.ts: pure helper that
+     (a) parses the PLAYER message to find the intended target (reusing
+         normalizeTargetName + matchMonster), (b) rewrites the master's
+         "Tira 1d20+N per attaccare <prose>" line to the canonical numbered name,
+         preserving the bonus +N, (c) strips leaked apply_event prose
+         ("Applica il danno…", "chiama turn_advance", bare event labels, JSON).
+     Falls through safely when no unique match, no Tira-d20 line, or encounter
+     inactive. Never throws (D-05/D-10).
+  5. route.ts wire-up: new 6v-canonicalize block in the _finalNarration else branch
+     (gate: vaultMutationsEnabled && detectCombatIntent && !isRollResult). Reads
+     events.md post-LLM, calls canonicalizeToHitTarget on the LLM finalText before
+     persistence. The resulting roll button carries "Pirata di Buggy 1" →
+     resolveCombat matches → server handles hit/miss/damage/turn_advance reliably.
 
 verification: |
+  FIX #1 (d065851/5599cf2):
+  - projector.test.ts: 151/151 passed (6 new RED→GREEN)
+  - combat-resolver.test.ts: 30/30 passed (6 new RED→GREEN)
+  - turn-directive.test.ts: 44/44 passed (1 constant updated)
+
+  FIX #2 (this session — 2026-06-02):
   - pnpm tsc --noEmit → clean (0 errors)
-  - tests/ai/master/vault/projector.test.ts: 151/151 passed (6 new RED→GREEN)
-  - tests/app/api/sessions/[id]/turn/combat-resolver.test.ts: 30/30 passed (6 new RED→GREEN)
-  - tests/ai/master/vault/turn-directive.test.ts: 44/44 passed (1 constant updated)
-  - Full node suite: 3365 passed, 4 known-baseline failures (applicator, scene-image-coalesce,
-    tts-coalesce, preferences-local) — no regressions introduced.
+  - combat-resolver.test.ts: 38/38 passed (8 new RED→GREEN for canonicalizeToHitTarget)
+  - Full node suite: 3551 passed, 6 known-baseline failures (game-client-begin-stuck,
+    scene-image-coalesce, tts-coalesce, job-claims, preferences-local, applicator/gp-stack)
+    — no regressions introduced.
 
 files_changed:
-  - src/ai/master/vault/projector.ts (deduplicateMonsterNames export + monster_spawn wiring)
-  - src/app/api/sessions/[id]/turn/combat-resolver.ts (normalizeTargetName + matchMonster update)
-  - src/ai/master/vault/turn-directive.ts (numbered-name reminder in manualRolls section)
-  - tests/ai/master/vault/projector.test.ts (6 new RED→GREEN tests for deduplicateMonsterNames)
-  - tests/app/api/sessions/[id]/turn/combat-resolver.test.ts (6 new RED→GREEN tests for article normalization)
-  - tests/ai/master/vault/turn-directive.test.ts (PHASE_08_GENERAL constant updated)
+  - src/app/api/sessions/[id]/turn/combat-resolver.ts (canonicalizeToHitTarget export)
+  - src/app/api/sessions/[id]/turn/route.ts (6v-canonicalize wire-up in _finalNarration)
+  - tests/app/api/sessions/[id]/turn/combat-resolver.test.ts (8 new RED→GREEN tests)
 
 residual_caveat: |
-  The directive reinforcement improves prompt reliability but cannot guarantee
-  100% compliance from the local model (qwen3:30b-a3b-instruct). If the master
-  still uses a bare base name or a prose descriptor instead of the exact numbered
-  name, normalizeTargetName strips the article but the base name ("Pirata di
-  Buggy") will match NONE of the numbered names ("Pirata di Buggy 1/2/3") →
-  resolveCombat still returns null → LLM fallback. This is acceptable: the
-  server-side guarantee covers the common case where the master follows the
-  directive; the unreliable case degrades gracefully to the pre-existing LLM path
-  (now no worse than before this fix).
+  canonicalizeToHitTarget parses the PLAYER message to extract the target.
+  If the player uses a highly ambiguous reference that does not uniquely match
+  any live monster (e.g. "attacco qualcuno"), matchMonster returns null and the
+  function falls through to the LLM's unmodified text — resolveCombat will then
+  return null on the roll-result and the LLM fallback engages (same as before fix #2,
+  no worse). The common case — player says "attacco pirata di buggy 1" with numbered
+  monsters in the encounter — is now fully server-authoritative and reliable.
+  If the player does not include ANY attack verb (pure narrative context switch),
+  detectCombatIntent returns false and the 6v-canonicalize block is skipped entirely.

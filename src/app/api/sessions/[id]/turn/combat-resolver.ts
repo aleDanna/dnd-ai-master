@@ -306,3 +306,107 @@ export function enforceResolvedNarration(
   }
   return text;
 }
+
+/**
+ * Phase 08-03 — SERVER-SIDE TO-HIT CANONICALIZATION (REQ-039 extension).
+ *
+ * The TO-HIT roll request is LLM-authored. qwen3 frequently writes a prose
+ * descriptor as the attack target instead of the canonical (numbered) monster
+ * name from combat.md, e.g.:
+ *
+ *   "Tira 1d20+4 per attaccare il Pirata di Buggy con il naso enorme."
+ *
+ * After Fix #1 (unique naming), the numbered names are "Pirata di Buggy 1/2/3",
+ * so normalizeTargetName strips the article + "con…" tail and gets "Pirata di
+ * Buggy" — which matches NONE of the numbered names → resolveCombat returns null
+ * → LLM fallback → fight stalls.
+ *
+ * This helper makes the TO-HIT request server-authoritative for the DECLARATION
+ * turn (player declares intent, master replies with the roll request, BEFORE the
+ * player has rolled). It:
+ *
+ *   1. Parses the PLAYER's message to find the intended target (reusing
+ *      normalizeTargetName + matchMonster — the same pipeline as the resolver).
+ *   2. If a unique live monster matches, finds every "Tira … 1d20 …" line in the
+ *      master's finalText and rewrites the target portion to the canonical name.
+ *      The BONUS (+N) is PRESERVED from the master's original line — only the
+ *      target name is replaced.
+ *   3. Also strips leaked apply_event tool-prose from the declaration turn:
+ *      - "Applica il danno…" / "Applica i danni…"
+ *      - "chiama turn_advance" / "chiama apply_event"
+ *      - Bare encounter-event labels ("monster_hp_change", "turn_advance", …)
+ *      - Leaked event JSON payloads ({…"id":…"delta":…})
+ *   4. Falls through safely (returns finalText UNCHANGED) when:
+ *      - encounter is not active
+ *      - the player target is ambiguous or unknown
+ *      - there is no "Tira … 1d20 …" line to rewrite
+ *
+ * Pure, never throws (D-05/D-10). Call ONLY on declaration turns
+ * (detectCombatIntent && !isRollResult); do NOT call on roll-result turns
+ * (the resolver handles those).
+ *
+ * @param finalText     — the master's raw reply text (vaultResult.finalText)
+ * @param playerMessage — the player's declaration message (from _playerMessage)
+ * @param encounter     — the current EncounterState (from replayEvents)
+ */
+export function canonicalizeToHitTarget(
+  finalText: string,
+  playerMessage: string,
+  encounter: EncounterState,
+): string {
+  // Gate: inactive encounter → no rewrite needed.
+  if (!encounter.active) return finalText;
+  // Gate: empty text → nothing to rewrite.
+  if (!finalText) return finalText;
+
+  // Step 1: extract the player's intended target from their message.
+  // Reuse the same attack-verb regex as the to-hit branch of resolveCombat.
+  const playerTargetM = /(?:attaccare|attacca|colpire|colpisci|attacc\w*|colpis\w*|combat\w*|ingagg\w*)\s+([^.;:!?\n)]+)/i.exec(playerMessage);
+  if (!playerTargetM) return finalText;
+
+  // Step 2: resolve the player's target to a unique live monster.
+  const monster = matchMonster(encounter, playerTargetM[1]!);
+  if (!monster) return finalText;
+
+  // Step 3: strip leaked apply_event tool-prose (declaration-turn guard).
+  // These patterns mirror enforceResolvedNarration's strippers plus
+  // declaration-specific leaked text patterns.
+  const EVENT_LABEL =
+    /^[*\s"']*(?:monster_hp_change|turn_advance|combat_start|combat_end|monster_spawn|initiative_set)[*\s"':]*$/i;
+  const EVENT_JSON = /^\s*\{[^{}]*"(?:id|delta|type|actorId)"[^{}]*\}\s*$/;
+  // Leaked apply_event prose on declaration turns. Matches:
+  //   "Applica il danno/i / danni…" (with or without article "il")
+  //   "Poi, chiama turn_advance" / "chiama apply_event" (with optional prefix)
+  const LEAKED_APPLY =
+    /(?:^\s*Applica\b.*\bdann|\bchiama\s+(?:turn_advance|apply_event))/i;
+
+  // Step 4: rewrite "Tira … 1d20[+/-N] per attaccare <anything>" lines,
+  // replacing the target with the canonical monster name.
+  //
+  // Regex breakdown:
+  //   \bTira\b          — roll request verb (Italian)
+  //   [^"\n]*?          — optional prefix (e.g. "1d20")
+  //   \b1d20\b          — must be a d20 (attack roll, not damage)
+  //   ([+\-]\d+)?       — optional bonus group (captured for preservation)
+  //   \s+per\s+attaccare\s+  — required Italian "per attaccare" lead-in
+  //   [^.\n;:!?)]+      — target (everything up to sentence end / paren)
+  //
+  // The rewrite PRESERVES the bonus and the rest of the line structure.
+  const TO_HIT_RE =
+    /(\bTira\b[^"\n]*?\b1d20\b([+\-]\d+)?\s+per\s+attaccare\s+)[^.\n;:!?)]+/gi;
+
+  const lines = finalText.split('\n');
+  const rewritten = lines
+    .filter((line) => {
+      const t = line.trim();
+      return !EVENT_LABEL.test(t) && !EVENT_JSON.test(t) && !LEAKED_APPLY.test(t);
+    })
+    .map((line) => {
+      // Replace the target in any to-hit request line.
+      return line.replace(TO_HIT_RE, (_, prefix) => {
+        return `${prefix}${monster.name}`;
+      });
+    });
+
+  return rewritten.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
