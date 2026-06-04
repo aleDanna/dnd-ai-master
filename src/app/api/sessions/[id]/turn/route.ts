@@ -40,7 +40,7 @@ import { getBestiaryAttackStats, getBestiaryStatblock } from './monster-bestiary
 import { runEncounterOpener, extractMonsterName } from './encounter-opener';
 import { parseEventsFile, replayEvents } from '@/ai/master/vault/projector';
 import { eventsPath } from '@/ai/master/vault/campaign-paths';
-import { buildTurnDirective, appendDirectiveToHistory, isRollResult, detectCombatIntent } from '@/ai/master/vault/turn-directive';
+import { buildTurnDirective, appendDirectiveToHistory, isRollResult, detectCombatIntent, isCombatDeclaration } from '@/ai/master/vault/turn-directive';
 import { buildBeginUserMessage } from '@/ai/master/begin-message';
 
 // buildBeginUserMessage moved to @/ai/master/begin-message (shared baked+vault).
@@ -640,12 +640,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             history: vaultHistory,
             sessionId,
             campaignLanguage: campaign.language ?? snap.language ?? undefined,
-            // Begin-turn = narration-only: do NOT offer tools at the opener.
-            // Local models (qwen3) handed the vault tools reach for one
-            // (list_vault) instead of narrating the first scene → empty content
-            // → "turn produced empty response" → stuck UI. There is nothing to
-            // read/mutate on the opener; the scene is invented from the premise.
-            ...(isBegin && { offerTools: false }),
+            // Narration-only (no tools). TWO cases:
+            //  - Begin-turn: nothing to read/mutate on the opener; local models (qwen3)
+            //    handed the vault tools reach for one (list_vault) instead of narrating
+            //    → empty content → "turn produced empty response" → stuck UI.
+            //  - Server-owned COMBAT turn (Phase 08-05): the opener/resolver/monster-loop
+            //    already did the mechanics, so the model must ONLY narrate. A weak model
+            //    handed apply_event on a combat turn re-emits combat_start (WIPING the
+            //    server-set encounter) and loops on malformed calls until the lock TTL
+            //    (gemma4:12b, 2026-06-04). offerTools:false removes that footgun; the
+            //    to-hit request is appended server-side (6v) and the resolver/loop own the
+            //    events. suppressCombatMutations below stays as belt-and-suspenders.
+            ...((isBegin
+                || (vaultMutationsEnabled
+                    && (isCombatDeclaration(_playerMessage) || _resolver !== null || _monsterLoopRan)))
+              && { offerTools: false }),
             // Phase 02 — only forward campaignId when the vaultMutations gate
             // is true. Without it, dispatchVaultTool('apply_event', ...) returns
             // isError on any LLM hallucination, preserving Phase 01 read-only

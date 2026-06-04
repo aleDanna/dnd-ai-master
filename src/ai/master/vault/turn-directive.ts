@@ -100,6 +100,24 @@ export function isRollResult(playerMessage?: string): boolean {
 }
 
 /**
+ * Phase 08-05 — a "combat declaration" turn: the player declares a combat action
+ * (attack verb) that is NOT a roll-result. On these turns the SERVER owns the combat
+ * mechanics — the encounter opener spawns monsters (Phase 10), the to-hit request is
+ * appended server-side (08-03 canonicalizeToHitTarget), and the resolver / monster-loop
+ * handle rolls. The local model must therefore NOT be handed `apply_event` here: weak
+ * models (gemma4:12b) misuse it — re-emitting `combat_start` (which WIPES the server-set
+ * encounter) and looping on malformed calls until the turn-lock TTL, leaving no narration
+ * (observed live 2026-06-04). The route uses this to force narration-only
+ * (`offerTools: false`) so the model only narrates while the server owns the mechanics.
+ *
+ * `isRollResult` is checked FIRST: a roll-result echoes the attack verb but the resolver
+ * (not this gate) handles it via suppressCombatMutations.
+ */
+export function isCombatDeclaration(playerMessage?: string): boolean {
+  return detectCombatIntent(playerMessage) && !isRollResult(playerMessage);
+}
+
+/**
  * Build a per-turn anti-anchoring directive string.
  *
  * Returns `null` when BOTH `vaultMutations` and `manualRolls` are falsy —
