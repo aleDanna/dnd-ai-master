@@ -304,3 +304,36 @@ residual_caveat: |
   monsters in the encounter — is now fully server-authoritative and reliable.
   If the player does not include ANY attack verb (pure narrative context switch),
   detectCombatIntent returns false and the 6v-canonicalize block is skipped entirely.
+
+## Fix #3 — server-OWNED to-hit (Phase 08-04, 2026-06-04) — FINAL
+
+Live re-tests with BOTH qwen3:30b AND gemma4:12b-mlx confirmed the model is not the
+fix: qwen3 leaked mechanics as prose; gemma4 has better tool obedience but collapses
+to-hit+damage and omits turn_advance. Decision (user): make the to-hit request fully
+server-OWNED so nothing combat-mechanical depends on the LLM.
+
+Changes (commits 0782f52 RED → 8252224 GREEN):
+- combat-resolver.ts `canonicalizeToHitTarget` is now APPEND-AUTHORITATIVE: when the
+  model writes no parseable "Tira … 1d20 … per attaccare …" line, the server APPENDS
+  a canonical "Tira 1d20 per attaccare <name>" so the player always gets a resolvable
+  roll button (previously: returned finalText unchanged → no button → stuck). When the
+  model DID write a line, the target is still canonicalized and the bonus preserved.
+- new `stripLeakedMechanics()` (combat-resolver.ts): strips leaked apply_event prose /
+  event labels / JSON on any combat turn where the resolver did not fire.
+- route.ts 6v block: PC attack declaration → canonicalizeToHitTarget; any other
+  active-combat turn (incl. an unmatched roll-result) → stripLeakedMechanics.
+
+verification (08-04): combat-resolver 41/41; vault+sessions sweep 1158 passed, 1
+known-baseline failure (applicator/gp-stack, pre-existing, unrelated); tsc --noEmit
+clean. resolveCombat, Phase-09 monster loop, deduplicateMonsterNames, and
+enforceResolvedNarration unchanged.
+
+files_changed (08-04):
+- src/app/api/sessions/[id]/turn/combat-resolver.ts (append-authoritative + stripLeakedMechanics)
+- src/app/api/sessions/[id]/turn/route.ts (6v block)
+- tests/app/api/sessions/[id]/turn/combat-resolver.test.ts (+4 tests, 41 total)
+
+operator note: live verification pending on a CLEAN ACTIVE encounter (do NOT reset to
+inactive — that desyncs the conversation from the encounter state and confounds the test).
+Net: the LLM only narrates; the server owns every roll request, mutation, and turn
+advancement (PC + monster). Phase 07-04 operator smoke can re-run once verified.
