@@ -58,6 +58,7 @@ Design decisions locked during `/gsd-explore`, non-negotiable for the real build
 | 012 | prompt-builder-stability | standard | SystemPromptBuilder + linter: same inputs → identical SHA256; forbidden patterns rejected | ✓ VALIDATED — 6/7 (1 self-lint false positive documented) | implementation, ci-test |
 | 013 | vault-backup-restore | standard | Corrupted derived views restored from events.md replay; byte-exact match to pre-corruption | ✓ VALIDATED — byte-for-byte restore via events replay | r7, dr, backup |
 | 014 | narrative-quality | comparison | Human-eval 4 candidates × 5 Italian narrative scenarios (scene, NPC, combat, choice, lore); identify model with best prose for narrative-heavy turns | ✓ VALIDATED — primary unchanged (q4_K_M tied with non-q4 at 9 pts); mistral useful for offline non-standard voice; qwen3-a3b BASE dropped (CoT leak even with think:false) | m4, narrative, qualitative, italian, human-eval, model-selection |
+| 015 | graphify-update-loop-m4 | standard | graphify per-turn graph update reflects new state AND fits the M4 turn budget | ✗ INVALIDATED — per-turn semantic re-extraction 355–425s (~100× the 3.78s turn) AND unreliable (0 nodes one run, runaway JSON); reads cheap (0.16s, BFS); reshape → batch projection only, vault stays source of truth | graphify, knowledge-graph, performance, ollama, killer |
 
 ---
 
@@ -79,3 +80,19 @@ Design decisions locked during `/gsd-explore`, non-negotiable for the real build
 ## Phase REOPENED — 2026-05-24
 
 User raised a gap that the closure didn't address: **narrative quality and choice quality of the chosen primary model** were never measured (spikes 002-004 were feasibility benchmarks, not creative-writing benchmarks). Spike 014 added to close that gap. The closure note above still stands for the feasibility track (G1/G2 GREEN); narrative track is its own validation slice.
+
+---
+
+## Phase: graphify evaluation — 2026-06-04 (in corso)
+
+### Idea
+Evaluate adopting **graphify** (knowledge-graph extraction/query tool, `graphifyy` on PyPI, repo `safishamsi/graphify`) for two use cases: (1) a **static graph** of rules/handbook/static prompts; (2) **dynamic per-campaign graphs** kept current for long-horizon narrative coherence (recall an NPC introduced ~30 turns earlier). Original framing was "migrate to graphify instead of Obsidian"; **spike 015 corrected this** — graphify is a query/extraction layer over a corpus, not a storage layer, so the markdown vault (`events.md`, locked by spikes 006/008) remains source of truth and would *feed* graphify.
+
+### Emerging requirements (graphify track)
+- **graphify ≠ storage.** The `events.md` vault stays source of truth. Any graphify graph is a **derived projection**, never authoritative state.
+- **No live per-turn graph updates** (spike 015): semantic extraction is batch full-corpus, ~355–425 s/run on the local primary model, and unreliable (runaway JSON; ollama ignores the output cap). If adopted, the graph is **batch-built offline** (session boundary / every N turns / on `needs_update`) and queried read-only at runtime.
+- **Graph queries are cheap** (~0.16 s, pure BFS, no LLM) — the read side is viable at runtime.
+- **ollama backend needs `graphifyy[ollama]`** (the `openai` dep) + `OLLAMA_API_KEY` (any value) + `OLLAMA_BASE_URL`.
+
+### Spikes (this phase)
+015–018, **reframed after 015** around a batch-built graph queried at runtime (not a live per-turn graph). 015 ✗ INVALIDATED (per-turn premise). 016/017/018 pending user go/no-go on the reshape.
