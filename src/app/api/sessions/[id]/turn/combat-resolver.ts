@@ -81,6 +81,16 @@ export interface ResolveCombatResult {
  *     (gemma4) leak markerless chain-of-thought while it reasoned about how to
  *     call `apply_event`. `isCombatDeclaration` still covers the FIRST attack out
  *     of exploration, when the encounter is not yet active.
+ *   - Any ROLL-RESULT (`isRollResult`) — a "🎲 I rolled …" turn. The player just
+ *     resolved a die the master asked for (combat OR skill check). The master must
+ *     only NARRATE the outcome; the server resolver owns combat mechanics and a
+ *     skill check rarely needs an event. This is the SAFETY NET for master-
+ *     initiated combat: if the master narrates a fight WITHOUT the player declaring
+ *     it (so the opener never fired → no encounter), the follow-up attack roll has
+ *     no encounter to resolve and previously fell through to the LLM WITH tools,
+ *     where a weak model (gemma4) melts down into garbage output (`JAVADOC=0; … }`
+ *     — operator report 2026-06-04). Suppressing tools on every roll keeps it
+ *     narration-only no matter how combat was (mis)started.
  *
  * The `vaultMutationsEnabled` gate ensures read-only / non-opted-in campaigns
  * keep Phase 01 behaviour (tools offered) regardless of any combat signal.
@@ -90,6 +100,7 @@ export function isNarrationOnlyTurn(input: {
   vaultMutationsEnabled: boolean;
   encounterActive: boolean;
   isCombatDeclaration: boolean;
+  isRollResult: boolean;
   resolverFired: boolean;
   monsterLoopRan: boolean;
 }): boolean {
@@ -98,6 +109,7 @@ export function isNarrationOnlyTurn(input: {
     input.vaultMutationsEnabled &&
     (input.encounterActive ||
       input.isCombatDeclaration ||
+      input.isRollResult ||
       input.resolverFired ||
       input.monsterLoopRan)
   );

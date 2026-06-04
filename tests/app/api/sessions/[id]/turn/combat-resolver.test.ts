@@ -728,6 +728,7 @@ describe('isNarrationOnlyTurn — offerTools suppression gate', () => {
     vaultMutationsEnabled: true,
     encounterActive: false,
     isCombatDeclaration: false,
+    isRollResult: false,
     resolverFired: false,
     monsterLoopRan: false,
   };
@@ -745,6 +746,13 @@ describe('isNarrationOnlyTurn — offerTools suppression gate', () => {
 
   it('combat declaration (first attack from exploration, encounter not yet active) → narration-only', () => {
     expect(isNarrationOnlyTurn({ ...base, isCombatDeclaration: true })).toBe(true);
+  });
+
+  it('ANY roll-result → narration-only even with NO active encounter (master-initiated fake-combat meltdown fix)', () => {
+    // The master narrated a fight the player never declared → opener never fired →
+    // no encounter. The follow-up attack roll must still be tool-free or a weak
+    // model (gemma4) melts down into garbage.
+    expect(isNarrationOnlyTurn({ ...base, isRollResult: true })).toBe(true);
   });
 
   it('server-resolved roll → narration-only', () => {

@@ -673,6 +673,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 vaultMutationsEnabled,
                 encounterActive: _encounterActive,
                 isCombatDeclaration: isCombatDeclaration(_playerMessage),
+                isRollResult: isRollResult(_playerMessage),
                 resolverFired: _resolver !== null,
                 monsterLoopRan: _monsterLoopRan,
               }) && { offerTools: false }),
