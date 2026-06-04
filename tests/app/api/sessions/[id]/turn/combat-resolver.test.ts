@@ -672,6 +672,29 @@ describe("canonicalizeToHitTarget — append-authoritative (Phase 08-04)", () =>
     expect(result).not.toMatch(/chiama turn_advance/);
     expect(result).toContain("Tira 1d20 per attaccare Pirata di Buggy 1");
   });
+
+  it("strips a MALFORMED model roll-ask (literal +<bonus>) → exactly ONE canonical request, no duplicate (Phase 08-06)", () => {
+    // gemma4 narrates a roll-ask with an unfilled placeholder bonus; TO_HIT_RE (which
+    // needs digits after +) misses it, so without a lenient strip it survives AND the
+    // server appends → TWO roll buttons (observed live 2026-06-04).
+    const finalText = "Ti scagli in avanti.\n\nTira 1d20+<bonus> per attaccare Pirata di Buggy 1.";
+    const playerMessage = "attacco pirata di buggy 1";
+    const result = canonicalizeToHitTarget(finalText, playerMessage, PIRATE_ENCOUNTER);
+    const count = (result.match(/Tira[^\n]*1d20/gi) || []).length;
+    expect(count).toBe(1);                 // exactly one roll request — no duplicate
+    expect(result).not.toMatch(/<bonus>/); // malformed placeholder gone
+    expect(result).toContain("Pirata di Buggy 1");
+    expect(result).toContain("Ti scagli in avanti");
+  });
+
+  it("preserves a VALID model bonus into the single appended request", () => {
+    const finalText = "Colpisci!\n\nTira 1d20+5 per attaccare il Pirata di Buggy con la cicatrice.";
+    const result = canonicalizeToHitTarget(finalText, "attacco pirata di buggy 2", PIRATE_ENCOUNTER);
+    const count = (result.match(/Tira[^\n]*1d20/gi) || []).length;
+    expect(count).toBe(1);
+    expect(result).toContain("Tira 1d20+5 per attaccare Pirata di Buggy 2");
+    expect(result).not.toMatch(/con la cicatrice/);
+  });
 });
 
 describe("stripLeakedMechanics (Phase 08-04)", () => {
