@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { EncounterState } from '@/ai/master/vault/projector';
-import { resolveCombat, enforceResolvedNarration, canonicalizeToHitTarget } from '@/app/api/sessions/[id]/turn/combat-resolver';
+import { resolveCombat, enforceResolvedNarration, canonicalizeToHitTarget, stripLeakedMechanics } from '@/app/api/sessions/[id]/turn/combat-resolver';
 import { parseRollRequests } from '@/lib/roll-parser';
 
 /**
@@ -608,11 +608,15 @@ describe("canonicalizeToHitTarget (Phase 08-03)", () => {
     expect(result).toBe(finalText);
   });
 
-  it("returns finalText unchanged when no Tira-d20 line is present", () => {
+  it("APPENDS a canonical server-owned to-hit request when the LLM narrated no roll line (Phase 08-04)", () => {
+    // Phase 08-04: the server OWNS the to-hit request. If the LLM narrated without
+    // asking for a roll, the server appends the canonical request so the player ALWAYS
+    // gets a resolvable roll button on their attack turn.
     const finalText = "Il master descrive la scena senza chiedere tiri.";
     const playerMessage = "attacco pirata di buggy 1";
     const result = canonicalizeToHitTarget(finalText, playerMessage, PIRATE_ENCOUNTER);
-    expect(result).toBe(finalText);
+    expect(result).toContain("Il master descrive la scena senza chiedere tiri.");
+    expect(result).toContain("Tira 1d20 per attaccare Pirata di Buggy 1");
   });
 
   it("returns finalText unchanged when encounter is not active", () => {
@@ -646,5 +650,51 @@ describe("canonicalizeToHitTarget (Phase 08-03)", () => {
     expect(resolved!.kind).toBe("to-hit");
     expect(resolved!.events).toEqual([]); // HIT (18 >= AC 13)
     expect(resolved!.damageRequest).toContain("Pirata di Buggy 1");
+  });
+});
+
+// =====================================================================
+// Phase 08-04 — server-OWNED to-hit (append-authoritative) + stripLeakedMechanics.
+// The combat turn is now fully server-owned: nothing combat-mechanical depends on the
+// LLM. The server guarantees a canonical to-hit request even when the model writes
+// none, and strips leaked apply_event prose on any combat turn the resolver didn't fire.
+// =====================================================================
+
+describe("canonicalizeToHitTarget — append-authoritative (Phase 08-04)", () => {
+  it("appends the canonical request even when the turn is ONLY leaked mechanics prose", () => {
+    const finalText = [
+      'Applica il danno: con id: "pirata-buggy-1" e delta: -8.',
+      "Poi, chiama turn_advance.",
+    ].join("\n");
+    const playerMessage = "attacco pirata di buggy 1";
+    const result = canonicalizeToHitTarget(finalText, playerMessage, PIRATE_ENCOUNTER);
+    expect(result).not.toMatch(/Applica il danno/);
+    expect(result).not.toMatch(/chiama turn_advance/);
+    expect(result).toContain("Tira 1d20 per attaccare Pirata di Buggy 1");
+  });
+});
+
+describe("stripLeakedMechanics (Phase 08-04)", () => {
+  it("strips leaked apply_event prose + event labels/JSON, keeps narration", () => {
+    const finalText = [
+      "Il pirata barcolla sotto il colpo.",
+      'Applica il danno: con id: "pirata-buggy-1" e delta: -8.',
+      "Poi, chiama turn_advance.",
+      "monster_hp_change",
+      '{ "id": "pirata-buggy-1", "delta": -8 }',
+    ].join("\n");
+    const result = stripLeakedMechanics(finalText);
+    expect(result).toContain("Il pirata barcolla");
+    expect(result).not.toMatch(/Applica il danno/);
+    expect(result).not.toMatch(/turn_advance/);
+    expect(result).not.toMatch(/monster_hp_change/);
+    expect(result).not.toMatch(/"delta"/);
+  });
+
+  it("leaves a clean narration unchanged and does not throw on empty", () => {
+    const clean = "Il pirata ti fissa, pronto a colpire.";
+    expect(stripLeakedMechanics(clean)).toBe(clean);
+    expect(() => stripLeakedMechanics("")).not.toThrow();
+    expect(stripLeakedMechanics("")).toBe("");
   });
 });
