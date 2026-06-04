@@ -368,60 +368,43 @@ export function canonicalizeToHitTarget(
   const monster = matchMonster(encounter, playerTargetM[1]!);
   if (!monster) return finalText;
 
-  // Step 3: strip leaked apply_event tool-prose (declaration-turn guard).
-  // These patterns mirror enforceResolvedNarration's strippers plus
-  // declaration-specific leaked text patterns.
+  // Step 3: strip leaked apply_event tool-prose AND every model roll-ask line. The
+  // server OWNS the to-hit request, so rather than rewrite the model's line in place
+  // (which misses MALFORMED asks like an unfilled "1d20+<bonus>" placeholder — gemma4,
+  // 2026-06-04 — leaving the model's line AND the server's append → TWO roll buttons),
+  // we drop EVERY "Tira … NdM …" line the model wrote and append exactly one canonical
+  // request below.
   const EVENT_LABEL =
     /^[*\s"']*(?:monster_hp_change|turn_advance|combat_start|combat_end|monster_spawn|initiative_set)[*\s"':]*$/i;
   const EVENT_JSON = /^\s*\{[^{}]*"(?:id|delta|type|actorId)"[^{}]*\}\s*$/;
-  // Leaked apply_event prose on declaration turns. Matches:
-  //   "Applica il danno/i / danni…" (with or without article "il")
-  //   "Poi, chiama turn_advance" / "chiama apply_event" (with optional prefix)
+  // Leaked apply_event prose on declaration turns: "Applica … danno/i", "chiama
+  // turn_advance / apply_event".
   const LEAKED_APPLY =
     /(?:^\s*Applica\b.*\bdann|\bchiama\s+(?:turn_advance|apply_event))/i;
+  // Lenient roll-ask: "Tira … <NdM> …" — any dice, any/no bonus, well-formed OR
+  // malformed. Drops the model's roll requests so only the server's canonical one
+  // survives. (Narration prose lacks the "Tira <dice>" shape, so it is kept.)
+  const ROLL_REQUEST = /\bTira\b[^\n]*?\b\d*\s*[dD]\s*\d+/i;
 
-  // Step 4: rewrite "Tira … 1d20[+/-N] per attaccare <anything>" lines,
-  // replacing the target with the canonical monster name.
-  //
-  // Regex breakdown:
-  //   \bTira\b          — roll request verb (Italian)
-  //   [^"\n]*?          — optional prefix (e.g. "1d20")
-  //   \b1d20\b          — must be a d20 (attack roll, not damage)
-  //   ([+\-]\d+)?       — optional bonus group (captured for preservation)
-  //   \s+per\s+attaccare\s+  — required Italian "per attaccare" lead-in
-  //   [^.\n;:!?)]+      — target (everything up to sentence end / paren)
-  //
-  // The rewrite PRESERVES the bonus and the rest of the line structure.
-  const TO_HIT_RE =
-    /(\bTira\b[^"\n]*?\b1d20\b([+\-]\d+)?\s+per\s+attaccare\s+)[^.\n;:!?)]+/gi;
+  // Preserve a VALID to-hit bonus the model proposed ("1d20+N" / "1d20-N"); a malformed
+  // "1d20+<bonus>" yields no match → bare 1d20. Target always comes from the matched
+  // monster, never the model's text.
+  const bonusM = /\b1d20\s*([+\-]\d+)/i.exec(finalText);
+  const bonus = bonusM ? bonusM[1]! : '';
 
-  const lines = finalText.split('\n');
-  let sawToHit = false;
-  const rewritten = lines
+  const kept = finalText
+    .split('\n')
     .filter((line) => {
       const t = line.trim();
-      return !EVENT_LABEL.test(t) && !EVENT_JSON.test(t) && !LEAKED_APPLY.test(t);
-    })
-    .map((line) => {
-      // Replace the target in any to-hit request line (preserving the bonus prefix).
-      return line.replace(TO_HIT_RE, (_, prefix) => {
-        sawToHit = true;
-        return `${prefix}${monster.name}`;
-      });
+      return !EVENT_LABEL.test(t) && !EVENT_JSON.test(t) && !LEAKED_APPLY.test(t) && !ROLL_REQUEST.test(t);
     });
 
-  let out = rewritten.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  let out = kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 
-  // APPEND-AUTHORITATIVE (Phase 08-04): the server OWNS the to-hit request. When the
-  // model wrote no parseable "Tira … 1d20 … per attaccare …" line (it narrated without
-  // asking, or asked in an unparseable form), append the canonical request so the player
-  // ALWAYS gets a correct, resolvable roll button on their attack turn. No model bonus
-  // to preserve in this branch → emit a bare 1d20 (resolveCombat treats bonus 0); the
-  // common case (model wrote "Tira 1d20+N") goes through the rewrite above and keeps N.
-  if (!sawToHit) {
-    const req = `Tira 1d20 per attaccare ${monster.name}`;
-    out = out ? `${out}\n\n${req}` : req;
-  }
+  // APPEND-AUTHORITATIVE: exactly ONE server-owned to-hit request — canonical target,
+  // valid bonus preserved (else bare 1d20). resolveCombat parses the resulting roll label.
+  const req = `Tira 1d20${bonus} per attaccare ${monster.name}`;
+  out = out ? `${out}\n\n${req}` : req;
 
   return out;
 }
