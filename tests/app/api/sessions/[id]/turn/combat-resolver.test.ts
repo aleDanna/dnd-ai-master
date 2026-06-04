@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { EncounterState } from '@/ai/master/vault/projector';
-import { resolveCombat, enforceResolvedNarration, canonicalizeToHitTarget, stripLeakedMechanics } from '@/app/api/sessions/[id]/turn/combat-resolver';
+import { resolveCombat, enforceResolvedNarration, canonicalizeToHitTarget, stripLeakedMechanics, isNarrationOnlyTurn } from '@/app/api/sessions/[id]/turn/combat-resolver';
 import { parseRollRequests } from '@/lib/roll-parser';
 
 /**
@@ -719,5 +719,56 @@ describe("stripLeakedMechanics (Phase 08-04)", () => {
     expect(stripLeakedMechanics(clean)).toBe(clean);
     expect(() => stripLeakedMechanics("")).not.toThrow();
     expect(stripLeakedMechanics("")).toBe("");
+  });
+});
+
+describe('isNarrationOnlyTurn — offerTools suppression gate', () => {
+  const base = {
+    isBegin: false,
+    vaultMutationsEnabled: true,
+    encounterActive: false,
+    isCombatDeclaration: false,
+    resolverFired: false,
+    monsterLoopRan: false,
+  };
+
+  it('begin turn → narration-only regardless of campaign flags', () => {
+    expect(isNarrationOnlyTurn({ ...base, isBegin: true, vaultMutationsEnabled: false })).toBe(true);
+  });
+
+  it('ACTIVE encounter → narration-only even when intent is missed AND resolver did not fire', () => {
+    // The gemma4 CoT-leak fix: "riattacco il goblin" (intent missed) on an active
+    // encounter where resolveCombat returned null (bare/ambiguous target) must NOT
+    // hand the model the tools.
+    expect(isNarrationOnlyTurn({ ...base, encounterActive: true })).toBe(true);
+  });
+
+  it('combat declaration (first attack from exploration, encounter not yet active) → narration-only', () => {
+    expect(isNarrationOnlyTurn({ ...base, isCombatDeclaration: true })).toBe(true);
+  });
+
+  it('server-resolved roll → narration-only', () => {
+    expect(isNarrationOnlyTurn({ ...base, resolverFired: true })).toBe(true);
+  });
+
+  it('monster loop ran → narration-only', () => {
+    expect(isNarrationOnlyTurn({ ...base, monsterLoopRan: true })).toBe(true);
+  });
+
+  it('plain exploration turn → tools OFFERED', () => {
+    expect(isNarrationOnlyTurn(base)).toBe(false);
+  });
+
+  it('combat signals on a NON-mutations campaign → tools offered (gate respects vaultMutations)', () => {
+    expect(
+      isNarrationOnlyTurn({
+        ...base,
+        vaultMutationsEnabled: false,
+        encounterActive: true,
+        isCombatDeclaration: true,
+        resolverFired: true,
+        monsterLoopRan: true,
+      }),
+    ).toBe(false);
   });
 });
