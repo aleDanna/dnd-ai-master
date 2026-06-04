@@ -187,6 +187,18 @@ After spike 004 (M4 feasibility sweep) + spike 014 (narrative quality):
 | ✗ Eliminated | `mistral-small3.2:24b-instruct-2506-q4_K_M` | G1 +81.9% (slower than baked) |
 | ✗ Eliminated | `llama3.2:3b` | 0% tool compliance |
 
+## Graphify evaluation (spikes 015–018)
+
+Tooling + gotchas for any future graphify work. (Tool **evaluated and NOT adopted** — see MANIFEST phase verdict. Vault stack stays.)
+
+- **Install with the backend extra:** `uv tool install "graphifyy[ollama]"` — plain `graphifyy` omits the `openai` dep the ollama/openai-compat backends need.
+- **Build = `graphify extract <dir>`** (AST + semantic LLM) → `<dir>/graphify-out/graph.json`. `update` is code-only (AST, no LLM); narrative needs full `extract`. graph.json uses `links` (not `edges`) for the edge array (trips up naive inspection + breaks `affected`).
+- **Backends:** local `ollama` (`OLLAMA_API_KEY=ollama`, `OLLAMA_BASE_URL=http://localhost:11434/v1`, `--model <m>`, `--max-concurrency 1`); cloud `gemini|openai|deepseek|kimi|claude`; or `claude-cli` (routes through the local Claude Code CLI, no API key, `GRAPHIFY_CLAUDE_CLI_MODEL=sonnet`).
+- **Local extraction is slow + unreliable** on M-series: qwen3:30b ~6-7 min/run, occasional 0-node runaway JSON (Ollama ignores the output cap; #798-style hollow 200s). gemma4:12b worse (1 node). Use cloud/claude-cli for anything real.
+- **Stock extraction prompt yields generic relations** (`references`/`conceptually_related_to`) on capable models — useless for "who did what to whom". Rich domain edges need a custom extraction prompt.
+- **Queries are local + cheap** (BFS, ~0.07–0.16 s, no LLM): `query`/`explain`/`path`. But `query` over-retrieves (depth-2 ≈ half the graph), `affected` errors on the `links` schema, node matching is language-coupled to the corpus, and results are pointers (not content).
+- Reusable fixtures: `015-*/corpus/` (IT campaign + built graph), `016-*/fixtures/` (qwen vs Sonnet graphs), `018-*/fixtures/` (craft graph + report).
+
 ## Wrap-up artifacts
 
 - Implementation blueprint skill: `./.claude/skills/spike-findings-dnd-ai-master/`

@@ -61,6 +61,7 @@ Design decisions locked during `/gsd-explore`, non-negotiable for the real build
 | 015 | graphify-update-loop-m4 | standard | graphify per-turn graph update reflects new state AND fits the M4 turn budget | ✗ INVALIDATED — per-turn semantic re-extraction 355–425s (~100× the 3.78s turn) AND unreliable (0 nodes one run, runaway JSON); reads cheap (0.16s, BFS); reshape → batch projection only, vault stays source of truth | graphify, knowledge-graph, performance, ollama, killer |
 | 016 | extraction-quality-and-backend | comparison | graphify extraction is faithful to IT narrative AND a reliable batch backend exists | ✓ VALIDATED (caveat) — quality good→excellent (Sonnet/claude-cli: 23 nodes, 0 dup, 194s); local non-viable (qwen 425s+1 err, gemma4:12b 1 node); clustering does NOT dedup cross-file; batch needs cloud/claude-cli | graphify, extraction, quality, backend, claude-cli, batch |
 | 017 | coherence-recall | comparison | graph-query recovers an old-NPC's context better/cheaper than a vault entity-read | ✗ INVALIDATED — vault read 8/8 gold facts vs graph ~3/8; clean cloud graph has 100% generic relations (no who-did-what); BFS query over-retrieves (21/23 nodes); `affected` broken. Vault wins on completeness+accuracy+latency+infra → dynamic graph not worth it | graphify, coherence, retrieval, vault, comparison |
+| 018 | static-rules-retrieval | comparison | static graph-query beats curated index + path-deterministic reads for cross-cutting handbook questions | ⚠ PARTIAL — doesn't clearly beat the index: 100% generic relations, BFS over-retrieves (33/66 nodes), god-nodes labeling failed silently, language-coupled (IT query→0 hits), returns pointers not content, 320s/~55k-tok one-time build. Niche dev-facing value only (betweenness insight, viz) | graphify, static, rules, path-deterministic, comparison |
 
 ---
 
@@ -99,4 +100,12 @@ Evaluate adopting **graphify** (knowledge-graph extraction/query tool, `graphify
 - **Extraction is faithful but not perfect**: ~1 factual conflation per 13 turns on the local model (e.g. wrong "forged" edge). The graph is an aid, not ground truth — the vault remains authoritative.
 
 ### Spikes (this phase)
-015–018, **reframed after 015** around a batch-built graph queried at runtime. 015 ✗ INVALIDATED (per-turn premise); 016 ✓ VALIDATED (quality good, but batch needs a cloud/claude-cli backend — local non-viable). 017 (coherence recall) and 018 (static rules) next.
+015–018 **complete** (2026-06-04). Tally: 1 ✓ caveated (016), 2 ✗ (015, 017), 1 ⚠ (018).
+
+### Phase verdict — graphify: DO NOT adopt as a storage/retrieval layer
+The original framing ("migrate to graphify *instead of* Obsidian") is **invalidated**. graphify is a query/extraction layer over a corpus, not a storage layer; the markdown vault stays source of truth regardless.
+
+- **Dynamic per-campaign graph (use case 2): NO.** No live per-turn updates (015 — ~100× over the 3.78 s turn budget); batch builds need a cloud backend (016 — local qwen slow+unreliable, gemma non-viable); and even then the graph **loses to the vault entity-read** for coherence recall (017 — vault 8/8 vs graph ~3/8 facts; clean cloud graph's relations are 100% generic; BFS over-retrieves). High cost, marginal/negative value vs the already-validated vault.
+- **Static rules graph (use case 1): NOT WORTH IT as a runtime layer** (018 — doesn't beat the curated `index.md` + path-deterministic reads; generic relations, over-retrieval, pointers-not-content, language coupling, broken god-nodes, 320 s/~55k-tok build).
+
+**Decision: keep the locked vault design** (events.md source of truth + materialized views + `read_vault_multi` + curated index + per-turn summarization). graphify's only niche here is an **offline, developer-facing** aid (betweenness/structure insights, `graph.html` viz) during authoring — not a runtime component. Revisit only if cross-entity relational queries become a hard requirement, and only with a **custom narrative-relation extraction prompt** (the stock prompt yields generic edges) — proving value first.
