@@ -34,7 +34,7 @@ import { computeTurnAdvance, detectAddressee } from '@/multiplayer/turn-advance'
 import { notifySession } from '@/sessions/notify';
 import { checkPartyAccess } from '@/multiplayer/access';
 import { resolveCombatHandoff } from './combat-handoff';
-import { resolveCombat, enforceResolvedNarration, canonicalizeToHitTarget, stripLeakedMechanics, isNarrationOnlyTurn, type ResolveCombatResult } from './combat-resolver';
+import { resolveCombat, enforceResolvedNarration, canonicalizeToHitTarget, stripLeakedMechanics, isNarrationOnlyTurn, parseAttackRollTarget, type ResolveCombatResult } from './combat-resolver';
 import { runMonsterTurnLoop } from './monster-turns';
 import { getBestiaryAttackStats, getBestiaryStatblock } from './monster-bestiary';
 import { runEncounterOpener, extractMonsterName } from './encounter-opener';
@@ -441,7 +441,43 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           let _resolver: ReturnType<typeof resolveCombat> = null;
           if (vaultMutationsEnabled && isRollResult(_playerMessage)) {
             try {
-              const { encounter } = replayEvents(await parseEventsFile(eventsPath(campaign.id)));
+              let { encounter } = replayEvents(await parseEventsFile(eventsPath(campaign.id)));
+              // 5v-master-opener (autonomous-master / real-combat). A to-hit roll
+              // arrived with NO active encounter — the master narrated a fight and
+              // asked for the roll WITHOUT the player declaring an attack, so the
+              // player-declaration opener (5v-opener) never fired. Open an encounter
+              // for the rolled target so the roll resolves with REAL HP/turns instead
+              // of falling through to the tool-handed LLM (which melts down). Spawn
+              // under the EXACT rolled name so resolveCombat's matchMonster aligns;
+              // bestiary stats come from the base species (number suffix stripped).
+              // KNOWN LIMIT: only the attacked target is materialized — a multi-enemy
+              // fight the master narrated in prose stays fiction for the others.
+              if (!encounter.active) {
+                const _mTarget = parseAttackRollTarget(_playerMessage ?? '');
+                if (_mTarget) {
+                  try {
+                    const _mBase = _mTarget.replace(/[\s\-_#]+\d+\s*$/, '').trim() || _mTarget;
+                    const _mStats = await getBestiaryStatblock(_mBase);
+                    const _mOpenerEvents = runEncounterOpener(snap, _mTarget, () => _mStats);
+                    for (const ev of _mOpenerEvents) {
+                      const r = await dispatchVaultTool('apply_event', ev, { campaignId: campaign.id, sessionId });
+                      if (r.isError) {
+                        console.warn('[turn]', sessionId, 'master-initiated opener emit failed:', r.content);
+                      }
+                    }
+                    if (_mOpenerEvents.length > 0) {
+                      openerRan = true;
+                      ({ encounter } = replayEvents(await parseEventsFile(eventsPath(campaign.id))));
+                      console.log('[turn]', sessionId, 'master-initiated opener spawned', _mTarget, '→ active=', encounter.active);
+                    }
+                  } catch (e) {
+                    console.warn(
+                      '[turn]', sessionId, 'master-initiated opener failed, falling through:',
+                      e instanceof Error ? e.message : String(e),
+                    );
+                  }
+                }
+              }
               if (encounter.active) {
                 // D-01 gate satisfied (vaultMutations && active encounter && roll-result).
                 // resolveCombat NEVER throws (D-05/D-10): a non-combat / unparseable /

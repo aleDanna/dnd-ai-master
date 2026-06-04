@@ -321,6 +321,32 @@ export function resolveCombat(input: {
 }
 
 /**
+ * Extract the target monster NAME from a TO-HIT roll-result, or null.
+ *
+ * Used by the route's master-initiated combat opener (autonomous-master / real-
+ * combat). When a to-hit roll arrives with NO active encounter — the master
+ * narrated a fight and asked for the roll WITHOUT the player declaring an attack,
+ * so the player-declaration opener never fired — the server opens an encounter for
+ * THIS target so the roll resolves with real HP/turns. Spawning the monster under
+ * the EXACT name the roll uses keeps resolveCombat's matchMonster aligned.
+ *
+ * Mirrors resolveCombat's to-hit gate (1d20 + attack keyword + "attaccare <name>"),
+ * so a damage roll, a skill check (e.g. Percezione), or a non-roll returns null.
+ * NEVER throws.
+ */
+export function parseAttackRollTarget(rollResult: string): string | null {
+  const parsed = parseRoll(rollResult);
+  if (!parsed) return null;
+  const isD20 = parsed.diceKind === '1d20' || parsed.diceKind === 'd20';
+  if (!isD20) return null;
+  if (!/attacc|colp/i.test(rollResult)) return null;
+  const tgtM = /(?:attaccare|attacca|colpire|colpisci)\s+([^.;:!?\n)]+)/i.exec(rollResult);
+  if (!tgtM) return null;
+  const name = tgtM[1]!.trim();
+  return name.length > 0 ? name : null;
+}
+
+/**
  * Enforce the resolver's authority over the mechanical channel on a
  * SERVER-RESOLVED combat turn (Phase 08 gap — operator smoke 2026-05-30).
  *

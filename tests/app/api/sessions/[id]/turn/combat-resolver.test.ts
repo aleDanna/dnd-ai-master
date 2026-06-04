@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { EncounterState } from '@/ai/master/vault/projector';
-import { resolveCombat, enforceResolvedNarration, canonicalizeToHitTarget, stripLeakedMechanics, isNarrationOnlyTurn } from '@/app/api/sessions/[id]/turn/combat-resolver';
+import { resolveCombat, enforceResolvedNarration, canonicalizeToHitTarget, stripLeakedMechanics, isNarrationOnlyTurn, parseAttackRollTarget } from '@/app/api/sessions/[id]/turn/combat-resolver';
 import { parseRollRequests } from '@/lib/roll-parser';
 
 /**
@@ -832,5 +832,28 @@ describe('resolveCombat — combat_end on the killing blow (server ends combat)'
       { type: 'monster_hp_change', payload: { id: 'veyra-1', delta: -40 } },
       { type: 'turn_advance', payload: {} },
     ]);
+  });
+});
+
+describe('parseAttackRollTarget — master-initiated combat opener target extraction', () => {
+  it('extracts the target from a to-hit roll-result (the master-authored name)', () => {
+    expect(parseAttackRollTarget('🎲 I rolled **18** for 1d20+3 (attaccare goblin-1) (15+3).')).toBe('goblin-1');
+  });
+
+  it('extracts a multi-word / numbered target verbatim (spawn name must match the roll)', () => {
+    expect(parseAttackRollTarget('🎲 I rolled **12** for 1d20 (colpire Pirata di Buggy 2).')).toBe('Pirata di Buggy 2');
+  });
+
+  it('returns null for a DAMAGE roll (only the to-hit opens an encounter)', () => {
+    expect(parseAttackRollTarget('🎲 I rolled **5** for 1d6 (danni a goblin).')).toBeNull();
+  });
+
+  it('returns null for a non-combat skill check (Percezione must NOT open combat)', () => {
+    expect(parseAttackRollTarget('🎲 I rolled **19** for Percezione.')).toBeNull();
+  });
+
+  it('returns null for a non-roll message', () => {
+    expect(parseAttackRollTarget('mi avvicino al rumore')).toBeNull();
+    expect(parseAttackRollTarget('')).toBeNull();
   });
 });
