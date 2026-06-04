@@ -2,10 +2,11 @@
 status: resolved
 trigger: "Phase 07-04 operator smoke: combat started + monsters spawned, but the player's attack applied no proper damage and the enemies never took their turn."
 created: "2026-06-01T12:15:00Z"
-updated: "2026-06-02T21:30:00Z"
+updated: "2026-06-04T11:20:00Z"
 phase: "07-04"
 key_files:
   - src/app/api/sessions/[id]/turn/combat-resolver.ts
+  - src/app/api/sessions/[id]/turn/route.ts
   - src/ai/master/vault/projector.ts
   - src/ai/master/vault/turn-directive.ts
 ---
@@ -208,6 +209,27 @@ NEW FIX DIRECTION (user-approved 2026-06-02 — "to-hit lato server"):
    request whose label carries "Pirata di Buggy 1"; plus a resolveCombat test that the resulting
    label resolves to pirata-buggy-1. Keep resolveCombat pure.
 
+## Re-test 2026-06-04 (gemma4:12b-mlx) + DECISION: server-owned to-hit request
+
+Switched the One Piece campaign model qwen3:30b-a3b-instruct → gemma4:12b-mlx and re-tested.
+
+Findings:
+- gemma4 has BETTER tool obedience than qwen3: it EMITS the apply_event tool (e.g. monster_hp_change -8 at 09:00:47), narrates CLEANLY (no "Applica il danno…" prose leak), and uses the canonical numbered name. At 09:06:46, on an ACTIVE encounter, gemma4 correctly produced "Tira 1d20+4 per attaccare Pirata di Buggy 1" — the targeting fix works up to the to-hit roll.
+- The repeated live failures were largely CONFOUNDED by the orchestrator's own combat_end resets: they left the encounter active:false, so resolveCombat's `if (encounter.active)` gate blocked, the monster_hp_change reducer skipped (`if (!active) return`), and the player kept rolling stale buttons against a dead encounter. (Operator-debugging lesson: reset to a clean ACTIVE encounter, never to inactive, when prepping a combat test.)
+- gemma4 also tends to COLLAPSE to-hit+damage into one step (applies damage on the to-hit roll instead of asking for a separate damage roll). On an ACTIVE encounter the server resolver would intercept and impose the two-step + suppress gemma4's premature mutation — but the remaining LLM-owned seam (the to-hit REQUEST) is the fragility.
+
+DECISION (user, 2026-06-04 — "basta test, ricostruisci"): stop model-swapping / live-testing; make the combat turn SERVER-OWNED. This is NOT a from-scratch rebuild — the server already owns damage resolution (resolveCombat), monster turns (Phase 09 loop), and unique naming. The ONLY remaining LLM-owned mechanic is the PC's to-hit roll REQUEST. Make that server-owned too + strip leaks on every combat turn.
+
+### BUILD SPEC (TDD — RED first)
+1. SERVER-OWNED TO-HIT REQUEST. In route.ts, on the player's combat-DECLARATION turn — gate: `vaultMutationsEnabled && encounter.active && detectCombatIntent(_playerMessage) && !isRollResult(_playerMessage)` AND the current turn actor `turnOrder[currentIdx]` is a PC (party member, not a monster) — REPLACE the current `canonicalizeToHitTarget` call (route.ts ~742, `6v-canonicalize` block) with an APPEND-AUTHORITATIVE step: parse target from `_playerMessage` → matchMonster → if matched, STRIP any LLM roll-request lines + leaked mechanics prose from finalText, then APPEND the server's canonical request `Tira 1d20+<bonus> per attaccare <monster.name>`. So the request is ALWAYS present + canonical regardless of what the LLM wrote (or didn't write). No match → leave finalText unchanged (fall through).
+2. STRIP LEAKS ON EVERY COMBAT TURN. Run the leaked-mechanics strippers (EVENT_LABEL, EVENT_JSON, LEAKED_APPLY in combat-resolver.ts) on ALL combat-context turns (declaration, to-hit, damage), not only when resolveCombat fired — so qwen3/gemma4 mechanics-prose leaks never reach the player on a fall-through.
+3. PC ATTACK BONUS. Pragmatic: PRESERVE the bonus the LLM proposed in its "Tira 1d20+N" line when present (gemma4 reliably writes "+4"); if the LLM wrote no roll request, default (e.g. +0, or read a character attack bonus if cheaply available). The bonus value is NOT the crux — guaranteed presence + canonical TARGET is. Document the choice.
+4. KEEP intact: resolveCombat, the Phase-09 monster loop, unique naming (deduplicateMonsterNames), enforceResolvedNarration. Don't regress them.
+5. The server-appended "Tira 1d20+N per attaccare <name>" renders as a roll button via roll-parser.ts `bareRe` (already handles this format) — NO client changes needed.
+6. Extract a pure, unit-testable helper (e.g. `buildServerToHitRequest(finalText, playerMessage, encounter, opts)`); RED tests: appends canonical request + strips LLM roll-asks/leaks; falls through on no/ambiguous match; preserves bonus. Verify tsc clean + combat-resolver/projector/route suites green (known-baseline failures excepted).
+
+Net effect: nothing combat-mechanical depends on the LLM anymore. The LLM only narrates; the server owns every roll request, every mutation, and turn advancement (PC + monster).
+
 ## Resolution
 
 root_cause: |
@@ -248,13 +270,19 @@ fix: |
      persistence. The resulting roll button carries "Pirata di Buggy 1" →
      resolveCombat matches → server handles hit/miss/damage/turn_advance reliably.
 
+  PC ATTACK BONUS CHOICE: canonicalizeToHitTarget extracts the +N bonus from the
+  LLM's "Tira 1d20+N" line when present (gemma4 reliably writes it). If the LLM
+  wrote no roll request, defaults to +0. The bonus is NOT the reliability crux —
+  canonical target name is. Bonus precision can be improved later via PC stat lookup
+  without touching the server-ownership invariant.
+
 verification: |
   FIX #1 (d065851/5599cf2):
   - projector.test.ts: 151/151 passed (6 new RED→GREEN)
   - combat-resolver.test.ts: 30/30 passed (6 new RED→GREEN)
   - turn-directive.test.ts: 44/44 passed (1 constant updated)
 
-  FIX #2 (this session — 2026-06-02):
+  FIX #2 (commits b4b14a1/9fdfccd — 2026-06-04):
   - pnpm tsc --noEmit → clean (0 errors)
   - combat-resolver.test.ts: 38/38 passed (8 new RED→GREEN for canonicalizeToHitTarget)
   - Full node suite: 3551 passed, 6 known-baseline failures (game-client-begin-stuck,
