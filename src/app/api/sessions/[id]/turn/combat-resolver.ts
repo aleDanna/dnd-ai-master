@@ -62,6 +62,47 @@ export interface ResolveCombatResult {
   damageRequest: string | null;
 }
 
+/**
+ * Decide whether THIS vault turn must run narration-only — i.e. pass
+ * `offerTools: false` to the master tool loop. Pure predicate (headless-testable).
+ *
+ * `true` ⇒ suppress the tool surface. Two families:
+ *
+ *   - `isBegin`: the opener turn has nothing to read/mutate; a local model handed
+ *     the vault tools reaches for `list_vault` instead of narrating → empty
+ *     content → stuck UI.
+ *   - Any COMBAT turn on a mutations-enabled campaign: the server-authoritative
+ *     opener / resolver / monster-loop own EVERY combat mutation, so the model
+ *     must ONLY narrate. `encounterActive` is the CATCH-ALL — it covers turns the
+ *     intent classifier misses (e.g. "riattacco …", whose "ri-" prefix dodges the
+ *     attack-verb regex) AND roll-results the resolver fails to match (a bare or
+ *     ambiguous target name → `resolveCombat` returns null). BOTH previously
+ *     dropped to the LLM WITH tools, which made a weak-tool narration model
+ *     (gemma4) leak markerless chain-of-thought while it reasoned about how to
+ *     call `apply_event`. `isCombatDeclaration` still covers the FIRST attack out
+ *     of exploration, when the encounter is not yet active.
+ *
+ * The `vaultMutationsEnabled` gate ensures read-only / non-opted-in campaigns
+ * keep Phase 01 behaviour (tools offered) regardless of any combat signal.
+ */
+export function isNarrationOnlyTurn(input: {
+  isBegin: boolean;
+  vaultMutationsEnabled: boolean;
+  encounterActive: boolean;
+  isCombatDeclaration: boolean;
+  resolverFired: boolean;
+  monsterLoopRan: boolean;
+}): boolean {
+  if (input.isBegin) return true;
+  return (
+    input.vaultMutationsEnabled &&
+    (input.encounterActive ||
+      input.isCombatDeclaration ||
+      input.resolverFired ||
+      input.monsterLoopRan)
+  );
+}
+
 /** Parsed numeric + dice shape of a rendered roll-result string. */
 interface ParsedRoll {
   total: number;

@@ -34,7 +34,7 @@ import { computeTurnAdvance, detectAddressee } from '@/multiplayer/turn-advance'
 import { notifySession } from '@/sessions/notify';
 import { checkPartyAccess } from '@/multiplayer/access';
 import { resolveCombatHandoff } from './combat-handoff';
-import { resolveCombat, enforceResolvedNarration, canonicalizeToHitTarget, stripLeakedMechanics, type ResolveCombatResult } from './combat-resolver';
+import { resolveCombat, enforceResolvedNarration, canonicalizeToHitTarget, stripLeakedMechanics, isNarrationOnlyTurn, type ResolveCombatResult } from './combat-resolver';
 import { runMonsterTurnLoop } from './monster-turns';
 import { getBestiaryAttackStats, getBestiaryStatblock } from './monster-bestiary';
 import { runEncounterOpener, extractMonsterName } from './encounter-opener';
@@ -347,6 +347,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // alongside _resolver and _monsterLoopRan so the empty-narration guard
           // in the 10-04 notify branch can read it (combatStateChanged = _resolver
           // !== null || _monsterLoopRan || openerRan).
+          // Turn-start encounter snapshot (Phase 07 hotfix). Read ONCE so the
+          // offerTools gate below can keep the master narration-only during ANY
+          // active encounter — not just the turns detectCombatIntent catches. A
+          // weak-tool narration model (gemma4) leaks markerless CoT whenever it
+          // is handed apply_event and the server resolver MISSES (e.g. an
+          // unmatched / bare target name like "danni a goblin" drops the turn to
+          // the LLM, which then reasons aloud about how to call the tool). The
+          // server still owns every combat mutation; the model only narrates.
+          let _encounterActive = false;
+          if (vaultMutationsEnabled) {
+            try {
+              _encounterActive = replayEvents(await parseEventsFile(eventsPath(campaign.id))).encounter.active;
+            } catch {
+              // No events.md yet (brand-new campaign) → not in combat.
+            }
+          }
+
           let openerRan = false;
           if (!isBegin && vaultMutationsEnabled && detectCombatIntent(_playerMessage) && !isRollResult(_playerMessage)) {
             try {
@@ -651,10 +668,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             //    (gemma4:12b, 2026-06-04). offerTools:false removes that footgun; the
             //    to-hit request is appended server-side (6v) and the resolver/loop own the
             //    events. suppressCombatMutations below stays as belt-and-suspenders.
-            ...((isBegin
-                || (vaultMutationsEnabled
-                    && (isCombatDeclaration(_playerMessage) || _resolver !== null || _monsterLoopRan)))
-              && { offerTools: false }),
+            ...(isNarrationOnlyTurn({
+                isBegin,
+                vaultMutationsEnabled,
+                encounterActive: _encounterActive,
+                isCombatDeclaration: isCombatDeclaration(_playerMessage),
+                resolverFired: _resolver !== null,
+                monsterLoopRan: _monsterLoopRan,
+              }) && { offerTools: false }),
             // Phase 02 — only forward campaignId when the vaultMutations gate
             // is true. Without it, dispatchVaultTool('apply_event', ...) returns
             // isError on any LLM hallucination, preserving Phase 01 read-only
