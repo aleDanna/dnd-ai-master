@@ -279,13 +279,26 @@ export function resolveCombat(input: {
     const monster = matchMonster(encounter, tgtM[1]!);
     if (!monster) return null;
 
+    // Killing blow to the LAST alive monster ENDS the encounter: emit combat_end
+    // instead of turn_advance. The master is narration-only during combat
+    // (isNarrationOnlyTurn), so it can no longer call apply_event(combat_end) —
+    // the server MUST end combat or the encounter stays active forever. "Last" =
+    // this damage drops the target to ≤0 (total ≥ its current HP) AND every other
+    // monster is already dead. HP clamping still lives in the reducer; this is a
+    // pure read of the pre-damage state to decide the terminator event.
+    const killsTarget = total >= monster.hpCurrent;
+    const allOthersDead = encounter.monsters.every((m) => m.id === monster.id || !m.isAlive);
+    const endsCombat = killsTarget && allOthersDead;
+
     return {
       kind: 'damage',
       events: [
         { type: 'monster_hp_change', payload: { id: monster.id, delta: -total } },
-        { type: 'turn_advance', payload: {} },
+        endsCombat ? { type: 'combat_end', payload: {} } : { type: 'turn_advance', payload: {} },
       ],
-      narrationDirective: `[RESOLVED BY SYSTEM: ${monster.name} subisce ${total} danni] narra questo colpo e i suoi effetti in seconda persona; NON chiedere tiri e NON scrivere eventi — il sistema ha già applicato danni e turno.`,
+      narrationDirective: endsCombat
+        ? `[RESOLVED BY SYSTEM: ${monster.name} subisce ${total} danni ed è sconfitto — lo scontro è FINITO] narra il colpo finale e la fine del combattimento in seconda persona; NON chiedere tiri e NON scrivere eventi — il sistema ha già applicato danni e chiuso lo scontro.`
+        : `[RESOLVED BY SYSTEM: ${monster.name} subisce ${total} danni] narra questo colpo e i suoi effetti in seconda persona; NON chiedere tiri e NON scrivere eventi — il sistema ha già applicato danni e turno.`,
       damageRequest: null,
     };
   }
