@@ -80,3 +80,36 @@ These are the concrete artifacts the implementation phase must produce, all alre
 - Conventions: `.planning/spikes/CONVENTIONS.md`
 - M4 sweep raw logs: `.planning/spikes/004-m4-validation/results/`
 - Narrative sweep raw logs: `.planning/spikes/014-narrative-quality/results/`
+
+---
+
+# Spike Wrap-Up Summary — Graphify Evaluation
+
+**Date:** 2026-06-04
+**Spikes processed:** 4 (015–018)
+**Feature area:** Graphify Evaluation
+**Skill output (append):** `./.claude/skills/spike-findings-dnd-ai-master/references/graphify-evaluation.md`
+
+## Processed Spikes
+
+| # | Name | Type | Verdict | Feature Area |
+|---|------|------|---------|--------------|
+| 015 | graphify-update-loop-m4 | standard | ✗ INVALIDATED | Graphify Evaluation |
+| 016 | extraction-quality-and-backend | comparison | ✓ VALIDATED (caveat) | Graphify Evaluation |
+| 017 | coherence-recall | comparison | ✗ INVALIDATED | Graphify Evaluation |
+| 018 | static-rules-retrieval | comparison | ⚠ PARTIAL | Graphify Evaluation |
+
+## Verdict: graphify NOT adopted
+
+The idea was to replace Obsidian/the vault with graphify in two use cases — a static rules graph and dynamic per-campaign graphs updated by the LLM each turn. Outcome:
+
+- **graphify is a query/extraction layer over a corpus, not storage.** The vault (`events.md`) stays source of truth regardless. "Migrate *instead of* Obsidian" is a category error.
+- **No live per-turn updates** (015): semantic re-extraction = 355–425 s on the local primary (~100× the 3.78 s turn) and unreliable (0-node runaway JSON). Batch-only.
+- **Batch needs a cloud backend** (016): local qwen3:30b slow+unreliable, gemma4:12b non-viable (1 node). Sonnet/`claude-cli` is clean (23 nodes, 0 dup) but adds a cloud dependency + cost.
+- **The graph loses to the vault entity-read for coherence** (017): 8/8 vs ~3/8 gold facts; the clean cloud graph's relations are **100% generic** (`references`), so it never captures who-did-what.
+- **The static rules graph doesn't beat the curated index + path-deterministic reads** (018): over-retrieval (33/66 nodes), pointers-not-content, generic relations, language coupling, broken god-nodes.
+
+**Decision:** keep the locked vault design (events.md + materialized views + `read_vault_multi` + curated index + summarization). graphify's only niche = an **offline, developer-facing** structure/viz aid during authoring — never a runtime component. Full landmines + recipe in `references/graphify-evaluation.md`.
+
+## Cost note
+Spikes 016/018 spent ~70–90k Sonnet tokens via `claude-cli` (Claude plan) to validate the cloud backend and the static build. Local runs (qwen3:30b, gemma4:12b) were free but slow (~6–7 min each).

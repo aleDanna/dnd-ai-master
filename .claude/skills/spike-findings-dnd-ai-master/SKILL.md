@@ -1,6 +1,6 @@
 ---
 name: spike-findings-dnd-ai-master
-description: Implementation blueprint from 14 spike experiments for the vault-llm-wiki migration. Validated patterns for vault storage, mutation safety, LLM tool surface, M4 performance targets, model selection, and stable prompt building. Auto-loaded during implementation work.
+description: Implementation blueprint from 18 spike experiments for dnd-ai-master. Validated patterns for the vault-llm-wiki migration (storage, mutation safety, LLM tool surface, M4 performance, model selection, stable prompt building) PLUS the graphify evaluation (evaluated and NOT adopted as a storage/retrieval layer — landmines documented). Auto-loaded during implementation work.
 ---
 
 <context>
@@ -8,7 +8,7 @@ description: Implementation blueprint from 14 spike experiments for the vault-ll
 
 Validated migration design for replacing the current RAG-based knowledge layer (Postgres + pgvector + Ollama embedder) and dynamic state layer (Postgres + drizzle) with a **filesystem-only markdown vault** navigated by the LLM via tool calls. Production target: **Mac Mini M4** (32GB RAM, 120 GB/s bandwidth, 256GB SSD).
 
-Spike sessions wrapped: 2026-05-22 through 2026-05-24 (3 rounds + narrative iteration, 14 spikes).
+Spike sessions wrapped: 2026-05-22 through 2026-05-24 (vault-llm-wiki migration, 14 spikes) + 2026-06-04 (graphify evaluation, spikes 015–018 — evaluated and NOT adopted; see references/graphify-evaluation.md).
 </context>
 
 <requirements>
@@ -65,6 +65,7 @@ These emerged from spike work and lock the design. Every implementation choice m
 | Performance | references/performance.md | -85.5% warm wall-clock on M4 with prefix-cache hygiene; context growth is the new bottleneck (Phase 1 deliverable: summarization) |
 | Model Selection | references/model-selection.md | qwen3:30b-a3b-instruct-2507-q4_K_M primary; MoE A3B routing makes M4 faster than M5 Pro (defies bandwidth-ratio prediction) |
 | Prompt Builder | references/prompt-builder.md | Pure-function builder + ESLint rule + CI test for SHA256 stability across builds |
+| Graphify Evaluation | references/graphify-evaluation.md | Evaluated & NOT adopted — graphify is a query/extraction layer, not storage; no live per-turn updates (~100× budget); batch needs cloud; loses to vault-read; stock-prompt relations 100% generic |
 
 ## Source Files
 
@@ -74,7 +75,7 @@ Original spike source files (TypeScript runners, vault layout, shell scripts) pr
 <metadata>
 ## Processed Spikes
 
-All 14 spikes wrapped (11 ✓ VALIDATED, 1 ✗ INVALIDATED → design pivoted, 0 pending after sweep + narrative validation):
+18 spikes wrapped. **Vault-llm-wiki migration (001–014):** 11 ✓ VALIDATED, 2 PARTIAL, 1 ✗ INVALIDATED → design pivoted. **Graphify evaluation (015–018):** evaluated and NOT adopted (see references/graphify-evaluation.md).
 
 - 001-vault-harness-bootstrap (VALIDATED)
 - 002-tool-discovery-compliance (PARTIAL → lenient mode adopted)
@@ -90,4 +91,10 @@ All 14 spikes wrapped (11 ✓ VALIDATED, 1 ✗ INVALIDATED → design pivoted, 0
 - 012-prompt-builder-stability (VALIDATED)
 - 013-vault-backup-restore (VALIDATED)
 - 014-narrative-quality (VALIDATED — primary confirmed)
+
+Graphify evaluation (015–018, 2026-06-04 — NOT adopted):
+- 015-graphify-update-loop-m4 (INVALIDATED — no live per-turn graph; ~100× over the turn budget)
+- 016-extraction-quality-and-backend (VALIDATED caveat — quality OK but batch needs cloud; local non-viable)
+- 017-coherence-recall (INVALIDATED — graph loses to vault entity-read; relations 100% generic)
+- 018-static-rules-retrieval (PARTIAL — doesn't beat curated index + path reads)
 </metadata>
