@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildTurnDirective, appendDirectiveToHistory, detectCombatIntent, isRollResult } from '@/ai/master/vault/turn-directive';
+import { buildTurnDirective, appendDirectiveToHistory, detectCombatIntent, isRollResult, isCombatDeclaration } from '@/ai/master/vault/turn-directive';
 
 describe('buildTurnDirective', () => {
   describe('null gate — returns null when no mechanics requested', () => {
@@ -439,5 +439,22 @@ describe('appendDirectiveToHistory', () => {
     expect(result[0]!.content).toBe('Prima mossa.');
     expect(result[1]!.content).toBe('Risposta master.');
     expect(result[2]!).toEqual({ role: 'user', content: 'DIRECTIVE' });
+  });
+});
+
+// Phase 08-05 — narration-only gate for server-owned combat turns.
+describe('isCombatDeclaration', () => {
+  it('true for an attack declaration (combat intent, not a roll result)', () => {
+    expect(isCombatDeclaration('attacco il goblin con la spada')).toBe(true);
+  });
+  it('false for a roll-result even if it echoes an attack verb', () => {
+    expect(isCombatDeclaration('🎲 I rolled **18** for 1d20+4 (attaccare il Goblin) (14+4).')).toBe(false);
+  });
+  it('false for a non-combat message', () => {
+    expect(isCombatDeclaration('esploro la stanza in cerca di indizi')).toBe(false);
+  });
+  it('false for empty / undefined', () => {
+    expect(isCombatDeclaration('')).toBe(false);
+    expect(isCombatDeclaration(undefined)).toBe(false);
   });
 });
