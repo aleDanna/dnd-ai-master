@@ -57,16 +57,22 @@
  *     (zero DB writes, zero events.md appends).
  */
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { campaigns, characters, sessions, sessionState } from '@/db/schema';
+import { campaigns } from '@/db/schema';
 import { resolveMasterBackend, type MasterBackend } from '@/lib/preferences';
 import type { CampaignSettings } from '@/db/schema';
 import { EventsWriter } from '@/ai/master/vault/events-writer';
 import { regenerateAffectedViews } from '@/ai/master/vault/projector';
 import { eventsPath } from '@/ai/master/vault/campaign-paths';
 import { EVENT_SCHEMA_VERSION } from '@/ai/master/vault/events-schema';
-import type { VaultEventEnvelope, VaultSeedCharacter } from '@/ai/master/vault/events-schema';
+import type { VaultEventEnvelope } from '@/ai/master/vault/events-schema';
+// `assembleCampaignSeedPayload` moved to src/campaigns/seed-vault.ts (Phase 07
+// hotfix: the production campaign-creation route needs it, and a Next.js route
+// must not import from scripts/). Re-exported here so existing importers
+// (parity-check, the migration script, this module's tests) are unaffected.
+import { assembleCampaignSeedPayload } from '@/campaigns/seed-vault';
+export { assembleCampaignSeedPayload };
 
 // ----------------------------------------------------------------------
 // Result shapes — consumed by the bulk-migration + cutover scripts for
@@ -215,108 +221,6 @@ export async function flipCampaignToBaked(campaignId: string): Promise<FlipBacke
     newBackend: 'baked',
     changed: true,
   };
-}
-
-/**
- * Assemble the `campaign_initialized` seed payload from Postgres for the
- * named campaign.
- *
- * This is the BLOCKER-1 fix from Phase 02 plan 02-10, lifted VERBATIM into
- * a named helper. Two non-obvious shapes (preserved from the original
- * implementation — do NOT simplify without re-spiking):
- *
- *   1. `hp_current` lives on `session_state.hpCurrent` (per session, NOT
- *      per character). The query LEFT JOINs `sessions.campaignId =
- *      campaign.id` AND `sessions.characterId = characters.id`, then LEFT
- *      JOINs `session_state.sessionId = sessions.id`, then `ORDER BY
- *      sessions.updatedAt DESC` puts the most-recent session row first per
- *      character. The JS-side `Map` dedup (with `[...rows].reverse()` so
- *      `Map.set`'s LAST-wins semantics produce a FIRST-wins effective
- *      ordering) keeps the most-recent row per character id. When no
- *      session row exists, the LEFT JOIN leaves `hpCurrent` null, and the
- *      seed OMITS `hp_current` — the projector defaults to `hp_max` (full
- *      HP) via `INITIAL_CHARACTER_STATE`.
- *
- *   2. `spell_slots` is assembled from `characters.spellcasting.slotsMax`
- *      (per-level cap, may be null for non-casters) merged with
- *      `characters.spellSlotsUsed` (per-level counter, defaults to `{}`).
- *      Non-casters (`spellcasting: null`) and empty merged records emit NO
- *      `spell_slots` key — the projector defaults to `{}`.
- *
- * Future Phase 03 extensions (plan 03-A-03) widen `VaultSeedCharacter` with
- * additional optional fields (`temp_hp`, `hit_dice_remaining`,
- * `exhaustion_level`, `resources_used`, `xp`, `level`, `classes`). When
- * that lands, extend this function to harvest them from `session_state` +
- * `characters`, gated by the same "omit when null/default" rule so the
- * projector's `INITIAL_CHARACTER_STATE` fallback semantics still apply.
- */
-export async function assembleCampaignSeedPayload(
-  campaignId: string,
-): Promise<VaultSeedCharacter[]> {
-  // The exact SELECT + JOIN chain Phase 02 ships in scripts/vault-flip.ts
-  // (enableMutations). Aliasing is left untouched so a diff against
-  // Phase 02 produces zero semantic noise.
-  const rows = await db
-    .select({
-      id: characters.id,
-      name: characters.name,
-      hpMax: characters.hpMax,
-      spellcasting: characters.spellcasting,
-      spellSlotsUsed: characters.spellSlotsUsed,
-      hpCurrent: sessionState.hpCurrent, // nullable via LEFT JOIN
-    })
-    .from(characters)
-    .leftJoin(
-      sessions,
-      and(eq(sessions.characterId, characters.id), eq(sessions.campaignId, campaignId)),
-    )
-    .leftJoin(sessionState, eq(sessionState.sessionId, sessions.id))
-    .where(eq(characters.campaignId, campaignId))
-    .orderBy(desc(sessions.updatedAt));
-
-  // Dedup: keep ONE row per character (the most-recent one because of the
-  // ORDER BY). `new Map(entries)` keeps the LAST set value for a key, so
-  // we reverse the rows to ensure the FIRST (most-recent) wins after
-  // dedup. Documented because drizzle does not yet expose `DISTINCT ON`.
-  const dedupedRows = Array.from(
-    new Map([...rows].reverse().map((r) => [r.id, r] as const)).values(),
-  ).reverse(); // restore most-recent-first ordering for stable logs
-
-  return dedupedRows.map((r) => {
-    const seed: VaultSeedCharacter = {
-      id: r.id,
-      name: r.name,
-      hp_max: r.hpMax,
-    };
-
-    // hp_current: include ONLY when session_state row exists. Clamp
-    // defensively to [0, hp_max] — guards stale session_state overshooting
-    // after a manual hp_max decrease (T-02-03 parallel mitigation, same
-    // clamp used by the hp_change reducer in the projector).
-    if (typeof r.hpCurrent === 'number' && Number.isInteger(r.hpCurrent)) {
-      seed.hp_current = Math.max(0, Math.min(r.hpMax, r.hpCurrent));
-    }
-
-    // spell_slots: assemble from spellcasting.slotsMax + spellSlotsUsed.
-    // Skip entirely if the PC is a non-caster (spellcasting null) or the
-    // merged record is empty.
-    if (r.spellcasting && r.spellcasting.slotsMax) {
-      const slotsMax: Record<string, number> = r.spellcasting.slotsMax;
-      const slotsUsed: Record<string, number> = r.spellSlotsUsed ?? {};
-      const merged: Record<string, { max: number; used: number }> = {};
-      for (const level of Object.keys(slotsMax)) {
-        const max = slotsMax[level] ?? 0;
-        if (max <= 0) continue;
-        const used = Math.max(0, Math.min(max, slotsUsed[level] ?? 0));
-        merged[level] = { max, used };
-      }
-      if (Object.keys(merged).length > 0) {
-        seed.spell_slots = merged;
-      }
-    }
-
-    return seed;
-  });
 }
 
 /**

@@ -4,6 +4,8 @@ import { ensureUser } from '@/db/users';
 import { listCampaigns } from '@/campaigns/persist';
 import { createCampaign } from '@/campaigns/forge';
 import { validateCreateBody } from '@/campaigns/validate';
+import { seedCampaignVault } from '@/campaigns/seed-vault';
+import { resolveMasterBackend } from '@/lib/preferences';
 
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
@@ -26,6 +28,21 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = await createCampaign({ userId, ...parsed.value });
+    // Seed the vault genesis (campaign_initialized) AFTER the creation tx
+    // commits — the filesystem seed must not run inside the DB tx (see
+    // forge.ts). New campaigns are born masterBackend=vault + vaultMutations=
+    // true, but the flag-keyed enableMutationsForCampaign would skip them, so
+    // the genesis MUST be written here or materializeFromVault returns null and
+    // the client snapshot silently falls back to Postgres (inCombat=false, no
+    // CombatTracker). seedCampaignVault is idempotent (event-keyed) + best-
+    // effort: a seed failure must not fail an already-committed creation.
+    if (resolveMasterBackend(result.campaign.settings.masterBackend) === 'vault') {
+      try {
+        await seedCampaignVault(result.campaign.id);
+      } catch (seedErr) {
+        console.error('seedCampaignVault failed for', result.campaign.id, seedErr);
+      }
+    }
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown';
