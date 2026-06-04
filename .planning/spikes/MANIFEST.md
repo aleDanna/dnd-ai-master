@@ -59,6 +59,7 @@ Design decisions locked during `/gsd-explore`, non-negotiable for the real build
 | 013 | vault-backup-restore | standard | Corrupted derived views restored from events.md replay; byte-exact match to pre-corruption | ✓ VALIDATED — byte-for-byte restore via events replay | r7, dr, backup |
 | 014 | narrative-quality | comparison | Human-eval 4 candidates × 5 Italian narrative scenarios (scene, NPC, combat, choice, lore); identify model with best prose for narrative-heavy turns | ✓ VALIDATED — primary unchanged (q4_K_M tied with non-q4 at 9 pts); mistral useful for offline non-standard voice; qwen3-a3b BASE dropped (CoT leak even with think:false) | m4, narrative, qualitative, italian, human-eval, model-selection |
 | 015 | graphify-update-loop-m4 | standard | graphify per-turn graph update reflects new state AND fits the M4 turn budget | ✗ INVALIDATED — per-turn semantic re-extraction 355–425s (~100× the 3.78s turn) AND unreliable (0 nodes one run, runaway JSON); reads cheap (0.16s, BFS); reshape → batch projection only, vault stays source of truth | graphify, knowledge-graph, performance, ollama, killer |
+| 016 | extraction-quality-and-backend | comparison | graphify extraction is faithful to IT narrative AND a reliable batch backend exists | ✓ VALIDATED (caveat) — quality good→excellent (Sonnet/claude-cli: 23 nodes, 0 dup, 194s); local non-viable (qwen 425s+1 err, gemma4:12b 1 node); clustering does NOT dedup cross-file; batch needs cloud/claude-cli | graphify, extraction, quality, backend, claude-cli, batch |
 
 ---
 
@@ -93,6 +94,8 @@ Evaluate adopting **graphify** (knowledge-graph extraction/query tool, `graphify
 - **No live per-turn graph updates** (spike 015): semantic extraction is batch full-corpus, ~355–425 s/run on the local primary model, and unreliable (runaway JSON; ollama ignores the output cap). If adopted, the graph is **batch-built offline** (session boundary / every N turns / on `needs_update`) and queried read-only at runtime.
 - **Graph queries are cheap** (~0.16 s, pure BFS, no LLM) — the read side is viable at runtime.
 - **ollama backend needs `graphifyy[ollama]`** (the `openai` dep) + `OLLAMA_API_KEY` (any value) + `OLLAMA_BASE_URL`.
+- **Batch extraction needs a cloud-class model** (spike 016). Local non-viable: qwen3:30b ~7 min + occasionally 0 nodes; gemma4:12b 1 node. Sonnet via `claude-cli` (no API key): 23 nodes, **0 duplicates**, 194 s. **Clustering does NOT dedup** cross-file nodes — a capable model does. Extraction quality on IT narrative is otherwise good (right entities + domain relations).
+- **Extraction is faithful but not perfect**: ~1 factual conflation per 13 turns on the local model (e.g. wrong "forged" edge). The graph is an aid, not ground truth — the vault remains authoritative.
 
 ### Spikes (this phase)
-015–018, **reframed after 015** around a batch-built graph queried at runtime (not a live per-turn graph). 015 ✗ INVALIDATED (per-turn premise). 016/017/018 pending user go/no-go on the reshape.
+015–018, **reframed after 015** around a batch-built graph queried at runtime. 015 ✗ INVALIDATED (per-turn premise); 016 ✓ VALIDATED (quality good, but batch needs a cloud/claude-cli backend — local non-viable). 017 (coherence recall) and 018 (static rules) next.

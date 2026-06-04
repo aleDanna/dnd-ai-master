@@ -1,0 +1,682 @@
+{
+  "nodes": [
+    {
+      "id": "index_alba_cadente",
+      "label": "Campagna L'Alba Cadente",
+      "file_type": "document",
+      "source_file": "index.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "index_cercatori_dellalba",
+      "label": "I Cercatori dell'Alba",
+      "file_type": "document",
+      "source_file": "index.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "index_lyra",
+      "label": "Lyra (Maga Elfa)",
+      "file_type": "document",
+      "source_file": "index.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "index_thorne",
+      "label": "Thorne (Guerriero Umano)",
+      "file_type": "document",
+      "source_file": "index.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "index_gemma_del_crepuscolo",
+      "label": "Gemma del Crepuscolo",
+      "file_type": "document",
+      "source_file": "index.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "index_rovine_di_kardoth",
+      "label": "Rovine di Kar'Doth",
+      "file_type": "document",
+      "source_file": "index.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "index_villaggio_di_pietralba",
+      "label": "Villaggio di Pietralba",
+      "file_type": "document",
+      "source_file": "index.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "events_borin_barbabronzea",
+      "label": "Borin Barbabronzea (Fabbro Nano)",
+      "file_type": "document",
+      "source_file": "events.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "events_pip",
+      "label": "Pip (Nipote di Borin)",
+      "file_type": "document",
+      "source_file": "events.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "events_grenthar",
+      "label": "Grenthar (Capo Goblin)",
+      "file_type": "document",
+      "source_file": "events.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "events_vossk",
+      "label": "Negromante Vossk",
+      "file_type": "document",
+      "source_file": "events.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "events_ysolde",
+      "label": "Ysolde (Sacerdotessa)",
+      "file_type": "document",
+      "source_file": "events.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "events_foresta_di_vethelorn",
+      "label": "Foresta di Vethelorn",
+      "file_type": "document",
+      "source_file": "events.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "events_locanda_il_martello_spento",
+      "label": "Locanda Il Martello Spento",
+      "file_type": "document",
+      "source_file": "events.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "events_accampamento_di_grenthar",
+      "label": "Accampamento Goblin di Grenthar",
+      "file_type": "document",
+      "source_file": "events.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "events_tempio_di_myrkul",
+      "label": "Tempio di Myrkul",
+      "file_type": "document",
+      "source_file": "events.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "events_amuleto_di_selune",
+      "label": "Amuleto di Selune",
+      "file_type": "document",
+      "source_file": "events.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "events_spada_fiammaluce",
+      "label": "Spada Fiammaluce (Prima Chiave)",
+      "file_type": "document",
+      "source_file": "events.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "events_mappa_di_rame",
+      "label": "Mappa Incisa nel Rame",
+      "file_type": "document",
+      "source_file": "events.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "events_sigillo_di_vossk",
+      "label": "Sigillo Nero di Vossk",
+      "file_type": "document",
+      "source_file": "events.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "events_clan_di_grenthar",
+      "label": "Clan Goblin di Grenthar",
+      "file_type": "document",
+      "source_file": "events.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "events_corruzione_arcana",
+      "label": "Corruzione Arcana del Nord",
+      "file_type": "concept",
+      "source_file": "events.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "events_chiave_seconda",
+      "label": "Seconda Chiave di Kar'Doth",
+      "file_type": "document",
+      "source_file": "events.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    }
+  ],
+  "edges": [
+    {
+      "source": "index_alba_cadente",
+      "target": "index_cercatori_dellalba",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "index.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "index_alba_cadente",
+      "target": "index_villaggio_di_pietralba",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "index.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "index_alba_cadente",
+      "target": "index_rovine_di_kardoth",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "index.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "index_cercatori_dellalba",
+      "target": "index_lyra",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "index.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "index_cercatori_dellalba",
+      "target": "index_thorne",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "index.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "index_cercatori_dellalba",
+      "target": "index_gemma_del_crepuscolo",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "index.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "index_gemma_del_crepuscolo",
+      "target": "index_rovine_di_kardoth",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "index.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "index_cercatori_dellalba",
+      "target": "events_borin_barbabronzea",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "index_cercatori_dellalba",
+      "target": "events_foresta_di_vethelorn",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "index_cercatori_dellalba",
+      "target": "events_grenthar",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "index_cercatori_dellalba",
+      "target": "events_tempio_di_myrkul",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "index_lyra",
+      "target": "events_corruzione_arcana",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "index_lyra",
+      "target": "events_amuleto_di_selune",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "index_thorne",
+      "target": "events_spada_fiammaluce",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "index_thorne",
+      "target": "events_pip",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_borin_barbabronzea",
+      "target": "index_villaggio_di_pietralba",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_borin_barbabronzea",
+      "target": "events_locanda_il_martello_spento",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_borin_barbabronzea",
+      "target": "events_pip",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_borin_barbabronzea",
+      "target": "events_mappa_di_rame",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_borin_barbabronzea",
+      "target": "events_amuleto_di_selune",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_borin_barbabronzea",
+      "target": "events_spada_fiammaluce",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_pip",
+      "target": "events_clan_di_grenthar",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_grenthar",
+      "target": "events_clan_di_grenthar",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_grenthar",
+      "target": "events_accampamento_di_grenthar",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_grenthar",
+      "target": "events_vossk",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_clan_di_grenthar",
+      "target": "events_foresta_di_vethelorn",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_accampamento_di_grenthar",
+      "target": "events_foresta_di_vethelorn",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_vossk",
+      "target": "index_rovine_di_kardoth",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_vossk",
+      "target": "index_gemma_del_crepuscolo",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_sigillo_di_vossk",
+      "target": "events_vossk",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_mappa_di_rame",
+      "target": "events_accampamento_di_grenthar",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_locanda_il_martello_spento",
+      "target": "index_villaggio_di_pietralba",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_ysolde",
+      "target": "events_tempio_di_myrkul",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_ysolde",
+      "target": "events_chiave_seconda",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_ysolde",
+      "target": "events_vossk",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_chiave_seconda",
+      "target": "index_rovine_di_kardoth",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_chiave_seconda",
+      "target": "events_tempio_di_myrkul",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_spada_fiammaluce",
+      "target": "index_rovine_di_kardoth",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_spada_fiammaluce",
+      "target": "events_chiave_seconda",
+      "relation": "semantically_similar_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_amuleto_di_selune",
+      "target": "events_corruzione_arcana",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 0.85
+    },
+    {
+      "source": "events_corruzione_arcana",
+      "target": "events_vossk",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 0.8
+    },
+    {
+      "source": "events_corruzione_arcana",
+      "target": "events_foresta_di_vethelorn",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 0.75
+    }
+  ],
+  "hyperedges": [],
+  "input_tokens": 19544,
+  "output_tokens": 18860
+}

@@ -1,9 +1,7 @@
 {
-  "directed": false,
-  "multigraph": false,
-  "graph": {},
   "nodes": [
     {
+      "id": "events_cercatori_dell_alba",
       "label": "Cercatori dell'Alba",
       "file_type": "document",
       "source_file": "events.md",
@@ -11,12 +9,10 @@
       "source_url": null,
       "captured_at": null,
       "author": null,
-      "contributor": null,
-      "id": "events_cercatori_dell_alba",
-      "community": 0,
-      "norm_label": "cercatori dell'alba"
+      "contributor": null
     },
     {
+      "id": "events_villaggio_di_pietralba",
       "label": "Villaggio di Pietralba",
       "file_type": "document",
       "source_file": "events.md",
@@ -24,12 +20,10 @@
       "source_url": null,
       "captured_at": null,
       "author": null,
-      "contributor": null,
-      "id": "events_villaggio_di_pietralba",
-      "community": 0,
-      "norm_label": "villaggio di pietralba"
+      "contributor": null
     },
     {
+      "id": "events_foresta_di_vethelorn",
       "label": "Foresta di Vethelorn",
       "file_type": "document",
       "source_file": "events.md",
@@ -37,12 +31,10 @@
       "source_url": null,
       "captured_at": null,
       "author": null,
-      "contributor": null,
-      "id": "events_foresta_di_vethelorn",
-      "community": 0,
-      "norm_label": "foresta di vethelorn"
+      "contributor": null
     },
     {
+      "id": "events_locanda_il_martello_spento",
       "label": "Locanda Il Martello Spento",
       "file_type": "document",
       "source_file": "events.md",
@@ -50,12 +42,10 @@
       "source_url": null,
       "captured_at": null,
       "author": null,
-      "contributor": null,
-      "id": "events_locanda_il_martello_spento",
-      "community": 3,
-      "norm_label": "locanda il martello spento"
+      "contributor": null
     },
     {
+      "id": "events_borin_barbabronzea",
       "label": "Borin Barbabronzea",
       "file_type": "document",
       "source_file": "events.md",
@@ -63,12 +53,10 @@
       "source_url": null,
       "captured_at": null,
       "author": null,
-      "contributor": null,
-      "id": "events_borin_barbabronzea",
-      "community": 2,
-      "norm_label": "borin barbabronzea"
+      "contributor": null
     },
     {
+      "id": "events_goblin_clan_grenthar",
       "label": "Goblin Clan Grenthar",
       "file_type": "document",
       "source_file": "events.md",
@@ -76,12 +64,10 @@
       "source_url": null,
       "captured_at": null,
       "author": null,
-      "contributor": null,
-      "id": "events_goblin_clan_grenthar",
-      "community": 0,
-      "norm_label": "goblin clan grenthar"
+      "contributor": null
     },
     {
+      "id": "events_rovine_di_kar_doth",
       "label": "Rovine di Kar'Doth",
       "file_type": "document",
       "source_file": "events.md",
@@ -89,12 +75,10 @@
       "source_url": null,
       "captured_at": null,
       "author": null,
-      "contributor": null,
-      "id": "events_rovine_di_kar_doth",
-      "community": 2,
-      "norm_label": "rovine di kar'doth"
+      "contributor": null
     },
     {
+      "id": "events_pip",
       "label": "Pip",
       "file_type": "document",
       "source_file": "events.md",
@@ -102,12 +86,10 @@
       "source_url": null,
       "captured_at": null,
       "author": null,
-      "contributor": null,
-      "id": "events_pip",
-      "community": 0,
-      "norm_label": "pip"
+      "contributor": null
     },
     {
+      "id": "events_amuleto_di_selune",
       "label": "Amuleto di Sel\u00fbne",
       "file_type": "document",
       "source_file": "events.md",
@@ -115,12 +97,10 @@
       "source_url": null,
       "captured_at": null,
       "author": null,
-      "contributor": null,
-      "id": "events_amuleto_di_selune",
-      "community": 0,
-      "norm_label": "amuleto di selune"
+      "contributor": null
     },
     {
+      "id": "events_negromante_vossk",
       "label": "Negromante Vossk",
       "file_type": "document",
       "source_file": "events.md",
@@ -128,12 +108,10 @@
       "source_url": null,
       "captured_at": null,
       "author": null,
-      "contributor": null,
-      "id": "events_negromante_vossk",
-      "community": 0,
-      "norm_label": "negromante vossk"
+      "contributor": null
     },
     {
+      "id": "events_spada_fiammaluce",
       "label": "Spada Fiammaluce",
       "file_type": "document",
       "source_file": "events.md",
@@ -141,12 +119,10 @@
       "source_url": null,
       "captured_at": null,
       "author": null,
-      "contributor": null,
-      "id": "events_spada_fiammaluce",
-      "community": 2,
-      "norm_label": "spada fiammaluce"
+      "contributor": null
     },
     {
+      "id": "events_gemma_del_crepuscolo",
       "label": "Gemma del Crepuscolo",
       "file_type": "document",
       "source_file": "events.md",
@@ -154,12 +130,10 @@
       "source_url": null,
       "captured_at": null,
       "author": null,
-      "contributor": null,
-      "id": "events_gemma_del_crepuscolo",
-      "community": 2,
-      "norm_label": "gemma del crepuscolo"
+      "contributor": null
     },
     {
+      "id": "events_tempio_di_myrkul",
       "label": "Tempio di Myrkul",
       "file_type": "document",
       "source_file": "events.md",
@@ -167,12 +141,10 @@
       "source_url": null,
       "captured_at": null,
       "author": null,
-      "contributor": null,
-      "id": "events_tempio_di_myrkul",
-      "community": 0,
-      "norm_label": "tempio di myrkul"
+      "contributor": null
     },
     {
+      "id": "index_party",
       "label": "I Cercatori dell'Alba",
       "file_type": "document",
       "source_file": "index.md",
@@ -180,12 +152,10 @@
       "source_url": null,
       "captured_at": null,
       "author": null,
-      "contributor": null,
-      "id": "index_party",
-      "community": 1,
-      "norm_label": "i cercatori dell'alba"
+      "contributor": null
     },
     {
+      "id": "index_lyra",
       "label": "Lyra",
       "file_type": "document",
       "source_file": "index.md",
@@ -193,12 +163,10 @@
       "source_url": null,
       "captured_at": null,
       "author": null,
-      "contributor": null,
-      "id": "index_lyra",
-      "community": 1,
-      "norm_label": "lyra"
+      "contributor": null
     },
     {
+      "id": "index_thorne",
       "label": "Thorne",
       "file_type": "document",
       "source_file": "index.md",
@@ -206,12 +174,10 @@
       "source_url": null,
       "captured_at": null,
       "author": null,
-      "contributor": null,
-      "id": "index_thorne",
-      "community": 1,
-      "norm_label": "thorne"
+      "contributor": null
     },
     {
+      "id": "index_gemma_del_crepuscolo",
       "label": "Gemma del Crepuscolo",
       "file_type": "document",
       "source_file": "index.md",
@@ -219,12 +185,10 @@
       "source_url": null,
       "captured_at": null,
       "author": null,
-      "contributor": null,
-      "id": "index_gemma_del_crepuscolo",
-      "community": 1,
-      "norm_label": "gemma del crepuscolo"
+      "contributor": null
     },
     {
+      "id": "index_rovine_di_kar_doth",
       "label": "Rovine di Kar'Doth",
       "file_type": "document",
       "source_file": "index.md",
@@ -232,12 +196,10 @@
       "source_url": null,
       "captured_at": null,
       "author": null,
-      "contributor": null,
-      "id": "index_rovine_di_kar_doth",
-      "community": 1,
-      "norm_label": "rovine di kar'doth"
+      "contributor": null
     },
     {
+      "id": "index_villaggio_di_pietralba",
       "label": "Villaggio di Pietralba",
       "file_type": "document",
       "source_file": "index.md",
@@ -245,304 +207,352 @@
       "source_url": null,
       "captured_at": null,
       "author": null,
-      "contributor": null,
-      "id": "index_villaggio_di_pietralba",
-      "community": 1,
-      "norm_label": "villaggio di pietralba"
+      "contributor": null
     }
   ],
-  "links": [
+  "edges": [
     {
-      "relation": "uses",
+      "source": "events_cercatori_dell_alba",
+      "target": "events_villaggio_di_pietralba",
+      "relation": "enters",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "events.md",
       "source_location": null,
-      "weight": 1.0,
-      "source": "events_cercatori_dell_alba",
-      "target": "events_amuleto_di_selune"
+      "weight": 1.0
     },
     {
+      "source": "events_cercatori_dell_alba",
+      "target": "events_foresta_di_vethelorn",
+      "relation": "enters",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_cercatori_dell_alba",
+      "target": "events_rovine_di_kar_doth",
+      "relation": "travels_toward",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_cercatori_dell_alba",
+      "target": "events_tempio_di_myrkul",
+      "relation": "travels_toward",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_borin_barbabronzea",
+      "target": "events_cercatori_dell_alba",
       "relation": "offers_help",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "events.md",
       "source_location": null,
-      "weight": 1.0,
+      "weight": 1.0
+    },
+    {
       "source": "events_borin_barbabronzea",
-      "target": "events_cercatori_dell_alba"
-    },
-    {
-      "relation": "enters",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "events.md",
-      "source_location": null,
-      "weight": 1.0,
-      "source": "events_cercatori_dell_alba",
-      "target": "events_foresta_di_vethelorn"
-    },
-    {
-      "relation": "defeats",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "events.md",
-      "source_location": null,
-      "weight": 1.0,
-      "source": "events_cercatori_dell_alba",
-      "target": "events_goblin_clan_grenthar"
-    },
-    {
-      "relation": "defeats",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "events.md",
-      "source_location": null,
-      "weight": 1.0,
-      "source": "events_cercatori_dell_alba",
-      "target": "events_negromante_vossk"
-    },
-    {
-      "relation": "rescues",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "events.md",
-      "source_location": null,
-      "weight": 1.0,
-      "source": "events_cercatori_dell_alba",
-      "target": "events_pip"
-    },
-    {
-      "relation": "travels_toward",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "events.md",
-      "source_location": null,
-      "weight": 1.0,
-      "source": "events_cercatori_dell_alba",
-      "target": "events_rovine_di_kar_doth"
-    },
-    {
-      "relation": "uses",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "events.md",
-      "source_location": null,
-      "weight": 1.0,
-      "source": "events_cercatori_dell_alba",
-      "target": "events_spada_fiammaluce"
-    },
-    {
-      "relation": "travels_toward",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "events.md",
-      "source_location": null,
-      "weight": 1.0,
-      "source": "events_cercatori_dell_alba",
-      "target": "events_tempio_di_myrkul"
-    },
-    {
-      "relation": "enters",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "events.md",
-      "source_location": null,
-      "weight": 1.0,
-      "source": "events_cercatori_dell_alba",
-      "target": "events_villaggio_di_pietralba"
-    },
-    {
-      "relation": "operates_in",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "events.md",
-      "source_location": null,
-      "weight": 1.0,
-      "source": "events_goblin_clan_grenthar",
-      "target": "events_foresta_di_vethelorn"
-    },
-    {
-      "relation": "reveals",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "events.md",
-      "source_location": null,
-      "weight": 1.0,
-      "source": "events_borin_barbabronzea",
-      "target": "events_gemma_del_crepuscolo"
-    },
-    {
+      "target": "events_pip",
       "relation": "relatives",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "events.md",
       "source_location": null,
-      "weight": 1.0,
-      "source": "events_borin_barbabronzea",
-      "target": "events_pip"
+      "weight": 1.0
     },
     {
+      "source": "events_borin_barbabronzea",
+      "target": "events_spada_fiammaluce",
       "relation": "reveals",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "events.md",
       "source_location": null,
-      "weight": 1.0,
-      "source": "events_borin_barbabronzea",
-      "target": "events_rovine_di_kar_doth"
+      "weight": 1.0
     },
     {
+      "source": "events_borin_barbabronzea",
+      "target": "events_rovine_di_kar_doth",
       "relation": "reveals",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "events.md",
       "source_location": null,
-      "weight": 1.0,
-      "source": "events_borin_barbabronzea",
-      "target": "events_spada_fiammaluce"
+      "weight": 1.0
     },
     {
-      "relation": "obedient_to",
+      "source": "events_borin_barbabronzea",
+      "target": "events_gemma_del_crepuscolo",
+      "relation": "reveals",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "events.md",
       "source_location": null,
-      "weight": 1.0,
-      "source": "events_goblin_clan_grenthar",
-      "target": "events_negromante_vossk"
+      "weight": 1.0
     },
     {
+      "source": "events_pip",
+      "target": "events_goblin_clan_grenthar",
       "relation": "kidnapped_by",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "events.md",
       "source_location": null,
-      "weight": 1.0,
-      "source": "events_pip",
-      "target": "events_goblin_clan_grenthar"
+      "weight": 1.0
     },
     {
-      "relation": "located_in",
+      "source": "events_goblin_clan_grenthar",
+      "target": "events_foresta_di_vethelorn",
+      "relation": "operates_in",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "events.md",
       "source_location": null,
-      "weight": 1.0,
-      "source": "events_gemma_del_crepuscolo",
-      "target": "events_rovine_di_kar_doth"
+      "weight": 1.0
     },
     {
+      "source": "events_goblin_clan_grenthar",
+      "target": "events_negromante_vossk",
+      "relation": "obedient_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_negromante_vossk",
+      "target": "events_rovine_di_kar_doth",
       "relation": "resides_in",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "events.md",
       "source_location": null,
-      "weight": 1.0,
+      "weight": 1.0
+    },
+    {
       "source": "events_negromante_vossk",
-      "target": "events_rovine_di_kar_doth"
-    },
-    {
-      "relation": "key_to",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "events.md",
-      "source_location": null,
-      "weight": 1.0,
-      "source": "events_spada_fiammaluce",
-      "target": "events_rovine_di_kar_doth"
-    },
-    {
-      "relation": "protects_from",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "events.md",
-      "source_location": null,
-      "weight": 1.0,
-      "source": "events_amuleto_di_selune",
-      "target": "events_negromante_vossk"
-    },
-    {
+      "target": "events_gemma_del_crepuscolo",
       "relation": "seeks",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "events.md",
       "source_location": null,
-      "weight": 1.0,
-      "source": "events_negromante_vossk",
-      "target": "events_gemma_del_crepuscolo"
+      "weight": 1.0
     },
     {
-      "relation": "references",
+      "source": "events_amuleto_di_selune",
+      "target": "events_cercatori_dell_alba",
+      "relation": "given_to",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
-      "source_file": "index.md",
+      "source_file": "events.md",
       "source_location": null,
-      "weight": 1.0,
+      "weight": 1.0
+    },
+    {
+      "source": "events_amuleto_di_selune",
+      "target": "events_negromante_vossk",
+      "relation": "protects_from",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_spada_fiammaluce",
+      "target": "events_rovine_di_kar_doth",
+      "relation": "key_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_gemma_del_crepuscolo",
+      "target": "events_rovine_di_kar_doth",
+      "relation": "located_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_cercatori_dell_alba",
+      "target": "events_amuleto_di_selune",
+      "relation": "uses",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_cercatori_dell_alba",
+      "target": "events_spada_fiammaluce",
+      "relation": "uses",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_cercatori_dell_alba",
+      "target": "events_negromante_vossk",
+      "relation": "defeats",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_cercatori_dell_alba",
+      "target": "events_goblin_clan_grenthar",
+      "relation": "defeats",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_cercatori_dell_alba",
+      "target": "events_pip",
+      "relation": "rescues",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_cercatori_dell_alba",
+      "target": "events_tempio_di_myrkul",
+      "relation": "travels_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_borin_barbabronzea",
+      "target": "events_spada_fiammaluce",
+      "relation": "forged",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "events_borin_barbabronzea",
+      "target": "events_cercatori_dell_alba",
+      "relation": "forged_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "events.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
       "source": "index_party",
-      "target": "index_gemma_del_crepuscolo"
-    },
-    {
+      "target": "index_lyra",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "index.md",
       "source_location": null,
-      "weight": 1.0,
+      "weight": 1.0
+    },
+    {
       "source": "index_party",
-      "target": "index_lyra"
-    },
-    {
+      "target": "index_thorne",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "index.md",
       "source_location": null,
-      "weight": 1.0,
+      "weight": 1.0
+    },
+    {
       "source": "index_party",
-      "target": "index_rovine_di_kar_doth"
-    },
-    {
+      "target": "index_gemma_del_crepuscolo",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "index.md",
       "source_location": null,
-      "weight": 1.0,
+      "weight": 1.0
+    },
+    {
       "source": "index_party",
-      "target": "index_thorne"
-    },
-    {
+      "target": "index_rovine_di_kar_doth",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "index.md",
       "source_location": null,
-      "weight": 1.0,
+      "weight": 1.0
+    },
+    {
       "source": "index_party",
-      "target": "index_villaggio_di_pietralba"
-    },
-    {
+      "target": "index_villaggio_di_pietralba",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "index.md",
       "source_location": null,
-      "weight": 1.0,
+      "weight": 1.0
+    },
+    {
       "source": "index_gemma_del_crepuscolo",
-      "target": "index_rovine_di_kar_doth"
-    },
-    {
+      "target": "index_rovine_di_kar_doth",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "index.md",
       "source_location": null,
-      "weight": 1.0,
+      "weight": 1.0
+    },
+    {
       "source": "index_rovine_di_kar_doth",
-      "target": "index_villaggio_di_pietralba"
+      "target": "index_villaggio_di_pietralba",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "index.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "index_villaggio_di_pietralba",
+      "target": "index_rovine_di_kar_doth",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "index.md",
+      "source_location": null,
+      "weight": 1.0
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "c389a4102ee71ac9b0fd343bb6e6cd74a3b6c38e"
+  "input_tokens": 1798,
+  "output_tokens": 2981
 }
