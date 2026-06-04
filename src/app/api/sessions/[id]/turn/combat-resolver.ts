@@ -396,17 +396,62 @@ export function canonicalizeToHitTarget(
     /(\bTira\b[^"\n]*?\b1d20\b([+\-]\d+)?\s+per\s+attaccare\s+)[^.\n;:!?)]+/gi;
 
   const lines = finalText.split('\n');
+  let sawToHit = false;
   const rewritten = lines
     .filter((line) => {
       const t = line.trim();
       return !EVENT_LABEL.test(t) && !EVENT_JSON.test(t) && !LEAKED_APPLY.test(t);
     })
     .map((line) => {
-      // Replace the target in any to-hit request line.
+      // Replace the target in any to-hit request line (preserving the bonus prefix).
       return line.replace(TO_HIT_RE, (_, prefix) => {
+        sawToHit = true;
         return `${prefix}${monster.name}`;
       });
     });
 
-  return rewritten.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  let out = rewritten.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+
+  // APPEND-AUTHORITATIVE (Phase 08-04): the server OWNS the to-hit request. When the
+  // model wrote no parseable "Tira … 1d20 … per attaccare …" line (it narrated without
+  // asking, or asked in an unparseable form), append the canonical request so the player
+  // ALWAYS gets a correct, resolvable roll button on their attack turn. No model bonus
+  // to preserve in this branch → emit a bare 1d20 (resolveCombat treats bonus 0); the
+  // common case (model wrote "Tira 1d20+N") goes through the rewrite above and keeps N.
+  if (!sawToHit) {
+    const req = `Tira 1d20 per attaccare ${monster.name}`;
+    out = out ? `${out}\n\n${req}` : req;
+  }
+
+  return out;
+}
+
+/**
+ * Phase 08-04 — strip leaked combat mechanics PROSE from a master narration on an
+ * active-combat turn where the server resolver did NOT fire (a roll-result the resolver
+ * could not match, or a non-attack combat turn). Local models sometimes narrate the
+ * mechanics as TEXT instead of (or in addition to) calling the tool:
+ *   - "Applica il danno: id … delta …" / "Applica i danni …"
+ *   - "chiama turn_advance" / "chiama apply_event"
+ *   - bare encounter-event labels ("monster_hp_change", "turn_advance", …)
+ *   - leaked event JSON payloads ({…"id":…"delta":…})
+ * Those lines must never reach the player. Pure, line-based, never throws.
+ *
+ * Unlike enforceResolvedNarration this appends NOTHING (no resolver fired → no
+ * authoritative request to add) and does NOT strip legit roll-request lines.
+ */
+export function stripLeakedMechanics(finalText: string): string {
+  if (!finalText) return finalText;
+  const EVENT_LABEL =
+    /^[*\s"']*(?:monster_hp_change|turn_advance|combat_start|combat_end|monster_spawn|initiative_set)[*\s"':]*$/i;
+  const EVENT_JSON = /^\s*\{[^{}]*"(?:id|delta|type|actorId)"[^{}]*\}\s*$/;
+  const LEAKED_APPLY =
+    /(?:^\s*Applica\b.*\bdann|\bchiama\s+(?:turn_advance|apply_event))/i;
+  const kept = finalText
+    .split('\n')
+    .filter((line) => {
+      const t = line.trim();
+      return !EVENT_LABEL.test(t) && !EVENT_JSON.test(t) && !LEAKED_APPLY.test(t);
+    });
+  return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }

@@ -34,7 +34,7 @@ import { computeTurnAdvance, detectAddressee } from '@/multiplayer/turn-advance'
 import { notifySession } from '@/sessions/notify';
 import { checkPartyAccess } from '@/multiplayer/access';
 import { resolveCombatHandoff } from './combat-handoff';
-import { resolveCombat, enforceResolvedNarration, canonicalizeToHitTarget, type ResolveCombatResult } from './combat-resolver';
+import { resolveCombat, enforceResolvedNarration, canonicalizeToHitTarget, stripLeakedMechanics, type ResolveCombatResult } from './combat-resolver';
 import { runMonsterTurnLoop } from './monster-turns';
 import { getBestiaryAttackStats, getBestiaryStatblock } from './monster-bestiary';
 import { runEncounterOpener, extractMonsterName } from './encounter-opener';
@@ -757,27 +757,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             //
             // Reads events.md once (separate from the 5v-combat read) to avoid
             // closing-over a stale encounter state from the opener block.
-            const _isCombatDeclaration =
-              vaultMutationsEnabled && detectCombatIntent(_playerMessage) && !isRollResult(_playerMessage);
-            if (_isCombatDeclaration && _playerMessage !== undefined) {
+            // Phase 08-04 — server-OWNED combat narration. On a PC attack DECLARATION
+            // (active combat, combat intent, not a roll-result) the server OWNS the
+            // to-hit request: canonicalizeToHitTarget rewrites the model's target to the
+            // canonical numbered name AND appends a canonical "Tira 1d20 per attaccare
+            // <name>" if the model wrote none, stripping leaked apply_event prose — so the
+            // player ALWAYS gets a resolvable roll button. On any OTHER active-combat turn
+            // (incl. a roll-result the resolver could not match), stripLeakedMechanics
+            // removes leaked apply_event TEXT so raw mechanics never reach the player.
+            let _ft = vaultResult.finalText;
+            if (vaultMutationsEnabled && _playerMessage !== undefined) {
               try {
                 const { encounter: _declEnc } = replayEvents(await parseEventsFile(eventsPath(campaign.id)));
                 if (_declEnc.active) {
-                  _finalNarration = canonicalizeToHitTarget(vaultResult.finalText, _playerMessage, _declEnc);
-                } else {
-                  _finalNarration = vaultResult.finalText;
+                  _ft = (detectCombatIntent(_playerMessage) && !isRollResult(_playerMessage))
+                    ? canonicalizeToHitTarget(_ft, _playerMessage, _declEnc)
+                    : stripLeakedMechanics(_ft);
                 }
               } catch (err) {
                 // D-10: a read/replay error falls through to the unmodified text.
                 console.warn(
-                  '[turn]', sessionId, 'canonicalizeToHitTarget read failed, falling through:',
+                  '[turn]', sessionId, '6v combat-narration guard failed, falling through:',
                   err instanceof Error ? err.message : String(err),
                 );
-                _finalNarration = vaultResult.finalText;
               }
-            } else {
-              _finalNarration = vaultResult.finalText;
             }
+            _finalNarration = _ft;
           }
 
           // 7v. Post-loop: turn-advance + persist master message + memory extraction.
