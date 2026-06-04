@@ -1,6 +1,5 @@
 // src/sessions/notify.ts
-import { sql } from 'drizzle-orm';
-import { db } from '@/db/client';
+import { notifyPool } from '@/db/client';
 
 export type NotifyPayload =
   | { type: 'message-chunk'; messageId: string; text: string }
@@ -51,5 +50,7 @@ export async function notifySession(sessionId: string, payload: NotifyPayload): 
     return;
   }
   const channel = `session_${sessionId}`;
-  await db.execute(sql`SELECT pg_notify(${channel}, ${json})`);
+  // Send over the unpooled notify pool — pg_notify through the transaction pooler
+  // (6543) is NOT delivered to LISTEN-ers (see notifyPool in db/client.ts).
+  await notifyPool.query('SELECT pg_notify($1, $2)', [channel, json]);
 }

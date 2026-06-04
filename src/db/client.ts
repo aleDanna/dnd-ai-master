@@ -51,3 +51,26 @@ export function createListenClient(): Client {
   // can drop it out from under an open SSE stream.
   return new Client({ connectionString: normalizeSslMode(url!) });
 }
+
+/**
+ * Dedicated pool for SENDING `NOTIFY` (used by `notifySession`). It MUST use a
+ * LISTEN/NOTIFY-capable connection for the SAME reason as `createListenClient`:
+ * the transaction pooler (`DATABASE_URL`, port 6543) does NOT deliver
+ * `pg_notify` to LISTEN-ers. Verified 2026-06-04: a notify sent THROUGH the 6543
+ * pooler never reaches a 5432 LISTEN session, while a notify on a 5432 session
+ * does. So the SSE live-update path needs the unpooled connection on BOTH ends —
+ * LISTEN (createListenClient) AND NOTIFY (here). Falls back to the regular URL
+ * for single-Postgres local setups, which deliver fine.
+ */
+declare global {
+  // eslint-disable-next-line no-var
+  var __dnd_notify_pool: Pool | undefined;
+}
+const notifyConnectionString = process.env.DATABASE_URL_UNPOOLED?.trim() || connectionString;
+const notifyPool =
+  globalThis.__dnd_notify_pool ??
+  new Pool({ connectionString: normalizeSslMode(notifyConnectionString!), max: 4, idleTimeoutMillis: 30_000 });
+if (process.env.NODE_ENV !== 'production') {
+  globalThis.__dnd_notify_pool = notifyPool;
+}
+export { notifyPool };
