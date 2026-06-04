@@ -772,3 +772,57 @@ describe('isNarrationOnlyTurn — offerTools suppression gate', () => {
     ).toBe(false);
   });
 });
+
+describe('resolveCombat — combat_end on the killing blow (server ends combat)', () => {
+  // Solo encounter: one goblin at 2 HP. The master is narration-only during
+  // combat (isNarrationOnlyTurn), so it can no longer call apply_event(combat_end)
+  // — the SERVER must end combat when the last monster dies.
+  const SOLO_ENCOUNTER: EncounterState = {
+    active: true,
+    round: 2,
+    currentIdx: 0,
+    turnOrder: [
+      { actorId: 'pc-uuid-1', initiative: 19 },
+      { actorId: 'gob-1', initiative: 9 },
+    ],
+    monsters: [
+      { id: 'gob-1', name: 'goblin', hpCurrent: 2, hpMax: 7, ac: 15, isAlive: true, conditions: [] },
+    ],
+  };
+
+  it('killing the LAST alive monster emits combat_end instead of turn_advance', () => {
+    const result = resolveCombat({
+      rollResult: '🎲 I rolled **5** for 1d6+0 (danni a goblin).',
+      encounter: SOLO_ENCOUNTER,
+    });
+    expect(result).not.toBeNull();
+    expect(result!.kind).toBe('damage');
+    expect(result!.events).toEqual([
+      { type: 'monster_hp_change', payload: { id: 'gob-1', delta: -5 } },
+      { type: 'combat_end', payload: {} },
+    ]);
+  });
+
+  it('non-lethal damage to a solo monster still emits turn_advance', () => {
+    const result = resolveCombat({
+      rollResult: '🎲 I rolled **1** for 1d6+0 (danni a goblin).',
+      encounter: SOLO_ENCOUNTER,
+    });
+    expect(result!.events).toEqual([
+      { type: 'monster_hp_change', payload: { id: 'gob-1', delta: -1 } },
+      { type: 'turn_advance', payload: {} },
+    ]);
+  });
+
+  it('killing one monster while others are still alive emits turn_advance (combat continues)', () => {
+    // ACTIVE_ENCOUNTER: Veyra (30) + Golem (50) + Skeleton (13), all alive.
+    const result = resolveCombat({
+      rollResult: '🎲 I rolled **40** for 2d6 (danni a Veyra).',
+      encounter: ACTIVE_ENCOUNTER,
+    });
+    expect(result!.events).toEqual([
+      { type: 'monster_hp_change', payload: { id: 'veyra-1', delta: -40 } },
+      { type: 'turn_advance', payload: {} },
+    ]);
+  });
+});
