@@ -334,3 +334,26 @@ export function thinkingFlagFor(model: string | undefined): boolean | undefined 
   }
   return undefined;
 }
+
+/**
+ * True for local models that are WEAK at structured tool use — they leak
+ * markerless chain-of-thought (no <think> tags) or melt down into garbage when
+ * handed the vault tool surface and reason about how to call `apply_event`
+ * (spike-findings: gemma narrates well but is unreliable on tools; operator
+ * reports 2026-06-04: CoT leak + JAVADOC meltdown + "scatto" junk monster).
+ *
+ * The turn route forces narration-only (offerTools:false) on EVERY turn for these
+ * models — not just combat/begin/roll turns — so the model is a PURE NARRATION
+ * layer and the server owns all combat mechanics (opener/resolver/monster-loop).
+ *
+ * NOT weak: qwen3-a3b-instruct (spike-validated 100% tool compliance) and cloud
+ * models (anthropic/openai/gemini), which use tools reliably. Trade-off for weak
+ * models: they never read the vault (lore comes from the system prompt) and never
+ * apply non-combat events — acceptable when the operator picks them for narration.
+ */
+export function isWeakToolModel(model: string | undefined): boolean {
+  if (!model) return false;
+  // gemma family (gemma4:12b-mlx, gemma4:latest, gemma2/3, …). Add other weak
+  // local bases here if they exhibit the same CoT-leak-on-tools behaviour.
+  return /\bgemma/i.test(model.toLowerCase());
+}

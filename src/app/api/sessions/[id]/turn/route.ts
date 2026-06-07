@@ -14,7 +14,7 @@ import { getMasterHandbook, getMasterWorldLore } from '@/ai/master/handbook';
 import { buildMasterSystemPrompt } from '@/ai/master/system-prompt';
 import { deriveMode, needsSpellcastingOverlay } from '@/ai/master/mode';
 import { isMechanicalIntent } from '@/ai/master/intent';
-import { isBakedModel, warnIfBakedModelStale, thinkingFlagFor } from '@/ai/master/baked-models';
+import { isBakedModel, warnIfBakedModelStale, thinkingFlagFor, isWeakToolModel } from '@/ai/master/baked-models';
 import { getRuntimePromptHash } from '@/ai/master/runtime-prompt-hash';
 import { detectLanguage } from '@/ai/master/language';
 import { runToolLoop } from '@/ai/master/tool-loop';
@@ -718,15 +718,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             //    (gemma4:12b, 2026-06-04). offerTools:false removes that footgun; the
             //    to-hit request is appended server-side (6v) and the resolver/loop own the
             //    events. suppressCombatMutations below stays as belt-and-suspenders.
-            ...(isNarrationOnlyTurn({
-                isBegin,
-                vaultMutationsEnabled,
-                encounterActive: _encounterActive,
-                isCombatDeclaration: isCombatDeclaration(_playerMessage),
-                isRollResult: isRollResult(_playerMessage),
-                resolverFired: _resolver !== null,
-                monsterLoopRan: _monsterLoopRan,
-              }) && { offerTools: false }),
+            // Weak-tool models (gemma) leak markerless CoT / melt down whenever
+            // handed the tool surface — on ANY turn, not just combat. Force them
+            // narration-only everywhere; the server owns all combat mechanics.
+            ...((isWeakToolModel(vaultMasterModel)
+                || isNarrationOnlyTurn({
+                  isBegin,
+                  vaultMutationsEnabled,
+                  encounterActive: _encounterActive,
+                  isCombatDeclaration: isCombatDeclaration(_playerMessage),
+                  isRollResult: isRollResult(_playerMessage),
+                  resolverFired: _resolver !== null,
+                  monsterLoopRan: _monsterLoopRan,
+                }))
+              && { offerTools: false }),
             // Phase 02 — only forward campaignId when the vaultMutations gate
             // is true. Without it, dispatchVaultTool('apply_event', ...) returns
             // isError on any LLM hallucination, preserving Phase 01 read-only

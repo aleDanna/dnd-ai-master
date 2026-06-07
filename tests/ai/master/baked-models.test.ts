@@ -9,6 +9,7 @@ import {
   warnIfBakedModelStale,
   _clearStaleWarningCache,
   TIER_NAMES,
+  isWeakToolModel,
 } from '@/ai/master/baked-models';
 
 describe('isBakedModel', () => {
@@ -316,5 +317,22 @@ describe('baked-models — Phase 03 TIER_NAMES strip (REQ-033 / Decision 8)', ()
 
   it('getBakedBaseModel returns the gpt-oss base for dnd-master-plus', () => {
     expect(getBakedBaseModel('dnd-master-plus')).toBe('gpt-oss:20b');
+  });
+});
+
+describe('isWeakToolModel', () => {
+  it('flags the gemma family as weak (narration-only everywhere)', () => {
+    expect(isWeakToolModel('gemma4:12b-mlx')).toBe(true);
+    expect(isWeakToolModel('gemma4:latest')).toBe(true);
+    expect(isWeakToolModel('gemma2:9b')).toBe(true);
+    expect(isWeakToolModel('GEMMA4:12B-MLX')).toBe(true);
+  });
+
+  it('does NOT flag the spike-validated tool model or cloud models', () => {
+    expect(isWeakToolModel('qwen3:30b-a3b-instruct-2507-q4_K_M')).toBe(false);
+    expect(isWeakToolModel('claude-sonnet-4-5')).toBe(false);
+    expect(isWeakToolModel('gpt-5')).toBe(false);
+    expect(isWeakToolModel(undefined)).toBe(false);
+    expect(isWeakToolModel('')).toBe(false);
   });
 });
