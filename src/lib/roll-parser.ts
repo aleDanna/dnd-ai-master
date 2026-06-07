@@ -164,6 +164,32 @@ export function parseRollRequests(text: string): RollRequest[] {
     });
   }
 
+  // 4b. Generic Italian skill-check fallback. The master sometimes MISSPELLS or
+  //     truncates the skill name ("tira una prova di Furtiva" — gemma dropped the
+  //     "tà" of "Furtività"), which the in-list #4 pattern misses → NO roll button
+  //     is shown and the player is stuck. Any "<verb> [una] prova|controllo [prep]
+  //     <Capitalized word>" yields a 1d20 button labeled with the normalized word,
+  //     so a requested check ALWAYS gets a button. Deduped against #4 by the
+  //     same-start-index guard (both patterns anchor on the check verb).
+  const checkReItGeneric = new RegExp(
+    `(?:${ITALIAN_CHECK_VERB})\\s+(?:un[ao]?\\s+)?(?:prova|controllo)\\s+${ITALIAN_ROLL_PREP}?([A-ZÀÈÌÒÙ][A-Za-zàèéìòùÀÈÌÒÙ']{2,30})`,
+    'gi',
+  );
+  while ((m = checkReItGeneric.exec(text)) !== null) {
+    if (requests.some((r) => r.index === m!.index)) continue; // #4 already matched here
+    const skill = normalizeItalianSkill(m[1]!.trim());
+    const key = `${m.index}:check:${skill}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    requests.push({
+      formula: '1d20',
+      label: skill,
+      kind: 'check',
+      index: m.index,
+      groupMode: 'or',
+    });
+  }
+
   // 5. Italian saving throw:
   //    "tira un TS Destrezza CD 14" / "tira un tiro salvezza di Costituzione (CD 12)"
   //    Same imperative-verb tolerance as the check pattern above.
@@ -720,6 +746,7 @@ function normalizeItalianSkill(raw: string): string {
     'mano lesta': 'Rapidità di Mano',
     'rapidita di mano': 'Rapidità di Mano',
     furtivita: 'Furtività',
+    furtiva: 'Furtività', // common gemma truncation of "Furtività"
     intuizione: 'Intuito',
     // "Indagine" / "Indagare" are common Italian translations for the
     // Investigation skill — some sources use them in place of the more

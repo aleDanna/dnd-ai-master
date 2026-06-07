@@ -445,6 +445,30 @@ describe('parseRollRequests — Italian skill checks (no explicit formula)', () 
     expect(reqs[0]!.kind).toBe('check');
   });
 
+  it('parses a TRUNCATED/misspelled skill name as a check button (generic fallback)', () => {
+    // Operator report: gemma wrote "Tira una prova di Furtiva" (dropped the "tà"
+    // of "Furtività") → the in-list pattern missed it → NO button. The generic
+    // fallback must still produce a 1d20 check; the alias normalizes the label.
+    const reqs = parseRollRequests('Tira una prova di Furtiva.');
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.formula).toBe('1d20');
+    expect(reqs[0]!.kind).toBe('check');
+    expect(reqs[0]!.label).toBe('Furtività');
+  });
+
+  it('gives a check button for an out-of-list skill name (label kept verbatim)', () => {
+    const reqs = parseRollRequests('Fai una prova di Equilibrismo.');
+    expect(reqs.length).toBe(1);
+    expect(reqs[0]!.formula).toBe('1d20');
+    expect(reqs[0]!.kind).toBe('check');
+    expect(reqs[0]!.label).toBe('Equilibrismo');
+  });
+
+  it('does NOT double-count a known skill (specific + generic dedupe)', () => {
+    const reqs = parseRollRequests('Tira una prova di Percezione CD 12.');
+    expect(reqs.length).toBe(1);
+  });
+
   it('parses "Tenta un TS Destrezza CD 14" as a save button', () => {
     // The same imperative tolerance applies to saving throws: the master
     // sometimes writes "Tenta un TS ..." instead of "Tira un TS ...".
