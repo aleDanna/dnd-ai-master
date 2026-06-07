@@ -390,7 +390,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 // (characters schema has ac/hpMax only) — PC initiative is 1d20+0 by
                 // design inside the opener; not dropped wiring.
                 const _bestiaryStats = await getBestiaryStatblock(monsterName);
-                const openerEvents = runEncounterOpener(snap, monsterName, () => _bestiaryStats);
+                // Scatto-guard: getBestiaryStatblock returns null for an unknown name —
+                // almost always a mis-extraction (a leading verb/pronoun when the player
+                // named NO creature, e.g. "scatto prima di lui e lo attacco" → "scatto").
+                // Skip the spawn so we never materialize a junk monster (garbage name,
+                // ac undefined); the master just narrates. NOTE: this requires combat
+                // monsters to be defined in the SRD bestiary (data/vault/handbook/monsters).
+                if (_bestiaryStats === null) {
+                  console.warn('[turn]', sessionId, 'opener skipped — unknown/unnamed monster (not in bestiary):', monsterName);
+                }
+                const openerEvents = _bestiaryStats === null ? [] : runEncounterOpener(snap, monsterName, () => _bestiaryStats);
 
                 for (const ev of openerEvents) {
                   // Pass BOTH campaignId (server UUID, never player-derived — T-10-07)
@@ -458,7 +467,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                   try {
                     const _mBase = _mTarget.replace(/[\s\-_#]+\d+\s*$/, '').trim() || _mTarget;
                     const _mStats = await getBestiaryStatblock(_mBase);
-                    const _mOpenerEvents = runEncounterOpener(snap, _mTarget, () => _mStats);
+                    // Scatto-guard (see player opener): no junk monster when the rolled
+                    // target isn't a known bestiary monster.
+                    if (_mStats === null) {
+                      console.warn('[turn]', sessionId, 'master-initiated opener skipped — unknown monster (not in bestiary):', _mTarget);
+                    }
+                    const _mOpenerEvents = _mStats === null ? [] : runEncounterOpener(snap, _mTarget, () => _mStats);
                     for (const ev of _mOpenerEvents) {
                       const r = await dispatchVaultTool('apply_event', ev, { campaignId: campaign.id, sessionId });
                       if (r.isError) {
@@ -686,7 +700,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           const vaultMasterModel = userPrefs.aiMasterModel;
           // eslint-disable-next-line no-console
           console.log('[turn]', sessionId, 'vault path: model=', vaultMasterModel, 'tools=', VAULT_TOOL_DEFINITIONS.length);
-          const vaultResult = await runVaultToolLoop({
+          const _vaultLoopInput: Parameters<typeof runVaultToolLoop>[0] = {
             provider: vaultProvider,
             model: vaultMasterModel,
             systemBlocks: [{ type: 'text', text: vaultSys }],
@@ -762,7 +776,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 );
               }
             },
-          });
+          };
+          let vaultResult = await runVaultToolLoop(_vaultLoopInput);
+          // Empty-narration retry. gemma4 intermittently returns NO content on a
+          // turn (operator: "il master non ha prodotto risposta" — the turn dies
+          // with 0 messages). Retry the loop ONCE on a GENUINE empty: no server
+          // combat events fired this turn (a resolver/opener/monster turn can
+          // legitimately narrate empty and is handled by the empty-narration guard
+          // below — retrying those would risk double-narrating a resolved beat).
+          if (!vaultResult.finalText.trim() && _resolver === null && !_monsterLoopRan && !openerRan) {
+            console.warn('[turn]', sessionId, 'empty narration — retrying the master loop once');
+            vaultResult = await runVaultToolLoop(_vaultLoopInput);
+          }
 
           // 6v-enforce (Phase 08 gap fix — operator smoke 2026-05-30). On a
           // server-resolved turn the resolver is AUTHORITATIVE over the mechanical
