@@ -48,4 +48,18 @@ describe('buildBeginUserMessage', () => {
     const msg = buildBeginUserMessage('x', 'zz', { tonalMandate: false });
     expect(msg.toLowerCase()).toMatch(/begin the campaign/);
   });
+
+  it('forbids starting combat / asking for rolls in the opening (EN)', () => {
+    // Regression: gemma opened a goblin-warren campaign by having a goblin attack
+    // and asking "Tira 1d20+<bonus>" — dropping the player straight into combat.
+    const msg = buildBeginUserMessage('A goblin warren.', 'en', { tonalMandate: false }).toLowerCase();
+    expect(msg).toMatch(/do not start combat/);
+    expect(msg).toMatch(/do not ask for any dice roll/);
+  });
+
+  it('forbids starting combat / asking for rolls in the opening (IT)', () => {
+    const msg = buildBeginUserMessage('Una tana di goblin.', 'it', { tonalMandate: false });
+    expect(msg).toMatch(/NON iniziare un combattimento/);
+    expect(msg).toMatch(/NON chiedere alcun tiro di dado/);
+  });
 });
