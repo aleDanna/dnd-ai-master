@@ -116,11 +116,13 @@ output (wasted M4 latency).
 
 ### Operational notes
 
-- Existing campaigns configured with gemma4 keep working through the
-  weak-tool gates but should be flipped to the validated primary
-  (`campaigns.settings.aiMasterModel`); the allowlist only blocks NEW
-  selections. `scripts/_set-campaign-model.ts` (untracked scratch) bypasses
-  validation — delete it or route it through validateSettingsPatch.
+- **Model governance reverted at operator request (2026-06-10):** the
+  validated-model allowlist is no longer enforced — any installed Ollama
+  model is selectable in Settings and used as stored. Non-validated models
+  carry a non-blocking UI warning and run narration-only via the weak-tool
+  gate (the server still owns combat). The `matchesLlmWhitelist` helper now
+  only drives that warning. If you want to re-tighten, re-wire it into
+  `fetchOllamaModels` / `validateSettingsPatch` / `resolveLocalMasterModel`.
 - `scripts/build-local-models.ts` executes main() on import (unhandled
   rejection during vitest runs) — wrap in `if (require.main)`-equivalent.
 - Verify on the M4 that NUM_CTX 16384 + sampling changes hold the <10s warm

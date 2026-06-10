@@ -221,19 +221,15 @@ export async function fetchOllamaModels(): Promise<ModelOption[]> {
     //  (a) Curated baked tiers (dnd-master-plus + any future TIER_NAMES entry),
     //      labelled via TIER_LABELS. Legacy slug-derived bakes (e.g.
     //      `dnd-master-qwen3-...`) stay hidden to avoid confusing duplicates.
-    //  (b) Raw generative base models from the VALIDATED families only
-    //      (matchesLlmWhitelist: qwen3, gpt-oss, mistral-small3.2).
+    //  (b) EVERY raw generative base model installed in Ollama (only embedding
+    //      models are excluded — they can't drive a turn). The user picks
+    //      whichever model they want; non-validated families just carry a
+    //      UI warning (see `warning` below) rather than being hidden.
     //
-    // (b) was previously hidden. Phase 03 (03-C-04) stripped the dropdown to
-    // baked-only on the assumption of a "raw-slug" Settings path that never
-    // existed — so on hosts without a baked model the dropdown went empty and
-    // REQ-031 (quality-fallback opt-in via Settings) / REQ-032 (content model)
-    // / REQ-034 (per-session primary↔fallback switch) became unsatisfiable:
-    // the user had no way to pick a base model. Exposing raw bases restores
-    // those requirements — but only whitelisted families: the never-validated
-    // gemma4 selected via a scratch script melted down on the vault tool
-    // surface and triggered the 2026-06 hotfix cascade (769029c..2aea307).
-    // Embedding models (bert-family OR an `embed` name) are excluded too.
+    // (Earlier this list was whitelisted to qwen3/gpt-oss/mistral after a
+    // gemma4 meltdown, but per the operator's request the choice is theirs:
+    // all models are selectable. The weak-tool narration-only gate and the
+    // hallucination guard in the loop make non-validated models safe to run.)
     return models.filter((m) => {
       if (isBakedModel(m.name)) {
         const bareSlug = m.name.replace(/:latest$/, '');
@@ -241,7 +237,7 @@ export async function fetchOllamaModels(): Promise<ModelOption[]> {
       }
       const family = m.details?.family ?? '';
       const isEmbedder = /bert/i.test(family) || /embed/i.test(m.name);
-      return !isEmbedder && matchesLlmWhitelist(m.name);
+      return !isEmbedder;
     }).map((m) => {
       const baked = isBakedModel(m.name);
       const baseSlug = baked ? getBakedBaseModel(m.name) : null;
@@ -260,13 +256,19 @@ export async function fetchOllamaModels(): Promise<ModelOption[]> {
         : [m.details?.parameter_size, m.details?.quantization_level]
             .filter(Boolean)
             .join(' · ') || 'local';
-      // Known small-model limitation: llama3.2:3b (and its baked variant)
-      // drops the character snapshot when the prompt has many blocks.
-      // Surface this in the UI so users picking a model see the caveat.
+      // Non-blocking advisory warnings so the user keeps the choice but
+      // knows the trade-off:
+      //  - llama3.2:3b drops the character snapshot on long prompts;
+      //  - any non-validated family (not baked, not qwen3/gpt-oss/
+      //    mistral-small3.2) was never benchmarked with this DM — it runs
+      //    narration-only (the server owns combat), but tool reliability /
+      //    prose quality are unverified.
       const effectiveSlug = baseSlug ?? m.name;
       const warning = /llama3\.2.*3b/i.test(effectiveSlug)
         ? 'small model — may lose character context on long prompts; prefer Balance or Max'
-        : undefined;
+        : (!baked && !matchesLlmWhitelist(m.name))
+          ? 'not benchmarked with this DM — runs narration-only; combat is still server-resolved'
+          : undefined;
       return { slug: m.name, label, blurb, kind: baked ? 'baked' : 'raw', warning };
     });
   } catch {

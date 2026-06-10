@@ -30,8 +30,7 @@ import {
   isValidVoiceForModel,
   type TtsProvider,
 } from './tts-voices';
-import { isLocalEnvironment, matchesLlmWhitelist } from './local-services';
-import { isBakedModel } from '@/ai/master/baked-models';
+import { isLocalEnvironment } from './local-services';
 
 /**
  * True when the named local sub-engine is currently usable. Used by
@@ -89,22 +88,15 @@ function envDefaultProvider(): ProviderName {
 }
 
 /**
- * 2026-06-10 live incident — turn-time enforcement of the validated pool.
- *
- * The selection-time whitelist (validateSettingsPatch) cannot fix campaigns
- * that stored a non-validated model BEFORE it existed: the turn route kept
- * USING the stored gemma4:12b-mlx, which melted down on a narration-only
- * combat turn (155s eval, empty content, hallucinated tool calls). Stored
- * local models are therefore sanitized at READ time: baked variants and
- * whitelisted families pass through; anything else resolves to the
- * env/validated default (the stored value is left untouched in the DB so
- * the user can see and change it in Settings).
+ * Resolve the campaign/user's stored local master model. The operator's
+ * choice is authoritative: ANY non-empty stored slug is used as-is
+ * (validated or not — non-validated models still run, just narration-only
+ * via the weak-tool gate). Only a missing/empty value falls back to the
+ * env/validated default — this is the guard that stops an unset campaign
+ * from shipping `model:''` to Ollama (400, failed turn).
  */
-export function sanitizeLocalMasterModel(stored: string | null | undefined): string {
-  if (stored && (isBakedModel(stored) || matchesLlmWhitelist(stored))) return stored;
-  if (stored) {
-    console.warn(`[preferences] stored local master model '${stored}' is not in the validated pool — using the default instead`);
-  }
+export function resolveLocalMasterModel(stored: string | null | undefined): string {
+  if (stored && stored.trim().length > 0) return stored;
   return envDefaultMasterModel('local');
 }
 
@@ -329,7 +321,7 @@ export async function getResolvedPreferences(userId: string): Promise<Required<U
   const prefs = await getUserPreferences(userId);
   const provider = resolveLocalAiProvider(prefs.aiProvider);
   const masterModel = provider === 'local'
-    ? sanitizeLocalMasterModel(prefs.aiMasterModel)
+    ? resolveLocalMasterModel(prefs.aiMasterModel)
     : prefs.aiMasterModel ?? envDefaultMasterModel(provider);
   const imageGenerationEnabled = prefs.imageGenerationEnabled ?? DEFAULT_PREFERENCES.imageGenerationEnabled;
   const imageStylePreset = prefs.imageStylePreset ?? DEFAULT_PREFERENCES.imageStylePreset;
@@ -476,7 +468,7 @@ export async function getCampaignSettings(
   const prefs = await getCampaignSettingsRaw(campaignId);
   const provider = resolveLocalAiProvider(prefs.aiProvider);
   const masterModel = provider === 'local'
-    ? sanitizeLocalMasterModel(prefs.aiMasterModel)
+    ? resolveLocalMasterModel(prefs.aiMasterModel)
     : prefs.aiMasterModel ?? envDefaultMasterModel(provider);
   const imageGenerationEnabled = prefs.imageGenerationEnabled ?? DEFAULT_PREFERENCES.imageGenerationEnabled;
   const imageStylePreset = prefs.imageStylePreset ?? DEFAULT_PREFERENCES.imageStylePreset;
@@ -659,14 +651,11 @@ export function validateSettingsPatch(
         return { ok: false, error: 'invalid-aiMasterModel' };
       }
       const resolvedProvider = out.aiProvider ?? body.aiProvider ?? stored?.aiProvider;
+      // Cloud providers: model must be a known catalog entry. LOCAL provider:
+      // accept ANY installed Ollama model (only string/length validated) —
+      // the operator's choice is theirs. Non-validated models still run, just
+      // narration-only via the weak-tool gate.
       if (resolvedProvider !== 'local' && !isKnownMasterModel(m)) {
-        return { ok: false, error: 'invalid-aiMasterModel' };
-      }
-      // Local models: only baked variants or validated families. Anything
-      // else (gemma4, small llamas, ...) was never benchmarked on the vault
-      // tool surface and historically melted down into the weak-tool
-      // failure cascade. Re-run the spike benchmarks before widening.
-      if (resolvedProvider === 'local' && !isBakedModel(m) && !matchesLlmWhitelist(m)) {
         return { ok: false, error: 'invalid-aiMasterModel' };
       }
     }

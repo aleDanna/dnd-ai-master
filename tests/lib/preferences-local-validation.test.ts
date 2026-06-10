@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { validateSettingsPatch, envDefaultMasterModel, sanitizeLocalMasterModel } from '@/lib/preferences';
+import { validateSettingsPatch, envDefaultMasterModel, resolveLocalMasterModel } from '@/lib/preferences';
 
 describe('validateSettingsPatch — local provider gating', () => {
   beforeEach(() => {
@@ -32,27 +32,18 @@ describe('validateSettingsPatch — local provider gating', () => {
     expect(r.ok).toBe(false);
   });
 
-  it('accepts aiMasterModel for local when in the validated family whitelist', () => {
+  it('accepts ANY installed local model — the operator picks (gemma4 included)', () => {
     vi.stubEnv('OLLAMA_BASE_URL', 'http://localhost:11434');
-    for (const m of ['qwen3:30b-a3b', 'qwen3:30b-a3b-instruct-2507-q4_K_M', 'mistral-small3.2:24b', 'gpt-oss:20b']) {
+    for (const m of ['qwen3:30b-a3b', 'qwen3:30b-a3b-instruct-2507-q4_K_M', 'mistral-small3.2:24b', 'gpt-oss:20b', 'gemma4:12b-mlx', 'gemma4:latest', 'llama3.2:3b', 'phi3:medium', 'dnd-master-plus']) {
       const r = validateSettingsPatch({ aiProvider: 'local', aiMasterModel: m });
       expect(r.ok, m).toBe(true);
     }
   });
 
-  it('accepts baked variants for local (Modelfile-curated)', () => {
+  it('still rejects an empty or over-long local model string', () => {
     vi.stubEnv('OLLAMA_BASE_URL', 'http://localhost:11434');
-    const r = validateSettingsPatch({ aiProvider: 'local', aiMasterModel: 'dnd-master-plus' });
-    expect(r.ok).toBe(true);
-  });
-
-  it('rejects non-validated local model families (gemma4 — the weak-tool meltdown vector)', () => {
-    vi.stubEnv('OLLAMA_BASE_URL', 'http://localhost:11434');
-    for (const m of ['gemma4:latest', 'gemma4:12b', 'llama3.2:3b', 'phi3:medium']) {
-      const r = validateSettingsPatch({ aiProvider: 'local', aiMasterModel: m });
-      expect(r.ok, m).toBe(false);
-      if (!r.ok) expect(r.error).toBe('invalid-aiMasterModel');
-    }
+    expect(validateSettingsPatch({ aiProvider: 'local', aiMasterModel: '' }).ok).toBe(false);
+    expect(validateSettingsPatch({ aiProvider: 'local', aiMasterModel: 'x'.repeat(201) }).ok).toBe(false);
   });
 
   it('rejects aiMasterModel for local when over 200 chars', () => {
@@ -121,29 +112,23 @@ describe('validateSettingsPatch — compactPrompt (Plan C)', () => {
   });
 });
 
-describe('sanitizeLocalMasterModel — turn-time enforcement (2026-06-10 live incident)', () => {
+describe('resolveLocalMasterModel — respects the operator choice', () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it('a stored non-whitelisted model (gemma4:12b-mlx) resolves to the validated default', () => {
-    // The selection-time whitelist cannot fix campaigns that stored gemma
-    // BEFORE it existed: the campaign screen kept showing (and the turn
-    // route kept USING) gemma4:12b-mlx, which melted down on the
-    // narration-only damage-roll turn (155s, empty content, 2 hallucinated
-    // tool calls). Stored-but-invalid models must be overridden at READ time.
-    expect(sanitizeLocalMasterModel('gemma4:12b-mlx')).toBe('qwen3:30b-a3b-instruct-2507-q4_K_M');
-    expect(sanitizeLocalMasterModel('llama3.2:3b')).toBe('qwen3:30b-a3b-instruct-2507-q4_K_M');
+  it('any non-empty stored model is used as-is (gemma included)', () => {
+    // The operator's pick is authoritative; non-validated models still run
+    // (narration-only via the weak-tool gate).
+    expect(resolveLocalMasterModel('gemma4:12b-mlx')).toBe('gemma4:12b-mlx');
+    expect(resolveLocalMasterModel('llama3.2:3b')).toBe('llama3.2:3b');
+    expect(resolveLocalMasterModel('qwen3:30b-a3b-instruct-2507-q4_K_M')).toBe('qwen3:30b-a3b-instruct-2507-q4_K_M');
+    expect(resolveLocalMasterModel('dnd-master-plus')).toBe('dnd-master-plus');
   });
 
-  it('whitelisted and baked models pass through unchanged', () => {
-    expect(sanitizeLocalMasterModel('qwen3:30b-a3b-instruct-2507-q4_K_M')).toBe('qwen3:30b-a3b-instruct-2507-q4_K_M');
-    expect(sanitizeLocalMasterModel('qwen3:30b-a3b')).toBe('qwen3:30b-a3b');
-    expect(sanitizeLocalMasterModel('mistral-small3.2:24b')).toBe('mistral-small3.2:24b');
-    expect(sanitizeLocalMasterModel('dnd-master-plus')).toBe('dnd-master-plus');
-  });
-
-  it('unset falls back to OLLAMA_MASTER_MODEL, then the validated primary', () => {
-    expect(sanitizeLocalMasterModel(undefined)).toBe('qwen3:30b-a3b-instruct-2507-q4_K_M');
+  it('only a missing/empty value falls back to the default (no model:"" to Ollama)', () => {
+    expect(resolveLocalMasterModel(undefined)).toBe('qwen3:30b-a3b-instruct-2507-q4_K_M');
+    expect(resolveLocalMasterModel('')).toBe('qwen3:30b-a3b-instruct-2507-q4_K_M');
+    expect(resolveLocalMasterModel('   ')).toBe('qwen3:30b-a3b-instruct-2507-q4_K_M');
     vi.stubEnv('OLLAMA_MASTER_MODEL', 'qwen3:30b-a3b-instruct-2507');
-    expect(sanitizeLocalMasterModel(undefined)).toBe('qwen3:30b-a3b-instruct-2507');
+    expect(resolveLocalMasterModel(undefined)).toBe('qwen3:30b-a3b-instruct-2507');
   });
 });

@@ -31,24 +31,23 @@ describe('fetchOllamaModels', () => {
     }), { status: 200 }));
 
     const r = await fetchOllamaModels();
-    // Curated baked (dnd-master-plus) + whitelisted raw bases; stale bakes
-    // hidden. Since the 2026-06-10 model-governance audit the raw list is
-    // also gated on matchesLlmWhitelist: llama3.2:3b (and gemma4 et al.)
-    // are no longer selectable — the never-validated gemma4 experiment is
-    // what triggered the weak-tool hotfix cascade (commits 769029c..2aea307).
+    // Curated baked (dnd-master-plus) + EVERY raw generative base. The
+    // dropdown no longer whitelists — the operator picks any installed
+    // model (non-validated ones carry a warning, asserted below). Only
+    // stale baked variants stay hidden.
     expect(r.map((m) => m.slug).sort()).toEqual([
       'dnd-master-plus',
       'gpt-oss:20b',
+      'llama3.2:3b',
       'qwen3:30b-a3b',
     ]);
     expect(r.find((m) => m.slug === 'dnd-master-plus')?.kind).toBe('baked');
     expect(r.find((m) => m.slug === 'qwen3:30b-a3b')?.kind).toBe('raw');
     expect(r.map((m) => m.slug)).not.toContain('dnd-master-max');
     expect(r.map((m) => m.slug)).not.toContain('dnd-master-lite');
-    expect(r.map((m) => m.slug)).not.toContain('llama3.2:3b');
   });
 
-  it('excludes embedders AND non-validated families (gemma4) from the dropdown', async () => {
+  it('surfaces non-validated families (gemma4) WITH a warning; only embedders are hidden', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response(JSON.stringify({
       models: [
         { name: 'qwen3:30b-a3b',            details: { parameter_size: '30B', family: 'qwen3moe' } },
@@ -60,9 +59,12 @@ describe('fetchOllamaModels', () => {
     }), { status: 200 }));
 
     const r = await fetchOllamaModels();
-    expect(r.map((m) => m.slug).sort()).toEqual(['mistral-small3.2:24b', 'qwen3:30b-a3b']);
+    expect(r.map((m) => m.slug).sort()).toEqual(['gemma4:latest', 'mistral-small3.2:24b', 'qwen3:30b-a3b']);
     expect(r.map((m) => m.slug).join(',')).not.toMatch(/embed/);
-    expect(r.map((m) => m.slug)).not.toContain('gemma4:latest');
+    // gemma4 is selectable but flagged as not-benchmarked.
+    expect(r.find((m) => m.slug === 'gemma4:latest')?.warning).toMatch(/not benchmarked/i);
+    // validated families carry no warning.
+    expect(r.find((m) => m.slug === 'qwen3:30b-a3b')?.warning).toBeUndefined();
   });
 
   it('returns [] when fetch throws', async () => {
