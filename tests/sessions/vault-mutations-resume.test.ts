@@ -76,15 +76,22 @@ async function writeSeedEvent(
   campaignId: string,
   characters: VaultSeedCharacter[],
 ): Promise<void> {
-  const r = await mod.dispatchVaultTool(
-    'apply_event',
-    {
-      type: 'campaign_initialized',
-      payload: { characters },
-    },
-    { campaignId },
-  );
-  if (r.isError) throw new Error(`seed failed: ${r.content}`);
+  // 2026-06-10 audit: the dispatcher rejects LLM-emitted campaign_initialized.
+  // Seed server-side, the way production does (seed-vault.ts): EventsWriter +
+  // regenerateAffectedViews. Dynamic imports so the VAULT_CAMPAIGNS_ROOT stub
+  // (vi.resetModules in freshVaultModule) is honored.
+  const { EventsWriter } = await import('@/ai/master/vault/events-writer');
+  const { EVENT_SCHEMA_VERSION } = await import('@/ai/master/vault/events-schema');
+  const { regenerateAffectedViews } = await import('@/ai/master/vault/projector');
+  const envelope = {
+    id: crypto.randomUUID(),
+    version: EVENT_SCHEMA_VERSION,
+    type: 'campaign_initialized' as const,
+    payload: { characters },
+    timestamp: new Date().toISOString(),
+  };
+  await EventsWriter.applyEvent(mod.eventsPath(campaignId), envelope as never);
+  await regenerateAffectedViews(campaignId, envelope as never);
 }
 
 describe('vault-mutations resume — replay-on-read invariant', () => {

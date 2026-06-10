@@ -311,23 +311,25 @@ const APPLY_CHAR_UUID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
 async function seedCampaignFile(campaignsRoot: string): Promise<string> {
   vi.stubEnv('VAULT_CAMPAIGNS_ROOT', campaignsRoot);
   vi.resetModules();
-  const { dispatchVaultTool } = await import('@/ai/master/vault/tools');
+  // 2026-06-10 audit: the dispatcher rejects LLM-emitted campaign_initialized.
+  // Seed server-side, the way production does (seed-vault.ts).
   const { eventsPath } = await import('@/ai/master/vault/campaign-paths');
-  const seed = await dispatchVaultTool(
-    'apply_event',
-    {
-      type: 'campaign_initialized',
-      payload: {
-        characters: [
-          { id: APPLY_CHAR_UUID, name: 'Aragorn', hp_max: 30, hp_current: 30 },
-        ],
-      },
+  const { EventsWriter } = await import('@/ai/master/vault/events-writer');
+  const { EVENT_SCHEMA_VERSION } = await import('@/ai/master/vault/events-schema');
+  const { regenerateAffectedViews } = await import('@/ai/master/vault/projector');
+  const envelope = {
+    id: crypto.randomUUID(),
+    version: EVENT_SCHEMA_VERSION,
+    type: 'campaign_initialized' as const,
+    payload: {
+      characters: [
+        { id: APPLY_CHAR_UUID, name: 'Aragorn', hp_max: 30, hp_current: 30 },
+      ],
     },
-    { campaignId: APPLY_CAMPAIGN_UUID },
-  );
-  if (seed.isError) {
-    throw new Error('seed failed: ' + seed.content);
-  }
+    timestamp: new Date().toISOString(),
+  };
+  await EventsWriter.applyEvent(eventsPath(APPLY_CAMPAIGN_UUID), envelope as never);
+  await regenerateAffectedViews(APPLY_CAMPAIGN_UUID, envelope as never);
   return eventsPath(APPLY_CAMPAIGN_UUID);
 }
 
@@ -521,15 +523,26 @@ async function seedEncounterCampaign(campaignsRoot: string): Promise<string> {
   vi.resetModules();
   const { dispatchVaultTool } = await import('@/ai/master/vault/tools');
   const { eventsPath } = await import('@/ai/master/vault/campaign-paths');
-  const seedEvents: { type: string; payload: Record<string, unknown> }[] = [
-    {
-      type: 'campaign_initialized',
-      payload: {
-        characters: [
-          { id: NARRATION_CHAR_UUID, name: 'Rufy', hp_max: 40, hp_current: 40 },
-        ],
-      },
+  // 2026-06-10 audit: genesis is server-side only — seed it directly
+  // (mirrors seed-vault.ts), then drive the encounter events through the
+  // dispatcher as before.
+  const { EventsWriter } = await import('@/ai/master/vault/events-writer');
+  const { EVENT_SCHEMA_VERSION } = await import('@/ai/master/vault/events-schema');
+  const { regenerateAffectedViews } = await import('@/ai/master/vault/projector');
+  const genesis = {
+    id: crypto.randomUUID(),
+    version: EVENT_SCHEMA_VERSION,
+    type: 'campaign_initialized' as const,
+    payload: {
+      characters: [
+        { id: NARRATION_CHAR_UUID, name: 'Rufy', hp_max: 40, hp_current: 40 },
+      ],
     },
+    timestamp: new Date().toISOString(),
+  };
+  await EventsWriter.applyEvent(eventsPath(NARRATION_CAMPAIGN_UUID), genesis as never);
+  await regenerateAffectedViews(NARRATION_CAMPAIGN_UUID, genesis as never);
+  const seedEvents: { type: string; payload: Record<string, unknown> }[] = [
     { type: 'combat_start', payload: {} },
     {
       type: 'monster_spawn',

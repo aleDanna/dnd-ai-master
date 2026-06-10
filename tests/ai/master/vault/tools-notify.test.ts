@@ -28,6 +28,14 @@ vi.mock('@/ai/master/vault/events-writer', () => ({
 }));
 vi.mock('@/ai/master/vault/projector', () => ({
   regenerateAffectedViews: vi.fn().mockResolvedValue(undefined),
+  // 2026-06-10 audit: the dispatcher now verifies roster membership before
+  // appending. Mock a roster containing the test character (literal UUID —
+  // the factory is hoisted above the const declarations).
+  parseEventsFile: vi.fn().mockResolvedValue([]),
+  replayEvents: vi.fn(() => ({
+    chars: new Map([['aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', {}]]),
+    encounter: { active: false },
+  })),
 }));
 
 import { dispatchVaultTool } from '@/ai/master/vault/tools';

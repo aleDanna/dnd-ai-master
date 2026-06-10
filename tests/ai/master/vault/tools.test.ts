@@ -237,6 +237,7 @@ async function withStubbedRoot(
   VAULT_TOOL_DEFINITIONS: typeof import('@/ai/master/vault/tools').VAULT_TOOL_DEFINITIONS;
   eventsPath: typeof import('@/ai/master/vault/campaign-paths').eventsPath;
   characterViewPath: typeof import('@/ai/master/vault/campaign-paths').characterViewPath;
+  seedGenesis: (campaignId: string, characters: Array<Record<string, unknown>>) => Promise<void>;
 }> {
   // VAULT_CAMPAIGNS_ROOT IS env-derived at module-load (campaign-paths.ts/path.ts
   // → process.env.VAULT_CAMPAIGNS_ROOT); restubbing requires vi.resetModules()
@@ -247,11 +248,32 @@ async function withStubbedRoot(
   vi.resetModules();
   const toolsMod = await import('@/ai/master/vault/tools');
   const pathsMod = await import('@/ai/master/vault/campaign-paths');
+  const writerMod = await import('@/ai/master/vault/events-writer');
+  const projectorMod = await import('@/ai/master/vault/projector');
+  const schemaMod = await import('@/ai/master/vault/events-schema');
+  // 2026-06-10 audit: the dispatcher REJECTS campaign_initialized (genesis is
+  // server-side only). Tests seed the way production does — EventsWriter +
+  // regenerateAffectedViews (mirrors seed-vault.ts).
+  const seedGenesis = async (
+    campaignId: string,
+    characters: Array<Record<string, unknown>>,
+  ): Promise<void> => {
+    const envelope = {
+      id: crypto.randomUUID(),
+      version: schemaMod.EVENT_SCHEMA_VERSION,
+      type: 'campaign_initialized' as const,
+      payload: { characters },
+      timestamp: new Date().toISOString(),
+    };
+    await writerMod.EventsWriter.applyEvent(pathsMod.eventsPath(campaignId), envelope as never);
+    await projectorMod.regenerateAffectedViews(campaignId, envelope as never);
+  };
   return {
     dispatchVaultTool: toolsMod.dispatchVaultTool,
     VAULT_TOOL_DEFINITIONS: toolsMod.VAULT_TOOL_DEFINITIONS,
     eventsPath: pathsMod.eventsPath,
     characterViewPath: pathsMod.characterViewPath,
+    seedGenesis,
   };
 }
 
@@ -263,19 +285,10 @@ describe('dispatchVaultTool — apply_event (Phase 02)', () => {
     campaignsRoot = mkdtempSync(join(tmpdir(), 'gsd-apply-event-'));
     helpers = await withStubbedRoot(campaignsRoot);
     // Seed the campaign so subsequent hp_change events have a state to mutate.
-    const seedResult = await helpers.dispatchVaultTool(
-      'apply_event',
-      {
-        type: 'campaign_initialized',
-        payload: {
-          characters: [
-            { id: CHAR_UUID, name: 'Aragorn', hp_max: 30, hp_current: 30 },
-          ],
-        },
-      },
-      { campaignId: CAMPAIGN_UUID },
-    );
-    expect(seedResult.isError).toBe(false);
+    // (Server-side seeding — the dispatcher rejects LLM-emitted genesis.)
+    await helpers.seedGenesis(CAMPAIGN_UUID, [
+      { id: CHAR_UUID, name: 'Aragorn', hp_max: 30, hp_current: 30 },
+    ]);
   });
 
   afterEach(() => {
@@ -521,19 +534,10 @@ describe('dispatchVaultTool — apply_event (Phase 02)', () => {
       // Re-seed with TWO characters.
       campaignsRoot = mkdtempSync(join(tmpdir(), 'gsd-apply-event-multi-'));
       helpers = await withStubbedRoot(campaignsRoot);
-      await helpers.dispatchVaultTool(
-        'apply_event',
-        {
-          type: 'campaign_initialized',
-          payload: {
-            characters: [
-              { id: CHAR_UUID, name: 'Aragorn', hp_max: 30, hp_current: 30 },
-              { id: CHAR_UUID_2, name: 'Legolas', hp_max: 25, hp_current: 25 },
-            ],
-          },
-        },
-        { campaignId: CAMPAIGN_UUID },
-      );
+      await helpers.seedGenesis(CAMPAIGN_UUID, [
+        { id: CHAR_UUID, name: 'Aragorn', hp_max: 30, hp_current: 30 },
+        { id: CHAR_UUID_2, name: 'Legolas', hp_max: 25, hp_current: 25 },
+      ]);
 
       // Snapshot Legolas view BEFORE the hp_change.
       const legolasViewPath = helpers.characterViewPath(CAMPAIGN_UUID, 'Legolas', CHAR_UUID_2);
@@ -724,19 +728,10 @@ describe('dispatchVaultTool — apply_event (Phase 03 event types — plan 03-A-
     helpers = await withStubbedRoot(campaignsRoot);
     // Seed with a single character — every Phase 03 mutation event targets
     // this UUID via the `payload.character` field (NIT 1 UUID guard).
-    const seedResult = await helpers.dispatchVaultTool(
-      'apply_event',
-      {
-        type: 'campaign_initialized',
-        payload: {
-          characters: [
-            { id: CHAR_UUID, name: 'Aragorn', hp_max: 30, hp_current: 30 },
-          ],
-        },
-      },
-      { campaignId: CAMPAIGN_UUID },
-    );
-    expect(seedResult.isError).toBe(false);
+    // (Server-side seeding — the dispatcher rejects LLM-emitted genesis.)
+    await helpers.seedGenesis(CAMPAIGN_UUID, [
+      { id: CHAR_UUID, name: 'Aragorn', hp_max: 30, hp_current: 30 },
+    ]);
     // Sanity: seed event is the only line at start.
     expect(await eventCount()).toBe(1);
   });
@@ -1229,19 +1224,10 @@ describe('apply_event — encounter event dispatch (D2 UUID guard skip)', () => 
     campaignsRoot = mkdtempSync(join(tmpdir(), 'gsd-encounter-dispatch-'));
     helpers = await withStubbedRoot(campaignsRoot);
     // Seed the campaign so events.md exists and subsequent events can land.
-    const seedResult = await helpers.dispatchVaultTool(
-      'apply_event',
-      {
-        type: 'campaign_initialized',
-        payload: {
-          characters: [
-            { id: CHAR_UUID, name: 'Aragorn', hp_max: 30, hp_current: 30 },
-          ],
-        },
-      },
-      { campaignId: CAMPAIGN_UUID },
-    );
-    expect(seedResult.isError).toBe(false);
+    // (Server-side seeding — the dispatcher rejects LLM-emitted genesis.)
+    await helpers.seedGenesis(CAMPAIGN_UUID, [
+      { id: CHAR_UUID, name: 'Aragorn', hp_max: 30, hp_current: 30 },
+    ]);
   });
 
   afterEach(() => {
@@ -1312,5 +1298,66 @@ describe('apply_event — encounter event dispatch (D2 UUID guard skip)', () => 
     for (const et of encounterTypes) {
       expect(typeDesc).toContain(et);
     }
+  });
+});
+
+// ─── 2026-06-10 audit: LLM-surface hardening ────────────────────────────────
+
+describe('dispatchVaultTool — apply_event LLM-surface guards (2026-06-10 audit)', () => {
+  const CAMPAIGN = '0f0e0d0c-0b0a-4990-8877-665544332211';
+  const SEEDED = '11111111-2222-4333-8444-555555555555';
+  const INVENTED = '99999999-8888-4777-8666-555555555544';
+  let root: string;
+  let h: Awaited<ReturnType<typeof withStubbedRoot>>;
+
+  beforeEach(async () => {
+    root = mkdtempSync(join(tmpdir(), 'gsd-llm-guards-'));
+    h = await withStubbedRoot(root);
+    await h.seedGenesis(CAMPAIGN, [
+      { id: SEEDED, name: 'Nami', hp_max: 22, hp_current: 22 },
+    ]);
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it('REJECTS campaign_initialized from the tool surface (mid-campaign state reset)', async () => {
+    const before = await readFile(h.eventsPath(CAMPAIGN), 'utf8');
+    const r = await h.dispatchVaultTool(
+      'apply_event',
+      {
+        type: 'campaign_initialized',
+        payload: { characters: [{ id: INVENTED, name: 'Doppelganger', hp_max: 99, hp_current: 99 }] },
+      },
+      { campaignId: CAMPAIGN },
+    );
+    expect(r.isError).toBe(true);
+    expect(r.content).toMatch(/genesis/i);
+    // Append-only file untouched — no zombie seed persisted.
+    expect(await readFile(h.eventsPath(CAMPAIGN), 'utf8')).toBe(before);
+  });
+
+  it('REJECTS a syntactically-valid UUID that is NOT in the campaign roster', async () => {
+    const before = await readFile(h.eventsPath(CAMPAIGN), 'utf8');
+    const r = await h.dispatchVaultTool(
+      'apply_event',
+      { type: 'hp_change', payload: { character: INVENTED, delta: -5 } },
+      { campaignId: CAMPAIGN },
+    );
+    expect(r.isError).toBe(true);
+    expect(r.content).toMatch(/does not match any character/);
+    expect(await readFile(h.eventsPath(CAMPAIGN), 'utf8')).toBe(before);
+  });
+
+  it('still ACCEPTS a mutation for a seeded roster character', async () => {
+    const r = await h.dispatchVaultTool(
+      'apply_event',
+      { type: 'hp_change', payload: { character: SEEDED, delta: -3 } },
+      { campaignId: CAMPAIGN },
+    );
+    expect(r.isError).toBe(false);
   });
 });

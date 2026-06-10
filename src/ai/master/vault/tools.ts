@@ -3,7 +3,7 @@ import type { ToolDef } from '@/ai/provider/types';
 import { listVaultDir, readVaultFile, VAULT_CAMPAIGNS_ROOT } from './path';
 import { validateEvent, EVENT_SCHEMA_VERSION, ENCOUNTER_EVENT_TYPES, type VaultEventEnvelope } from './events-schema';
 import { EventsWriter } from './events-writer';
-import { regenerateAffectedViews } from './projector';
+import { regenerateAffectedViews, replayEvents, parseEventsFile } from './projector';
 import { eventsPath, UUID_REGEX } from './campaign-paths';
 import { notifySession } from '@/sessions/notify';
 
@@ -298,6 +298,19 @@ export async function dispatchVaultTool(
       return { content: `ERROR: ${guarded.error}`, isError: true };
     }
 
+    // 2026-06-10 audit — campaign_initialized is the GENESIS seed: replaying
+    // it overwrites every listed character with fresh INITIAL state (full HP,
+    // empty conditions/inventory) or fabricates new characters — permanently,
+    // since events.md is append-only. Production seeds it server-side via
+    // EventsWriter (seed-vault.ts / vault-flip), never through this
+    // dispatcher: an LLM-emitted seed is always a hallucination.
+    if (guarded.value.type === 'campaign_initialized') {
+      return {
+        content: 'ERROR: campaign_initialized is a server-side genesis event and cannot be applied via apply_event. Use the specific mutation events (hp_change, condition_add, …) instead.',
+        isError: true,
+      };
+    }
+
     // NIT 1 enforcement (Phase 02 smoke 2026-05-26): the `character` field
     // in mutation event payloads MUST be a UUID matching a character in the
     // materialized view frontmatter. Without this guard the model invents
@@ -305,16 +318,36 @@ export async function dispatchVaultTool(
     // can't match them to any character, producing zombie state. The type
     // schema declares `character: string`, not `character: UUID`, so the
     // check belongs here at the dispatch boundary, not inside validateEvent.
-    // `campaign_initialized` (seed event) has no `character` field — skip it.
+    // `campaign_initialized` cannot reach this point (rejected above).
     // Phase 07-D2: encounter-scoped events (ENCOUNTER_EVENT_TYPES) have no
     // `character` field either — the UUID guard must NOT apply to them.
-    if (guarded.value.type !== 'campaign_initialized' && !ENCOUNTER_EVENT_TYPES.has(guarded.value.type)) {
+    if (!ENCOUNTER_EVENT_TYPES.has(guarded.value.type)) {
       const characterId = (guarded.value.payload as { character?: unknown }).character;
       if (typeof characterId !== 'string' || !UUID_REGEX.test(characterId)) {
         return {
           content: `ERROR: apply_event payload.character must be a UUID matching a character in the campaign (got: ${JSON.stringify(characterId)}). Read the characters/<slug>.md materialized view frontmatter and copy the value of the 'id' field.`,
           isError: true,
         };
+      }
+      // 2026-06-10 audit — ROSTER MEMBERSHIP, not just UUID shape. A
+      // syntactically-valid invented UUID used to be appended to events.md
+      // permanently (append-only, no rollback) and only fail view
+      // regeneration AFTERWARDS — a zombie event surviving every replay.
+      // Replaying here is the same work regenerateAffectedViews does after
+      // the append, so the cost is already in this call's budget. An
+      // unparseable/missing events.md yields an empty roster → mutations on
+      // an unseeded campaign are correctly rejected too.
+      try {
+        const { chars } = replayEvents(await parseEventsFile(eventsPath(ctx.campaignId)));
+        if (!chars.has(characterId)) {
+          return {
+            content: `ERROR: apply_event payload.character ${characterId} does not match any character in this campaign. Read the characters/<slug>.md materialized view frontmatter and copy the value of the 'id' field.`,
+            isError: true,
+          };
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { content: `ERROR: apply_event could not verify the campaign roster: ${message}`, isError: true };
       }
     }
 
@@ -346,11 +379,12 @@ export async function dispatchVaultTool(
       const { invokeEnginePathwayFromEvent } = await import('@/sessions/event-to-engine-mutation');
 
       // Extract the character UUID from the event payload. NIT 1 already
-      // narrowed this to a UUID string for every non-campaign_initialized
-      // event. campaign_initialized has no character payload — pass null
-      // and dualWriteApplyEvent skips the parity-check.
+      // narrowed this to a UUID string for every character-scoped event
+      // (campaign_initialized cannot reach this point — rejected at the
+      // dispatcher boundary). Encounter events have no character payload —
+      // pass null and dualWriteApplyEvent skips the parity-check.
       const characterId: string | null = ctx.characterId
-        ?? (guarded.value.type === 'campaign_initialized'
+        ?? (ENCOUNTER_EVENT_TYPES.has(guarded.value.type)
           ? null
           : (guarded.value.payload as { character: string }).character);
 

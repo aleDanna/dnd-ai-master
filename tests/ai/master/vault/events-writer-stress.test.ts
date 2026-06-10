@@ -87,6 +87,28 @@ async function freshVaultModule(campaignsRoot: string): Promise<VaultDispatchMod
   };
 }
 
+// 2026-06-10 audit: the dispatcher rejects LLM-emitted campaign_initialized.
+// Seed server-side (mirrors seed-vault.ts). Dynamic imports honor the
+// VAULT_CAMPAIGNS_ROOT stub of the calling block.
+async function seedDirect(
+  eventsFilePath: string,
+  campaignId: string,
+  characters: Array<Record<string, unknown>>,
+): Promise<void> {
+  const { EventsWriter } = await import('@/ai/master/vault/events-writer');
+  const { EVENT_SCHEMA_VERSION } = await import('@/ai/master/vault/events-schema');
+  const { regenerateAffectedViews } = await import('@/ai/master/vault/projector');
+  const envelope = {
+    id: crypto.randomUUID(),
+    version: EVENT_SCHEMA_VERSION,
+    type: 'campaign_initialized' as const,
+    payload: { characters },
+    timestamp: new Date().toISOString(),
+  };
+  await EventsWriter.applyEvent(eventsFilePath, envelope as never);
+  await regenerateAffectedViews(campaignId, envelope as never);
+}
+
 describe('EventsWriter — high-N stress (CI regression)', () => {
   let testDir: string;
 
@@ -207,24 +229,16 @@ describe('EventsWriter — high-N stress (CI regression)', () => {
     const CHAR_NAMES = ['Aragorn', 'Boromir', 'Cleric', 'Druid', 'Eldrin'];
 
     async function seedFiveCharacters(mod: VaultDispatchModule): Promise<void> {
-      const seed = await mod.dispatchVaultTool(
-        'apply_event',
-        {
-          type: 'campaign_initialized',
-          payload: {
-            characters: CHAR_UUIDS.map((id, idx) => ({
-              id,
-              name: CHAR_NAMES[idx]!,
-              hp_max: 1000,
-              hp_current: 1000,
-            })),
-          },
-        },
-        { campaignId: CAMPAIGN_UUID },
+      await seedDirect(
+        mod.eventsPath(CAMPAIGN_UUID),
+        CAMPAIGN_UUID,
+        CHAR_UUIDS.map((id, idx) => ({
+          id,
+          name: CHAR_NAMES[idx]!,
+          hp_max: 1000,
+          hp_current: 1000,
+        })),
       );
-      if (seed.isError) {
-        throw new Error('seed failed: ' + seed.content);
-      }
     }
 
     it(
@@ -488,24 +502,14 @@ describe('EventsWriter — high-N stress (CI regression)', () => {
         // setup easier to reason about and the actual stress is the
         // mutation Promise.all below.
         for (let c = 0; c < CAMPAIGNS.length; c++) {
-          const seed = await mod.dispatchVaultTool(
-            'apply_event',
+          await seedDirect(mod.eventsPath(CAMPAIGNS[c]!), CAMPAIGNS[c]!, [
             {
-              type: 'campaign_initialized',
-              payload: {
-                characters: [
-                  {
-                    id: CHARS[c]!,
-                    name: 'Hero' + c,
-                    hp_max: 1000,
-                    hp_current: 1000,
-                  },
-                ],
-              },
+              id: CHARS[c]!,
+              name: 'Hero' + c,
+              hp_max: 1000,
+              hp_current: 1000,
             },
-            { campaignId: CAMPAIGNS[c]! },
-          );
-          expect(seed.isError).toBe(false);
+          ]);
         }
 
         // Build 500 mutation events: 100 per campaign, all `-1` hp

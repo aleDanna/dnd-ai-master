@@ -42,6 +42,9 @@ type VaultModule = {
   parseEventsFile: typeof import('@/ai/master/vault/projector').parseEventsFile;
   parseView: typeof import('@/ai/master/vault/projector').parseView;
   serializeView: typeof import('@/ai/master/vault/projector').serializeView;
+  regenerateAffectedViews: typeof import('@/ai/master/vault/projector').regenerateAffectedViews;
+  EventsWriter: typeof import('@/ai/master/vault/events-writer').EventsWriter;
+  EVENT_SCHEMA_VERSION: typeof import('@/ai/master/vault/events-schema').EVENT_SCHEMA_VERSION;
 };
 
 async function freshVaultModule(campaignsRoot: string): Promise<VaultModule> {
@@ -59,23 +62,33 @@ async function freshVaultModule(campaignsRoot: string): Promise<VaultModule> {
     parseEventsFile: projector.parseEventsFile,
     parseView: projector.parseView,
     serializeView: projector.serializeView,
+    regenerateAffectedViews: projector.regenerateAffectedViews,
+    EventsWriter: (await import('@/ai/master/vault/events-writer')).EventsWriter,
+    EVENT_SCHEMA_VERSION: (await import('@/ai/master/vault/events-schema')).EVENT_SCHEMA_VERSION,
   };
 }
 
+// 2026-06-10 audit: the dispatcher rejects campaign_initialized (genesis is
+// server-side only). Seed the way production does (seed-vault.ts).
+async function seedGenesis(
+  mod: VaultModule,
+  characters: Array<Record<string, unknown>>,
+): Promise<void> {
+  const envelope = {
+    id: crypto.randomUUID(),
+    version: mod.EVENT_SCHEMA_VERSION,
+    type: 'campaign_initialized' as const,
+    payload: { characters },
+    timestamp: new Date().toISOString(),
+  };
+  await mod.EventsWriter.applyEvent(mod.eventsPath(CAMPAIGN_UUID), envelope as never);
+  await mod.regenerateAffectedViews(CAMPAIGN_UUID, envelope as never);
+}
+
 async function seedAragorn(mod: VaultModule, hpMax = 30, hpCurrent = 30): Promise<void> {
-  const seed = await mod.dispatchVaultTool(
-    'apply_event',
-    {
-      type: 'campaign_initialized',
-      payload: {
-        characters: [
-          { id: CHAR_UUID, name: 'Aragorn', hp_max: hpMax, hp_current: hpCurrent },
-        ],
-      },
-    },
-    { campaignId: CAMPAIGN_UUID },
-  );
-  if (seed.isError) throw new Error('seed failed: ' + seed.content);
+  await seedGenesis(mod, [
+    { id: CHAR_UUID, name: 'Aragorn', hp_max: hpMax, hp_current: hpCurrent },
+  ]);
 }
 
 describe('apply_event end-to-end integration', () => {
@@ -303,20 +316,10 @@ describe('apply_event end-to-end integration', () => {
   describe('multi-character isolation', () => {
     it('mutating one character does not bleed into another', async () => {
       // Re-seed with TWO characters (uses a fresh campaignsRoot scope).
-      const seed = await mod.dispatchVaultTool(
-        'apply_event',
-        {
-          type: 'campaign_initialized',
-          payload: {
-            characters: [
-              { id: CHAR_UUID, name: 'Aragorn', hp_max: 30, hp_current: 30 },
-              { id: CHAR_UUID_2, name: 'Legolas', hp_max: 25, hp_current: 25 },
-            ],
-          },
-        },
-        { campaignId: CAMPAIGN_UUID },
-      );
-      expect(seed.isError).toBe(false);
+      await seedGenesis(mod, [
+        { id: CHAR_UUID, name: 'Aragorn', hp_max: 30, hp_current: 30 },
+        { id: CHAR_UUID_2, name: 'Legolas', hp_max: 25, hp_current: 25 },
+      ]);
 
       await mod.dispatchVaultTool(
         'apply_event',
