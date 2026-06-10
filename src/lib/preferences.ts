@@ -88,6 +88,26 @@ function envDefaultProvider(): ProviderName {
   return 'anthropic';
 }
 
+/**
+ * 2026-06-10 live incident — turn-time enforcement of the validated pool.
+ *
+ * The selection-time whitelist (validateSettingsPatch) cannot fix campaigns
+ * that stored a non-validated model BEFORE it existed: the turn route kept
+ * USING the stored gemma4:12b-mlx, which melted down on a narration-only
+ * combat turn (155s eval, empty content, hallucinated tool calls). Stored
+ * local models are therefore sanitized at READ time: baked variants and
+ * whitelisted families pass through; anything else resolves to the
+ * env/validated default (the stored value is left untouched in the DB so
+ * the user can see and change it in Settings).
+ */
+export function sanitizeLocalMasterModel(stored: string | null | undefined): string {
+  if (stored && (isBakedModel(stored) || matchesLlmWhitelist(stored))) return stored;
+  if (stored) {
+    console.warn(`[preferences] stored local master model '${stored}' is not in the validated pool — using the default instead`);
+  }
+  return envDefaultMasterModel('local');
+}
+
 export function envDefaultMasterModel(provider: ProviderName): string {
   // Local default: OLLAMA_MASTER_MODEL env, else the spike-validated primary.
   // Never the empty string — a campaign whose host never picked a model used
@@ -308,7 +328,9 @@ export async function getUserPreferences(userId: string): Promise<UserPreference
 export async function getResolvedPreferences(userId: string): Promise<Required<UserPreferences>> {
   const prefs = await getUserPreferences(userId);
   const provider = resolveLocalAiProvider(prefs.aiProvider);
-  const masterModel = prefs.aiMasterModel ?? envDefaultMasterModel(provider);
+  const masterModel = provider === 'local'
+    ? sanitizeLocalMasterModel(prefs.aiMasterModel)
+    : prefs.aiMasterModel ?? envDefaultMasterModel(provider);
   const imageGenerationEnabled = prefs.imageGenerationEnabled ?? DEFAULT_PREFERENCES.imageGenerationEnabled;
   const imageStylePreset = prefs.imageStylePreset ?? DEFAULT_PREFERENCES.imageStylePreset;
   const imageStyleCustom = prefs.imageStyleCustom ?? DEFAULT_PREFERENCES.imageStyleCustom;
@@ -453,7 +475,9 @@ export async function getCampaignSettings(
 ): Promise<Required<CampaignSettings>> {
   const prefs = await getCampaignSettingsRaw(campaignId);
   const provider = resolveLocalAiProvider(prefs.aiProvider);
-  const masterModel = prefs.aiMasterModel ?? envDefaultMasterModel(provider);
+  const masterModel = provider === 'local'
+    ? sanitizeLocalMasterModel(prefs.aiMasterModel)
+    : prefs.aiMasterModel ?? envDefaultMasterModel(provider);
   const imageGenerationEnabled = prefs.imageGenerationEnabled ?? DEFAULT_PREFERENCES.imageGenerationEnabled;
   const imageStylePreset = prefs.imageStylePreset ?? DEFAULT_PREFERENCES.imageStylePreset;
   const imageStyleCustom = prefs.imageStyleCustom ?? DEFAULT_PREFERENCES.imageStyleCustom;

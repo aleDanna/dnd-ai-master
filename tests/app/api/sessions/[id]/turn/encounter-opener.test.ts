@@ -274,3 +274,20 @@ describe('runEncounterOpener — initiative includes the PC DEX modifier (2026-0
     expect(order[0]!.initiative).toBe(11); // monster first (D&D 5e: highest acts first)
   });
 });
+
+describe('extractMonsterName — Italian clitic pronouns (2026-06-10 live incident)', () => {
+  it('"li attacco" yields no junk name (the clitic is not a monster)', () => {
+    // Live log: extractMonsterName('li attacco') returned 'li' → bestiary
+    // miss → opener skipped → the whole combat fell to the weak model.
+    expect(extractMonsterName('li attacco')).toBe('Unknown Enemy');
+    expect(extractMonsterName('lo attacco con la spada')).not.toBe('lo');
+    // 'difendo' is not an attack verb so it survives as the candidate —
+    // the bestiary junk-guard rejects it downstream; the clitics must not win.
+    expect(extractMonsterName('mi difendo e li colpisco')).not.toMatch(/^(li|mi)$/);
+  });
+
+  it('regression: real targets still extract', () => {
+    expect(extractMonsterName('attacco i goblin')).toBe('goblin');
+    expect(extractMonsterName('attacco il Goblin')).toBe('Goblin');
+  });
+});

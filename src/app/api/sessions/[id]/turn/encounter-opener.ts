@@ -334,7 +334,11 @@ export function extractMonsterName(msg: string): string {
     // stripped alongside the Italian set, since detectCombatIntent matches
     // English attack verbs too ("attack the goblin" must not yield "the").
     .replace(
-      /\b(attacc\w*|colpisc\w*|colpir\w*|combatt\w*|ingagg\w*|sferr\w*|assal\w*|scagli\w*|menar\w*|pugn\w*|calci\w*|affront\w*|carica|uccid\w*|ammazz\w*|attack\w*|strik\w*|fight\w*|punch\w*|engage\w*|slash\w*|stab\w*|il|lo|la|un|uno|una|i|gli|le|con|a|ad|the|an)\b/gi,
+      // 2026-06-10 live incident: Italian CLITIC pronouns (li/mi/ti/ci/vi/
+      // si/ne) joined the strip set — "li attacco" used to yield "li" as the
+      // monster name (bestiary miss → opener skipped → the whole combat fell
+      // to the LLM). lo/la/le double as articles and were already stripped.
+      /\b(attacc\w*|colpisc\w*|colpir\w*|combatt\w*|ingagg\w*|sferr\w*|assal\w*|scagli\w*|menar\w*|pugn\w*|calci\w*|affront\w*|carica|uccid\w*|ammazz\w*|attack\w*|strik\w*|fight\w*|punch\w*|engage\w*|slash\w*|stab\w*|il|lo|la|un|uno|una|i|gli|le|li|mi|ti|ci|vi|si|ne|con|a|ad|the|an)\b/gi,
       ' ',
     )
     .replace(/\s+/g, ' ')

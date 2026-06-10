@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { validateSettingsPatch, envDefaultMasterModel } from '@/lib/preferences';
+import { validateSettingsPatch, envDefaultMasterModel, sanitizeLocalMasterModel } from '@/lib/preferences';
 
 describe('validateSettingsPatch — local provider gating', () => {
   beforeEach(() => {
@@ -118,5 +118,32 @@ describe('validateSettingsPatch — compactPrompt (Plan C)', () => {
     expect(r.ok).toBe(false);
     if (r.ok) throw new Error('expected validation failure');
     expect(r.error).toBe('invalid-compactPrompt');
+  });
+});
+
+describe('sanitizeLocalMasterModel — turn-time enforcement (2026-06-10 live incident)', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('a stored non-whitelisted model (gemma4:12b-mlx) resolves to the validated default', () => {
+    // The selection-time whitelist cannot fix campaigns that stored gemma
+    // BEFORE it existed: the campaign screen kept showing (and the turn
+    // route kept USING) gemma4:12b-mlx, which melted down on the
+    // narration-only damage-roll turn (155s, empty content, 2 hallucinated
+    // tool calls). Stored-but-invalid models must be overridden at READ time.
+    expect(sanitizeLocalMasterModel('gemma4:12b-mlx')).toBe('qwen3:30b-a3b-instruct-2507-q4_K_M');
+    expect(sanitizeLocalMasterModel('llama3.2:3b')).toBe('qwen3:30b-a3b-instruct-2507-q4_K_M');
+  });
+
+  it('whitelisted and baked models pass through unchanged', () => {
+    expect(sanitizeLocalMasterModel('qwen3:30b-a3b-instruct-2507-q4_K_M')).toBe('qwen3:30b-a3b-instruct-2507-q4_K_M');
+    expect(sanitizeLocalMasterModel('qwen3:30b-a3b')).toBe('qwen3:30b-a3b');
+    expect(sanitizeLocalMasterModel('mistral-small3.2:24b')).toBe('mistral-small3.2:24b');
+    expect(sanitizeLocalMasterModel('dnd-master-plus')).toBe('dnd-master-plus');
+  });
+
+  it('unset falls back to OLLAMA_MASTER_MODEL, then the validated primary', () => {
+    expect(sanitizeLocalMasterModel(undefined)).toBe('qwen3:30b-a3b-instruct-2507-q4_K_M');
+    vi.stubEnv('OLLAMA_MASTER_MODEL', 'qwen3:30b-a3b-instruct-2507');
+    expect(sanitizeLocalMasterModel(undefined)).toBe('qwen3:30b-a3b-instruct-2507');
   });
 });

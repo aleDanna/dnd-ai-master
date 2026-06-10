@@ -58,3 +58,56 @@ describe('runVaultToolLoop — offerTools gate (begin-turn empty-response fix)',
     expect(result.finalText).toBe('La scena si apre…');
   });
 });
+
+// ─── 2026-06-10 live incident: hallucinated tool calls on a NO-TOOLS turn ───
+//
+// gemma4:12b-mlx, narration-only damage-roll turn (tools=0): 155s of CoT,
+// content.len=0, tool_calls=2. The loop DISPATCHED the hallucinated calls
+// (a narration-only turn could even mutate events.md) and counted them in
+// toolCallCount — which suppressed the empty-narration retry, surfacing
+// "il master non ha prodotto risposta" to the player.
+// Contract: offerTools:false ⇒ tool calls are NEVER dispatched and NEVER
+// counted; a non-empty end_turn.response is still rescued as narration;
+// the turn terminates after one provider pass.
+
+describe('runVaultToolLoop — hallucinated tool calls on a no-tools turn', () => {
+  it('drops hallucinated tool calls: no dispatch, toolCallCount 0, single provider pass', async () => {
+    const completeMessage = vi.fn(async () => ({
+      contentBlocks: [
+        { type: 'tool_use', id: 't1', name: 'apply_event', input: { type: 'hp_change', payload: { character: 'x', delta: -5 } } },
+        { type: 'tool_use', id: 't2', name: 'list_vault', input: { path: '/' } },
+      ],
+      stopReason: 'tool_use',
+      usage: { inputTokens: 10, outputTokens: 5 },
+    }));
+    const provider = { completeMessage } as unknown as MasterProvider;
+    const result = await runVaultToolLoop({
+      provider,
+      systemBlocks: [{ type: 'text', text: 'sys' }],
+      history: [{ role: 'user', content: '🎲 I rolled **18** for 1d20+3 (attaccare Veyra) (15+3).' }],
+      offerTools: false,
+    });
+    expect(completeMessage).toHaveBeenCalledTimes(1);
+    expect(result.toolCallCount).toBe(0);
+    expect(result.events).toEqual([]);
+  });
+
+  it('still rescues a non-empty end_turn.response as narration', async () => {
+    const completeMessage = vi.fn(async () => ({
+      contentBlocks: [
+        { type: 'tool_use', id: 't1', name: 'end_turn', input: { response: 'La lama affonda nel fianco del golem.' } },
+      ],
+      stopReason: 'tool_use',
+      usage: { inputTokens: 10, outputTokens: 5 },
+    }));
+    const provider = { completeMessage } as unknown as MasterProvider;
+    const result = await runVaultToolLoop({
+      provider,
+      systemBlocks: [{ type: 'text', text: 'sys' }],
+      history: [{ role: 'user', content: 'guardo' }],
+      offerTools: false,
+    });
+    expect(result.finalText).toBe('La lama affonda nel fianco del golem.');
+    expect(result.toolCallCount).toBe(0);
+  });
+});

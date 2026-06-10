@@ -368,6 +368,24 @@ export async function runVaultToolLoop(input: VaultLoopInput): Promise<VaultLoop
       break;
     }
 
+    // 2026-06-10 live incident — a NO-TOOLS turn can still receive
+    // hallucinated tool calls (gemma4:12b-mlx: 155s eval, empty content,
+    // 2 tool_calls with tools:[] in the request). They must NOT be
+    // dispatched (a narration-only turn must never mutate state) and must
+    // NOT count toward toolCallCount (the route's empty-narration retry
+    // gate reads it — counting them suppressed the retry and surfaced
+    // "il master non ha prodotto risposta" to the player). A hallucinated
+    // end_turn was already rescued by Terminator 2 above; anything else
+    // ends the turn with whatever narration accumulated.
+    if (offeredTools.length === 0 && toolUses.length > 0) {
+      console.warn(
+        '[vault-loop] dropped', toolUses.length,
+        'hallucinated tool call(s) on a no-tools turn:',
+        toolUses.map((t) => t.name).join(','),
+      );
+      break;
+    }
+
     // Tool-cap check (count tool_uses against the cap BEFORE incrementing).
     if (toolCallCount + toolUses.length > toolCallCap) {
       truncated = true;
