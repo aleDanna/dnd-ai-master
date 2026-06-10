@@ -3,18 +3,20 @@ import { rollDice } from './dice';
 import { abilityModifier } from './modifiers';
 import { defaultRng, type Rng } from './rand';
 
-// Features that recharge on a short rest. Conservative list; more are added in Plan D.
+// Features that recharge on a short rest — rules.md §14 "Per Short or Long
+// Rest": Action Surge, Channel Divinity, Ki, Bardic Inspiration (level 5+),
+// Second Wind. (The previous ACTUALLY_LONG_REST override wrongly held back
+// action_surge: PHB Fighter — "you must finish a short or long rest before
+// you can use it again" — fixed in the 2026-06-10 audit.)
 const SHORT_REST_RECHARGES = new Set([
   'second_wind',
-  'action_surge',     // actually long-rest in 5e RAW; check level (Fighter regains at SR from level 17). Default: long-rest.
+  'action_surge',
   'channel_divinity',
   'ki',
   'arcane_recovery',
   'song_of_rest',
   'bardic_inspiration',
 ]);
-// Override: action_surge is technically long-rest at lower levels. Keep simple in Plan B:
-const ACTUALLY_LONG_REST = new Set(['action_surge']);
 
 export interface ShortRestInput {
   char: Character;
@@ -46,7 +48,9 @@ export function shortRest(input: ShortRestInput, rng: Rng = defaultRng): ActionR
   // Recharge short-rest resources
   for (const f of input.char.features) {
     if (!SHORT_REST_RECHARGES.has(f.slug)) continue;
-    if (ACTUALLY_LONG_REST.has(f.slug)) continue;
+    // Bardic Inspiration recharges on a short rest only from level 5
+    // (Font of Inspiration — rules.md §14 "Bardic Inspiration (level 5+)").
+    if (f.slug === 'bardic_inspiration' && input.char.level < 5) continue;
     const used = input.runtime.resourcesUsed?.[f.slug] ?? 0;
     if (used > 0) {
       mutations.push({ op: 'restore_resource', actorId: input.runtime.actorId, featureSlug: f.slug, amount: used });

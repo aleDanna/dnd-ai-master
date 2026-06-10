@@ -39,13 +39,31 @@ describe('shortRest', () => {
     expect(r.error).toBe('not_enough_hit_dice');
   });
 
-  it('does NOT restore long-rest-only resources (action_surge)', () => {
+  it('restores Action Surge on a short rest (rules.md §14 "Per Short or Long Rest" — 2026-06-10 audit)', () => {
+    // The previous assertion enforced the opposite, based on a wrong code
+    // comment. PHB Fighter: "you must finish a short or long rest before you
+    // can use it again" — Action Surge IS a short-rest recharge.
     const r = shortRest({ char: fighter, runtime: fighterRuntime, hitDiceSpent: 0 }, makeSeededRng(1));
     expect(r.ok).toBe(true);
-    // second_wind restores; action_surge does not (long-rest only)
     const restoresOf = (slug: string) => r.mutations.filter((m) => m.op === 'restore_resource' && (m as { featureSlug: string }).featureSlug === slug);
     expect(restoresOf('second_wind').length).toBe(1);
-    expect(restoresOf('action_surge').length).toBe(0);
+    expect(restoresOf('action_surge').length).toBe(1);
+  });
+
+  it('Bardic Inspiration recharges on a short rest only from level 5 (Font of Inspiration)', () => {
+    const bard = (level: number): Character => ({
+      ...fighter, id: 'bard1', classSlug: 'bard', level,
+      features: [{ slug: 'bardic_inspiration', source: 'class', usesMax: 3, description: 'Bardic inspiration' }],
+    });
+    const bardRuntime: ActorRuntimeState = { ...fighterRuntime, actorId: 'bard1', resourcesUsed: { bardic_inspiration: 2 } };
+    const restoresIn = (r: ReturnType<typeof shortRest>) =>
+      r.mutations.filter((m) => m.op === 'restore_resource' && (m as { featureSlug: string }).featureSlug === 'bardic_inspiration');
+
+    const lvl4 = shortRest({ char: bard(4), runtime: bardRuntime, hitDiceSpent: 0 }, makeSeededRng(1));
+    expect(restoresIn(lvl4).length).toBe(0);
+
+    const lvl5 = shortRest({ char: bard(5), runtime: bardRuntime, hitDiceSpent: 0 }, makeSeededRng(1));
+    expect(restoresIn(lvl5).length).toBe(1);
   });
 });
 

@@ -91,7 +91,7 @@ describe('full rest cycle', () => {
     expect(state.runtime.pc1!.hpCurrent).toBeGreaterThan(30);
   });
 
-  it('action_surge does NOT restore on short rest (long-rest only in Plan B)', () => {
+  it('action_surge restores on short rest (rules.md §14 — 2026-06-10 audit)', () => {
     let state: EngineState = {
       characters: [fighter],
       combatActors: [],
@@ -105,7 +105,10 @@ describe('full rest cycle', () => {
     const restR = TOOL_HANDLERS['short_rest']!(state, { actor: 'player_character', hitDiceSpent: 0 });
     expect(restR.ok).toBe(true);
     state = applyAll(state, restR.mutations);
-    expect(state.runtime.pc1!.resourcesUsed!.action_surge).toBe(1);   // still used
+    // 2026-06-10 audit: Action Surge recharges on a SHORT rest (rules.md §14
+    // "Per Short or Long Rest"; PHB Fighter). The old Plan-B assertion
+    // (long-rest only) enforced a rule violation.
+    expect(state.runtime.pc1!.resourcesUsed!.action_surge).toBe(0);   // restored
 
     // long_rest is a DB-handler in Phase 4 (it reads session_state for the
     // §5.2 24h cooldown); call the pure engine function directly here.
