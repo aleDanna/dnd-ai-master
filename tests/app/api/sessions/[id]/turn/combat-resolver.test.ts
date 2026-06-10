@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { EncounterState } from '@/ai/master/vault/projector';
-import { resolveCombat, enforceResolvedNarration, canonicalizeToHitTarget, stripLeakedMechanics, isNarrationOnlyTurn, parseAttackRollTarget } from '@/app/api/sessions/[id]/turn/combat-resolver';
+import { resolveCombat, enforceResolvedNarration, canonicalizeToHitTarget, stripLeakedMechanics, isNarrationOnlyTurn, parseAttackRollTarget, shouldRetryEmptyNarration } from '@/app/api/sessions/[id]/turn/combat-resolver';
 import { parseRollRequests } from '@/lib/roll-parser';
 
 /**
@@ -855,5 +855,28 @@ describe('parseAttackRollTarget — master-initiated combat opener target extrac
   it('returns null for a non-roll message', () => {
     expect(parseAttackRollTarget('mi avvicino al rumore')).toBeNull();
     expect(parseAttackRollTarget('')).toBeNull();
+  });
+});
+
+describe('shouldRetryEmptyNarration (2026-06-10 audit — double-apply guard)', () => {
+  const base = { finalText: '', toolCallCount: 0, resolverFired: false, monsterLoopRan: false, openerRan: false };
+
+  it('retries on a GENUINE empty: no text, no tool calls, no server combat events', () => {
+    expect(shouldRetryEmptyNarration(base)).toBe(true);
+  });
+
+  it('does NOT retry when the first pass dispatched tool calls — the mutations are already persisted in events.md, and a re-run would re-emit them (double damage / double slot use)', () => {
+    expect(shouldRetryEmptyNarration({ ...base, toolCallCount: 2 })).toBe(false);
+  });
+
+  it('does NOT retry when text was produced', () => {
+    expect(shouldRetryEmptyNarration({ ...base, finalText: 'La scena…' })).toBe(false);
+    expect(shouldRetryEmptyNarration({ ...base, finalText: '   \n' })).toBe(true);
+  });
+
+  it('does NOT retry on server-resolved turns (resolver / monster loop / opener)', () => {
+    expect(shouldRetryEmptyNarration({ ...base, resolverFired: true })).toBe(false);
+    expect(shouldRetryEmptyNarration({ ...base, monsterLoopRan: true })).toBe(false);
+    expect(shouldRetryEmptyNarration({ ...base, openerRan: true })).toBe(false);
   });
 });

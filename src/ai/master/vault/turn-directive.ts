@@ -67,6 +67,25 @@ export interface TurnDirectiveOpts {
    * the combat re-asks are; the server injects its own narration directive.
    */
   monsterResolved?: boolean;
+  /**
+   * 2026-06-10 audit — TRUE on the campaign-opener turn. The begin user
+   * message is a SYSTEM-AUTHORED instruction, not a player message, and its
+   * text intrinsically trips COMBAT_INTENT_RE (the IT instruction forbids
+   * combat with the words "combattimento"/"attaccare"/"affrontare") — which
+   * used to inject the STRONG "DEVI usare apply_event" order on a turn where
+   * the route passes zero tools. On the opener the begin instruction is
+   * self-contained: no directive at all.
+   */
+  isBegin?: boolean;
+  /**
+   * 2026-06-10 audit — TRUE when the route will NOT offer tools this turn
+   * (weak-tool model, begin, or server-owned combat turn). The directive
+   * must then never order apply_event calls the dispatcher cannot honor —
+   * a model ordered to call tools it does not have writes the call as
+   * literal text into the narration. Roll-request lines stay valid: roll
+   * chips are parsed from TEXT by the roll-parser, not from tool calls.
+   */
+  narrationOnly?: boolean;
 }
 
 /**
@@ -130,9 +149,17 @@ export function isCombatDeclaration(playerMessage?: string): boolean {
  *   4. Roll line (only when manualRolls)
  */
 export function buildTurnDirective(opts: TurnDirectiveOpts): string | null {
-  const { vaultMutations, manualRolls, playerMessage, serverResolved, monsterResolved } = opts;
+  const { vaultMutations, manualRolls, playerMessage, serverResolved, monsterResolved, isBegin, narrationOnly } = opts;
 
   if (!vaultMutations && !manualRolls) {
+    return null;
+  }
+
+  // Begin turn: the begin instruction is system-authored and self-contained
+  // (POV, no-combat, no-roll guidance is already in its text). Any directive
+  // here is noise at best; at worst the instruction text itself trips
+  // COMBAT_INTENT_RE and injects a tool order on a tool-less turn.
+  if (isBegin) {
     return null;
   }
 
@@ -154,10 +181,15 @@ export function buildTurnDirective(opts: TurnDirectiveOpts): string | null {
     r.push('');
     r.push('Il numero in grassetto è il totale del tiro. NON chiederlo di nuovo, NON ripetere la stessa richiesta di tiro.');
     r.push('Risolvi l\'azione con quel numero e narra l\'esito in seconda persona ("tu").');
-    if (vaultMutations) {
+    if (vaultMutations && !narrationOnly) {
       r.push('Se era un tiro PER COLPIRE: confronta il totale con la CA del bersaglio (vedi combat.md). Se colpisce, chiedi il tiro per i danni ("Tira <XdY+bonus> danni"); se manca, narra il mancato.');
       r.push('Se era un tiro PER I DANNI: chiama apply_event con monster_hp_change (id del bersaglio, delta negativo).');
       r.push('Quando l\'azione del turno è conclusa, chiama apply_event con turn_advance per passare al turno successivo.');
+    }
+    if (narrationOnly) {
+      // Tool-less turn: the server owns the mechanics. The model must only
+      // narrate — never write tool calls, event names, or JSON as text.
+      r.push('Non scrivere MAI chiamate a strumenti, nomi di eventi o JSON nel testo: solo narrazione.');
     }
     return r.join('\n');
   }
@@ -181,7 +213,12 @@ export function buildTurnDirective(opts: TurnDirectiveOpts): string | null {
   // monster_hp_change / hp_change / turn_advance events; re-asking the model to
   // emit combat_start / monster_spawn / monster_hp_change / turn_advance here
   // would re-ask the very events the loop dropped (double-apply, T-09-15).
-  if (!serverResolved && !monsterResolved && vaultMutations && detectCombatIntent(playerMessage)) {
+  // 2026-06-10 audit: also gated on `!narrationOnly` — this directive ORDERS
+  // apply_event calls, which is a contradiction on a turn where the route
+  // passes zero tools (the model writes the calls as literal text instead).
+  // On narration-only combat turns the server owns the mechanics; fall
+  // through to the general directive (POV + anti-leak).
+  if (!serverResolved && !monsterResolved && !narrationOnly && vaultMutations && detectCombatIntent(playerMessage)) {
     return [
       '[ISTRUZIONE PRIORITARIA — il giocatore sta attaccando]',
       '',
@@ -222,13 +259,21 @@ export function buildTurnDirective(opts: TurnDirectiveOpts): string | null {
   // events the loop dropped (double-apply, T-09-15). The POV line still anchors
   // 2nd-person narration; the server's narration directive carries the combat
   // semantics for that turn.
-  if (vaultMutations && !serverResolved && !monsterResolved) {
+  // 2026-06-10 audit: the apply_event catalog is also gated on `!narrationOnly`
+  // — on a tool-less turn the model cannot honor it and writes the calls as
+  // literal text into the narration instead.
+  if (vaultMutations && !serverResolved && !monsterResolved && !narrationOnly) {
     lines.push('Quando lo stato di gioco cambia (danni, condizioni, inizio/fine scontro,');
     lines.push('turni in combattimento), USA apply_event — non limitarti alla narrazione.');
     lines.push('Tipi di evento per il combattimento:');
     lines.push('  combat_start, monster_spawn, initiative_set,');
     lines.push('  monster_hp_change, turn_advance, combat_end.');
     lines.push('Ogni cambiamento di stato DEVE passare per apply_event, poi narra il risultato.');
+    lines.push('');
+  }
+  if (vaultMutations && narrationOnly) {
+    lines.push('Questo turno è SOLO narrazione: il sistema gestisce le meccaniche.');
+    lines.push('Non scrivere MAI chiamate a strumenti, nomi di eventi o JSON nel testo.');
     lines.push('');
   }
 

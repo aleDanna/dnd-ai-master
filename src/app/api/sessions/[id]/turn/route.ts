@@ -34,7 +34,7 @@ import { computeTurnAdvance, detectAddressee } from '@/multiplayer/turn-advance'
 import { notifySession } from '@/sessions/notify';
 import { checkPartyAccess } from '@/multiplayer/access';
 import { resolveCombatHandoff } from './combat-handoff';
-import { resolveCombat, enforceResolvedNarration, canonicalizeToHitTarget, stripLeakedMechanics, isNarrationOnlyTurn, parseAttackRollTarget, type ResolveCombatResult } from './combat-resolver';
+import { resolveCombat, enforceResolvedNarration, canonicalizeToHitTarget, stripLeakedMechanics, isNarrationOnlyTurn, parseAttackRollTarget, shouldRetryEmptyNarration, type ResolveCombatResult } from './combat-resolver';
 import { runMonsterTurnLoop } from './monster-turns';
 import { getBestiaryAttackStats, getBestiaryStatblock } from './monster-bestiary';
 import { runEncounterOpener, extractMonsterName } from './encounter-opener';
@@ -645,6 +645,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // below) carries the combat semantics instead. When the resolver did NOT
           // fire (_resolver === null → serverResolved false), directive behavior is
           // byte-identical to Phase 07.
+          // 2026-06-10 audit — compute the narration-only decision ONCE, before
+          // the directive build, so the directive and the tool surface can never
+          // contradict each other: the directive used to order apply_event calls
+          // on turns where the loop received zero tools (the model then wrote the
+          // calls as literal text), and the begin instruction text itself tripped
+          // detectCombatIntent ("NON iniziare un combattimento…" contains the
+          // very stems the regex matches).
+          const vaultMasterModel = userPrefs.aiMasterModel;
+          const _narrationOnly =
+            isWeakToolModel(vaultMasterModel)
+            || isNarrationOnlyTurn({
+              isBegin,
+              vaultMutationsEnabled,
+              encounterActive: _encounterActive,
+              isCombatDeclaration: isCombatDeclaration(_playerMessage),
+              isRollResult: isRollResult(_playerMessage),
+              resolverFired: _resolver !== null,
+              monsterLoopRan: _monsterLoopRan,
+            });
           const _directive = buildTurnDirective({
             vaultMutations: vaultMutationsEnabled,
             manualRolls: userPrefs.manualRolls,
@@ -656,6 +675,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             // directives (mirrors serverResolved). The combined monster directive
             // injected below governs the narration instead.
             monsterResolved: _monsterLoopRan,
+            isBegin,
+            narrationOnly: _narrationOnly,
           });
           if (_directive !== null) {
             // Vault history elements always have string content (built by the
@@ -695,9 +716,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             ) as typeof vaultHistory;
           }
 
-          // 6v. Run vault tool loop.
+          // 6v. Run vault tool loop. (vaultMasterModel hoisted above the
+          // directive build so the narration-only decision is computed once.)
           const vaultProvider = getProviderByName(userPrefs.aiProvider);
-          const vaultMasterModel = userPrefs.aiMasterModel;
           // eslint-disable-next-line no-console
           console.log('[turn]', sessionId, 'vault path: model=', vaultMasterModel, 'tools=', VAULT_TOOL_DEFINITIONS.length);
           const _vaultLoopInput: Parameters<typeof runVaultToolLoop>[0] = {
@@ -721,17 +742,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             // Weak-tool models (gemma) leak markerless CoT / melt down whenever
             // handed the tool surface — on ANY turn, not just combat. Force them
             // narration-only everywhere; the server owns all combat mechanics.
-            ...((isWeakToolModel(vaultMasterModel)
-                || isNarrationOnlyTurn({
-                  isBegin,
-                  vaultMutationsEnabled,
-                  encounterActive: _encounterActive,
-                  isCombatDeclaration: isCombatDeclaration(_playerMessage),
-                  isRollResult: isRollResult(_playerMessage),
-                  resolverFired: _resolver !== null,
-                  monsterLoopRan: _monsterLoopRan,
-                }))
-              && { offerTools: false }),
+            // (_narrationOnly computed once above, shared with the directive
+            // build — the two can never contradict each other.)
+            ...(_narrationOnly && { offerTools: false }),
             // Phase 02 — only forward campaignId when the vaultMutations gate
             // is true. Without it, dispatchVaultTool('apply_event', ...) returns
             // isError on any LLM hallucination, preserving Phase 01 read-only
@@ -788,8 +801,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // with 0 messages). Retry the loop ONCE on a GENUINE empty: no server
           // combat events fired this turn (a resolver/opener/monster turn can
           // legitimately narrate empty and is handled by the empty-narration guard
-          // below — retrying those would risk double-narrating a resolved beat).
-          if (!vaultResult.finalText.trim() && _resolver === null && !_monsterLoopRan && !openerRan) {
+          // below — retrying those would risk double-narrating a resolved beat)
+          // AND no tool calls were dispatched (2026-06-10 audit: a pass that
+          // dispatched apply_event has already persisted mutations to events.md;
+          // re-running the identical input re-emits them → double-apply).
+          if (shouldRetryEmptyNarration({
+            finalText: vaultResult.finalText,
+            toolCallCount: vaultResult.toolCallCount,
+            resolverFired: _resolver !== null,
+            monsterLoopRan: _monsterLoopRan,
+            openerRan,
+          })) {
             console.warn('[turn]', sessionId, 'empty narration — retrying the master loop once');
             vaultResult = await runVaultToolLoop(_vaultLoopInput);
           }
@@ -870,6 +892,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                   _ft = (detectCombatIntent(_playerMessage) && !isRollResult(_playerMessage))
                     ? canonicalizeToHitTarget(_ft, _playerMessage, _declEnc)
                     : stripLeakedMechanics(_ft);
+                } else {
+                  // 2026-06-10 audit: leaked tool-call text is not exclusive to
+                  // active encounters — a narration-only turn with no encounter
+                  // (e.g. a model writing apply_event prose after a forbidden
+                  // combat attempt) used to persist the leak verbatim. The strip
+                  // is line-based and conservative; safe outside combat too.
+                  _ft = stripLeakedMechanics(_ft);
                 }
               } catch (err) {
                 // D-10: a read/replay error falls through to the unmodified text.

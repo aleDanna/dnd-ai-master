@@ -347,7 +347,11 @@ export async function runVaultToolLoop(input: VaultLoopInput): Promise<VaultLoop
         sessionId,
         characterId: extractCharacterIdFromToolInput('end_turn', endTurnCall.input),
       });
-      finalText = result.endTurnResponse ?? finalText;
+      // Prefer a NON-EMPTY end_turn response. A model calling end_turn{}
+      // (no args — a common weak-model shape) yields endTurnResponse '',
+      // which must not wipe the narration accumulated (and already
+      // streamed to the client) in earlier iterations.
+      finalText = result.endTurnResponse?.trim() ? result.endTurnResponse : finalText;
       emit({
         type: 'tool_use_start',
         toolUseId: endTurnCall.id,

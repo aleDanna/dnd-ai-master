@@ -115,6 +115,33 @@ export function isNarrationOnlyTurn(input: {
   );
 }
 
+/**
+ * 2026-06-10 audit — gate for the route's one-shot empty-narration retry.
+ *
+ * A retry is safe ONLY on a GENUINE empty pass: no narration, no tool calls,
+ * no server-side combat events. A pass that dispatched tool calls has already
+ * persisted LLM mutations into events.md (hp_change, spell_slot_use, …);
+ * re-running the identical loop input makes the model re-emit the same
+ * apply_event calls — and events are append-only with fresh UUIDs, so the
+ * mutation applies TWICE. Server-resolved turns (resolver/opener/monster
+ * loop) are excluded for the same reason on the server side.
+ */
+export function shouldRetryEmptyNarration(input: {
+  finalText: string;
+  toolCallCount: number;
+  resolverFired: boolean;
+  monsterLoopRan: boolean;
+  openerRan: boolean;
+}): boolean {
+  return (
+    !input.finalText.trim() &&
+    input.toolCallCount === 0 &&
+    !input.resolverFired &&
+    !input.monsterLoopRan &&
+    !input.openerRan
+  );
+}
+
 /** Parsed numeric + dice shape of a rendered roll-result string. */
 interface ParsedRoll {
   total: number;

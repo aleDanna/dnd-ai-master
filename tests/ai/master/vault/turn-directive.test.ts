@@ -458,3 +458,91 @@ describe('isCombatDeclaration', () => {
     expect(isCombatDeclaration(undefined)).toBe(false);
   });
 });
+
+// ─── 2026-06-10 audit: begin-turn + narration-only gating ───────────────────
+//
+// HANDOFF §2e.5 contradiction class, reintroduced via the directive: the
+// BEGIN instruction text itself contains "combattimento"/"attaccare"/
+// "affrontare" (it FORBIDS combat on the opener), which trips
+// COMBAT_INTENT_RE — so every mutations-enabled vault opener got the STRONG
+// "[il giocatore sta attaccando] DEVI usare apply_event" order while the
+// route passed zero tools (offerTools:false). The directive builder is now
+// (a) skipped on isBegin and (b) aware of narrationOnly turns: it must never
+// order tool calls on a turn where the route offers no tools.
+
+describe('begin-turn gating (isBegin)', () => {
+  it('returns null on the begin turn regardless of message content', async () => {
+    const { buildBeginUserMessage } = await import('@/ai/master/begin-message');
+    for (const lang of ['it', 'en']) {
+      const begin = buildBeginUserMessage('Una premessa qualsiasi.', lang, { tonalMandate: false });
+      const d = buildTurnDirective({
+        vaultMutations: true,
+        manualRolls: true,
+        isBegin: true,
+        playerMessage: begin,
+      });
+      expect(d, lang).toBeNull();
+    }
+  });
+
+  it('documents the bug: the IT begin instruction text trips detectCombatIntent', async () => {
+    const { buildBeginUserMessage } = await import('@/ai/master/begin-message');
+    const begin = buildBeginUserMessage('Premessa.', 'it', { tonalMandate: false });
+    // This is WHY isBegin must be an explicit flag — text heuristics can
+    // never distinguish the opener instruction from a real attack message.
+    expect(detectCombatIntent(begin)).toBe(true);
+  });
+});
+
+describe('narrationOnly gating (tools not offered this turn)', () => {
+  it('combat intent does NOT produce the strong tool-ordering directive', () => {
+    const d = buildTurnDirective({
+      vaultMutations: true,
+      manualRolls: true,
+      narrationOnly: true,
+      playerMessage: 'Attacco il goblin con la spada',
+    });
+    expect(d).not.toBeNull();
+    expect(d!).not.toContain('apply_event');
+    expect(d!).not.toContain('combat_start');
+    expect(d!).not.toContain('il giocatore sta attaccando');
+  });
+
+  it('roll-result keeps the no-re-ask semantics WITHOUT tool orders', () => {
+    const d = buildTurnDirective({
+      vaultMutations: true,
+      manualRolls: true,
+      narrationOnly: true,
+      playerMessage: '🎲 I rolled **18** for 1d20+3 (attaccare Veyra) (15+3).',
+    });
+    expect(d).not.toBeNull();
+    expect(d!).toContain('NON chiederlo di nuovo');
+    expect(d!).not.toContain('apply_event');
+    expect(d!).not.toContain('monster_hp_change');
+    expect(d!).not.toContain('turn_advance');
+  });
+
+  it('general directive drops the apply_event catalog, keeps POV + roll lines, adds the anti-leak line', () => {
+    const d = buildTurnDirective({
+      vaultMutations: true,
+      manualRolls: true,
+      narrationOnly: true,
+      playerMessage: 'Esploro la stanza con attenzione',
+    });
+    expect(d).not.toBeNull();
+    expect(d!).toMatch(/seconda persona/);
+    expect(d!).toContain('Tira');
+    expect(d!).not.toContain('apply_event');
+    expect(d!).toMatch(/[Nn]on scrivere/);
+  });
+
+  it('regression: WITHOUT narrationOnly the strong combat directive still fires (probe-validated behavior)', () => {
+    const d = buildTurnDirective({
+      vaultMutations: true,
+      playerMessage: 'Attacco il goblin',
+    });
+    expect(d).not.toBeNull();
+    expect(d!).toContain('apply_event');
+    expect(d!).toContain('combat_start');
+  });
+});
