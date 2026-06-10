@@ -31,23 +31,28 @@ describe('fetchOllamaModels', () => {
     }), { status: 200 }));
 
     const r = await fetchOllamaModels();
-    // Curated baked (dnd-master-plus) + 3 raw generative bases; stale bakes hidden.
+    // Curated baked (dnd-master-plus) + whitelisted raw bases; stale bakes
+    // hidden. Since the 2026-06-10 model-governance audit the raw list is
+    // also gated on matchesLlmWhitelist: llama3.2:3b (and gemma4 et al.)
+    // are no longer selectable — the never-validated gemma4 experiment is
+    // what triggered the weak-tool hotfix cascade (commits 769029c..2aea307).
     expect(r.map((m) => m.slug).sort()).toEqual([
       'dnd-master-plus',
       'gpt-oss:20b',
-      'llama3.2:3b',
       'qwen3:30b-a3b',
     ]);
     expect(r.find((m) => m.slug === 'dnd-master-plus')?.kind).toBe('baked');
     expect(r.find((m) => m.slug === 'qwen3:30b-a3b')?.kind).toBe('raw');
     expect(r.map((m) => m.slug)).not.toContain('dnd-master-max');
     expect(r.map((m) => m.slug)).not.toContain('dnd-master-lite');
+    expect(r.map((m) => m.slug)).not.toContain('llama3.2:3b');
   });
 
-  it('excludes embedding models from the dropdown (bert family or `embed` name)', async () => {
+  it('excludes embedders AND non-validated families (gemma4) from the dropdown', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response(JSON.stringify({
       models: [
         { name: 'qwen3:30b-a3b',            details: { parameter_size: '30B', family: 'qwen3moe' } },
+        { name: 'mistral-small3.2:24b',     details: { parameter_size: '24B', family: 'mistral' } },
         { name: 'gemma4:latest',            details: { parameter_size: '8B', family: 'gemma4' } },
         { name: 'nomic-embed-text:latest',  details: { parameter_size: '137M', family: 'nomic-bert' } },
         { name: 'mxbai-embed-large:latest', details: { parameter_size: '335M', family: 'bert' } },
@@ -55,8 +60,9 @@ describe('fetchOllamaModels', () => {
     }), { status: 200 }));
 
     const r = await fetchOllamaModels();
-    expect(r.map((m) => m.slug).sort()).toEqual(['gemma4:latest', 'qwen3:30b-a3b']);
+    expect(r.map((m) => m.slug).sort()).toEqual(['mistral-small3.2:24b', 'qwen3:30b-a3b']);
     expect(r.map((m) => m.slug).join(',')).not.toMatch(/embed/);
+    expect(r.map((m) => m.slug)).not.toContain('gemma4:latest');
   });
 
   it('returns [] when fetch throws', async () => {

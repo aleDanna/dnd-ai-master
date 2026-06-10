@@ -30,7 +30,8 @@ import {
   isValidVoiceForModel,
   type TtsProvider,
 } from './tts-voices';
-import { isLocalEnvironment } from './local-services';
+import { isLocalEnvironment, matchesLlmWhitelist } from './local-services';
+import { isBakedModel } from '@/ai/master/baked-models';
 
 /**
  * True when the named local sub-engine is currently usable. Used by
@@ -87,8 +88,12 @@ function envDefaultProvider(): ProviderName {
   return 'anthropic';
 }
 
-function envDefaultMasterModel(provider: ProviderName): string {
-  if (provider === 'local') return '';
+export function envDefaultMasterModel(provider: ProviderName): string {
+  // Local default: OLLAMA_MASTER_MODEL env, else the spike-validated primary.
+  // Never the empty string — a campaign whose host never picked a model used
+  // to ship `model:''` to Ollama (400, failed turn) because no runtime
+  // caller overrode the '' placeholder.
+  if (provider === 'local') return process.env.OLLAMA_MASTER_MODEL || 'qwen3:30b-a3b-instruct-2507-q4_K_M';
   if (provider === 'openai') return process.env.OPENAI_MASTER_MODEL ?? 'gpt-5';
   if (provider === 'gemini') return process.env.GEMINI_MASTER_MODEL ?? 'gemini-2.5-pro';
   return process.env.ANTHROPIC_MASTER_MODEL ?? 'claude-sonnet-4-5';
@@ -631,6 +636,13 @@ export function validateSettingsPatch(
       }
       const resolvedProvider = out.aiProvider ?? body.aiProvider ?? stored?.aiProvider;
       if (resolvedProvider !== 'local' && !isKnownMasterModel(m)) {
+        return { ok: false, error: 'invalid-aiMasterModel' };
+      }
+      // Local models: only baked variants or validated families. Anything
+      // else (gemma4, small llamas, ...) was never benchmarked on the vault
+      // tool surface and historically melted down into the weak-tool
+      // failure cascade. Re-run the spike benchmarks before widening.
+      if (resolvedProvider === 'local' && !isBakedModel(m) && !matchesLlmWhitelist(m)) {
         return { ok: false, error: 'invalid-aiMasterModel' };
       }
     }

@@ -334,7 +334,7 @@ export function CampaignSettingsClient({ campaignId, initialSettings, initialLan
             {(() => {
               if (availableModels.length === 0 && settings.aiProvider === 'local') {
                 return (
-                  <option disabled value="">{localServices.ai.reachable ? 'No qwen3/gpt-oss installed in Ollama' : 'Ollama unreachable'}</option>
+                  <option disabled value="">{localServices.ai.reachable ? 'No qwen3/gpt-oss/mistral-small installed in Ollama' : 'Ollama unreachable'}</option>
                 );
               }
               // Plan D: when local, split baked (dnd-master-*) from raw bases

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { validateSettingsPatch } from '@/lib/preferences';
+import { validateSettingsPatch, envDefaultMasterModel } from '@/lib/preferences';
 
 describe('validateSettingsPatch — local provider gating', () => {
   beforeEach(() => {
@@ -32,10 +32,27 @@ describe('validateSettingsPatch — local provider gating', () => {
     expect(r.ok).toBe(false);
   });
 
-  it('accepts aiMasterModel for local (any non-empty string ≤200)', () => {
+  it('accepts aiMasterModel for local when in the validated family whitelist', () => {
     vi.stubEnv('OLLAMA_BASE_URL', 'http://localhost:11434');
-    const r = validateSettingsPatch({ aiProvider: 'local', aiMasterModel: 'qwen3:30b-a3b' });
+    for (const m of ['qwen3:30b-a3b', 'qwen3:30b-a3b-instruct-2507-q4_K_M', 'mistral-small3.2:24b', 'gpt-oss:20b']) {
+      const r = validateSettingsPatch({ aiProvider: 'local', aiMasterModel: m });
+      expect(r.ok, m).toBe(true);
+    }
+  });
+
+  it('accepts baked variants for local (Modelfile-curated)', () => {
+    vi.stubEnv('OLLAMA_BASE_URL', 'http://localhost:11434');
+    const r = validateSettingsPatch({ aiProvider: 'local', aiMasterModel: 'dnd-master-plus' });
     expect(r.ok).toBe(true);
+  });
+
+  it('rejects non-validated local model families (gemma4 — the weak-tool meltdown vector)', () => {
+    vi.stubEnv('OLLAMA_BASE_URL', 'http://localhost:11434');
+    for (const m of ['gemma4:latest', 'gemma4:12b', 'llama3.2:3b', 'phi3:medium']) {
+      const r = validateSettingsPatch({ aiProvider: 'local', aiMasterModel: m });
+      expect(r.ok, m).toBe(false);
+      if (!r.ok) expect(r.error).toBe('invalid-aiMasterModel');
+    }
   });
 
   it('rejects aiMasterModel for local when over 200 chars', () => {
@@ -59,6 +76,20 @@ describe('validateSettingsPatch — local provider gating', () => {
     vi.stubEnv('DRAW_THINGS_BASE_URL', 'http://localhost:7860');
     const r = validateSettingsPatch({ imageProvider: 'local', imageModel: 'draw-things:realisticVisionV60' });
     expect(r.ok).toBe(true);
+  });
+});
+
+describe('envDefaultMasterModel — local default', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('prefers OLLAMA_MASTER_MODEL when set', () => {
+    vi.stubEnv('OLLAMA_MASTER_MODEL', 'qwen3:30b-a3b-instruct-2507');
+    expect(envDefaultMasterModel('local')).toBe('qwen3:30b-a3b-instruct-2507');
+  });
+
+  it('falls back to the validated primary — never the empty string', () => {
+    vi.stubEnv('OLLAMA_MASTER_MODEL', '');
+    expect(envDefaultMasterModel('local')).toBe('qwen3:30b-a3b-instruct-2507-q4_K_M');
   });
 });
 

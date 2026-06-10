@@ -93,14 +93,20 @@ export interface LocalServicesStatus {
   };
 }
 
-// LLM whitelist — phase 1 supports qwen3 and gpt-oss families, both from the
-// official registry and from HuggingFace mirrors. Adding a new family is a
-// one-line edit.
+// LLM whitelist — the validated master-model families (qwen3 primary/fallback
+// per spike benchmarks, gpt-oss regression baseline, mistral-small3.2 Max
+// content tier), from the official registry and HuggingFace mirrors. This
+// gates BOTH the Settings dropdown (fetchOllamaModels) and the settings PATCH
+// (validateSettingsPatch): never-validated families (gemma4, small llamas)
+// caused the 2026-06 weak-tool meltdown cascade and must not be selectable.
+// Adding a new family requires re-running the spike benchmarks first.
 const LOCAL_LLM_PATTERNS: RegExp[] = [
   /^qwen3(:|$)/i,
   /^gpt-oss(:|$)/i,
+  /^mistral-small3\.2(:|$)/i,
   /^hf\.co\/.+\/qwen3[^/]*/i,
   /^hf\.co\/.+\/gpt-oss[^/]*/i,
+  /^hf\.co\/.+\/mistral-small3\.2[^/]*/i,
 ];
 
 export function matchesLlmWhitelist(name: string): boolean {
@@ -215,7 +221,8 @@ export async function fetchOllamaModels(): Promise<ModelOption[]> {
     //  (a) Curated baked tiers (dnd-master-plus + any future TIER_NAMES entry),
     //      labelled via TIER_LABELS. Legacy slug-derived bakes (e.g.
     //      `dnd-master-qwen3-...`) stay hidden to avoid confusing duplicates.
-    //  (b) Raw generative base models (qwen3, gemma4, mistral, ...).
+    //  (b) Raw generative base models from the VALIDATED families only
+    //      (matchesLlmWhitelist: qwen3, gpt-oss, mistral-small3.2).
     //
     // (b) was previously hidden. Phase 03 (03-C-04) stripped the dropdown to
     // baked-only on the assumption of a "raw-slug" Settings path that never
@@ -223,9 +230,10 @@ export async function fetchOllamaModels(): Promise<ModelOption[]> {
     // REQ-031 (quality-fallback opt-in via Settings) / REQ-032 (content model)
     // / REQ-034 (per-session primary↔fallback switch) became unsatisfiable:
     // the user had no way to pick a base model. Exposing raw bases restores
-    // those requirements. Embedding models (bert-family OR an `embed` name,
-    // e.g. nomic-embed-text) are excluded — they can't drive a turn and would
-    // only pollute the list.
+    // those requirements — but only whitelisted families: the never-validated
+    // gemma4 selected via a scratch script melted down on the vault tool
+    // surface and triggered the 2026-06 hotfix cascade (769029c..2aea307).
+    // Embedding models (bert-family OR an `embed` name) are excluded too.
     return models.filter((m) => {
       if (isBakedModel(m.name)) {
         const bareSlug = m.name.replace(/:latest$/, '');
@@ -233,7 +241,7 @@ export async function fetchOllamaModels(): Promise<ModelOption[]> {
       }
       const family = m.details?.family ?? '';
       const isEmbedder = /bert/i.test(family) || /embed/i.test(m.name);
-      return !isEmbedder;
+      return !isEmbedder && matchesLlmWhitelist(m.name);
     }).map((m) => {
       const baked = isBakedModel(m.name);
       const baseSlug = baked ? getBakedBaseModel(m.name) : null;

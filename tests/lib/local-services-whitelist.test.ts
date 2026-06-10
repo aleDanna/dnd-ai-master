@@ -5,9 +5,11 @@ describe('matchesLlmWhitelist', () => {
   it.each([
     'qwen3',
     'qwen3:30b-a3b',
+    'qwen3:30b-a3b-instruct-2507-q4_K_M',
     'qwen3:8b',
     'gpt-oss',
     'gpt-oss:20b',
+    'mistral-small3.2:24b',
     'hf.co/unsloth/gpt-oss-20b-GGUF:F16',
     'hf.co/Qwen/qwen3-32B-GGUF:Q4_K_M',
   ])('accepts %s', (name) => {
@@ -16,6 +18,9 @@ describe('matchesLlmWhitelist', () => {
 
   it.each([
     'llama3.1:8b',
+    'llama3.2:3b',
+    'gemma4:latest',
+    'gemma4:12b',
     'mistral:7b',
     'phi3:medium',
     'hf.co/random/other-model:Q4',
