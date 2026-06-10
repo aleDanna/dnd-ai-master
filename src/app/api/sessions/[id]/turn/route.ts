@@ -38,6 +38,7 @@ import { resolveCombat, enforceResolvedNarration, canonicalizeToHitTarget, strip
 import { runMonsterTurnLoop } from './monster-turns';
 import { getBestiaryAttackStats, getBestiaryStatblock } from './monster-bestiary';
 import { runEncounterOpener, extractMonsterName } from './encounter-opener';
+import { loadPcAttackProfile } from './pc-attack-profile';
 import { parseEventsFile, replayEvents } from '@/ai/master/vault/projector';
 import { eventsPath } from '@/ai/master/vault/campaign-paths';
 import { buildTurnDirective, appendDirectiveToHistory, isRollResult, detectCombatIntent, isCombatDeclaration } from '@/ai/master/vault/turn-directive';
@@ -318,6 +319,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           const _playerMessage =
             typeof _lastUserTurn?.content === 'string' ? _lastUserTurn.content : undefined;
 
+          // 2026-06-10 audit — server-derived PC attack profile (RAW math:
+          // to-hit = ability mod + PB; damage = weapon dice + ability mod
+          // ONLY). Replaces the LLM-trusted to-hit bonus and the hardcoded
+          // "1d6 + full to-hit bonus" damage request. Null (no equipped SRD
+          // weapon / lookup failure) falls back to the legacy defaults.
+          let _pcAttackProfile: Awaited<ReturnType<typeof loadPcAttackProfile>> = null;
+          if (vaultMutationsEnabled && !isBegin) {
+            const _actingPc = snap.party.find((c) => c.id === authorCharacterId) ?? snap.party[0] ?? null;
+            if (_actingPc) {
+              try {
+                _pcAttackProfile = await loadPcAttackProfile(_actingPc);
+              } catch (e) {
+                console.warn(
+                  '[turn]', sessionId, 'pc-attack-profile lookup failed, falling back to defaults:',
+                  e instanceof Error ? e.message : String(e),
+                );
+              }
+            }
+          }
+
           // 5v-opener (Phase 10 / REQ-045 / D-01). SERVER-AUTHORITATIVE ENCOUNTER
           // OPENER hook. BEFORE the v1 resolver gate, on a real player turn where
           // combat intent is detected AND no encounter is active AND the message is
@@ -496,7 +517,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 // D-01 gate satisfied (vaultMutations && active encounter && roll-result).
                 // resolveCombat NEVER throws (D-05/D-10): a non-combat / unparseable /
                 // ambiguous roll returns null → fall through to today's prompt path.
-                _resolver = resolveCombat({ rollResult: _playerMessage!, encounter });
+                _resolver = resolveCombat({ rollResult: _playerMessage!, encounter, attacker: _pcAttackProfile });
                 if (_resolver === null) {
                   // Observability: the gate fired (active combat + roll-result) but the
                   // resolver disengaged (unparseable / wrong dice+keyword / unknown or
@@ -890,7 +911,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 const { encounter: _declEnc } = replayEvents(await parseEventsFile(eventsPath(campaign.id)));
                 if (_declEnc.active) {
                   _ft = (detectCombatIntent(_playerMessage) && !isRollResult(_playerMessage))
-                    ? canonicalizeToHitTarget(_ft, _playerMessage, _declEnc)
+                    ? canonicalizeToHitTarget(_ft, _playerMessage, _declEnc, _pcAttackProfile?.attackBonus ?? null)
                     : stripLeakedMechanics(_ft);
                 } else {
                   // 2026-06-10 audit: leaked tool-call text is not exclusive to

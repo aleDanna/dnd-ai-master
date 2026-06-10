@@ -240,3 +240,37 @@ describe('extractMonsterName', () => {
     expect(extractMonsterName('strike an ogre')).toBe('ogre');
   });
 });
+
+describe('runEncounterOpener — initiative includes the PC DEX modifier (2026-06-10 audit)', () => {
+  function scripted(faces: number[]): () => number {
+    let i = 0;
+    return () => faces[Math.min(i++, faces.length - 1)]!;
+  }
+
+  it('PC initiative = d20 + DEX mod (rules.md: initiative is a DEX check)', () => {
+    const events = runEncounterOpener(
+      { party: [{ id: 'pc-1', name: 'Nami', abilities: { DEX: 18 } }] }, // +4
+      'goblin',
+      () => ({ hpMax: 7, ac: 15, cr: '1/4' }),
+      scripted([10, 10]), // PC d20=10 → 14; monster d20=10 → 10
+    );
+    const init = events.find((e) => e.type === 'initiative_set')!;
+    const order = (init.payload as { order: { actorId: string; initiative: number }[] }).order;
+    expect(order.find((o) => o.actorId === 'pc-1')!.initiative).toBe(14);
+    expect(order[0]!.actorId).toBe('pc-1'); // 14 beats the monster's 10
+  });
+
+  it('negative DEX mod lowers initiative; missing abilities falls back to +0', () => {
+    const events = runEncounterOpener(
+      { party: [{ id: 'pc-neg', name: 'Tank', abilities: { DEX: 6 } }, { id: 'pc-plain', name: 'NoBlob' }] },
+      'goblin',
+      () => ({ hpMax: 7, ac: 15, cr: '1/4' }),
+      scripted([10, 10, 11]), // pc-neg 10-2=8; pc-plain 10+0=10; monster 11
+    );
+    const init = events.find((e) => e.type === 'initiative_set')!;
+    const order = (init.payload as { order: { actorId: string; initiative: number }[] }).order;
+    expect(order.find((o) => o.actorId === 'pc-neg')!.initiative).toBe(8);
+    expect(order.find((o) => o.actorId === 'pc-plain')!.initiative).toBe(10);
+    expect(order[0]!.initiative).toBe(11); // monster first (D&D 5e: highest acts first)
+  });
+});

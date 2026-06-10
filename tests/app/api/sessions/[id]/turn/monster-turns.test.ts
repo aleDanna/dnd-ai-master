@@ -801,3 +801,48 @@ describe('buildMonsterLoopNarrationDirective — combined directive (D-15)', () 
     expect(dir).not.toBeNull();
   });
 });
+
+describe('resolveMonsterTurn — critical hits double the damage dice (2026-06-10 audit, rules.md §10)', () => {
+  it('natural 20 → damage equals rollDamage(dice, {crit:true}) with the same rng tail', () => {
+    const seed = seedForNatural(20);
+    const out = resolveMonsterTurn({
+      monster: VEYRA,
+      attackBonus: 5,
+      damageDice: '2d6+4',
+      livePcIds: ['pc-1'],
+      pcAcById: new Map([['pc-1', 30]]), // total < AC: only the nat-20 hits
+      rng: makeSeededRng(seed),
+    });
+    expect(out).not.toBeNull();
+    expect(out!.natural).toBe(20);
+    expect(out!.hit).toBe(true);
+    // Replicate the draw order with a fresh rng: target pick, d20, then the
+    // damage roll — asserting the crit flag doubled the dice (4d6+4 range).
+    const rng = makeSeededRng(seed);
+    rng.intInclusive(0, 0); // target pick
+    rng.intInclusive(1, 20); // the d20 (natural 20)
+    const expected = rollDamage('2d6+4', { crit: true }, rng).total;
+    expect(out!.damage).toBe(expected);
+    // 4d6+4 bounds: crit damage must exceed the non-crit max only when dice
+    // demand it, but it can never fall below 4 (dice min) + 4.
+    expect(out!.damage!).toBeGreaterThanOrEqual(8);
+    expect(out!.damage!).toBeLessThanOrEqual(28);
+  });
+
+  it('non-20 hit → damage stays in the SINGLE-dice range (no accidental doubling)', () => {
+    const seed = seedForNatural(19);
+    const out = resolveMonsterTurn({
+      monster: VEYRA,
+      attackBonus: 100, // force a hit on natural 19
+      damageDice: '1d6',
+      livePcIds: ['pc-1'],
+      pcAcById: new Map([['pc-1', 10]]),
+      rng: makeSeededRng(seed),
+    });
+    expect(out).not.toBeNull();
+    expect(out!.natural).toBe(19);
+    expect(out!.hit).toBe(true);
+    expect(out!.damage!).toBeGreaterThanOrEqual(1);
+    expect(out!.damage!).toBeLessThanOrEqual(6);
+  });
+});

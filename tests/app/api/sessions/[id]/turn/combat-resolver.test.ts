@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { EncounterState } from '@/ai/master/vault/projector';
-import { resolveCombat, enforceResolvedNarration, canonicalizeToHitTarget, stripLeakedMechanics, isNarrationOnlyTurn, parseAttackRollTarget, shouldRetryEmptyNarration } from '@/app/api/sessions/[id]/turn/combat-resolver';
+import { resolveCombat, enforceResolvedNarration, canonicalizeToHitTarget, stripLeakedMechanics, isNarrationOnlyTurn, parseAttackRollTarget, shouldRetryEmptyNarration, doubleDice } from '@/app/api/sessions/[id]/turn/combat-resolver';
 import { parseRollRequests } from '@/lib/roll-parser';
 
 /**
@@ -878,5 +878,100 @@ describe('shouldRetryEmptyNarration (2026-06-10 audit — double-apply guard)', 
     expect(shouldRetryEmptyNarration({ ...base, resolverFired: true })).toBe(false);
     expect(shouldRetryEmptyNarration({ ...base, monsterLoopRan: true })).toBe(false);
     expect(shouldRetryEmptyNarration({ ...base, openerRan: true })).toBe(false);
+  });
+});
+
+describe('resolveCombat — RAW attack math (2026-06-10 audit)', () => {
+  it('with an attacker profile: damage request uses the WEAPON dice + ability mod only', () => {
+    const result = resolveCombat({
+      rollResult: '🎲 I rolled **18** for 1d20+5 (attaccare Veyra) (13+5).',
+      encounter: ACTIVE_ENCOUNTER,
+      attacker: { damageDice: '1d8', damageMod: 3 },
+    });
+    expect(result).not.toBeNull();
+    // NOT '1d6+5' (the legacy default die + full to-hit bonus incl. PB).
+    expect(result!.damageRequest).toBe('Tira 1d8+3 per danni a Veyra');
+  });
+
+  it('natural 20 DOUBLES the damage dice, not the modifier (rules.md §10)', () => {
+    const result = resolveCombat({
+      rollResult: '🎲 I rolled **23** for 1d20+3 (attaccare Veyra) (20+3).',
+      encounter: ACTIVE_ENCOUNTER,
+      attacker: { damageDice: '1d8', damageMod: 3 },
+    });
+    expect(result).not.toBeNull();
+    expect(result!.damageRequest).toBe('Tira 2d8+3 per danni a Veyra');
+    expect(result!.narrationDirective).toMatch(/CRITICO/);
+  });
+
+  it('natural 20 doubles the LEGACY default die too (no attacker profile)', () => {
+    const result = resolveCombat({
+      rollResult: '🎲 I rolled **23** for 1d20+3 (attaccare Veyra) (20+3).',
+      encounter: ACTIVE_ENCOUNTER,
+    });
+    expect(result).not.toBeNull();
+    expect(result!.damageRequest).toBe('Tira 2d6+3 per danni a Veyra');
+  });
+
+  it('negative damage mod renders as -N', () => {
+    const result = resolveCombat({
+      rollResult: '🎲 I rolled **18** for 1d20+1 (attaccare Veyra) (17+1).',
+      encounter: ACTIVE_ENCOUNTER,
+      attacker: { damageDice: '1d6', damageMod: -1 },
+    });
+    expect(result!.damageRequest).toBe('Tira 1d6-1 per danni a Veyra');
+  });
+
+  it('legacy behavior preserved without attacker: default die + parsed bonus', () => {
+    const result = resolveCombat({
+      rollResult: '🎲 I rolled **18** for 1d20+3 (attaccare Veyra) (15+3).',
+      encounter: ACTIVE_ENCOUNTER,
+    });
+    expect(result!.damageRequest).toBe('Tira 1d6+3 per danni a Veyra');
+  });
+
+  it('doubleDice doubles the count only', () => {
+    expect(doubleDice('1d8')).toBe('2d8');
+    expect(doubleDice('2d6')).toBe('4d6');
+    expect(doubleDice('d6')).toBe('2d6');
+  });
+});
+
+describe('canonicalizeToHitTarget — server-derived attack bonus (2026-06-10 audit)', () => {
+  const NUMBERED_ENCOUNTER: EncounterState = {
+    active: true,
+    round: 1,
+    currentIdx: 0,
+    turnOrder: [{ actorId: 'pirata-buggy-1', initiative: 12 }],
+    monsters: [
+      { id: 'pirata-buggy-1', name: 'Pirata di Buggy 1', hpCurrent: 20, hpMax: 20, ac: 13, isAlive: true, conditions: [] },
+    ],
+  };
+
+  it('uses the sheet-derived bonus over the model text bonus', () => {
+    const out = canonicalizeToHitTarget(
+      'Il pirata ti carica.\n\nTira 1d20+9 per attaccare il pirata.',
+      'attacco il Pirata di Buggy 1',
+      NUMBERED_ENCOUNTER,
+      5,
+    );
+    expect(out).toContain('Tira 1d20+5 per attaccare Pirata di Buggy 1');
+    expect(out).not.toContain('1d20+9');
+  });
+
+  it('renders +0 explicitly and negative bonuses with a minus', () => {
+    const zero = canonicalizeToHitTarget('Testo.\n\nTira 1d20 per attaccare il pirata.', 'attacco il Pirata di Buggy 1', NUMBERED_ENCOUNTER, 0);
+    expect(zero).toContain('Tira 1d20+0 per attaccare Pirata di Buggy 1');
+    const neg = canonicalizeToHitTarget('Testo.', 'attacco il Pirata di Buggy 1', NUMBERED_ENCOUNTER, -1);
+    expect(neg).toContain('Tira 1d20-1 per attaccare Pirata di Buggy 1');
+  });
+
+  it('legacy: without a server bonus the model bonus is still preserved', () => {
+    const out = canonicalizeToHitTarget(
+      'Testo.\n\nTira 1d20+4 per attaccare il pirata.',
+      'attacco il Pirata di Buggy 1',
+      NUMBERED_ENCOUNTER,
+    );
+    expect(out).toContain('Tira 1d20+4 per attaccare Pirata di Buggy 1');
   });
 });

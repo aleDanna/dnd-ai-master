@@ -30,15 +30,17 @@ import { randomUUID } from 'node:crypto';
 // ---------------------------------------------------------------------------
 
 /**
- * A minimal party row — only the `id` field is consumed by the opener. The
- * caller (route) passes the full CharacterDbRow; we narrow to what we use so
- * the function is easy to test with a lightweight fixture (INFO-9: PC rows
- * carry no initiativeBonus in the characters schema — ac/hpMax only — so
- * initiative for PCs is always 1d20+0).
+ * A minimal party row — `id` plus (since the 2026-06-10 audit) the optional
+ * `abilities` blob, consumed for the initiative DEX modifier. The caller
+ * (route) passes the full CharacterDbRow (which carries `abilities`); we
+ * narrow to what we use so the function is easy to test with a lightweight
+ * fixture. Rows without `abilities` roll initiative at 1d20+0 (the pre-audit
+ * INFO-9 behavior).
  */
 export interface PartyMember {
   id: string;
   name: string;
+  abilities?: { DEX: number } | null;
 }
 
 /**
@@ -189,6 +191,9 @@ export function runEncounterOpener(
   snapshot: OpenerSnapshot,
   monsterName: string,
   bestiaryLookup: (name: string) => BestiaryStats | null,
+  /** Injectable d20 face roller (1–20) — tests pass a scripted sequence;
+   *  production uses the default Math.random-based roll. */
+  d20: () => number = roll1d20,
 ): CombatEvent[] {
   // -------------------------------------------------------------------------
   // Step 1 — Empty-party guard (D-01 locked contract)
@@ -263,15 +268,17 @@ export function runEncounterOpener(
   // -------------------------------------------------------------------------
   // Step 4 — Roll initiative for every participant and build initiative_set
   // -------------------------------------------------------------------------
-  // PCs: 1d20 + 0 (INFO-9: no initiativeBonus on CharacterDbRow — ac/hpMax only).
-  // Monster: 1d20 + 0 (initiativeBonus not in the snapshot; CR table does not
-  //   include it; keep simple for now — option-A future path can inject it).
+  // PCs: 1d20 + DEX modifier (rules.md: initiative is a DEX check). Rows
+  //   without an abilities blob fall back to +0 (pre-audit INFO-9 behavior).
+  // Monster: 1d20 + 0 (the bestiary statblock carries no DEX; a known
+  //   simplification — the PC side is the rules-critical half).
   const orderEntries: Array<{ actorId: string; initiative: number }> = [];
 
   for (const pc of snapshot.party) {
-    orderEntries.push({ actorId: pc.id, initiative: roll1d20() });
+    const dexMod = pc.abilities ? Math.floor((pc.abilities.DEX - 10) / 2) : 0;
+    orderEntries.push({ actorId: pc.id, initiative: d20() + dexMod });
   }
-  orderEntries.push({ actorId: monsterId, initiative: roll1d20() });
+  orderEntries.push({ actorId: monsterId, initiative: d20() });
 
   // Sort descending by initiative score (highest acts first — D&D 5e rule).
   // Stable sort: ties broken by insertion order (PCs before monster for ties,

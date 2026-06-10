@@ -206,15 +206,18 @@ export function resolveMonsterTurn(input: {
   const total = d20.total;
 
   // (D-09) v1 hit rule VERBATIM (combat-resolver.ts:180) — nat1 auto-miss,
-  // nat20 auto-hit, else total >= ac. NO crit-doubling.
+  // nat20 auto-hit, else total >= ac.
   const hit = natural !== 1 && (natural === 20 || total >= ac);
 
   const events: VaultEvent[] = [];
   let damage: number | null = null;
 
   if (hit) {
-    // Damage roll — NO crit-doubling (opts.crit never set; symmetric with v1).
-    const dmg = rollDamage(input.damageDice, {}, rng);
+    // Damage roll — a natural 20 doubles the damage DICE (rules.md §10;
+    // rollDamage doubles the dice count, never the flat modifier). The
+    // 2026-06-10 audit removed the original "NO crit-doubling" deviation —
+    // the player side doubles too (resolveCombat), so the rule is symmetric.
+    const dmg = rollDamage(input.damageDice, { crit: natural === 20 }, rng);
     damage = dmg.total;
     // v2 INVERTS v1: the PC takes damage → hp_change{character, delta:-damage}.
     events.push({ type: 'hp_change', payload: { character: pcId, delta: -damage } });

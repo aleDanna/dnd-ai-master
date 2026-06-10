@@ -256,11 +256,28 @@ function matchMonster(
  * NEVER throws (D-05/D-10): any unparseable roll, missing/ambiguous target, or
  * wrong dice+keyword combination returns `null`.
  */
+/** Double the dice COUNT of a dice term — RAW critical hits double the dice,
+ *  never the modifier (rules.md §10): "1d8" → "2d8". Non-dice input is
+ *  returned unchanged (defensive — callers pass validated terms). */
+export function doubleDice(dice: string): string {
+  const m = /^(\d*)\s*d\s*(\d+)$/i.exec(dice.trim());
+  if (!m) return dice;
+  return `${(parseInt(m[1] || '1', 10)) * 2}d${m[2]}`;
+}
+
 export function resolveCombat(input: {
   rollResult: string;
   encounter: EncounterState;
   defaultMonsterAc?: number;
   defaultDamageDie?: string;
+  /**
+   * 2026-06-10 audit — the PC's server-derived attack profile (weapon dice +
+   * ability-only damage mod, see pc-attack-profile.ts). When provided, the
+   * damage request uses the REAL weapon dice and the RAW damage modifier.
+   * When absent (no equipped SRD weapon), the legacy default applies:
+   * defaultDamageDie + the to-hit bonus (known RAW deviation, logged).
+   */
+  attacker?: { damageDice: string; damageMod: number } | null;
 }): ResolveCombatResult | null {
   const { rollResult, encounter } = input;
   const defaultAc = input.defaultMonsterAc ?? DEFAULT_MONSTER_AC;
@@ -302,11 +319,23 @@ export function resolveCombat(input: {
     // HIT — the turn does NOT advance yet; it advances after the damage roll.
     // The `per` lead-in is BLOCKING (RESEARCH Pitfall 1) so the client parser
     // captures the target name into the damage roll's label.
+    //
+    // 2026-06-10 audit — RAW damage request:
+    //   dice = the attacker's weapon dice (fallback: defaultDie), DOUBLED on
+    //          a natural 20 (rules.md §10: crit doubles dice, not modifier);
+    //   mod  = ability modifier ONLY (the legacy fallback reused the full
+    //          to-hit bonus incl. proficiency — kept only when no attacker
+    //          profile is available, since the bonus cannot be decomposed).
+    const isCrit = natural === 20;
+    const baseDice = input.attacker?.damageDice ?? defaultDie;
+    const damageMod = input.attacker ? input.attacker.damageMod : bonus;
+    const dice = isCrit ? doubleDice(baseDice) : baseDice;
+    const modStr = damageMod >= 0 ? `+${damageMod}` : `${damageMod}`;
     return {
       kind: 'to-hit',
       events: [],
-      narrationDirective: `[RESOLVED BY SYSTEM: l'attacco contro ${monster.name} ha COLPITO (${total} vs CA ${ac})] narra SOLO il colpo a segno in seconda persona; NON chiedere tiri e NON scrivere eventi — il sistema gestisce la richiesta danni e l'avanzamento del turno.`,
-      damageRequest: `Tira ${defaultDie}+${bonus} per danni a ${monster.name}`,
+      narrationDirective: `[RESOLVED BY SYSTEM: l'attacco contro ${monster.name} ha COLPITO${isCrit ? ' con un CRITICO (20 naturale — i dadi di danno sono raddoppiati)' : ''} (${total} vs CA ${ac})] narra SOLO il colpo a segno in seconda persona; NON chiedere tiri e NON scrivere eventi — il sistema gestisce la richiesta danni e l'avanzamento del turno.`,
+      damageRequest: `Tira ${dice}${modStr} per danni a ${monster.name}`,
     };
   }
 
@@ -472,6 +501,14 @@ export function canonicalizeToHitTarget(
   finalText: string,
   playerMessage: string,
   encounter: EncounterState,
+  /**
+   * 2026-06-10 audit — the PC's server-derived to-hit bonus (ability mod +
+   * proficiency, see pc-attack-profile.ts). When a number, the canonical
+   * request uses IT instead of trusting whatever bonus the model wrote
+   * (the attack math becomes sheet-derived, not LLM-derived). When
+   * null/undefined, legacy behavior: preserve a well-formed model bonus.
+   */
+  serverAttackBonus?: number | null,
 ): string {
   // Gate: inactive encounter → no rewrite needed.
   if (!encounter.active) return finalText;
@@ -505,11 +542,18 @@ export function canonicalizeToHitTarget(
   // survives. (Narration prose lacks the "Tira <dice>" shape, so it is kept.)
   const ROLL_REQUEST = /\bTira\b[^\n]*?\b\d*\s*[dD]\s*\d+/i;
 
-  // Preserve a VALID to-hit bonus the model proposed ("1d20+N" / "1d20-N"); a malformed
-  // "1d20+<bonus>" yields no match → bare 1d20. Target always comes from the matched
-  // monster, never the model's text.
-  const bonusM = /\b1d20\s*([+\-]\d+)/i.exec(finalText);
-  const bonus = bonusM ? bonusM[1]! : '';
+  // Bonus precedence: a server-derived attack bonus (character sheet —
+  // ability mod + proficiency) beats the model's text. Legacy fallback:
+  // preserve a VALID model bonus ("1d20+N" / "1d20-N"); a malformed
+  // "1d20+<bonus>" yields no match → bare 1d20. Target always comes from the
+  // matched monster, never the model's text.
+  let bonus: string;
+  if (typeof serverAttackBonus === 'number') {
+    bonus = serverAttackBonus >= 0 ? `+${serverAttackBonus}` : `${serverAttackBonus}`;
+  } else {
+    const bonusM = /\b1d20\s*([+\-]\d+)/i.exec(finalText);
+    bonus = bonusM ? bonusM[1]! : '';
+  }
 
   const kept = finalText
     .split('\n')
