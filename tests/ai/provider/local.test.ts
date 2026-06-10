@@ -216,6 +216,109 @@ describe('LocalProvider', () => {
     });
   });
 
+  describe('num_predict tiers & validated sampling', () => {
+    function lastBody(): { keep_alive: string; options: Record<string, number> } {
+      const calls = (fetch as ReturnType<typeof vi.fn>).mock.calls;
+      const last = calls[calls.length - 1];
+      return JSON.parse(last![1].body as string);
+    }
+
+    async function callWith(model: string) {
+      (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response(JSON.stringify({
+        message: { role: 'assistant', content: 'ok' },
+        done_reason: 'stop', prompt_eval_count: 10, eval_count: 5,
+      }), { status: 200 }));
+      const p = new LocalProvider();
+      await p.completeMessage({
+        systemBlocks: [{ type: 'text', text: 'sys' }],
+        messages: [{ role: 'user', content: 'attacco' }],
+        tools: [],
+        model,
+      });
+      return lastBody();
+    }
+
+    it('validated primary (q4_K_M) is NOT small: capable 4096 tier', async () => {
+      const body = await callWith('qwen3:30b-a3b-instruct-2507-q4_K_M');
+      expect(body.options.num_predict).toBe(4096);
+    });
+
+    it('instruct fallback is NOT small: capable 4096 tier', async () => {
+      const body = await callWith('qwen3:30b-a3b-instruct-2507');
+      expect(body.options.num_predict).toBe(4096);
+    });
+
+    it('Max 3 (qwen3:30b-a3b, thinking-on) gets the 3000 thinking tier', async () => {
+      const body = await callWith('qwen3:30b-a3b');
+      expect(body.options.num_predict).toBe(3000);
+    });
+
+    it('qwen3:14b is NOT small (the 4b suffix of "14b" must not match)', async () => {
+      const body = await callWith('qwen3:14b');
+      expect(body.options.num_predict).toBe(4096);
+    });
+
+    it('true small models stay capped at 2048', async () => {
+      expect((await callWith('qwen3:4b')).options.num_predict).toBe(2048);
+      expect((await callWith('llama3.2:3b')).options.num_predict).toBe(2048);
+    });
+
+    it('qwen3 a3b family gets the spike sampling block (repeat_penalty 1.13)', async () => {
+      for (const model of ['qwen3:30b-a3b-instruct-2507-q4_K_M', 'qwen3:30b-a3b-instruct-2507', 'qwen3:30b-a3b']) {
+        const body = await callWith(model);
+        expect(body.options.repeat_penalty).toBe(1.13);
+        expect(body.options.temperature).toBe(0.7);
+        expect(body.options.top_p).toBe(0.9);
+        expect(body.options.min_p).toBe(0.05);
+      }
+    });
+
+    it('mistral-small3.2:24b gets its tuned block', async () => {
+      const body = await callWith('mistral-small3.2:24b');
+      expect(body.options.temperature).toBe(0.8);
+      expect(body.options.repeat_penalty).toBe(1.07);
+      expect(body.options.min_p).toBe(0.05);
+    });
+
+    it('baked models get NO runtime sampling overrides (Modelfile owns them)', async () => {
+      const body = await callWith('dnd-master-plus');
+      expect(body.options.temperature).toBeUndefined();
+      expect(body.options.repeat_penalty).toBeUndefined();
+    });
+
+    it('module defaults match the spike: num_ctx 16384, keep_alive 30m', async () => {
+      // NUM_CTX / KEEP_ALIVE are module-level consts read from env at import
+      // time — re-import with a clean env so the assertion tests the DEFAULTS,
+      // not whatever the host shell exports.
+      const prevCtx = process.env.OLLAMA_NUM_CTX;
+      const prevKa = process.env.OLLAMA_KEEP_ALIVE;
+      delete process.env.OLLAMA_NUM_CTX;
+      delete process.env.OLLAMA_KEEP_ALIVE;
+      vi.resetModules();
+      try {
+        const { LocalProvider: FreshProvider } = await import('@/ai/provider/local');
+        (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(new Response(JSON.stringify({
+          message: { role: 'assistant', content: 'ok' },
+          done_reason: 'stop', prompt_eval_count: 10, eval_count: 5,
+        }), { status: 200 }));
+        const p = new FreshProvider();
+        await p.completeMessage({
+          systemBlocks: [{ type: 'text', text: 'sys' }],
+          messages: [{ role: 'user', content: 'attacco' }],
+          tools: [],
+          model: 'qwen3:30b-a3b-instruct-2507-q4_K_M',
+        });
+        const body = lastBody();
+        expect(body.options.num_ctx).toBe(16384);
+        expect(body.keep_alive).toBe('30m');
+      } finally {
+        if (prevCtx !== undefined) process.env.OLLAMA_NUM_CTX = prevCtx;
+        if (prevKa !== undefined) process.env.OLLAMA_KEEP_ALIVE = prevKa;
+        vi.resetModules();
+      }
+    });
+  });
+
   describe('streaming (onDelta)', () => {
     function ndjsonStream(frames: object[]): Response {
       const body = new ReadableStream<Uint8Array>({

@@ -22,16 +22,41 @@ import { isBakedModel, thinkingFlagFor } from '@/ai/master/baked-models';
 import { ollamaHeaders } from '@/lib/local-fetch';
 import { envPositiveInt } from '@/lib/env';
 
-const KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE ?? '5m';
-// Ollama defaults `num_ctx` to 2048 which truncates the master prompt
-// (system + 18 tool defs + history is typically 30-45k tokens). Set high
-// enough to FIT the full prompt without truncation — otherwise the KV
-// prefix cache misses on every turn because Ollama's sliding-window
-// truncation shifts the effective prefix between requests.
-// Both qwen3:30b-a3b and gpt-oss:20b support 128k context natively.
-// Cost: each extra 8k of num_ctx allocates ~2-4GB of KV cache RAM (model
-// dependent). User can lower via OLLAMA_NUM_CTX if RAM-bound.
-const NUM_CTX = envPositiveInt('OLLAMA_NUM_CTX', 65536);
+// Spike-validated keep-alive: 30m keeps the primary warm across a whole
+// play session on the M4 without re-paying the 4-6 min cold prefill.
+const KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE ?? '30m';
+// Ollama defaults `num_ctx` to 2048 which truncates the master prompt —
+// the KV prefix cache then misses on every turn because Ollama's
+// sliding-window truncation shifts the effective prefix between requests.
+// The spike-validated budget is 16384 (~7K static prompt + 3K dynamic +
+// 5K history + cushion). Do NOT default higher: each extra 8k of num_ctx
+// allocates ~2-4GB of KV cache RAM, and the 32GB production M4 already
+// hosts the ~18GB q4_K_M primary — a 64k window cannot fit. Raise via
+// OLLAMA_NUM_CTX only on machines with the RAM to back it.
+const NUM_CTX = envPositiveInt('OLLAMA_NUM_CTX', 16384);
+
+/** Spike-validated sampling for the raw (un-baked) model families the vault
+ *  path runs. Baked variants carry these as Modelfile PARAMETERs, but raw
+ *  slugs would otherwise run on Ollama stock defaults — dropping
+ *  repeat_penalty 1.13, the knob the spike marked critical for the qwen3
+ *  A3B MoE family (prevents the verbatim re-narration loop, session
+ *  7406a0a5). Values mirror scripts/build-local-models.ts PER_BASE_PARAMS. */
+function tunedSamplingFor(model: string | undefined): Record<string, number> {
+  const m = (model ?? '').toLowerCase();
+  if (!m || isBakedModel(m)) return {};
+  // qwen3 30B-A3B family: base (Max 3) + instruct-2507 + quant variants.
+  if (/^qwen3:30b-a3b/.test(m)) {
+    return { temperature: 0.7, top_p: 0.9, min_p: 0.05, repeat_penalty: 1.13 };
+  }
+  if (/^mistral-small3\.2:24b/.test(m)) {
+    return { temperature: 0.8, top_p: 0.9, min_p: 0.05, repeat_penalty: 1.07 };
+  }
+  // qwen3 30B dense (thinking) — lower temp helps converge tool selection.
+  if (/^qwen3:30b\b/.test(m)) {
+    return { temperature: 0.6, top_p: 0.9, repeat_penalty: 1.1 };
+  }
+  return {};
+}
 
 /** Back-compat: legacy callers test "is this a thinking model?" as a
  *  boolean. The single source of truth (thinkingFlagFor) is now in
@@ -181,7 +206,7 @@ async function chat(
   //
   // 15 min is generous because Plan D cold starts on a3b / 30b models
   // can spend 4-6 min just on prompt eval the first time. After the
-  // KEEP_ALIVE window (default 60m), the model unloads and the next
+  // KEEP_ALIVE window (default 30m), the model unloads and the next
   // first-call pays this again. Tune via OLLAMA_FETCH_TIMEOUT_MS env
   // var if you have a slower machine or are baking even bigger models.
   const fetchTimeoutMs = envPositiveInt('OLLAMA_FETCH_TIMEOUT_MS', 900000);
@@ -533,7 +558,11 @@ export class LocalProvider implements MasterProvider {
     //
     // Cap can be overridden per-call via `input.maxTokens` (e.g. small
     // utility calls like language detection set 8).
-    const isSmallModel = /(?:llama3\.2.*3b|qwen3.*[34]b|gemma2?.*2b|dnd-master-(?:lite|balance))/i.test(input.model ?? '');
+    // Patterns are anchored to the tag separator: `qwen3.*[34]b` used to
+    // match the '3b' inside 'a3b' and the '4b' inside '14b', silently
+    // capping the validated 30B primary at 2048 tokens (truncated/empty
+    // combat narrations).
+    const isSmallModel = /(?:llama3\.2:3b\b|qwen3:[34]b\b|gemma2?:2b\b|dnd-master-(?:lite|balance))/i.test(input.model ?? '');
     const isThinkingOn = thinkingFlagFor(input.model) === true;
     const defaultMaxTokens = isSmallModel ? 2048 : (isThinkingOn ? 3000 : 4096);
     const json = await chat(
@@ -544,7 +573,7 @@ export class LocalProvider implements MasterProvider {
         stream: useStream,
         keep_alive: KEEP_ALIVE,
         think: thinkingFlagFor(input.model),
-        options: { num_predict: input.maxTokens ?? defaultMaxTokens, num_ctx: NUM_CTX },
+        options: { num_predict: input.maxTokens ?? defaultMaxTokens, num_ctx: NUM_CTX, ...tunedSamplingFor(input.model) },
       },
       input.onDelta,
       input.onThinking,
