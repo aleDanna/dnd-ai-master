@@ -1,0 +1,357 @@
+[
+ {
+  "area": "combat-engine",
+  "title": "Vault path: natural 20 never deals critical damage (players AND monsters)",
+  "notes": "no verdict"
+ },
+ {
+  "area": "combat-engine",
+  "title": "Vault path: player damage formula is fixed 1d6 + full to-hit bonus (incl. proficiency), ignoring the actual weapon",
+  "notes": "no verdict"
+ },
+ {
+  "area": "combat-engine",
+  "title": "Vault path: death saving throws are unreachable \u2014 PC at 0 HP gets no dying/unconscious state",
+  "notes": "no verdict"
+ },
+ {
+  "area": "combat-engine",
+  "title": "Massive-damage instant death computed but never persisted \u2014 dead PC remains merely unconscious",
+  "notes": "no verdict"
+ },
+ {
+  "area": "combat-engine",
+  "title": "PC dropping to 0 HP never receives the 'unconscious' condition; a 0-HP PC can still act",
+  "notes": "no verdict"
+ },
+ {
+  "area": "combat-engine",
+  "title": "Opportunity attacks cannot be legally resolved in the baked path",
+  "notes": "no verdict"
+ },
+ {
+  "area": "combat-engine",
+  "title": "Vault path: initiative is a flat 1d20+0 for both PCs and monsters (DEX modifier dropped)",
+  "notes": "no verdict"
+ },
+ {
+  "area": "combat-engine",
+  "title": "Raw apply_damage mutations bypass all 0-HP rules; attack.ts drops isCrit from the mutation",
+  "notes": "no verdict"
+ },
+ {
+  "area": "combat-engine",
+  "title": "Loading weapon property is bypassed for Extra Attack \u2014 exactly the case it exists to restrict",
+  "notes": "no verdict"
+ },
+ {
+  "area": "combat-engine",
+  "title": "Temporary HP ignored by the vault hp_change reducer and the monster-turn loop",
+  "notes": "no verdict"
+ },
+ {
+  "area": "combat-engine",
+  "title": "Vault combat ignores conditions, advantage/disadvantage, cover, and resistances entirely",
+  "notes": "no verdict"
+ },
+ {
+  "area": "combat-engine",
+  "title": "Sneak Attack implemented in the engine but unreachable from the tool surface",
+  "notes": "no verdict"
+ },
+ {
+  "area": "combat-engine",
+  "title": "No deterministic combat termination in the engine path; endTurn cycles dead encounters forever",
+  "notes": "no verdict"
+ },
+ {
+  "area": "combat-engine",
+  "title": "Ranged-attack range bands and ranged-in-melee disadvantage not enforced despite position tracking",
+  "notes": "no verdict"
+ },
+ {
+  "area": "combat-engine",
+  "title": "Resistance + vulnerability to the same damage type: vulnerability silently dropped",
+  "notes": "no verdict"
+ },
+ {
+  "area": "combat-engine",
+  "title": "set_temp_hp mutation ignores actorId \u2014 always writes the PC session row",
+  "notes": "no verdict"
+ },
+ {
+  "area": "combat-engine",
+  "title": "Help action grants advantage on ANY next attack, without the within-5-ft target constraint",
+  "notes": "no verdict"
+ },
+ {
+  "area": "core-mechanics",
+  "title": "Caster spell slots never progress past level 1 \u2014 levelUp() never emits newSlots and nothing re-derives slotsMax",
+  "notes": "no verdict"
+ },
+ {
+  "area": "core-mechanics",
+  "title": "Hit-dice pool frozen at 1 forever \u2014 hit_dice_max never updated on level-up",
+  "notes": "no verdict"
+ },
+ {
+  "area": "core-mechanics",
+  "title": "Multiclass level grants no HP, no hit die, and stale proficiency bonus \u2014 and blocks the level_up tool afterwards",
+  "notes": "no verdict"
+ },
+ {
+  "area": "core-mechanics",
+  "title": "Warlock Pact Magic slots are not restored on short rest",
+  "notes": "no verdict"
+ },
+ {
+  "area": "core-mechanics",
+  "title": "Short-rest hit-die healing missing the per-die minimum of 1 \u2014 negative CON mod can produce negative healing and silently waste dice",
+  "notes": "no verdict"
+ },
+ {
+  "area": "core-mechanics",
+  "title": "Level-up HP roll not clamped to minimum 1 per level \u2014 characters can lose max HP on level-up",
+  "notes": "no verdict"
+ },
+ {
+  "area": "core-mechanics",
+  "title": "apply_condition tool can never target the player character (baked path) \u2014 conditions on the PC silently impossible",
+  "notes": "no verdict"
+ },
+ {
+  "area": "core-mechanics",
+  "title": "Bardic Inspiration recharges on short rest at all bard levels (should be level 5+ only)",
+  "notes": "no verdict"
+ },
+ {
+  "area": "core-mechanics",
+  "title": "Arcane Recovery recharges on every short rest instead of once per day",
+  "notes": "no verdict"
+ },
+ {
+  "area": "core-mechanics",
+  "title": "Barbarian gets unlimited rages at level 17 instead of level 20",
+  "notes": "no verdict"
+ },
+ {
+  "area": "core-mechanics",
+  "title": "Condition speed/HP-max effects are computed but enforced nowhere (grappled/restrained can walk; exhaustion 2/4/5 inert; paralyzed/stunned/petrified flag table missing speed 0)",
+  "notes": "no verdict"
+ },
+ {
+  "area": "core-mechanics",
+  "title": "Contested and group checks ignore condition/exhaustion effects (no runtime plumbed through)",
+  "notes": "no verdict"
+ },
+ {
+  "area": "core-mechanics",
+  "title": "recomputeAC silently ignores its armorSpecs parameter \u2014 any armor outside the 13-slug hardcoded catalog is treated as unarmored",
+  "notes": "no verdict"
+ },
+ {
+  "area": "core-mechanics",
+  "title": "level_up tool enforces no XP threshold \u2014 the LLM can level the PC at any time, by multiple levels",
+  "notes": "no verdict"
+ },
+ {
+  "area": "core-mechanics",
+  "title": "Single-class half-caster slot progression rounds down (rules.md \u00a713.2 text) which under-allocates odd-level paladins/rangers vs the PHB class tables",
+  "notes": "no verdict"
+ },
+ {
+  "area": "core-mechanics",
+  "title": "Forced-march/dehydration saves roll a raw d20 instead of going through savingThrow(), bypassing condition effects",
+  "notes": "no verdict"
+ },
+ {
+  "area": "core-mechanics",
+  "title": "Unconscious does not auto-apply prone, so ranged attacks against an unconscious target get pure advantage instead of the RAW net-normal roll",
+  "notes": "no verdict"
+ },
+ {
+  "area": "spells-engine",
+  "title": "Spell slot progression never happens: all casters keep level-1 slots forever",
+  "notes": "no verdict"
+ },
+ {
+  "area": "spells-engine",
+  "title": "Every attack-roll spell fails through the cast_spell tool: target AC is stripped",
+  "notes": "no verdict"
+ },
+ {
+  "area": "spells-engine",
+  "title": "Save spells apply FULL damage before the save; heal-refund protocol cannot undo deaths, death-save failures, or concentration breaks",
+  "notes": "no verdict"
+ },
+ {
+  "area": "spells-engine",
+  "title": "Concentration never tracked for unbound spells; spellMeta.concentration fetched but ignored, while the prompt forbids manual tracking",
+  "notes": "no verdict"
+ },
+ {
+  "area": "spells-engine",
+  "title": "Warlock Pact Magic slots never recover on short rest and have no level progression",
+  "notes": "no verdict"
+ },
+ {
+  "area": "spells-engine",
+  "title": "Spell save DC and spell attack bonus frozen at character creation (stale at level 5+)",
+  "notes": "no verdict"
+ },
+ {
+  "area": "spells-engine",
+  "title": "Scorching Ray binding: one ray instead of three, no upcast scaling",
+  "notes": "no verdict"
+ },
+ {
+  "area": "spells-engine",
+  "title": "spell_action meta-tool input contract mismatches the cast_spell handler (spell vs spellSlug, target vs targets)",
+  "notes": "no verdict"
+ },
+ {
+  "area": "spells-engine",
+  "title": "Prepared-caster rule not enforced: spellsPrepared exists but is never checked",
+  "notes": "no verdict"
+ },
+ {
+  "area": "spells-engine",
+  "title": "Bonus-action spell rule (8.5) wrong in both directions",
+  "notes": "no verdict"
+ },
+ {
+  "area": "spells-engine",
+  "title": "Faerie Fire applies the defensive 'shielded' buff to enemies that FAIL the save",
+  "notes": "no verdict"
+ },
+ {
+  "area": "spells-engine",
+  "title": "Buff conditions (blessed/baned/shielded/mage-armored) have no mechanical effect despite code comments claiming roll-site/AC handling",
+  "notes": "no verdict"
+ },
+ {
+  "area": "spells-engine",
+  "title": "Sleep binding invents a WIS save; RAW sleep has no save (5d8 HP pool)",
+  "notes": "no verdict"
+ },
+ {
+  "area": "spells-engine",
+  "title": "Disintegrate marked halfOnSuccess; RAW save negates entirely",
+  "notes": "no verdict"
+ },
+ {
+  "area": "spells-engine",
+  "title": "Several damage bindings significantly under RAW (missing second damage component or spell mod)",
+  "notes": "no verdict"
+ },
+ {
+  "area": "spells-engine",
+  "title": "33 SPELL_BINDINGS keys unreachable: PHB-name slugs mismatch SRD CSV slugs, and several SRD spells missing from spells.csv",
+  "notes": "no verdict"
+ },
+ {
+  "area": "spells-engine",
+  "title": "Ritual casting: no class-feature gate and free upcast scaling on ritual casts",
+  "notes": "no verdict"
+ },
+ {
+  "area": "spells-engine",
+  "title": "Becoming incapacitated via a condition (no damage) does not break concentration",
+  "notes": "no verdict"
+ },
+ {
+  "area": "spells-engine",
+  "title": "Multi-beam cantrip scaling modeled as one big attack roll instead of separate beams",
+  "notes": "no verdict"
+ },
+ {
+  "area": "spells-engine",
+  "title": "Inconsistent duration units in bindings (rounds vs seconds) and one 10x duration error",
+  "notes": "no verdict"
+ },
+ {
+  "area": "spells-engine",
+  "title": "Latent crit bug: flat damage modifier would be doubled on critical hits",
+  "notes": "no verdict"
+ },
+ {
+  "area": "state-consistency",
+  "title": "combat.md materialized view omits the monster `cr` field",
+  "notes": "Code facts verified accurate: EncounterState.monsters[].cr exists (projector.ts:675, populated at 802/815) and serializeCombatView (projector.ts:1295-1320) never emits it. But this is intentional, documented design, not a state-consistency bug. (1) The combat.md view shape is LOCKED from phase 06 WITHOUT cr (.planning/phases/06-vault-combat-state-foundation-d1/06-CONTEXT.md:67-69 lists monsters fields as id/name/hpCurrent/hpMax/ac?/initiativeBonus?/isAlive/conditions). (2) D-08 (.planning/phases/09-v2-monster-turns/09-01-PLAN.md Task 2) added cr strictly additively to schema+reducer ONLY, with the explicit purpose \"so the resolver can read it at attack time\"; the planned chain (schema \u2192 reducer \u2192 CR table \u2192 resolver \u2192 loop \u2192 route \u2192 narration) never includes combat.md serialization, and the in-code comment at projector.ts:673-674 states the same consumer. (3) The LLM is the PRODUCER of cr, not a consumer \u2014 prompt-builder.ts:238-239 instructs it to include cr in monster_spawn \"the server uses it to set the monster's attack strength\"; no prompt logic reads cr back from combat.md, and for SRD monsters the LLM can read cr from handbook/monsters/<slug>.md frontmatter anyway. (4) REQ-004 (.planning/REQUIREMENTS.md:12) only requires views to be materialized from events.md, not to serialize every state field; the finding's \"REQ-004 intent\" fidelity claim overreaches. (5) Resolver path confirmed unaffected: route.ts:561 replays events.md; monster-turns.ts:395 reads activeMonster.cr from replayed state. Player impact on the current default path (vault backend): zero \u2014 all combat math flows through events.md replay. Implementing the recommendation would deviate from the LOCKED view contract for no functional gain. At most a cosmetic/documentation enhancement, not a bug."
+ },
+ {
+  "area": "prompt-alignment",
+  "title": "Vault per-turn directives order apply_event tool calls on turns where the route removes the tool surface",
+  "notes": "no verdict"
+ },
+ {
+  "area": "prompt-alignment",
+  "title": "Vault system-prompt Combat-lifecycle block contradicts the server-authoritative combat design (stale Phase-07 instructions)",
+  "notes": "no verdict"
+ },
+ {
+  "area": "prompt-alignment",
+  "title": "English vault campaigns cannot resolve combat: prompt teaches EN roll phrasings but the server resolver and all injected directives are Italian-only",
+  "notes": "no verdict"
+ },
+ {
+  "area": "prompt-alignment",
+  "title": "Weak-tool (gemma) models receive a full tool-advertising system prompt while the route strips all tools on every turn",
+  "notes": "no verdict"
+ },
+ {
+  "area": "prompt-alignment",
+  "title": "Compact DM handbook teaches a wrong death-save rule: 'Crit on death save = +2 successes'",
+  "notes": "no verdict"
+ },
+ {
+  "area": "prompt-alignment",
+  "title": "Legacy path with a non-baked local model overflows OLLAMA_NUM_CTX=16384 (~25K static tokens; tool contract alone ~14.8K)",
+  "notes": "no verdict"
+ },
+ {
+  "area": "prompt-alignment",
+  "title": "save_half refund instruction makes targets take round-UP half damage (off-by-one vs round-down convention)",
+  "notes": "no verdict"
+ },
+ {
+  "area": "prompt-alignment",
+  "title": "Exploration mode block instructs a tool call the schema rejects: set_travel_pace with pace=null",
+  "notes": "no verdict"
+ },
+ {
+  "area": "prompt-alignment",
+  "title": "Baked SLIM tool contract and OOC block reference tools the active surface does not expose (make_attack et al. on meta-tools; nonexistent set_combat)",
+  "notes": "no verdict"
+ },
+ {
+  "area": "prompt-alignment",
+  "title": "Opening-turn contradictions on the vault path: system prompt mandates tool exploration and proactive roll-asking while the begin directive and loop forbid both",
+  "notes": "no verdict"
+ },
+ {
+  "area": "prompt-alignment",
+  "title": "Concentration example in tool contract names fireball, which is not a concentration spell",
+  "notes": "no verdict"
+ },
+ {
+  "area": "prompt-alignment",
+  "title": "Wrong rulebook citation: currency conversion attributed to 'PHB \u00a75.2' (which is Long Rest in rules.md; currency is \u00a79.2)",
+  "notes": "no verdict"
+ },
+ {
+  "area": "prompt-alignment",
+  "title": "Starvation survival days: prompt says '3 + CON mod' while rules.md says 'CON mod days, minimum 1' (ground-truth file likely dropped the '3 +')",
+  "notes": "no verdict"
+ },
+ {
+  "area": "prompt-alignment",
+  "title": "Three mutually inconsistent XP-award scales coexist across prompt blocks",
+  "notes": "no verdict"
+ },
+ {
+  "area": "prompt-alignment",
+  "title": "Crafting time formula in tool contract deviates ~20x from PHB RAW (days = ceil(price \u00d7 2))",
+  "notes": "no verdict"
+ }
+]
