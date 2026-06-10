@@ -304,12 +304,68 @@ export function INITIAL_CHARACTER_STATE(seed: VaultSeedCharacter): CharacterStat
 export function applyEvent(state: CharacterState, event: VaultEvent): CharacterState {
   const next = structuredClone(state);
   switch (event.type) {
-    case 'hp_change':
-      next.hp_current = Math.max(
-        0,
-        Math.min(state.hp_max, state.hp_current + event.payload.delta),
-      );
+    case 'hp_change': {
+      // 2026-06-10 audit — hp_change used to be a bare clamp, silently
+      // skipping the RAW damage pipeline (rules.md §3.17–3.21, mirroring
+      // engine/combat/damage.ts and the legacy applicator):
+      //   damage: temp HP absorbs first; dropping to 0 ⇒ unconscious +
+      //   dying (instant death when the overkill ≥ hp_max); damage while
+      //   already at 0 ⇒ one automatic death-save failure;
+      //   heal: cannot revive the dead; healing from 0 wakes the PC and
+      //   resets the death-save state.
+      // Phase-02-era states (and hand-built fixtures) may lack the Phase 03
+      // fields — read them defensively with the INITIAL defaults.
+      const delta = event.payload.delta;
+      const flags0 = next.flags ?? { stable: false, dead: false, inspiration: false };
+      const saves0 = next.death_saves ?? { successes: 0, failures: 0 };
+      if (delta < 0) {
+        let dmg = -delta;
+        if ((next.temp_hp ?? 0) > 0) {
+          const absorbed = Math.min(next.temp_hp, dmg);
+          next.temp_hp -= absorbed;
+          dmg -= absorbed;
+        }
+        if (dmg === 0) return next; // fully absorbed by temp HP
+        if (state.hp_current === 0) {
+          if (flags0.dead) return next;
+          // PHB §3.18: damage while dying = 1 automatic death-save failure.
+          const failures = Math.min(3, saves0.failures + 1);
+          next.death_saves = failures >= 3
+            ? { successes: 0, failures: 3 }
+            : { successes: saves0.successes, failures };
+          next.flags = { ...flags0, stable: false, dead: failures >= 3 };
+          return next;
+        }
+        const hpAfter = Math.max(0, state.hp_current - dmg);
+        next.hp_current = hpAfter;
+        if (hpAfter === 0) {
+          const overkill = dmg - state.hp_current;
+          if (overkill >= state.hp_max) {
+            // PHB §3.17 massive damage: instant death, no dying state.
+            next.flags = { ...flags0, stable: false, dead: true };
+          } else {
+            if (!next.conditions.includes('unconscious')) {
+              next.conditions.push('unconscious');
+              next.conditions.sort();
+            }
+            next.flags = { ...flags0, stable: false };
+            next.death_saves = { successes: 0, failures: 0 };
+          }
+        }
+        return next;
+      }
+      // Heal (delta >= 0).
+      if (flags0.dead) return next; // RAW: hp_change cannot revive the dead
+      const healedFromZero = state.hp_current === 0 && delta > 0;
+      next.hp_current = Math.max(0, Math.min(state.hp_max, state.hp_current + delta));
+      if (healedFromZero && next.hp_current > 0) {
+        // PHB §3.19 wake-on-heal (mirrors applicator heal-from-0).
+        next.conditions = next.conditions.filter((c) => c !== 'unconscious');
+        next.death_saves = { successes: 0, failures: 0 };
+        next.flags = { ...flags0, stable: false };
+      }
       return next;
+    }
 
     case 'condition_add':
       if (!next.conditions.includes(event.payload.condition)) {

@@ -113,15 +113,91 @@ export async function invokeEnginePathwayFromEvent(
   const event = envelope as VaultEvent;
   switch (event.type) {
     case 'hp_change': {
-      // Mirror applicator.ts `apply_damage` / `heal`: clamp to [0, hp_max].
+      // 2026-06-10 audit — mirror the vault reducer's RAW pipeline
+      // (projector.ts hp_change), not just a clamp: temp-HP absorption,
+      // unconscious/dying at 0 (instant death on massive damage), one
+      // automatic death-save failure when damaged while at 0, wake-on-heal
+      // (rules.md §3.17–3.21). The two legs must stay semantically
+      // equivalent or every combat turn diverges under dual-write.
       // We use `event.payload.character` rather than the dispatcher's
       // `characterId` argument because the event payload is the source of
       // truth for which PC owns the mutation (multi-PC party).
       const targetId = event.payload.character;
       const [char] = await db.select({ hpMax: characters.hpMax }).from(characters).where(eq(characters.id, targetId)).limit(1);
-      const [state] = await db.select({ hpCurrent: sessionState.hpCurrent }).from(sessionState).where(eq(sessionState.sessionId, sessionId)).limit(1);
+      const [state] = await db
+        .select({ hpCurrent: sessionState.hpCurrent, tempHp: sessionState.tempHp, conditions: sessionState.conditions, deathSaves: sessionState.deathSaves, flags: sessionState.flags })
+        .from(sessionState)
+        .where(eq(sessionState.sessionId, sessionId))
+        .limit(1);
       if (!char || !state) return;
-      const next = Math.max(0, Math.min(char.hpMax, state.hpCurrent + event.payload.delta));
+      const delta = event.payload.delta;
+      const flags = { ...(state.flags ?? {}) } as { stable?: boolean; dead?: boolean };
+      const deathSaves = state.deathSaves ?? { successes: 0, failures: 0 };
+      const conditions = (state.conditions ?? []) as { slug: string; source: string; durationRounds: number | 'until_removed'; appliedRound: number }[];
+
+      if (delta < 0) {
+        let dmg = -delta;
+        let tempHp = state.tempHp ?? 0;
+        if (tempHp > 0) {
+          const absorbed = Math.min(tempHp, dmg);
+          tempHp -= absorbed;
+          dmg -= absorbed;
+        }
+        if (dmg === 0) {
+          await db.update(sessionState).set({ tempHp }).where(eq(sessionState.sessionId, sessionId));
+          return;
+        }
+        if (state.hpCurrent === 0) {
+          if (flags.dead) return;
+          const failures = Math.min(3, deathSaves.failures + 1);
+          await db.update(sessionState).set({
+            tempHp,
+            deathSaves: failures >= 3 ? { successes: 0, failures: 3 } : { successes: deathSaves.successes, failures },
+            flags: { ...flags, stable: false, dead: failures >= 3 },
+          }).where(eq(sessionState.sessionId, sessionId));
+          return;
+        }
+        const hpAfter = Math.max(0, state.hpCurrent - dmg);
+        if (hpAfter === 0) {
+          const overkill = dmg - state.hpCurrent;
+          if (overkill >= char.hpMax) {
+            await db.update(sessionState).set({
+              hpCurrent: 0,
+              tempHp,
+              flags: { ...flags, stable: false, dead: true },
+            }).where(eq(sessionState.sessionId, sessionId));
+            return;
+          }
+          const conds = conditions.slice();
+          if (!conds.some((c) => c.slug === 'unconscious')) {
+            conds.push({ slug: 'unconscious', source: 'dropped to 0 HP', durationRounds: 'until_removed', appliedRound: 0 });
+          }
+          await db.update(sessionState).set({
+            hpCurrent: 0,
+            tempHp,
+            conditions: conds,
+            deathSaves: { successes: 0, failures: 0 },
+            flags: { ...flags, stable: false },
+          }).where(eq(sessionState.sessionId, sessionId));
+          return;
+        }
+        await db.update(sessionState).set({ hpCurrent: hpAfter, tempHp }).where(eq(sessionState.sessionId, sessionId));
+        return;
+      }
+
+      // Heal (delta >= 0).
+      if (flags.dead) return; // RAW: hp_change cannot revive the dead
+      const next = Math.max(0, Math.min(char.hpMax, state.hpCurrent + delta));
+      if (state.hpCurrent === 0 && next > 0) {
+        // PHB §3.21 wake-on-heal (mirrors applicator heal-from-0).
+        await db.update(sessionState).set({
+          hpCurrent: next,
+          conditions: conditions.filter((c) => c.slug !== 'unconscious'),
+          deathSaves: { successes: 0, failures: 0 },
+          flags: { ...flags, stable: false },
+        }).where(eq(sessionState.sessionId, sessionId));
+        return;
+      }
       await db.update(sessionState).set({ hpCurrent: next }).where(eq(sessionState.sessionId, sessionId));
       return;
     }

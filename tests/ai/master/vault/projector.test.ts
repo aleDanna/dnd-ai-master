@@ -2778,3 +2778,77 @@ describe("deduplicateMonsterNames — unique naming (Phase 08-02)", () => {
     ]);
   });
 });
+
+// ─── 2026-06-10 audit: hp_change RAW damage pipeline (rules.md §3.17–3.21) ──
+
+describe('applyEvent — hp_change RAW pipeline (2026-06-10 audit)', () => {
+  let applyEvent: typeof import('@/ai/master/vault/projector').applyEvent;
+  let INITIAL_CHARACTER_STATE: typeof import('@/ai/master/vault/projector').INITIAL_CHARACTER_STATE;
+  beforeEach(async () => {
+    ({ applyEvent, INITIAL_CHARACTER_STATE } = await import('@/ai/master/vault/projector'));
+  });
+  const base = (over: Partial<import('@/ai/master/vault/projector').CharacterState> = {}) => ({
+    ...INITIAL_CHARACTER_STATE({ id: 'c1', name: 'Nami', hp_max: 20, hp_current: 20 }),
+    ...over,
+  });
+  const hp = (delta: number) => ({ type: 'hp_change', payload: { character: 'c1', delta } }) as never;
+
+  it('temp HP absorbs damage first (PHB §3.21)', () => {
+    const s = applyEvent(base({ temp_hp: 5 }), hp(-3));
+    expect(s.temp_hp).toBe(2);
+    expect(s.hp_current).toBe(20); // fully absorbed
+    const s2 = applyEvent(base({ temp_hp: 5 }), hp(-8));
+    expect(s2.temp_hp).toBe(0);
+    expect(s2.hp_current).toBe(17); // 3 spill through
+  });
+
+  it('dropping to 0 ⇒ unconscious + dying (death saves reset, not stable)', () => {
+    const s = applyEvent(base({ hp_current: 5 }), hp(-5));
+    expect(s.hp_current).toBe(0);
+    expect(s.conditions).toContain('unconscious');
+    expect(s.flags.dead).toBe(false);
+    expect(s.flags.stable).toBe(false);
+    expect(s.death_saves).toEqual({ successes: 0, failures: 0 });
+  });
+
+  it('massive damage ⇒ instant death (overkill >= hp_max, PHB §3.17)', () => {
+    // 5 HP left, 25 damage → overkill 20 >= hp_max 20 → dead, not dying.
+    const s = applyEvent(base({ hp_current: 5 }), hp(-25));
+    expect(s.hp_current).toBe(0);
+    expect(s.flags.dead).toBe(true);
+    expect(s.conditions).not.toContain('unconscious');
+  });
+
+  it('damage while at 0 ⇒ one automatic death-save failure; third kills (PHB §3.18)', () => {
+    let s = applyEvent(base({ hp_current: 0, conditions: ['unconscious'] }), hp(-4));
+    expect(s.death_saves.failures).toBe(1);
+    expect(s.flags.dead).toBe(false);
+    s = applyEvent(s, hp(-4));
+    s = applyEvent(s, hp(-4));
+    expect(s.death_saves.failures).toBe(3);
+    expect(s.flags.dead).toBe(true);
+  });
+
+  it('healing from 0 wakes the PC: unconscious dropped, death saves reset', () => {
+    const dying = applyEvent(base({ hp_current: 3 }), hp(-3));
+    const partlyFailed = applyEvent(dying, hp(-1)); // 1 death-save failure
+    const healed = applyEvent(partlyFailed, hp(+7));
+    expect(healed.hp_current).toBe(7);
+    expect(healed.conditions).not.toContain('unconscious');
+    expect(healed.death_saves).toEqual({ successes: 0, failures: 0 });
+    expect(healed.flags.stable).toBe(false);
+  });
+
+  it('hp_change cannot revive the dead', () => {
+    const dead = applyEvent(base({ hp_current: 1 }), hp(-30)); // massive damage
+    expect(dead.flags.dead).toBe(true);
+    const after = applyEvent(dead, hp(+10));
+    expect(after.hp_current).toBe(0);
+    expect(after.flags.dead).toBe(true);
+  });
+
+  it('ordinary damage and heal still clamp to [0, hp_max]', () => {
+    expect(applyEvent(base(), hp(-7)).hp_current).toBe(13);
+    expect(applyEvent(base({ hp_current: 18 }), hp(+10)).hp_current).toBe(20);
+  });
+});
